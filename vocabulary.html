@@ -199,19 +199,18 @@
     </nav>
 
     <script>
-        // 1. Инициализация локальной базы данных (пока вы настраиваете Supabase)
+                            // 1. Инициализация локальной базы данных (резервный вариант)
         const mockWordsDb = [
-            { word: 'EMPIRE', part: 'noun', definition: 'A group of territories ruled by one authority.', category: 'Art History', synonyms: 'kingdom, realm', antonyms: 'republic', example: 'The Roman Empire expanded widely.', mnemonic: 'Empire = emperor ruling lands.' },
-            { word: 'ABUNDANT', part: 'adjective', definition: 'Existing or available in large quantities.', category: 'Biology', synonyms: 'plentiful, ample', antonyms: 'scarce', example: 'The region is abundant in natural resources.', mnemonic: 'Abundant = overflowing water.' },
-            { word: 'MITIGATE', part: 'verb', definition: 'Make something bad less severe, serious, or painful.', category: 'Environment', synonyms: 'alleviate, reduce', antonyms: 'aggravate', example: 'Drainage systems help to mitigate flood damage.', mnemonic: 'Mitigate = make mild (miti).' },
-            { word: 'COGNITIVE', part: 'adjective', definition: 'Relating to cognition or the mental action of acquiring knowledge.', category: 'Psychology', synonyms: 'mental, intellectual', antonyms: 'physical', example: 'Cognitive development in children is rapid.', mnemonic: 'Cognitive = recognition / brain.' }
+            { word: 'EMPIRE', part: 'noun', definition: 'A group of territories ruled by one authority.', category: 'Art History', synonyms: 'kingdom, realm', antonyms: 'republic', example: 'The Roman Empire expanded widely.', mnemonic: 'Empire = emperor ruling lands.' }
         ];
 
         let currentCategory = 'All';
 
-        // Инициализация Supabase клиента (Раскомментируйте и вставьте ваши ключи, когда создадите проект в Supabase)
-        const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
-        const SUPABASE_ANON_KEY = 'sb_publishable_X9wbPRv9EWlH5AWmAurshA_tzPS6-lR';
+        // Инициализация Supabase клиента
+        const SUPABASE_URL = 'мой код'; // Сюда ваш URL
+        const SUPABASE_ANON_KEY = 'мой код'; // Сюда ваш публичный ключ
+        
+        // Исправлено: SUPABASE_URL вместо SUPERBASE_URL
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         // Функция отрисовки таблицы слов
@@ -219,7 +218,7 @@
             const tableBody = document.getElementById('wordsTableBody');
             tableBody.innerHTML = '';
 
-            if(words.length === 0) {
+            if(!words || words.length === 0) {
                 tableBody.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-gray-400">No words found in this category.</td></tr>`;
                 return;
             }
@@ -227,7 +226,6 @@
             words.forEach(w => {
                 const row = document.createElement('tr');
                 row.className = "hover:bg-slate-50/80 cursor-pointer transition";
-                // Передаем все данные в модалку при клике на строку
                 row.onclick = () => openModal(w.word, w.part, w.definition, w.synonyms, w.antonyms, w.example, w.mnemonic);
                 
                 row.innerHTML = `
@@ -256,17 +254,24 @@
                 }
             });
 
-            // КОД ДЛЯ SUPABASE (когда подключите базу данных, раскомментируйте это):
-            let query = supabase.from('words').select('*');
-            //if (category !== 'All') {
-            //    query = query.eq('category', category);
-            //}
-            const { data, error } = await query;
-            if (!error) renderWordsTable(data);
+            // Запрос к Supabase (пока без фильтрации по категориям для проверки)
+            const { data, error } = await supabase.from('words').select('*');
+            
+            if (error) {
+                console.error("Supabase error:", error);
+                alert("Ошибка Supabase: " + error.message);
+                return;
+            }
+
+            if (data) {
+                renderWordsTable(data);
+            }
+        } // <-- Вот эта скобка была пропущена и всё ломала!
 
         // Живой поиск по буквам
         function filterWords() {
             const searchVal = document.getElementById('searchInput').value.toLowerCase();
+            // Поиск пока работает по локальной базе, при необходимости переключим на Supabase
             const baseWords = currentCategory === 'All' ? mockWordsDb : mockWordsDb.filter(w => w.category === currentCategory);
             const searched = baseWords.filter(w => w.word.toLowerCase().includes(searchVal) || w.definition.toLowerCase().includes(searchVal));
             renderWordsTable(searched);
@@ -274,28 +279,35 @@
 
         // Открытие / Закрытие модального окна
         function openModal(word, part, def, synonyms, antonyms, example, mnemonic) {
-            document.getElementById('modalWord').innerText = word;
-            document.getElementById('modalPart').innerText = part;
-            document.getElementById('modalDefinition').innerText = def;
-            document.getElementById('modalExample').innerText = example;
-            document.getElementById('modalMnemonic').innerText = mnemonic;
+            document.getElementById('modalWord').innerText = word || '';
+            document.getElementById('modalPart').innerText = part || '';
+            document.getElementById('modalDefinition').innerText = def || '';
+            document.getElementById('modalExample').innerText = example || '';
+            document.getElementById('modalMnemonic').innerText = mnemonic || '';
 
             const synContainer = document.getElementById('modalSynonyms');
             synContainer.innerHTML = '';
-            synonyms.split(',').forEach(s => {
-                if(s.trim()) synContainer.innerHTML += `<span class="px-2.5 py-1 bg-slate-100 text-[11px] font-medium text-slate-600 rounded-lg">${s.trim()}</span>`;
-            });
+            if (synonyms) {
+                synonyms.split(',').forEach(s => {
+                    if(s.trim()) synContainer.innerHTML += `<span class="px-2.5 py-1 bg-slate-100 text-[11px] font-medium text-slate-600 rounded-lg">${s.trim()}</span>`;
+                });
+            }
 
             const antContainer = document.getElementById('modalAntonyms');
             antContainer.innerHTML = '';
-            antonyms.split(',').forEach(a => {
-                if(a.trim()) antContainer.innerHTML += `<span class="px-2.5 py-1 bg-slate-100 text-[11px] font-medium text-slate-600 rounded-lg">${a.trim()}</span>`;
-            });
+            if (antonyms) {
+                antonyms.split(',').forEach(a => {
+                    if(a.trim()) antContainer.innerHTML += `<span class="px-2.5 py-1 bg-slate-100 text-[11px] font-medium text-slate-600 rounded-lg">${a.trim()}</span>`;
+                });
+            }
 
             document.getElementById('wordModal').classList.remove('hidden');
         }
 
-        function closeModal() { document.getElementById('wordModal').classList.add('hidden'); }
+        function closeModal() { 
+            document.getElementById('wordModal').classList.add('hidden'); 
+        }
+        
         function speakWord() {
             const wordText = document.getElementById('modalWord').innerText;
             const utterance = new SpeechSynthesisUtterance(wordText);
@@ -303,13 +315,16 @@
             window.speechSynthesis.speak(utterance);
         }
 
-        window.onclick = function(e) { if (e.target == document.getElementById('wordModal')) closeModal(); }
+        window.onclick = function(e) { 
+            if (e.target == document.getElementById('wordModal')) closeModal(); 
+        }
 
         // Первичный запуск при загрузке страницы
         lucide.createIcons();
         setTimeout(() => {
             selectCategory('All');
         }, 500);
+
     </script>
 </body>
 </html>
