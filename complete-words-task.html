@@ -9,6 +9,9 @@
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
 
+    <!-- SUPABASE -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
@@ -319,67 +322,75 @@
         lucide.createIcons();
 
         /* =========================
-           DATABASE
+           SUPABASE
         ========================= */
 
-        const database = {
+        const SUPABASE_URL =
+            'https://gmsdixqjhlycovsgwbzq.supabase.co';
 
-            "1": {
+        const SUPABASE_ANON_KEY =
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
 
-                category: "Psychology",
+        const supabase =
+            window.supabase.createClient(
+                SUPABASE_URL,
+                SUPABASE_ANON_KEY
+            );
 
-                title: "Human Perception",
+        /* =========================
+           LOAD TASK
+        ========================= */
 
-                text: `
-Human perception is not a direct recording of reality but a constructed experience shaped by the brain’s interpretation of sensory information. Some resear[chers] have arg[ued] that the mi[nd] actively fi[lls] in mis[sing] details based on past exper[iences]. This proc[ess] helps indiv[iduals] make deci[sions] quickly, but it can also lead to systematic errors or illusions. In some cases, people may feel completely certain about what they saw, even when their memory is inaccurate.
-                `,
+        async function loadTask(){
 
-                tips: `
-                    <span class='font-bold text-indigo-700'>Tip:</span>
-                    Read the full sentence first. Context clues make missing-letter questions much easier.
-                `
+            const urlParams =
+                new URLSearchParams(window.location.search);
+
+            const taskId =
+                urlParams.get('id');
+
+            if(!taskId){
+
+                document.getElementById('taskTitle')
+                    .innerText = 'No task ID';
+
+                return;
             }
 
-        };
+            const { data, error } =
+                await supabase
+                    .from('complete_words_tasks')
+                    .select('*')
+                    .eq('id', taskId)
+                    .single();
 
-        /* =========================
-           GET TASK
-        ========================= */
+            if(error || !data){
 
-        const urlParams = new URLSearchParams(window.location.search);
+                console.error(error);
 
-        const taskId = urlParams.get('id') || "1";
+                document.getElementById('taskTitle')
+                    .innerText = 'Task not found';
 
-        const currentTask = database[taskId];
+                return;
+            }
 
-        /* =========================
-           ERROR
-        ========================= */
-
-        if(!currentTask){
-
-            document.getElementById('taskTitle').innerText =
-                'Task not found';
-
-            document.getElementById('taskCategory').innerText =
-                'Error';
-
+            renderTask(data);
         }
 
         /* =========================
-           RENDER
+           RENDER TASK
         ========================= */
 
-        else{
+        function renderTask(task){
 
-            document.getElementById('taskTitle').innerText =
-                currentTask.title;
+            document.getElementById('taskTitle')
+                .innerText = task.title;
 
-            document.getElementById('taskCategory').innerText =
-                currentTask.category;
+            document.getElementById('taskCategory')
+                .innerText = task.category;
 
-            document.getElementById('tipsContent').innerHTML =
-                currentTask.tips;
+            document.getElementById('tipsContent')
+                .innerHTML = task.tips || '';
 
             function renderText(text){
 
@@ -420,7 +431,7 @@ Human perception is not a direct recording of reality but a constructed experien
             }
 
             document.getElementById('textContent').innerHTML =
-                renderText(currentTask.text);
+                renderText(task.passage);
 
             /* =========================
                INPUTS
@@ -548,6 +559,12 @@ Human perception is not a direct recording of reality but a constructed experien
                 });
 
         }
+
+        /* =========================
+           START
+        ========================= */
+
+        loadTask();
 
     </script>
 
