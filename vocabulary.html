@@ -199,12 +199,9 @@
     </nav>
 
     <script>
-                  // 1. Локальная база (на случай сбоев)
-        const mockWordsDb = [
-            { word: 'EMPIRE', part: 'noun', definition: 'A group of territories ruled by one authority.', category: 'Art History', synonyms: 'kingdom, realm', antonyms: 'republic', example: 'The Roman Empire expanded widely.', mnemonic: 'Empire = emperor ruling lands.' }
-        ];
-
+                  // 1. Локальная база (на случай 
         let currentCategory = 'All';
+        let allWords = [];
 
         // Инициализация Supabase
         const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co'; 
@@ -239,37 +236,85 @@
             lucide.createIcons();
         }
 
-        // Функция выбора категории (запрос к Supabase)
         async function selectCategory(category) {
-            currentCategory = category;
-            
-            document.querySelectorAll('.category-card').forEach(card => {
-                if(card.innerText.includes(category)) {
-                    card.classList.add('border-indigo-600', 'ring-2', 'ring-indigo-100');
-                } else {
-                    card.classList.remove('border-indigo-600', 'ring-2', 'ring-indigo-100');
-                }
-            });
 
-            // Запрашиваем данные из таблицы words
-            const { data, error } = await supabase.from('words').select('*');
-            
-            if (error) {
-                alert("Ошибка Supabase: " + error.message);
-                return;
-            }
+    currentCategory = category;
 
-            if (data) {
-                renderWordsTable(data);
-            }
-        } // <-- ТЕПЕРЬ ФУНКЦИЯ ЧЕТКО ЗАКРЫТА!
+    document.querySelectorAll('.category-card').forEach(card => {
 
-        // Живой поиск
+        if(card.innerText.includes(category)) {
+
+            card.classList.add(
+                'border-indigo-600',
+                'ring-2',
+                'ring-indigo-100'
+            );
+
+        } else {
+
+            card.classList.remove(
+                'border-indigo-600',
+                'ring-2',
+                'ring-indigo-100'
+            );
+        }
+    });
+
+    // Загрузка данных из Supabase
+    const { data, error } = await supabase
+        .from('words')
+        .select('*');
+
+    if(error) {
+        console.error(error);
+        alert(error.message);
+        return;
+    }
+
+    allWords = data || [];
+
+    let filteredWords = allWords;
+
+    if(category !== 'All') {
+
+        filteredWords = allWords.filter(
+            w => w.category === category
+        );
+    }
+
+    renderWordsTable(filteredWords);
+        }
+
         function filterWords() {
-            const searchVal = document.getElementById('searchInput').value.toLowerCase();
-            const baseWords = currentCategory === 'All' ? mockWordsDb : mockWordsDb.filter(w => w.category === currentCategory);
-            const searched = baseWords.filter(w => w.word.toLowerCase().includes(searchVal) || w.definition.toLowerCase().includes(searchVal));
-            renderWordsTable(searched);
+
+    const searchVal =
+        document.getElementById('searchInput')
+        .value
+        .toLowerCase();
+
+    let filtered = allWords;
+
+    if(currentCategory !== 'All') {
+
+        filtered = filtered.filter(
+            w => w.category === currentCategory
+        );
+    }
+
+    filtered = filtered.filter(w =>
+
+        (w.word || '')
+        .toLowerCase()
+        .includes(searchVal)
+
+        ||
+
+        (w.definition || '')
+        .toLowerCase()
+        .includes(searchVal)
+    );
+
+    renderWordsTable(filtered);
         }
 
         // Открытие модалки
@@ -312,10 +357,7 @@
 
         // Запуск при старте
         lucide.createIcons();
-        setTimeout(() => {
             selectCategory('All');
-        }, 500);
-      
     </script>
 </body>
 </html>
