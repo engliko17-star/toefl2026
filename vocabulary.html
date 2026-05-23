@@ -199,14 +199,15 @@
     </nav>
 
     <script>
-                  // 1. Локальная база (на случай 
-        let currentCategory = 'All';
+                let currentCategory = 'All';
         let allWords = [];
 
         // Инициализация Supabase
         const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co'; 
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ'; // Вставьте сюда ваш полный ключ!
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ'; 
+        
+        // ВАЖНО: переименовали переменную в supabaseClient, чтобы не было конфликта!
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         // Функция отрисовки таблицы
         function renderWordsTable(words) {
@@ -237,84 +238,49 @@
         }
 
         async function selectCategory(category) {
+            currentCategory = category;
 
-    currentCategory = category;
+            document.querySelectorAll('.category-card').forEach(card => {
+                if(card.innerText.includes(category)) {
+                    card.classList.add('border-indigo-600', 'ring-2', 'ring-indigo-100');
+                } else {
+                    card.classList.remove('border-indigo-600', 'ring-2', 'ring-indigo-100');
+                }
+            });
 
-    document.querySelectorAll('.category-card').forEach(card => {
+            // Загрузка данных из Supabase (обращаемся к supabaseClient)
+            const { data, error } = await supabaseClient.from('words').select('*');
 
-        if(card.innerText.includes(category)) {
+            if(error) {
+                console.error(error);
+                alert(error.message);
+                return;
+            }
 
-            card.classList.add(
-                'border-indigo-600',
-                'ring-2',
-                'ring-indigo-100'
-            );
+            allWords = data || [];
+            let filteredWords = allWords;
 
-        } else {
+            if(category !== 'All') {
+                filteredWords = allWords.filter(w => w.category === category);
+            }
 
-            card.classList.remove(
-                'border-indigo-600',
-                'ring-2',
-                'ring-indigo-100'
-            );
-        }
-    });
-
-    // Загрузка данных из Supabase
-    const { data, error } = await supabase
-        .from('words')
-        .select('*');
-
-    if(error) {
-        console.error(error);
-        alert(error.message);
-        return;
-    }
-
-    allWords = data || [];
-
-    let filteredWords = allWords;
-
-    if(category !== 'All') {
-
-        filteredWords = allWords.filter(
-            w => w.category === category
-        );
-    }
-
-    renderWordsTable(filteredWords);
+            renderWordsTable(filteredWords);
         }
 
         function filterWords() {
+            const searchVal = document.getElementById('searchInput').value.toLowerCase();
+            let filtered = allWords;
 
-    const searchVal =
-        document.getElementById('searchInput')
-        .value
-        .toLowerCase();
+            if(currentCategory !== 'All') {
+                filtered = filtered.filter(w => w.category === currentCategory);
+            }
 
-    let filtered = allWords;
+            filtered = filtered.filter(w =>
+                (w.word || '').toLowerCase().includes(searchVal) ||
+                (w.definition || '').toLowerCase().includes(searchVal)
+            );
 
-    if(currentCategory !== 'All') {
-
-        filtered = filtered.filter(
-            w => w.category === currentCategory
-        );
-    }
-
-    filtered = filtered.filter(w =>
-
-        (w.word || '')
-        .toLowerCase()
-        .includes(searchVal)
-
-        ||
-
-        (w.definition || '')
-        .toLowerCase()
-        .includes(searchVal)
-    );
-
-    renderWordsTable(filtered);
+            renderWordsTable(filtered);
         }
 
         // Открытие модалки
@@ -357,7 +323,7 @@
 
         // Запуск при старте
         lucide.createIcons();
-            selectCategory('All');
+        selectCategory('All');
     </script>
 </body>
 </html>
