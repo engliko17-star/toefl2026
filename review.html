@@ -87,78 +87,7 @@
         <p class="text-xs text-gray-400 font-medium">Preparing your study set...</p>
     </div>
 
-    <script>
-        const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co'; 
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ'; 
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-        let reviewWords = [];
-        let currentIndex = 0;
-        let correctAnswers = 0;
-        let sessionSettings = null;
-
-        // Запуск сессии при загрузке страницы
-        window.addEventListener('DOMContentLoaded', async () => {
-            sessionSettings = JSON.parse(localStorage.getItem('reviewSettings'));
-            
-            if (!sessionSettings || !sessionSettings.lists || sessionSettings.lists.length === 0) {
-                alert("Настройки сессии не найдены. Возврат в библиотеку.");
-                window.location.href = 'vocabulary.html';
-                return;
-            }
-
-            await loadSessionWords();
-        });
-
-        // Функция перемешивания массива слов (Фишер-Йетс)
-        function shuffle(array) {
-            for (let i = array.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [array[i], array[j]] = [array[j], array[i]];
-            }
-            return array;
-        }
-
-        // Загрузка слов из базы на основе выбранных списков
-        async function loadSessionWords() {
-            // 1. Берем названия слов из localStorage студента для выбранных списков
-            const customLists = JSON.parse(localStorage.getItem('studentLists') || '{}');
-            let uniqueWordNames = new Set();
-            
-            sessionSettings.lists.forEach(listName => {
-                const wordsInList = customLists[listName] || [];
-                wordsInList.forEach(w => uniqueWordNames.add(w));
-            });
-
-            if (uniqueWordNames.size === 0) {
-                alert("В выбранных списках нет слов для повторения!");
-                window.location.href = 'vocabulary.html';
-                return;
-            }
-
-            // 2. Стягиваем всю базу слов, чтобы сопоставить объекты
-            const { data, error } = await supabaseClient.from('words').select('*');
-            if (error) {
-                console.error(error);
-                alert("Ошибка загрузки данных из базы.");
-                return;
-            }
-
-            // 3. Фильтруем объекты слов, которые выбрал ученик
-            reviewWords = data.filter(w => uniqueWordNames.has(w.word));
-            
-            // На всякий случай перемешиваем
-            reviewWords = shuffle(reviewWords);
-
-            // Скрываем лоадер, показываем интерфейс
-            document.getElementById('loader').classList.add('hidden');
-            document.getElementById('sessionContainer').classList.remove('hidden');
-
-            initSession();
-        }
-
-        function initSession() {
-            currentIndex = 0;
+    
             correctAnswers = 0;
             showWord();
         }
@@ -244,82 +173,281 @@
                         </button>
                     </div>
                 `;
+</script>
+    const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co'; 
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ'; 
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-                // Позволяем отправлять по нажатию Enter
-                document.getElementById('typingInput').addEventListener('keypress', function (e) {
-                    if (e.key === 'Enter') {
-                        if (document.getElementById('checkBtn').innerText === 'Check Answer') {
-                            checkTypingAnswer();
-                        } else {
-                            nextWord(true); // Кнопка переключилась на Continue, значит просто кликаем далее
-                        }
-                    }
-                });
-            }
+let reviewWords = [];
+let currentIndex = 0;
+let correctAnswers = 0;
+let sessionSettings = null;
 
-            lucide.createIcons();
-        }
+// Запуск сессии при загрузке страницы
+window.addEventListener('DOMContentLoaded', async () => {
+    sessionSettings = JSON.parse(localStorage.getItem('reviewSettings'));
+    
+    if (!sessionSettings || !sessionSettings.lists || sessionSettings.lists.length === 0) {
+        alert("Настройки сессии не найдены. Возврат в библиотеку.");
+        window.location.href = 'vocabulary.html';
+        return;
+    }
 
-        // Логика флипа для Flashcards
-        function flipCard() {
-            const cardInner = document.getElementById('cardInner');
-            if (cardInner) {
-                cardInner.classList.toggle('card-flipped');
-            }
-        }
+    await loadSessionWords();
+});
 
-        // Проверка ввода в режиме Typing
-        function checkTypingAnswer() {
-            const input = document.getElementById('typingInput');
-            const feedback = document.getElementById('typingFeedback');
-            const checkBtn = document.getElementById('checkBtn');
-            const currentWordObj = reviewWords[currentIndex];
+// Функция перемешивания массива
+function shuffle(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+}
 
-            const userAnswer = input.value.trim().toLowerCase();
-            const correctAnswer = currentWordObj.word.trim().toLowerCase();
+// Загрузка слов
+async function loadSessionWords() {
+    const customLists = JSON.parse(localStorage.getItem('studentLists') || '{}');
+    let uniqueWordNames = new Set();
+    
+    sessionSettings.lists.forEach(listName => {
+        const wordsInList = customLists[listName] || [];
+        wordsInList.forEach(w => uniqueWordNames.add(w));
+    });
 
-            input.disabled = true;
-            feedback.classList.remove('hidden');
+    if (uniqueWordNames.size === 0) {
+        alert("В выбранных списках нет слов для повторения!");
+        window.location.href = 'vocabulary.html';
+        return;
+    }
 
-            if (userAnswer === correctAnswer) {
-                input.className = "w-full px-4 py-3 bg-green-50 border border-green-300 rounded-xl text-sm font-bold tracking-wide text-green-700";
-                feedback.innerText = "✨ Correct! Excelent spelling.";
-                feedback.className = "text-xs font-bold text-green-600";
-                correctAnswers++;
+    const { data, error } = await supabaseClient.from('words').select('*');
+    if (error) {
+        console.error(error);
+        alert("Ошибка загрузки данных из базы.");
+        return;
+    }
+
+    reviewWords = data.filter(w => uniqueWordNames.has(w.word));
+    reviewWords = shuffle(reviewWords);
+
+    document.getElementById('loader').classList.add('hidden');
+    document.getElementById('sessionContainer').classList.remove('hidden');
+
+    initSession();
+}
+
+function initSession() {
+    currentIndex = 0;
+    correctAnswers = 0;
+    showWord();
+}
+
+function showWord() {
+    if (currentIndex >= reviewWords.length) {
+        showResults();
+        return;
+    }
+
+    const total = reviewWords.length;
+    document.getElementById('progressText').innerText = `Word ${currentIndex + 1} of ${total}`;
+    document.getElementById('progressBar').style.width = `${((currentIndex) / total) * 100}%`;
+
+    const currentWordObj = reviewWords[currentIndex];
+    
+    let currentMode = sessionSettings.mode;
+    if (currentMode === 'mixed') {
+        const modes = ['flashcards', 'typing', 'dictation'];
+        currentMode = modes[Math.floor(Math.random() * modes.length)];
+    }
+
+    const quizArea = document.getElementById('quizArea');
+    const bottomHint = document.getElementById('bottomHint');
+    quizArea.innerHTML = '';
+
+    if (currentMode === 'flashcards') {
+        document.getElementById('sessionModeBadge').innerText = "Flashcards";
+        bottomHint.innerText = "Кликните на карточку, чтобы перевернуть её";
+        
+        quizArea.innerHTML = `
+            <div class="w-full h-64 perspective cursor-pointer" onclick="flipCard()">
+                <div id="cardInner" class="w-full h-full card-inner relative rounded-2xl border border-gray-100 shadow-xs bg-white">
+                    <div class="card-front absolute inset-0 flex flex-col items-center justify-center p-6 bg-slate-50/50 rounded-2xl">
+                        <span class="text-3xl font-extrabold text-slate-900 tracking-tight">${currentWordObj.word}</span>
+                        <span class="text-xs font-bold text-gray-400 uppercase tracking-wider mt-2 bg-white px-2.5 py-1 rounded-md border border-gray-100">${currentWordObj.part}</span>
+                    </div>
+                    <div class="card-back absolute inset-0 flex flex-col justify-center p-6 bg-indigo-600 rounded-2xl text-white text-center space-y-3">
+                        <p class="text-base font-medium leading-relaxed">${currentWordObj.definition}</p>
+                        ${currentWordObj.example ? `<p class="text-xs text-indigo-100 italic opacity-90 border-t border-indigo-500/40 pt-2 font-light">"${currentWordObj.example}"</p>` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const actionButtons = document.createElement('div');
+        actionButtons.className = "flex justify-center space-x-3 w-full mt-4";
+        actionButtons.innerHTML = `
+            <button onclick="event.stopPropagation(); nextWord(false)" class="px-5 py-2.5 bg-gray-50 text-slate-500 rounded-xl text-xs font-bold hover:bg-gray-100 transition flex items-center space-x-1 cursor-pointer">
+                <i data-lucide="frown" class="w-4 h-4 text-red-400"></i> <span>Forgot</span>
+            </button>
+            <button onclick="event.stopPropagation(); nextWord(true)" class="px-5 py-2.5 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100 transition flex items-center space-x-1 cursor-pointer">
+                <i data-lucide="smile" class="w-4 h-4 text-green-500"></i> <span>Knew it</span>
+            </button>
+        `;
+        quizArea.appendChild(actionButtons);
+
+    } else if (currentMode === 'typing') {
+        document.getElementById('sessionModeBadge').innerText = "Type the Word";
+        bottomHint.innerText = "Введите правильное написание слова на английском";
+
+        quizArea.innerHTML = `
+            <div class="w-full bg-slate-50/60 border border-gray-100 rounded-2xl p-6 space-y-5">
+                <div class="space-y-1">
+                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Definition (${currentWordObj.part})</span>
+                    <p class="text-slate-800 font-medium text-sm leading-relaxed">${currentWordObj.definition}</p>
+                </div>
+                <div class="space-y-2">
+                    <input type="text" id="typingInput" placeholder="Type your answer here..." autocomplete="off" class="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 font-bold tracking-wide">
+                    <div id="typingFeedback" class="text-xs font-bold hidden transition-all"></div>
+                </div>
+                <button id="checkBtn" onclick="checkAnswer('typing')" class="w-full py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition shadow-xs cursor-pointer">
+                    Check Answer
+                </button>
+            </div>
+        `;
+
+        setupEnterKey('typingInput', 'typing');
+
+    } else if (currentMode === 'dictation') {
+        // НОВЫЙ РЕЖИМ: АУДИО-ДИКТАНТ
+        document.getElementById('sessionModeBadge').innerText = "Listen & Type";
+        bottomHint.innerText = "Послушайте произношение и введите слово";
+
+        quizArea.innerHTML = `
+            <div class="w-full bg-slate-50/60 border border-gray-100 rounded-2xl p-6 space-y-6 flex flex-col items-center">
+                <button onclick="playCurrentWordAudio()" class="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center hover:bg-indigo-200 transition shadow-sm cursor-pointer group">
+                    <i data-lucide="volume-2" class="w-8 h-8 group-hover:scale-110 transition-transform"></i>
+                </button>
+                <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-[-10px]">Play Audio</p>
+
+                <div class="w-full space-y-2">
+                    <input type="text" id="dictationInput" placeholder="Type what you hear..." autocomplete="off" class="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-center focus:outline-none focus:ring-2 focus:ring-indigo-100 font-bold tracking-wide">
+                    <div id="dictationFeedback" class="text-xs font-bold hidden transition-all text-center"></div>
+                    
+                    <div id="dictationReveal" class="hidden mt-3 p-4 bg-white border border-gray-100 rounded-xl text-left w-full space-y-1">
+                        <div class="flex justify-between items-center">
+                            <span class="text-lg font-extrabold text-slate-900" id="revealWord"></span>
+                            <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">${currentWordObj.part}</span>
+                        </div>
+                        <p class="text-sm text-slate-600 font-medium">${currentWordObj.definition}</p>
+                    </div>
+                </div>
+
+                <button id="checkDictationBtn" onclick="checkAnswer('dictation')" class="w-full py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition shadow-xs cursor-pointer mt-2">
+                    Check Answer
+                </button>
+            </div>
+        `;
+
+        setupEnterKey('dictationInput', 'dictation');
+        
+        // Автоматически проигрываем слово при появлении, если браузер разрешит
+        setTimeout(playCurrentWordAudio, 300);
+    }
+
+    lucide.createIcons();
+}
+
+// Воспроизведение звука
+function playCurrentWordAudio() {
+    const wordText = reviewWords[currentIndex].word;
+    const utterance = new SpeechSynthesisUtterance(wordText);
+    utterance.lang = 'en-US';
+    // Немного замедлим речь, чтобы ученику было легче расслышать (опционально)
+    // utterance.rate = 0.9; 
+    window.speechSynthesis.speak(utterance);
+}
+
+function flipCard() {
+    const cardInner = document.getElementById('cardInner');
+    if (cardInner) cardInner.classList.toggle('card-flipped');
+}
+
+function setupEnterKey(inputId, mode) {
+    document.getElementById(inputId).addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') {
+            const btnId = mode === 'typing' ? 'checkBtn' : 'checkDictationBtn';
+            if (document.getElementById(btnId).innerText === 'Check Answer') {
+                checkAnswer(mode);
             } else {
-                input.className = "w-full px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm font-bold tracking-wide text-red-700";
-                feedback.innerHTML = `❌ Incorrect. Correct word is: <span class="underline">${currentWordObj.word}</span>`;
-                feedback.className = "text-xs font-bold text-red-500";
+                nextWord(true); // Переход дальше (статус правильности учтен внутри checkAnswer)
             }
-
-            // Меняем поведение кнопки на "Продолжить"
-            checkBtn.innerText = "Continue";
-            checkBtn.className = "w-full py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition shadow-xs cursor-pointer";
-            checkBtn.onclick = () => nextWord(userAnswer === correctAnswer);
         }
+    });
+}
 
-        // Переход к следующему слову
-        function nextWord(wasCorrect) {
-            // Если это были карточки и ученик нажал "Knew it", засчитываем балл
-            if (sessionSettings.mode === 'flashcards' && wasCorrect) {
-                correctAnswers++;
-            }
+// Универсальная функция проверки для Typing и Dictation
+function checkAnswer(mode) {
+    const inputId = mode === 'typing' ? 'typingInput' : 'dictationInput';
+    const feedbackId = mode === 'typing' ? 'typingFeedback' : 'dictationFeedback';
+    const btnId = mode === 'typing' ? 'checkBtn' : 'checkDictationBtn';
+    
+    const input = document.getElementById(inputId);
+    const feedback = document.getElementById(feedbackId);
+    const checkBtn = document.getElementById(btnId);
+    const currentWordObj = reviewWords[currentIndex];
 
-            currentIndex++;
-            showWord();
-        }
+    const userAnswer = input.value.trim().toLowerCase();
+    const correctAnswer = currentWordObj.word.trim().toLowerCase();
 
-        // Экран финальных результатов
-        function showResults() {
-            document.getElementById('sessionContainer').classList.add('hidden');
-            document.getElementById('bottomHint').classList.add('hidden');
-            
-            document.getElementById('resCorrectCount').innerText = correctAnswers;
-            document.getElementById('resTotalCount').innerText = reviewWords.length;
-            
-            document.getElementById('resultsContainer').classList.remove('hidden');
-            lucide.createIcons();
-        }
+    input.disabled = true;
+    feedback.classList.remove('hidden');
+
+    const isCorrect = (userAnswer === correctAnswer);
+
+    if (isCorrect) {
+        input.className = `w-full px-4 py-3 bg-green-50 border border-green-300 rounded-xl text-sm font-bold tracking-wide text-green-700 ${mode === 'dictation' ? 'text-center' : ''}`;
+        feedback.innerText = "✨ Correct! Excellent spelling.";
+        feedback.className = "text-xs font-bold text-green-600 mt-1";
+        correctAnswers++;
+    } else {
+        input.className = `w-full px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm font-bold tracking-wide text-red-700 ${mode === 'dictation' ? 'text-center' : ''}`;
+        feedback.innerHTML = `❌ Incorrect. Correct spelling is: <span class="underline">${currentWordObj.word}</span>`;
+        feedback.className = "text-xs font-bold text-red-500 mt-1";
+    }
+
+    // Если это диктант, показываем карточку со словом и определением
+    if (mode === 'dictation') {
+        const reveal = document.getElementById('dictationReveal');
+        document.getElementById('revealWord').innerText = currentWordObj.word;
+        reveal.classList.remove('hidden');
+    }
+
+    checkBtn.innerText = "Continue";
+    checkBtn.className = "w-full py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition shadow-xs cursor-pointer mt-4";
+    
+    // Снимаем старый обработчик и вешаем новый для перехода дальше
+    checkBtn.onclick = () => nextWord(isCorrect);
+}
+
+function nextWord(wasCorrect) {
+    if (sessionSettings.mode === 'flashcards' && wasCorrect) {
+        correctAnswers++;
+    }
+    currentIndex++;
+    showWord();
+}
+
+function showResults() {
+    document.getElementById('sessionContainer').classList.add('hidden');
+    document.getElementById('bottomHint').classList.add('hidden');
+    
+    document.getElementById('resCorrectCount').innerText = correctAnswers;
+    document.getElementById('resTotalCount').innerText = reviewWords.length;
+    
+    document.getElementById('resultsContainer').classList.remove('hidden');
+    lucide.createIcons();
+}
     </script>
 </body>
 </html>
