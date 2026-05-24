@@ -296,13 +296,64 @@
 
         window.saveRadioAnswer = function(qIdx, optIdx) { userAnswers[qIdx] = optIdx; };
 
-        function finishTest() {
-            let score = 0;
-            task.questions.forEach((q, i) => { if (userAnswers[i] === q.correct) score++; });
-            document.getElementById('modalScore').innerText = score;
-            document.getElementById('modalTotal').innerText = task.questions.length;
-            document.getElementById('resultModal').classList.remove('hidden');
+        async function finishTest() {
+    let score = 0;
+    
+    // Объект для сбора статистики по типам вопросов
+    // Сюда динамически запишется сколько и каких типов было, и сколько правильных
+    let stats = {}; 
+
+    task.questions.forEach((q, i) => {
+        const isCorrect = userAnswers[i] === q.correct;
+        if (isCorrect) score++;
+
+        // Если такого типа вопроса еще нет в статистике, создаем заготовку
+        if (!stats[q.type]) {
+            stats[q.type] = { correct: 0, total: 0 };
         }
+        
+        // Наращиваем счетчики
+        stats[q.type].total += 1;
+        if (isCorrect) {
+            stats[q.type].correct += 1;
+        }
+    });
+
+    // Предположим, у нас пока нет полноценного таймера, запишем заглушку (например, 420 секунд = 7 минут)
+    // Позже мы сможем добавить реальный отсчет времени, если захочешь!
+    const fakeTimeSpent = 420; 
+
+    // Получаем id текущего задания из URL адреса страницы (например, ?id=1)
+    const urlParams = new URLSearchParams(window.location.search);
+    const taskId = urlParams.get('id') || 1;
+
+    // 🔥 ОТПРАВКА ДАННЫХ В SUPABASE
+    if (window.supabase) {
+        try {
+            const { error } = await supabase
+                .from('reading_results')
+                .insert([
+                    {
+                        task_id: parseInt(taskId),
+                        score_earned: score,
+                        score_total: task.questions.length,
+                        time_spent_seconds: fakeTimeSpent,
+                        category_stats: stats // Наш собранный JSON объект с разбором категорий
+                    }
+                ]);
+
+            if (error) console.error("Error saving results to Supabase:", error);
+            else console.log("Results successfully saved!");
+        } catch (err) {
+            console.error("Failed to connect with Supabase:", err);
+        }
+    }
+
+    // Показываем наше красивое модальное окно результатов
+    document.getElementById('modalScore').innerText = score;
+    document.getElementById('modalTotal').innerText = task.questions.length;
+    document.getElementById('resultModal').classList.remove('hidden');
+}
 
         // Функция запуска режима разбора ошибок
         window.startReview = function() {
