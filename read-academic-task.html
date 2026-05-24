@@ -109,7 +109,6 @@
     <script>
         lucide.createIcons();
 
-        // Добавили поле 'explanation' для каждого вопроса
         const task = {
             title: "The Cretaceous Extinction",
             passage: "For many years, scientists debated the primary cause behind the sudden demise of the non-avian dinosaurs approximately 66 million years ago. [s1]Traditional theories pointed toward long-term climate adjustments triggered by massive volcanic eruptions in the Deccan Traps.[sq1] [s2]However, the discovery of a distinct, global iridium layer led directly to the famous Alvarez impact hypothesis.[sq2] [s3]This impact theory suggests that a massive asteroid struck Earth, generating an immense dust cloud that completely blocked out vital solar radiation for months.[sq3] \n\nThe resulting collapse of photosynthetic life quickly rippled through the global food chains. [sq4] [s4]Herbivorous dinosaurs starved first, followed immediately by the apex predators that hunted them. [s5]Smaller, omnivorous mammals managed to survive by scavenging in the dark.",
@@ -143,7 +142,7 @@
 
         let currentQuestionIdx = 0;
         let userAnswers = {}; 
-        let isReviewMode = false; // Флаг режима проверки
+        let isReviewMode = false;
 
         function initTask() {
             document.getElementById('passageTitle').innerText = task.title;
@@ -162,7 +161,7 @@
         function setupInteractiveClicks() {
             document.querySelectorAll('.clickable-sentence').forEach(el => {
                 el.onclick = function() {
-                    if (isReviewMode || task.questions[currentQuestionIdx].type !== "Select a Sentence") return; // Блокируем клик в режиме проверки
+                    if (isReviewMode || task.questions[currentQuestionIdx].type !== "Select a Sentence") return;
                     document.querySelectorAll('.clickable-sentence').forEach(s => s.classList.remove('selected'));
                     this.classList.add('selected');
                     userAnswers[currentQuestionIdx] = parseInt(this.getAttribute('data-id'));
@@ -171,7 +170,7 @@
 
             document.querySelectorAll('.insert-square').forEach(el => {
                 el.onclick = function() {
-                    if (isReviewMode || task.questions[currentQuestionIdx].type !== "Insert Text") return; // Блокируем клик в режиме проверки
+                    if (isReviewMode || task.questions[currentQuestionIdx].type !== "Insert Text") return;
                     document.querySelectorAll('.insert-square').forEach(s => s.classList.remove('selected'));
                     this.classList.add('selected');
                     userAnswers[currentQuestionIdx] = parseInt(this.getAttribute('data-sq'));
@@ -193,12 +192,10 @@
             const passageContainer = document.getElementById('passageContent');
             const explanationBox = document.getElementById('explanationBox');
 
-            // Сброс всех классов текста
             passageContainer.classList.remove('select-sentence-mode', 'insert-text-mode');
             document.querySelectorAll('.clickable-sentence').forEach(el => el.classList.remove('selected', 'review-correct', 'review-wrong'));
             document.querySelectorAll('.insert-square').forEach(el => el.classList.remove('selected', 'review-square-correct', 'review-square-wrong'));
 
-            // Логика отображения вопросов
             if (q.type === "Select a Sentence" || q.type === "Insert Text") {
                 optionsContainer.innerHTML = '';
                 
@@ -215,7 +212,6 @@
                     }
                 } else {
                     instruction.classList.add('hidden');
-                    // Подсветка в режиме проверки
                     if (q.type === "Select a Sentence") {
                         document.querySelector(`.clickable-sentence[data-id="${q.correct}"]`)?.classList.add('review-correct');
                         if (userAnswers[idx] && userAnswers[idx] !== q.correct) {
@@ -237,7 +233,6 @@
                     let styles = "bg-white border-gray-200 hover:border-indigo-300";
                     let textStyles = "text-slate-700";
 
-                    // Стилизация радиокнопок для режима проверки
                     if (isReviewMode) {
                         if (optIdx === q.correct) {
                             styles = "bg-green-50 border-green-500 shadow-sm";
@@ -259,7 +254,6 @@
                 });
             }
 
-            // Показ объяснения
             if (isReviewMode && q.explanation) {
                 explanationBox.innerHTML = `
                     <div class="flex items-center font-bold mb-2">
@@ -268,12 +262,11 @@
                     <p class="leading-relaxed">${q.explanation}</p>
                 `;
                 explanationBox.classList.remove('hidden');
-                lucide.createIcons(); // Перерисовываем иконку в объяснении
+                lucide.createIcons();
             } else {
                 explanationBox.classList.add('hidden');
             }
 
-            // Управление кнопками
             const btnPrev = document.getElementById('btnPrev');
             const btnNext = document.getElementById('btnNext');
 
@@ -296,66 +289,57 @@
 
         window.saveRadioAnswer = function(qIdx, optIdx) { userAnswers[qIdx] = optIdx; };
 
+        // 🔥 ОБНОВЛЕННАЯ ФУНКЦИЯ: Считает аналитику и шлет её в Supabase!
         async function finishTest() {
-    let score = 0;
-    
-    // Объект для сбора статистики по типам вопросов
-    // Сюда динамически запишется сколько и каких типов было, и сколько правильных
-    let stats = {}; 
+            let score = 0;
+            let stats = {}; 
 
-    task.questions.forEach((q, i) => {
-        const isCorrect = userAnswers[i] === q.correct;
-        if (isCorrect) score++;
+            task.questions.forEach((q, i) => {
+                const isCorrect = userAnswers[i] === q.correct;
+                if (isCorrect) score++;
 
-        // Если такого типа вопроса еще нет в статистике, создаем заготовку
-        if (!stats[q.type]) {
-            stats[q.type] = { correct: 0, total: 0 };
+                if (!stats[q.type]) {
+                    stats[q.type] = { correct: 0, total: 0 };
+                }
+                
+                stats[q.type].total += 1;
+                if (isCorrect) {
+                    stats[q.type].correct += 1;
+                }
+            });
+
+            // Заглушка времени (7 минут). Когда добавим таймер — заменим на настоящие секунды
+            const fakeTimeSpent = 420; 
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const taskId = urlParams.get('id') || 1;
+
+            if (window.supabase) {
+                try {
+                    const { error } = await supabase
+                        .from('reading_results')
+                        .insert([
+                            {
+                                task_id: parseInt(taskId),
+                                score_earned: score,
+                                score_total: task.questions.length,
+                                time_spent_seconds: fakeTimeSpent,
+                                category_stats: stats 
+                            }
+                        ]);
+
+                    if (error) console.error("Error saving results to Supabase:", error);
+                    else console.log("Results successfully saved!");
+                } catch (err) {
+                    console.error("Failed to connect with Supabase:", err);
+                }
+            }
+
+            document.getElementById('modalScore').innerText = score;
+            document.getElementById('modalTotal').innerText = task.questions.length;
+            document.getElementById('resultModal').classList.remove('hidden');
         }
-        
-        // Наращиваем счетчики
-        stats[q.type].total += 1;
-        if (isCorrect) {
-            stats[q.type].correct += 1;
-        }
-    });
 
-    // Предположим, у нас пока нет полноценного таймера, запишем заглушку (например, 420 секунд = 7 минут)
-    // Позже мы сможем добавить реальный отсчет времени, если захочешь!
-    const fakeTimeSpent = 420; 
-
-    // Получаем id текущего задания из URL адреса страницы (например, ?id=1)
-    const urlParams = new URLSearchParams(window.location.search);
-    const taskId = urlParams.get('id') || 1;
-
-    // 🔥 ОТПРАВКА ДАННЫХ В SUPABASE
-    if (window.supabase) {
-        try {
-            const { error } = await supabase
-                .from('reading_results')
-                .insert([
-                    {
-                        task_id: parseInt(taskId),
-                        score_earned: score,
-                        score_total: task.questions.length,
-                        time_spent_seconds: fakeTimeSpent,
-                        category_stats: stats // Наш собранный JSON объект с разбором категорий
-                    }
-                ]);
-
-            if (error) console.error("Error saving results to Supabase:", error);
-            else console.log("Results successfully saved!");
-        } catch (err) {
-            console.error("Failed to connect with Supabase:", err);
-        }
-    }
-
-    // Показываем наше красивое модальное окно результатов
-    document.getElementById('modalScore').innerText = score;
-    document.getElementById('modalTotal').innerText = task.questions.length;
-    document.getElementById('resultModal').classList.remove('hidden');
-}
-
-        // Функция запуска режима разбора ошибок
         window.startReview = function() {
             document.getElementById('resultModal').classList.add('hidden');
             isReviewMode = true;
