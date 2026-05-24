@@ -16,22 +16,21 @@
         ::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
 
         /* --- РЕЖИМ: Select a Sentence --- */
-        .select-sentence-mode .clickable-sentence {
-            cursor: pointer;
-            border-radius: 4px;
-            transition: background-color 0.2s;
-        }
+        .select-sentence-mode .clickable-sentence { cursor: pointer; border-radius: 4px; transition: background-color 0.2s; }
         .select-sentence-mode .clickable-sentence:hover { background-color: #fee2e2; }
         .select-sentence-mode .clickable-sentence.selected { background-color: #ef4444; color: white; }
 
-        /* --- РЕЖИМ: Insert Text (Квадратики) --- */
-        .insert-square {
-            display: none; margin: 0 4px; cursor: pointer; font-size: 1.2em;
-            color: #94a3b8; transition: all 0.2s; vertical-align: middle; line-height: 1;
-        }
+        /* --- РЕЖИМ: Insert Text --- */
+        .insert-square { display: none; margin: 0 4px; cursor: pointer; font-size: 1.2em; color: #94a3b8; transition: all 0.2s; vertical-align: middle; line-height: 1; }
         .insert-text-mode .insert-square { display: inline-block; }
         .insert-text-mode .insert-square:hover { color: #4f46e5; transform: scale(1.3); }
         .insert-text-mode .insert-square.selected { color: #312e81; transform: scale(1.2); }
+
+        /* --- РЕЖИМ: Review Answers (Подсветка в тексте) --- */
+        .review-correct { background-color: #bbf7d0 !important; color: #166534 !important; border-radius: 4px; }
+        .review-wrong { background-color: #fecaca !important; color: #991b1b !important; border-radius: 4px; text-decoration: line-through; }
+        .review-square-correct { color: #16a34a !important; transform: scale(1.3); display: inline-block !important; }
+        .review-square-wrong { color: #dc2626 !important; transform: scale(1.3); display: inline-block !important; }
     </style>
 </head>
 <body class="bg-[#f8f9fa] text-slate-800 m-0 p-0" style="height: 100dvh; display: flex; flex-direction: column; overflow: hidden;">
@@ -74,7 +73,10 @@
                     <span id="instructionText">Click directly on the text on the left to select your answer!</span>
                 </div>
 
-                <div id="optionsContainer" class="space-y-3 w-full pb-8"></div>
+                <div id="optionsContainer" class="space-y-3 w-full"></div>
+                
+                <div id="explanationBox" class="hidden mt-6 p-5 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-900"></div>
+                <div class="pb-8"></div>
             </div>
 
             <div class="bg-white border-t border-gray-200 px-6 py-4 flex justify-between items-center w-full z-20 shadow-[0_-4px_10px_rgba(0,0,0,0.03)]" style="flex-shrink: 0;">
@@ -92,15 +94,22 @@
             </div>
             <h3 class="text-lg font-bold text-slate-900 mb-1">Test Finished!</h3>
             <p class="text-sm text-gray-500 mb-6">Your Score: <span id="modalScore" class="font-bold text-slate-900 text-base">0</span> out of <span id="modalTotal" class="font-medium text-slate-900 text-base">0</span></p>
-            <button onclick="window.history.back()" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition shadow-xs cursor-pointer">
-                Back to Passages
-            </button>
+            
+            <div class="flex flex-col space-y-3">
+                <button onclick="startReview()" class="w-full py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl text-sm transition cursor-pointer">
+                    Review Answers
+                </button>
+                <button onclick="window.history.back()" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition shadow-xs cursor-pointer">
+                    Back to Passages
+                </button>
+            </div>
         </div>
     </div>
 
     <script>
         lucide.createIcons();
 
+        // Добавили поле 'explanation' для каждого вопроса
         const task = {
             title: "The Cretaceous Extinction",
             passage: "For many years, scientists debated the primary cause behind the sudden demise of the non-avian dinosaurs approximately 66 million years ago. [s1]Traditional theories pointed toward long-term climate adjustments triggered by massive volcanic eruptions in the Deccan Traps.[sq1] [s2]However, the discovery of a distinct, global iridium layer led directly to the famous Alvarez impact hypothesis.[sq2] [s3]This impact theory suggests that a massive asteroid struck Earth, generating an immense dust cloud that completely blocked out vital solar radiation for months.[sq3] \n\nThe resulting collapse of photosynthetic life quickly rippled through the global food chains. [sq4] [s4]Herbivorous dinosaurs starved first, followed immediately by the apex predators that hunted them. [s5]Smaller, omnivorous mammals managed to survive by scavenging in the dark.",
@@ -114,23 +123,27 @@
                         "The collapse of global food chains",
                         "The survival of small mammals"
                     ],
-                    correct: 1
+                    correct: 1,
+                    explanation: "Sentence 2 explicitly states: 'Traditional theories pointed toward long-term climate adjustments triggered by massive volcanic eruptions in the Deccan Traps.'"
                 },
                 {
                     type: "Select a Sentence",
                     question: "In which sentence does the author discuss the immediate consequence of the loss of plant life? Click on the correct sentence in the text.",
-                    correct: 4
+                    correct: 4,
+                    explanation: "Sentence 4 ('Herbivorous dinosaurs starved first...') shows the direct and immediate consequence of the food chain collapse caused by the lack of plants."
                 },
                 {
                     type: "Insert Text",
                     question: "Where would the following sentence best fit?\n\n\"This period of prolonged darkness prevented plants from creating energy, leading to massive flora die-offs.\"",
-                    correct: 4
+                    correct: 4,
+                    explanation: "This sentence perfectly bridges the gap between the dust cloud blocking solar radiation (Sentence 3) and the collapse of the global food chains described in the second paragraph."
                 }
             ]
         };
 
         let currentQuestionIdx = 0;
         let userAnswers = {}; 
+        let isReviewMode = false; // Флаг режима проверки
 
         function initTask() {
             document.getElementById('passageTitle').innerText = task.title;
@@ -149,7 +162,7 @@
         function setupInteractiveClicks() {
             document.querySelectorAll('.clickable-sentence').forEach(el => {
                 el.onclick = function() {
-                    if (task.questions[currentQuestionIdx].type !== "Select a Sentence") return;
+                    if (isReviewMode || task.questions[currentQuestionIdx].type !== "Select a Sentence") return; // Блокируем клик в режиме проверки
                     document.querySelectorAll('.clickable-sentence').forEach(s => s.classList.remove('selected'));
                     this.classList.add('selected');
                     userAnswers[currentQuestionIdx] = parseInt(this.getAttribute('data-id'));
@@ -158,7 +171,7 @@
 
             document.querySelectorAll('.insert-square').forEach(el => {
                 el.onclick = function() {
-                    if (task.questions[currentQuestionIdx].type !== "Insert Text") return;
+                    if (isReviewMode || task.questions[currentQuestionIdx].type !== "Insert Text") return; // Блокируем клик в режиме проверки
                     document.querySelectorAll('.insert-square').forEach(s => s.classList.remove('selected'));
                     this.classList.add('selected');
                     userAnswers[currentQuestionIdx] = parseInt(this.getAttribute('data-sq'));
@@ -170,7 +183,7 @@
             const q = task.questions[idx];
             
             document.getElementById('qNumBadge').innerText = idx + 1;
-            document.getElementById('questionCounter').innerText = `${idx + 1} / ${task.questions.length}`;
+            document.getElementById('questionCounter').innerText = isReviewMode ? `Review: ${idx + 1} / ${task.questions.length}` : `${idx + 1} / ${task.questions.length}`;
             document.getElementById('progressBar').style.width = `${((idx + 1) / task.questions.length) * 100}%`;
             document.getElementById('qTypeBadge').innerText = q.type;
             document.getElementById('questionText').innerText = q.question;
@@ -178,22 +191,42 @@
             const optionsContainer = document.getElementById('optionsContainer');
             const instruction = document.getElementById('interactiveInstruction');
             const passageContainer = document.getElementById('passageContent');
+            const explanationBox = document.getElementById('explanationBox');
 
+            // Сброс всех классов текста
             passageContainer.classList.remove('select-sentence-mode', 'insert-text-mode');
-            document.querySelectorAll('.clickable-sentence, .insert-square').forEach(el => el.classList.remove('selected'));
+            document.querySelectorAll('.clickable-sentence').forEach(el => el.classList.remove('selected', 'review-correct', 'review-wrong'));
+            document.querySelectorAll('.insert-square').forEach(el => el.classList.remove('selected', 'review-square-correct', 'review-square-wrong'));
 
+            // Логика отображения вопросов
             if (q.type === "Select a Sentence" || q.type === "Insert Text") {
                 optionsContainer.innerHTML = '';
-                instruction.classList.remove('hidden');
-
-                if (q.type === "Select a Sentence") {
-                    passageContainer.classList.add('select-sentence-mode');
-                    document.getElementById('instructionText').innerText = "Click directly on the sentence inside the left passage text to select your answer.";
-                    if (userAnswers[idx]) document.querySelector(`.clickable-sentence[data-id="${userAnswers[idx]}"]`)?.classList.add('selected');
+                
+                if (!isReviewMode) {
+                    instruction.classList.remove('hidden');
+                    if (q.type === "Select a Sentence") {
+                        passageContainer.classList.add('select-sentence-mode');
+                        document.getElementById('instructionText').innerText = "Click directly on the sentence inside the left passage text to select your answer.";
+                        if (userAnswers[idx]) document.querySelector(`.clickable-sentence[data-id="${userAnswers[idx]}"]`)?.classList.add('selected');
+                    } else {
+                        passageContainer.classList.add('insert-text-mode');
+                        document.getElementById('instructionText').innerText = "Click on one of the squares [■] in the left passage to insert the sentence.";
+                        if (userAnswers[idx]) document.querySelector(`.insert-square[data-sq="${userAnswers[idx]}"]`)?.classList.add('selected');
+                    }
                 } else {
-                    passageContainer.classList.add('insert-text-mode');
-                    document.getElementById('instructionText').innerText = "Click on one of the squares [■] in the left passage to insert the sentence.";
-                    if (userAnswers[idx]) document.querySelector(`.insert-square[data-sq="${userAnswers[idx]}"]`)?.classList.add('selected');
+                    instruction.classList.add('hidden');
+                    // Подсветка в режиме проверки
+                    if (q.type === "Select a Sentence") {
+                        document.querySelector(`.clickable-sentence[data-id="${q.correct}"]`)?.classList.add('review-correct');
+                        if (userAnswers[idx] && userAnswers[idx] !== q.correct) {
+                            document.querySelector(`.clickable-sentence[data-id="${userAnswers[idx]}"]`)?.classList.add('review-wrong');
+                        }
+                    } else if (q.type === "Insert Text") {
+                        document.querySelector(`.insert-square[data-sq="${q.correct}"]`)?.classList.add('review-square-correct');
+                        if (userAnswers[idx] && userAnswers[idx] !== q.correct) {
+                            document.querySelector(`.insert-square[data-sq="${userAnswers[idx]}"]`)?.classList.add('review-square-wrong');
+                        }
+                    }
                 }
             } else {
                 instruction.classList.add('hidden');
@@ -201,24 +234,55 @@
                 
                 q.options.forEach((opt, optIdx) => {
                     const isChecked = userAnswers[idx] === optIdx ? 'checked' : '';
+                    let styles = "bg-white border-gray-200 hover:border-indigo-300";
+                    let textStyles = "text-slate-700";
+
+                    // Стилизация радиокнопок для режима проверки
+                    if (isReviewMode) {
+                        if (optIdx === q.correct) {
+                            styles = "bg-green-50 border-green-500 shadow-sm";
+                            textStyles = "text-green-800 font-bold";
+                        } else if (optIdx === userAnswers[idx] && optIdx !== q.correct) {
+                            styles = "bg-red-50 border-red-500 opacity-80";
+                            textStyles = "text-red-800";
+                        } else {
+                            styles = "bg-gray-50 border-gray-200 opacity-50";
+                        }
+                    }
+
                     optionsContainer.innerHTML += `
-                        <label class="flex items-start p-4 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-indigo-300 transition w-full shadow-sm">
-                            <input type="radio" name="q${idx}" value="${optIdx}" ${isChecked} onchange="saveRadioAnswer(${idx}, ${optIdx})" class="mt-0.5 w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-gray-300">
-                            <span class="ml-3 text-sm text-slate-700">${opt}</span>
+                        <label class="flex items-start p-4 border rounded-xl ${isReviewMode ? '' : 'cursor-pointer'} transition w-full ${styles}">
+                            <input type="radio" name="q${idx}" value="${optIdx}" ${isChecked} ${isReviewMode ? 'disabled' : ''} onchange="saveRadioAnswer(${idx}, ${optIdx})" class="mt-0.5 w-4 h-4 text-indigo-600 border-gray-300">
+                            <span class="ml-3 text-sm ${textStyles}">${opt}</span>
                         </label>
                     `;
                 });
             }
 
+            // Показ объяснения
+            if (isReviewMode && q.explanation) {
+                explanationBox.innerHTML = `
+                    <div class="flex items-center font-bold mb-2">
+                        <i data-lucide="info" class="w-4 h-4 mr-2"></i> Explanation
+                    </div>
+                    <p class="leading-relaxed">${q.explanation}</p>
+                `;
+                explanationBox.classList.remove('hidden');
+                lucide.createIcons(); // Перерисовываем иконку в объяснении
+            } else {
+                explanationBox.classList.add('hidden');
+            }
+
+            // Управление кнопками
             const btnPrev = document.getElementById('btnPrev');
             const btnNext = document.getElementById('btnNext');
 
             btnPrev.disabled = idx === 0;
 
             if (idx === task.questions.length - 1) {
-                btnNext.innerText = "Submit Test";
+                btnNext.innerText = isReviewMode ? "Finish Review" : "Submit Test";
                 btnNext.style.backgroundColor = '#4f46e5'; 
-                btnNext.onclick = finishTest;
+                btnNext.onclick = isReviewMode ? () => { document.getElementById('resultModal').classList.remove('hidden'); } : finishTest;
             } else {
                 btnNext.innerText = "Next";
                 btnNext.style.backgroundColor = '#0f172a'; 
@@ -238,6 +302,14 @@
             document.getElementById('modalScore').innerText = score;
             document.getElementById('modalTotal').innerText = task.questions.length;
             document.getElementById('resultModal').classList.remove('hidden');
+        }
+
+        // Функция запуска режима разбора ошибок
+        window.startReview = function() {
+            document.getElementById('resultModal').classList.add('hidden');
+            isReviewMode = true;
+            currentQuestionIdx = 0;
+            showQuestion(currentQuestionIdx);
         }
 
         document.addEventListener('DOMContentLoaded', initTask);
