@@ -283,40 +283,95 @@
     <script>
         lucide.createIcons();
 
-        const questionStats = [
-            { name: "Detail", score: 88, color: "bg-indigo-600", dot: "bg-indigo-600" },
-            { name: "Inference", score: 45, color: "bg-red-500", dot: "bg-red-500" },
-            { name: "Vocabulary in Context", score: 92, color: "bg-emerald-500", dot: "bg-emerald-500" },
-            { name: "Negative Factual", score: 75, color: "bg-indigo-400", dot: "bg-indigo-400" },
-            { name: "Sentence Simplification", score: 70, color: "bg-indigo-300", dot: "bg-indigo-300" },
-            { name: "Insert Text", score: 65, color: "bg-orange-400", dot: "bg-orange-400" }
-        ];
+// Изначальные базовые данные на случай пустого хранилища
+const defaultStats = {
+    "Detail": { correct: 22, total: 25 },
+    "Inference": { correct: 5, total: 11 },
+    "Vocabulary in Context": { correct: 23, total: 25 },
+    "Negative Factual": { correct: 9, total: 12 },
+    "Sentence Simplification": { correct: 6, total: 8 },
+    "Insert Text": { correct: 4, total: 6 }
+};
 
-        const container = document.getElementById('questionStatsContainer');
-        
-        questionStats.forEach(stat => {
-            const html = `
-                <div>
-                    <div class="flex justify-between text-xs mb-1.5 items-center">
-                        <div class="flex items-center">
-                            <span class="w-1.5 h-1.5 rounded-full ${stat.dot} mr-2"></span>
-                            <span class="font-medium text-slate-700">${stat.name}</span>
-                        </div>
-                        <span class="font-bold text-slate-900">${stat.score}%</span>
-                    </div>
-                    <div class="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                        <div class="${stat.color} h-1.5 rounded-full transition-all duration-1000 ease-out" style="width: 0%" data-target="${stat.score}%"></div>
-                    </div>
+// Загружаем статистику из localStorage или создаем ее по умолчанию
+let currentStats = JSON.parse(localStorage.getItem('toefl_reading_stats'));
+if (!currentStats) {
+    currentStats = defaultStats;
+    localStorage.setItem('toefl_reading_stats', JSON.stringify(defaultStats));
+}
+
+// Преобразуем структуру для отрисовки графиков и сортировки
+const questionStats = [
+    { name: "Detail", score: Math.round((currentStats["Detail"].correct / currentStats["Detail"].total) * 100), color: "bg-indigo-600", dot: "bg-indigo-600" },
+    { name: "Inference", score: Math.round((currentStats["Inference"].correct / currentStats["Inference"].total) * 100), color: "bg-red-500", dot: "bg-red-500" },
+    { name: "Vocabulary in Context", score: Math.round((currentStats["Vocabulary in Context"].correct / currentStats["Vocabulary in Context"].total) * 100), color: "bg-emerald-500", dot: "bg-emerald-500" },
+    { name: "Negative Factual", score: Math.round((currentStats["Negative Factual"].correct / currentStats["Negative Factual"].total) * 100), color: "bg-indigo-400", dot: "bg-indigo-400" },
+    { name: "Sentence Simplification", score: Math.round((currentStats["Sentence Simplification"].correct / currentStats["Sentence Simplification"].total) * 100), color: "bg-indigo-300", dot: "bg-indigo-300" },
+    { name: "Insert Text", score: Math.round((currentStats["Insert Text"].correct / currentStats["Insert Text"].total) * 100), color: "bg-orange-400", dot: "bg-orange-400" }
+];
+
+// 1. Отрендерим блок Question Types Overview
+const container = document.getElementById('questionStatsContainer');
+container.innerHTML = ''; // Очищаем старые статичные данные
+
+questionStats.forEach(stat => {
+    const html = `
+        <div>
+            <div class="flex justify-between text-xs mb-1.5 items-center">
+                <div class="flex items-center">
+                    <span class="w-1.5 h-1.5 rounded-full ${stat.dot} mr-2"></span>
+                    <span class="font-medium text-slate-700">${stat.name}</span>
                 </div>
-            `;
-            container.innerHTML += html;
-        });
+                <span class="font-bold text-slate-900">${stat.score}%</span>
+            </div>
+            <div class="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                <div class="${stat.color} h-1.5 rounded-full transition-all duration-1000 ease-out" style="width: 0%" data-target="${stat.score}%"></div>
+            </div>
+        </div>
+    `;
+    container.innerHTML += html;
+});
 
-        setTimeout(() => {
-            document.querySelectorAll('#questionStatsContainer .transition-all').forEach(bar => {
-                bar.style.width = bar.getAttribute('data-target');
-            });
-        }, 100);
+// Анимация заполнения прогресс-баров
+setTimeout(() => {
+    document.querySelectorAll('#questionStatsContainer .transition-all').forEach(bar => {
+        bar.style.width = bar.getAttribute('data-target');
+    });
+}, 100);
+
+// 2. Вычислим и динамически заполним Weak Areas и Top Strengths в блоке аналитики
+// Сортируем массив по результативности: от худших к лучшим
+const sortedStats = [...questionStats].sort((a, b) => a.score - b.score);
+
+// Слабые зоны (2 самых низких показателя)
+const weakAreasContainers = document.querySelector('.px-2.py-1.bg-red-50').parentElement;
+weakAreasContainers.innerHTML = `
+    <span class="px-2 py-1 bg-red-50 text-red-600 text-[10px] font-bold rounded-md border border-red-100">${sortedStats[0].name}</span>
+    <span class="px-2 py-1 bg-orange-50 text-orange-600 text-[10px] font-bold rounded-md border border-orange-100">${sortedStats[1].name}</span>
+`;
+
+// Сильные зоны (3 самых высоких показателя в порядке убывания)
+const topStrengthsContainer = document.querySelector('.md\\:pl-6.pt-6.md\\:pt-0.flex.flex-col');
+// Находим заголовок и удаляем старые элементы под ним
+const strengthsTitle = topStrengthsContainer.querySelector('p');
+topStrengthsContainer.innerHTML = '';
+topStrengthsContainer.appendChild(strengthsTitle);
+
+const topThree = sortedStats.slice(-3).reverse();
+topThree.forEach(stat => {
+    const strengthHtml = `
+        <div>
+            <div class="flex justify-between text-[11px] mb-1">
+                <span class="font-medium text-slate-700">${stat.name}</span>
+                <span class="font-bold text-slate-900">${stat.score}%</span>
+            </div>
+            <div class="w-full bg-gray-100 rounded-full h-1.5">
+                <div class="${stat.color} h-1.5 rounded-full" style="width: ${stat.score}%"></div>
+            </div>
+        </div>
+    `;
+    topStrengthsContainer.insertAdjacentHTML('beforeend', strengthHtml);
+});
     </script>
 </body>
 </html>
