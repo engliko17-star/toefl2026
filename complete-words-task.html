@@ -1,64 +1,35 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Practice Task — TOEFL</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
-
-        .task-passage {
-            font-size: 19px;
-            line-height: 2.5;
-            color: #1e293b;
-            font-weight: 500;
-            max-width: 1100px;
-        }
-
-        /* Группа букв внутри одного слова */
-        .gap-group {
-            display: inline-flex;
-            align-items: baseline;
-            /* Добавили небольшой отступ справа, чтобы слова не сливались */
-            margin-right: 4px; 
-            margin-left: 2px;
-        }
-
-        .gap-input {
-            width: 14px;
-            height: 24px;
-            border: none;
-            border-bottom: 2px solid #cbd5e1;
-            background: transparent;
-            outline: none;
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        
+        .letter-input {
+            width: 24px;
             text-align: center;
-            font-size: 18px;
+            border-bottom: 2px solid #cbd5e1;
+            outline: none;
             font-weight: 700;
-            color: #4f46e5;
-            padding: 0;
-            transition: 0.2s;
+            color: #7e22ce; /* purple-700 */
+            background: transparent;
+            margin: 0 2px;
+            transition: all 0.2s;
         }
-
-        .gap-input:focus { border-bottom-color: #6366f1; background: #eef2ff; }
-        .gap-input.correct { border-bottom-color: #10b981; color: #10b981; }
-        .gap-input.wrong { border-bottom-color: #ef4444; color: #ef4444; }
-
-        .answer-chip {
-            padding: 8px 12px;
-            border-radius: 10px;
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            font-size: 13px;
-            font-weight: 600;
-        }
+        .letter-input:focus { border-bottom-color: #7e22ce; }
+        .letter-input.correct { border-bottom-color: #10b981; color: #10b981; background: #ecfdf5; border-radius: 4px 4px 0 0; }
+        .letter-input.wrong { border-bottom-color: #ef4444; color: #ef4444; background: #fef2f2; border-radius: 4px 4px 0 0; }
     </style>
 </head>
-
 <body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex flex-col md:flex-row">
 
     <aside class="hidden md:flex flex-col w-64 bg-white border-r border-gray-100 px-4 py-6 h-screen sticky top-0">
@@ -72,95 +43,205 @@
         </nav>
     </aside>
 
-    <main class="flex-1 p-6 overflow-y-auto bg-[#f8f9fa] pb-24">
-        <div class="max-w-6xl mx-auto mt-4">
-            <div class="bg-white p-8 md:p-10 rounded-3xl border border-gray-100 shadow-sm relative">
+    <main class="flex-1 p-6 overflow-y-auto bg-[#f8f9fa] pb-24 md:pb-6">
+        <div class="max-w-3xl mx-auto mt-4">
+            
+            <div class="bg-white p-8 md:p-10 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden">
                 <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-500 to-indigo-500"></div>
-                
+
                 <div class="flex justify-between items-start mb-8 pb-6 border-b border-gray-100">
                     <div>
-                        <span id="taskCategory" class="text-[10px] font-bold text-purple-600 uppercase tracking-widest bg-purple-50 px-2 py-1 rounded-md">Loading...</span>
-                        <h2 id="taskTitle" class="text-2xl font-bold text-slate-900 mt-3">Loading task...</h2>
+                        <span id="taskCategory" class="text-[10px] font-bold text-purple-600 uppercase tracking-widest bg-purple-50 px-2 py-1 rounded-md mb-3 inline-block">Loading...</span>
+                        <h2 id="taskTitle" class="text-xl font-bold text-slate-900 tracking-tight">Loading task...</h2>
                     </div>
-                    <a href="complete-words.html" class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-50 text-gray-400 hover:bg-gray-100"><i data-lucide="x" class="w-4 h-4"></i></a>
+                    <a href="complete-words.html" class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-slate-700 transition">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </a>
                 </div>
 
-                <div id="textContent" class="task-passage"></div>
-
-                <div class="mt-10 flex justify-end" id="submitContainer">
-                    <button id="submitBtn" class="text-sm font-bold text-white bg-slate-900 px-8 py-3.5 rounded-2xl hover:bg-purple-600 transition shadow-md">Check Answers</button>
+                <div id="textContent" class="text-[15px] leading-loose text-slate-700 font-medium space-y-5">
+                    <p id="loadingTaskMsg" class="text-sm text-gray-400">Fetching text from database...</p>
                 </div>
 
                 <div id="resultBlock" class="hidden mt-10">
-                    <div class="bg-indigo-50 border border-indigo-100 rounded-2xl p-6">
-                        <h4 class="text-sm font-bold text-slate-900 mb-2">Task Completed</h4>
-                        <span id="scoreDisplay" class="text-sm font-bold text-indigo-600"></span>
+                    <div class="bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-100/50 rounded-2xl p-6 relative overflow-hidden">
+                        <div class="flex items-start space-x-4 relative z-10">
+                            <div class="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center text-indigo-600 shrink-0"><i data-lucide="award" class="w-5 h-5"></i></div>
+                            <div class="w-full">
+                                <div class="flex justify-between items-center mb-2">
+                                    <h4 class="text-sm font-bold text-slate-900">Task Completed</h4>
+                                    <span id="scoreDisplay" class="text-xs font-bold bg-white px-3 py-1.5 rounded-lg shadow-sm text-indigo-600"></span>
+                                </div>
+                                <div id="tipsContent" class="text-xs text-slate-600 leading-relaxed mt-1"></div>
+                            </div>
+                        </div>
                     </div>
+                    <div class="mt-6 flex justify-end gap-3">
+                        <button onclick="resetAndRestartCompleteWords()" class="text-xs font-bold text-white bg-purple-600 px-5 py-3 rounded-xl hover:bg-purple-700 transition flex items-center shadow-xs cursor-pointer">
+                            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5 mr-1.5"></i> Try Again
+                        </button>
+                        <a href="complete-words.html" class="text-xs font-bold text-slate-700 bg-gray-100 px-6 py-3 rounded-xl hover:bg-gray-200 transition">Return to List</a>
+                    </div>
+                </div>
+
+                <div class="mt-10 flex justify-end" id="submitContainer">
+                    <button id="submitBtn" class="text-sm font-bold text-white bg-slate-900 px-8 py-3.5 rounded-xl hover:bg-purple-600 transition shadow-md flex items-center cursor-pointer">
+                        Check Answers <i data-lucide="check-circle" class="w-4 h-4 ml-2"></i>
+                    </button>
                 </div>
             </div>
         </div>
     </main>
 
     <script>
-        lucide.createIcons();
-        const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
+        const urlParams = new URLSearchParams(window.location.search);
+        const taskId = urlParams.get('id');
+        let currentTaskTitle = ""; 
 
-        if (!window.supabaseClient) {
-            window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        }
-        const db = window.supabaseClient;
+        async function initTask() {
+            if (!taskId) {
+                showError("No Task ID provided.");
+                return;
+            }
 
-        async function loadTask(){
-            const urlParams = new URLSearchParams(window.location.search);
-            const taskId = urlParams.get('id');
-            if(!taskId) return;
+            try {
+                const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
+                const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
+                
+                if (!window.supabaseClient) {
+                    window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                }
+                const supabase = window.supabaseClient;
 
-            const { data, error } = await db.from('complete_words_tasks').select('*').eq('id', taskId).single();
-            if(error || !data) return;
+                const { data: test, error } = await supabase
+                    .from('complete_words_tasks')
+                    .select('*')
+                    .eq('id', taskId)
+                    .single();
 
-            renderTask(data);
-        }
+                if (error || !test) {
+                    throw new Error(error ? error.message : "Task not found in DB");
+                }
 
-        function renderTask(task){
-            document.getElementById('taskTitle').innerText = task.title;
-            document.getElementById('taskCategory').innerText = task.category;
+                currentTaskTitle = test.title;
+                document.getElementById('taskTitle').innerText = test.title;
+                document.getElementById('taskCategory').innerText = test.category || 'Practice';
+                document.getElementById('tipsContent').innerHTML = test.tips || `<span class='font-bold text-indigo-700'>Tip:</span> Pay close attention to contextual clues and academic spelling suffixes.`;
 
-            const processedText = task.passage.replace(/\[([^\]]+)\]/g, (match, answer) => {
-                return `<span class="gap-group">${answer.split('').map(letter => `<input type="text" maxlength="1" class="gap-input" data-answer="${letter}">`).join('')}</span>`;
-            });
-
-            document.getElementById('textContent').innerHTML = processedText.replace(/\n/g, '<br>');
-
-            const inputs = document.querySelectorAll('.gap-input');
-            inputs.forEach((input, index) => {
-                input.addEventListener('input', function(){
-                    this.value = this.value.replace(/[^a-zA-Z]/g, '').toLowerCase();
-                    if(this.value.length === 1 && index < inputs.length - 1) inputs[index + 1].focus();
+                const htmlWithInputs = (test.passage || "").replace(/\[(.)\]/g, function(match, letter) {
+                    return `<input type="text" maxlength="1" data-answer="${letter}" class="letter-input" autocomplete="off">`;
                 });
-                input.addEventListener('keydown', (e) => {
-                    if(e.key === 'Backspace' && !input.value && index > 0) inputs[index - 1].focus();
-                });
-            });
 
-            document.getElementById('submitBtn').addEventListener('click', () => {
-                let correctCount = 0;
-                inputs.forEach(input => {
-                    input.disabled = true;
-                    if(input.value.toLowerCase() === input.dataset.answer.toLowerCase()){
+                document.getElementById('textContent').innerHTML = htmlWithInputs;
+                setupInputs();
+
+                // Автоматическая проверка: проходил ли пользователь этот тест ранее?
+                const savedScore = localStorage.getItem(`complete_words_score_${taskId}`);
+                if (savedScore !== null && !isNaN(savedScore)) {
+                    const inputs = document.querySelectorAll('.letter-input');
+                    let correctCount = 0;
+                    
+                    inputs.forEach(input => {
+                        input.disabled = true;
+                        const correctAnswer = input.getAttribute('data-answer');
+                        input.value = correctAnswer; // Заполняем правильными буквами для Review
                         input.classList.add('correct');
-                        correctCount++;
-                    } else {
-                        input.classList.add('wrong');
-                        input.value = input.dataset.answer;
+                    });
+
+                    document.getElementById('scoreDisplay').innerText = `Saved Score: ${savedScore}%`;
+                    document.getElementById('submitContainer').classList.add('hidden');
+                    document.getElementById('resultBlock').classList.remove('hidden');
+                }
+
+                lucide.createIcons();
+
+            } catch (err) {
+                showError(err.message);
+            }
+        }
+
+        function showError(msg) {
+            document.getElementById('taskTitle').innerText = "Error Loading Test";
+            document.getElementById('taskCategory').innerText = "Error";
+            document.getElementById('textContent').innerHTML = `<p class="text-red-500 font-bold">${msg}</p>`;
+            document.getElementById('submitContainer').style.display = 'none';
+        }
+
+        function setupInputs() {
+            const inputs = document.querySelectorAll('.letter-input');
+            inputs.forEach((input, index) => {
+                input.addEventListener('input', function() {
+                    this.value = this.value.replace(/[^a-zA-Z]/g, '').toLowerCase();
+                    if (this.value.length === 1 && index < inputs.length - 1) {
+                        inputs[index + 1].focus();
                     }
                 });
-                document.getElementById('scoreDisplay').innerText = `${correctCount} / ${inputs.length} correct`;
-                document.getElementById('resultBlock').classList.remove('hidden');
-                document.getElementById('submitContainer').classList.add('hidden');
+                input.addEventListener('keydown', function(e) {
+                    if (e.key === 'Backspace' && this.value === '' && index > 0) {
+                        inputs[index - 1].focus();
+                    }
+                });
             });
         }
-        loadTask();
+
+        // Клик по кнопке Check Answers
+        document.getElementById('submitBtn').addEventListener('click', () => {
+            const inputs = document.querySelectorAll('.letter-input');
+            if (inputs.length === 0) return;
+
+            let correctCount = 0;
+            inputs.forEach(input => {
+                input.disabled = true;
+                const userAnswer = input.value.toLowerCase();
+                const correctAnswer = input.getAttribute('data-answer').toLowerCase();
+
+                if (userAnswer === correctAnswer) {
+                    input.classList.add('correct');
+                    correctCount++;
+                } else {
+                    input.classList.add('wrong');
+                    input.value = correctAnswer; 
+                }
+            });
+
+            const scorePercent = Math.round((correctCount / inputs.length) * 100);
+            
+            localStorage.setItem(`complete_words_score_${taskId}`, scorePercent);
+            if (currentTaskTitle) {
+                localStorage.setItem(`complete_words_score_${currentTaskTitle}`, scorePercent);
+            }
+
+            document.getElementById('scoreDisplay').innerText = `${scorePercent}% (${correctCount} / ${inputs.length} correct)`;
+            document.getElementById('submitContainer').classList.add('hidden');
+            document.getElementById('resultBlock').classList.remove('hidden');
+            
+            // Перерисовываем иконки внутри открывшегося блока результатов
+            lucide.createIcons();
+        });
+
+        // Функция перезапуска "Try Again"
+        window.resetAndRestartCompleteWords = function() {
+            if (!taskId) return;
+
+            localStorage.removeItem(`complete_words_score_${taskId}`);
+            if (currentTaskTitle) {
+                localStorage.removeItem(`complete_words_score_${currentTaskTitle}`);
+            }
+
+            const inputs = document.querySelectorAll('.letter-input');
+            inputs.forEach(input => {
+                input.value = '';
+                input.disabled = false;
+                input.className = 'letter-input'; 
+            });
+
+            document.getElementById('resultBlock').classList.add('hidden');
+            document.getElementById('submitContainer').classList.remove('hidden');
+
+            if (inputs.length > 0) inputs[0].focus();
+        };
+
+        initTask();
     </script>
 </body>
 </html>
