@@ -91,17 +91,21 @@
                         </div>
                     </div>
 
-                    <a href="read-daily.html" class="inline-block px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition shadow-xs">
-                        Return to Dashboard
-                    </a>
+                    <div class="flex items-center justify-center gap-3 max-w-sm mx-auto">
+                        <button onclick="resetAndRestartDailyTest()" class="flex-1 px-4 py-2 bg-slate-900 hover:bg-indigo-600 text-white font-bold text-xs rounded-xl transition shadow-xs flex items-center justify-center cursor-pointer">
+                            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5 mr-1.5"></i> Try Again
+                        </button>
+                        <a href="read-daily.html" class="flex-1 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-gray-700 font-bold text-xs rounded-xl transition flex items-center justify-center">
+                            Dashboard
+                        </a>
+                    </div>
                 </div>
 
                 <div>
                     <h4 class="text-sm font-bold text-slate-700 mb-3 px-1 flex items-center">
                         <i data-lucide="list-checks" class="w-4 h-4 mr-1.5 text-indigo-500"></i> Review Answers & Explanations
                     </h4>
-                    <div id="explanationsList" class="space-y-4">
-                        </div>
+                    <div id="explanationsList" class="space-y-4"></div>
                 </div>
 
             </div>
@@ -202,10 +206,10 @@
             prevBtn.disabled = idx === 0;
             if (idx === currentTask.questions.length - 1) {
                 nextBtn.innerHTML = `Submit Test <i data-lucide="check" class="w-4 h-4 ml-1.5"></i>`;
-                nextBtn.className = "px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition flex items-center shadow-xs";
+                nextBtn.className = "px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition flex items-center shadow-xs cursor-pointer";
             } else {
                 nextBtn.innerHTML = `Next Question <i data-lucide="chevron-right" class="w-4 h-4 ml-1.5"></i>`;
-                nextBtn.className = "px-5 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-indigo-600 transition flex items-center shadow-xs";
+                nextBtn.className = "px-5 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-indigo-600 transition flex items-center shadow-xs cursor-pointer";
             }
             lucide.createIcons();
         }
@@ -227,10 +231,29 @@
             }
         });
 
-        // ⚠️ ОБНОВЛЕННАЯ ФУНКЦИЯ (Теперь она асинхронная и отправляет данные в Supabase)
+        // ФУНКЦИЯ ДЛЯ СБРОСА И СТАРТА ТЕСТА С НУЛЯ БЕЗ ПЕРЕЗАГРУЗКИ СТРАНИЦЫ
+        window.resetAndRestartDailyTest = function() {
+            if (!currentTask) return;
+            
+            // Зачищаем локальные хранилища текущего ID
+            localStorage.removeItem(`daily_test_score_${currentTask.id}`);
+            localStorage.removeItem(`daily_test_score_${currentTask.title}`);
+
+            // Возвращаем переменные в дефолтное состояние
+            currentQuestionIdx = 0;
+            userAnswers = {};
+
+            // Меняем видимость экранов
+            resultsContainer.classList.add('hidden');
+            quizContainer.classList.remove('hidden');
+
+            // Запускаем отрисовку с первого вопроса
+            showQuestion(currentQuestionIdx);
+        };
+
         async function processResults() {
             let correctCount = 0;
-            let categoryStats = {}; // Собираем стату по типам вопросов
+            let categoryStats = {}; 
             explanationsList.innerHTML = ''; 
 
             currentTask.questions.forEach((q, idx) => {
@@ -238,13 +261,11 @@
                 const isCorrect = userAns === q.correct;
                 if (isCorrect) correctCount++;
 
-                // Считаем статистику для дашборда
                 const qType = q.type || 'Detail';
                 if (!categoryStats[qType]) categoryStats[qType] = { earned: 0, total: 0 };
                 categoryStats[qType].total += 1;
                 if (isCorrect) categoryStats[qType].earned += 1;
 
-                // Рендерим плашку разбора для каждого вопроса
                 let optionsReviewHtml = '';
                 q.options.forEach((option, i) => {
                     let bgStyle = 'bg-slate-50 text-slate-600 border border-slate-100';
@@ -292,10 +313,8 @@
 
             const scorePercent = Math.round((correctCount / currentTask.questions.length) * 100);
             
-            // Сохраняем в localStorage для совместимости
             localStorage.setItem(`daily_test_score_${currentTask.id}`, scorePercent);
 
-            // ОТПРАВЛЯЕМ В SUPABASE С ПОМЕТКОЙ 'daily'
             try {
                 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
                 const { error } = await supabaseClient
