@@ -14,25 +14,51 @@
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
         
-        /* ОБНОВЛЕННЫЕ СТИЛИ ДЛЯ ИНПУТА */
+        /* КОНТЕЙНЕР ДЛЯ ГРУППЫ ПРОПУЩЕННЫХ БУКВ В СЛОВЕ */
+        .letters-container {
+            display: inline-block;
+            background-color: #f1f5f9; /* Серый фон блока, как на скриншоте */
+            border-bottom: 2px solid #cbd5e1; /* Общая нижняя линия */
+            border-radius: 4px 4px 0 0;
+            padding: 0 4px;
+            margin: 0 2px;
+            vertical-align: baseline;
+            transition: all 0.2s ease;
+        }
+        
+        /* Подсветка всего блока при фокусе на любой из его букв */
+        .letters-container:focus-within {
+            background-color: #e2e8f0;
+            border-bottom-color: #7e22ce; /* Фиолетовый акцент */
+        }
+
+        /* ПОБУКВЕННЫЕ ИНПУТЫ ВНУТРИ БЛОКА */
         .letter-input {
-            width: 16px;
+            width: 14px;
             text-align: center;
-            border-bottom: 2px solid #cbd5e1;
+            border: none;
+            border-bottom: 2px solid #94a3b8; /* Отдельные черточки под каждую букву */
             outline: none;
             font-weight: 700;
-            color: #7e22ce; /* purple-700 */
+            color: #1e293b;
             background: transparent;
-            margin: 0;
+            margin: 0 2px;
             padding: 0;
             font-family: inherit;
             font-size: inherit;
             vertical-align: baseline;
             transition: all 0.2s;
         }
-        .letter-input:focus { border-bottom-color: #7e22ce; }
-        .letter-input.correct { border-bottom-color: #10b981; color: #10b981; background: #ecfdf5; border-radius: 4px 4px 0 0; }
-        .letter-input.wrong { border-bottom-color: #ef4444; color: #ef4444; background: #fef2f2; border-radius: 4px 4px 0 0; }
+        
+        /* Состояния проверки для отдельных букв */
+        .letter-input.correct { 
+            border-bottom-color: #10b981; 
+            color: #065f46; 
+        }
+        .letter-input.wrong { 
+            border-bottom-color: #ef4444; 
+            color: #991b1b; 
+        }
     </style>
 </head>
 <body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex flex-col md:flex-row">
@@ -64,7 +90,7 @@
                     </a>
                 </div>
 
-                <div id="textContent" class="text-[15px] leading-loose text-slate-700 font-medium space-y-5">
+                <div id="textContent" class="text-[16px] leading-[2.3] text-slate-700 font-medium space-y-5">
                     <p id="loadingTaskMsg" class="text-sm text-gray-400">Fetching text from database...</p>
                 </div>
 
@@ -133,23 +159,29 @@
                 document.getElementById('taskCategory').innerText = test.category || 'Practice';
                 document.getElementById('tipsContent').innerHTML = test.tips || `<span class='font-bold text-indigo-700'>Tip:</span> Pay close attention to contextual clues and academic spelling suffixes.`;
 
-                const htmlWithInputs = (test.passage || "").replace(/\[(.)\]/g, function(match, letter) {
-                    return `<input type="text" maxlength="1" data-answer="${letter}" class="letter-input" autocomplete="off">`;
+                // Регулярное выражение находит последовательности идущих подряд букв в скобках (например, [c][h][e][r][s])
+                // и заворачивает их инпуты в единый красивый графический контейнер-блок
+                const htmlWithInputs = (test.passage || "").replace(/((?:\[.\])+)/g, function(match) {
+                    const letters = match.match(/\[(.)\]/g).map(m => m.replace(/[\[\]]/g, ''));
+                    
+                    const inputsHtml = letters.map(letter => {
+                        return `<input type="text" maxlength="1" data-answer="${letter}" class="letter-input" autocomplete="off">`;
+                    }).join('');
+                    
+                    return `<span class="letters-container">${inputsHtml}</span>`;
                 });
 
                 document.getElementById('textContent').innerHTML = htmlWithInputs;
                 setupInputs();
 
-                // Автоматическая проверка: проходил ли пользователь этот тест ранее?
+                // Автоматическая проверка истории прохождения
                 const savedScore = localStorage.getItem(`complete_words_score_${taskId}`);
                 if (savedScore !== null && !isNaN(savedScore)) {
                     const inputs = document.querySelectorAll('.letter-input');
-                    let correctCount = 0;
-                    
                     inputs.forEach(input => {
                         input.disabled = true;
                         const correctAnswer = input.getAttribute('data-answer');
-                        input.value = correctAnswer; // Заполняем правильными буквами для Review
+                        input.value = correctAnswer; 
                         input.classList.add('correct');
                     });
 
@@ -220,7 +252,6 @@
             document.getElementById('submitContainer').classList.add('hidden');
             document.getElementById('resultBlock').classList.remove('hidden');
             
-            // Перерисовываем иконки внутри открывшегося блока результатов
             lucide.createIcons();
         });
 
