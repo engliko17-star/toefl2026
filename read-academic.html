@@ -47,6 +47,18 @@
         lucide.createIcons();
         const testListContainer = document.getElementById('testList');
 
+        // Функция сброса результатов теста
+        function resetAcademicTest(id, title) {
+            // Подтверждение действия, чтобы студент не сбросил прогресс случайно
+            if (confirm(`Are you sure you want to reset the results for "${title}"?`)) {
+                localStorage.removeItem(`academic_test_score_${title}`);
+                localStorage.removeItem(`academic_test_score_${id}`);
+                
+                // Перерисовываем список тестов, чтобы изменения применились мгновенно
+                loadTests();
+            }
+        }
+
         async function loadTests() {
             try {
                 const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
@@ -59,7 +71,6 @@
 
                 testListContainer.innerHTML = '';
                 data.forEach(test => {
-                    // Проверяем оба варианта ключей для надежности отображения результатов
                     let savedScore = localStorage.getItem(`academic_test_score_${test.title}`);
                     if (savedScore === null) {
                         savedScore = localStorage.getItem(`academic_test_score_${test.id}`);
@@ -71,12 +82,10 @@
                     if (savedScore !== null) {
                         const scoreNum = parseInt(savedScore);
                         
-                        // Цвет кольца прогресса в зависимости от успешности сдачи
                         let strokeColor = 'stroke-emerald-500';
                         if (scoreNum < 50) strokeColor = 'stroke-rose-500';
                         else if (scoreNum < 75) strokeColor = 'stroke-amber-500';
 
-                        // Магический круглый прогресс-бар из Daily Life
                         scoreDisplay = `
                             <div class="relative flex items-center justify-center w-10 h-10 shrink-0">
                                 <svg class="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
@@ -87,14 +96,12 @@
                             </div>
                         `;
 
-                        // Закрашенная кнопка перепроверки результатов
                         actionButton = `
                             <a href="read-academic-task.html?id=${test.id}" class="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-4 py-2 rounded-xl hover:bg-indigo-100 transition flex items-center justify-center w-full mt-auto shadow-xs">
                                 Review Results <i data-lucide="eye" class="w-3.5 h-3.5 ml-1.5"></i>
                             </a>
                         `;
                     } else {
-                        // Обычная кнопка старта для невыполненных тестов
                         scoreDisplay = `
                             <span class="text-[9px] font-bold text-indigo-600 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100/40">
                                 ${test.category}
@@ -108,13 +115,21 @@
                         `;
                     }
 
+                    // Экранируем кавычки в названии для передачи в onClick
+                    const escapedTitle = test.title.replace(/'/g, "\\'").replace(/"/g, '\\"');
+
                     testListContainer.innerHTML += `
                         <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col group hover:border-indigo-200 hover:shadow-md transition relative overflow-hidden">
                             <div class="flex justify-between items-start mb-4">
                                 ${savedScore !== null ? `
                                     <div class="flex flex-col">
                                         <span class="text-[9px] font-bold text-indigo-600 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100/40 self-start mb-1">${test.category}</span>
-                                        <span class="text-[10px] font-bold text-emerald-600 flex items-center mt-0.5"><i data-lucide="check" class="w-3 h-3 mr-0.5"></i> Completed</span>
+                                        <div class="flex items-center space-x-2 mt-0.5">
+                                            <span class="text-[10px] font-bold text-emerald-600 flex items-center"><i data-lucide="check" class="w-3 h-3 mr-0.5"></i> Completed</span>
+                                            <button onclick="resetAcademicTest(${test.id}, '${escapedTitle}')" class="text-gray-400 hover:text-rose-500 transition p-0.5 rounded-md hover:bg-gray-50" title="Reset results">
+                                                <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                                            </button>
+                                        </div>
                                     </div>
                                 ` : scoreDisplay}
                                 
@@ -137,4 +152,3 @@
     </script>
 </body>
 </html>
-
