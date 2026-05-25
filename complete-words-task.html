@@ -17,7 +17,7 @@
         /* КОНТЕЙНЕР ДЛЯ ГРУППЫ ПРОПУЩЕННЫХ БУКВ В СЛОВЕ */
         .letters-container {
             display: inline-block;
-            background-color: #f1f5f9; /* Серый фон блока, как на скриншоте */
+            background-color: #f1f5f9; /* Серый фон блока */
             border-bottom: 2px solid #cbd5e1; /* Общая нижняя линия */
             border-radius: 4px 4px 0 0;
             padding: 0 4px;
@@ -129,6 +129,15 @@
         const taskId = urlParams.get('id');
         let currentTaskTitle = ""; 
 
+        // Инициализация Supabase клиента
+        const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
+        
+        if (!window.supabaseClient) {
+            window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        }
+        const supabase = window.supabaseClient;
+
         async function initTask() {
             if (!taskId) {
                 showError("No Task ID provided.");
@@ -136,14 +145,7 @@
             }
 
             try {
-                const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
-                const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
-                
-                if (!window.supabaseClient) {
-                    window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-                }
-                const supabase = window.supabaseClient;
-
+                // 1. Загружаем само задание из таблицы 'complete_words_tasks'
                 const { data: test, error } = await supabase
                     .from('complete_words_tasks')
                     .select('*')
@@ -159,8 +161,7 @@
                 document.getElementById('taskCategory').innerText = test.category || 'Practice';
                 document.getElementById('tipsContent').innerHTML = test.tips || `<span class='font-bold text-indigo-700'>Tip:</span> Pay close attention to contextual clues and academic spelling suffixes.`;
 
-                // Регулярное выражение находит последовательности идущих подряд букв в скобках (например, [c][h][e][r][s])
-                // и заворачивает их инпуты в единый красивый графический контейнер-блок
+                // Парсим текст задания и превращаем [a][b][c] в блоки инпутов
                 const htmlWithInputs = (test.passage || "").replace(/((?:\[.\])+)/g, function(match) {
                     const letters = match.match(/\[(.)\]/g).map(m => m.replace(/[\[\]]/g, ''));
                     
@@ -174,9 +175,15 @@
                 document.getElementById('textContent').innerHTML = htmlWithInputs;
                 setupInputs();
 
-                // Автоматическая проверка истории прохождения
-                const savedScore = localStorage.getItem(`complete_words_score_${taskId}`);
-                if (savedScore !== null && !isNaN(savedScore)) {
+                // 2. Проверяем, есть ли сохраненный прогресс для этого задания в Supabase
+                const { data: progress, error: progressError } = await supabase
+                    .from('user_progress')
+                    .select('score_percent')
+                    .eq('task_id', taskId)
+                    .maybeSingle();
+
+                if (!progressError && progress) {
+                    const savedScore = progress.score_percent;
                     const inputs = document.querySelectorAll('.letter-input');
                     inputs.forEach(input => {
                         input.disabled = true;
@@ -221,8 +228,8 @@
             });
         }
 
-        // Клик по кнопке Check Answers
-        document.getElementById('submitBtn').addEventListener('click', () => {
+        // Клик по кнопке Check Answers — проверка и сохранение результатов
+        document.getElementById('submitBtn').addEventListener('click', async () => {
             const inputs = document.querySelectorAll('.letter-input');
             if (inputs.length === 0) return;
 
@@ -243,9 +250,18 @@
 
             const scorePercent = Math.round((correctCount / inputs.length) * 100);
             
-            localStorage.setItem(`complete_words_score_${taskId}`, scorePercent);
-            if (currentTaskTitle) {
-                localStorage.setItem(`complete_words_score_${currentTaskTitle}`, scorePercent);
+            // Сохраняем/обновляем прогресс в таблице user_progress
+            try {
+                const { error } = await supabase
+                    .from('user_progress')
+                    .upsert(
+                        { task_id: taskId, score_percent: scorePercent },
+                        { onConflict: 'task_id' }
+                    );
+
+                if (error) throw error;
+            } catch (dbErr) {
+                console.error("Error saving progress to Supabase:", dbErr.message);
             }
 
             document.getElementById('scoreDisplay').innerText = `${scorePercent}% (${correctCount} / ${inputs.length} correct)`;
@@ -255,14 +271,17 @@
             lucide.createIcons();
         });
 
-        // Функция перезапуска "Try Again"
+        // Функция перезапуска "Try Again" — сброс полей и удаление прогресса из базы
         window.resetAndRestartCompleteWords = function() {
             if (!taskId) return;
 
-            localStorage.removeItem(`complete_words_score_${taskId}`);
-            if (currentTaskTitle) {
-                localStorage.removeItem(`complete_words_score_${currentTaskTitle}`);
-            }
+            supabase
+                .from('user_progress')
+                .delete()
+                .eq('task_id', taskId)
+                .then(({ error }) => {
+                    if (error) console.error("Error resetting progress in DB:", error.message);
+                });
 
             const inputs = document.querySelectorAll('.letter-input');
             inputs.forEach(input => {
