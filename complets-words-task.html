@@ -32,7 +32,6 @@
 </head>
 <body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex flex-col md:flex-row">
 
-    <!-- ВАШЕ БОКОВОЕ МЕНЮ -->
     <aside class="hidden md:flex flex-col w-64 bg-white border-r border-gray-100 px-4 py-6 h-screen sticky top-0">
         <div class="font-bold text-2xl tracking-tighter mb-8 px-2 flex items-center space-x-2">
             <span>TOEFL</span><span class="w-1.5 h-1.5 bg-indigo-600 rounded-full mt-2"></span>
@@ -48,7 +47,6 @@
         <div class="max-w-3xl mx-auto mt-4">
             
             <div class="bg-white p-8 md:p-10 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden">
-                <!-- Декоративная полоса -->
                 <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-500 to-indigo-500"></div>
 
                 <div class="flex justify-between items-start mb-8 pb-6 border-b border-gray-100">
@@ -61,10 +59,8 @@
                     </a>
                 </div>
 
-                <!-- Текст с пропусками -->
                 <div id="textContent" class="text-[15px] leading-loose text-slate-700 font-medium space-y-5"></div>
 
-                <!-- Блок после сабмита -->
                 <div id="resultBlock" class="hidden mt-10">
                     <div class="bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-100/50 rounded-2xl p-6 relative overflow-hidden">
                         <div class="flex items-start space-x-4 relative z-10">
@@ -78,14 +74,16 @@
                             </div>
                         </div>
                     </div>
-                    <div class="mt-6 flex justify-end">
+                    <div class="mt-6 flex justify-end gap-3">
+                        <button onclick="resetAndRestartCompleteWords()" class="text-xs font-bold text-white bg-purple-600 px-5 py-3 rounded-xl hover:bg-purple-700 transition flex items-center shadow-xs cursor-pointer">
+                            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5 mr-1.5"></i> Try Again
+                        </button>
                         <a href="complete-words.html" class="text-xs font-bold text-slate-700 bg-gray-100 px-6 py-3 rounded-xl hover:bg-gray-200 transition">Return to List</a>
                     </div>
                 </div>
 
-                <!-- Кнопка Submit -->
                 <div class="mt-10 flex justify-end" id="submitContainer">
-                    <button id="submitBtn" class="text-sm font-bold text-white bg-slate-900 px-8 py-3.5 rounded-xl hover:bg-purple-600 transition shadow-md flex items-center">
+                    <button id="submitBtn" class="text-sm font-bold text-white bg-slate-900 px-8 py-3.5 rounded-xl hover:bg-purple-600 transition shadow-md flex items-center cursor-pointer">
                         Check Answers <i data-lucide="check-circle" class="w-4 h-4 ml-2"></i>
                     </button>
                 </div>
@@ -133,6 +131,40 @@
             document.getElementById('textContent').innerHTML = htmlWithInputs;
 
             // Настройка инпутов
+            setupInputs();
+
+            // Проверка ответов
+            document.getElementById('submitBtn').addEventListener('click', () => {
+                let correctCount = 0;
+                const inputs = document.querySelectorAll('.letter-input');
+                
+                inputs.forEach(input => {
+                    input.disabled = true;
+                    const userAnswer = input.value.toLowerCase();
+                    const correctAnswer = input.getAttribute('data-answer').toLowerCase();
+
+                    if (userAnswer === correctAnswer) {
+                        input.classList.add('correct');
+                        correctCount++;
+                    } else {
+                        input.classList.add('wrong');
+                        input.value = correctAnswer; // Показываем правильную букву
+                    }
+                });
+
+                const scorePercent = Math.round((correctCount / inputs.length) * 100);
+                
+                // Сохранение прогресса в localStorage
+                localStorage.setItem(`complete_words_score_${taskId}`, scorePercent);
+
+                document.getElementById('scoreDisplay').innerText = `${correctCount} / ${inputs.length} correct`;
+                document.getElementById('submitContainer').classList.add('hidden');
+                document.getElementById('resultBlock').classList.remove('hidden');
+            });
+        }
+
+        // Вынос логики настройки инпутов в отдельную функцию, чтобы переиспользовать при сбросе
+        function setupInputs() {
             const inputs = document.querySelectorAll('.letter-input');
             inputs.forEach((input, index) => {
                 // Переход к следующему инпуту при вводе
@@ -149,29 +181,33 @@
                     }
                 });
             });
-
-            // Проверка ответов
-            document.getElementById('submitBtn').addEventListener('click', () => {
-                let correctCount = 0;
-                inputs.forEach(input => {
-                    input.disabled = true;
-                    const userAnswer = input.value.toLowerCase();
-                    const correctAnswer = input.getAttribute('data-answer').toLowerCase();
-
-                    if (userAnswer === correctAnswer) {
-                        input.classList.add('correct');
-                        correctCount++;
-                    } else {
-                        input.classList.add('wrong');
-                        input.value = correctAnswer; // Показываем правильную букву
-                    }
-                });
-
-                document.getElementById('scoreDisplay').innerText = `${correctCount} / ${inputs.length} correct`;
-                document.getElementById('submitContainer').classList.add('hidden');
-                document.getElementById('resultBlock').classList.remove('hidden');
-            });
         }
+
+        // Функция мгновенного сброса состояния задачи
+        window.resetAndRestartCompleteWords = function() {
+            if (!taskId) return;
+
+            // Зачищаем результаты
+            localStorage.removeItem(`complete_words_score_${taskId}`);
+            if (currentTask) {
+                localStorage.removeItem(`complete_words_score_${currentTask.title}`);
+            }
+
+            // Находим все инпуты, очищаем их и возвращаем к исходному виду
+            const inputs = document.querySelectorAll('.letter-input');
+            inputs.forEach(input => {
+                input.value = '';
+                input.disabled = false;
+                input.className = 'letter-input'; // Возвращаем чистый дефолтный класс
+            });
+
+            // Переключаем видимость блоков обратно на процесс тестирования
+            document.getElementById('resultBlock').classList.add('hidden');
+            document.getElementById('submitContainer').classList.remove('hidden');
+
+            // Фокусируемся на первом инпуте для удобства
+            if (inputs.length > 0) inputs[0].focus();
+        };
     </script>
 </body>
 </html>
