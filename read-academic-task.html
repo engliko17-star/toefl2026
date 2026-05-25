@@ -104,9 +104,14 @@
                             </div>
                         </div>
 
-                        <a href="read-academic.html" class="inline-block px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition shadow-xs">
-                            Return to Dashboard
-                        </a>
+                        <div class="flex items-center justify-center gap-3 max-w-sm mx-auto">
+                            <button onclick="resetAndRestartTest()" class="flex-1 px-4 py-2 bg-slate-900 hover:bg-indigo-600 text-white font-bold text-xs rounded-xl transition shadow-xs flex items-center justify-center cursor-pointer">
+                                <i data-lucide="rotate-ccw" class="w-3.5 h-3.5 mr-1.5"></i> Try Again
+                            </button>
+                            <a href="read-academic.html" class="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl transition flex items-center justify-center">
+                                Dashboard
+                            </a>
+                        </div>
                     </div>
 
                     <div>
@@ -266,14 +271,44 @@
 
         window.saveRadioAnswer = function(qIdx, optIdx) { userAnswers[qIdx] = optIdx; };
 
-        // ГЛАВНАЯ СБОРКА И ОТПРАВКА РЕЗУЛЬТАТОВ (ПОД ДИЗАЙН DAILY LIFE)
+        // НОВАЯ ФУНКЦИЯ ДЛЯ СБРОСА И ПЕРЕЗАПУСКА ТЕСТА ЗАНОГО
+        window.resetAndRestartTest = function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const taskId = urlParams.get('id') || 1;
+
+            // Удаляем результаты текущего теста из localStorage
+            localStorage.removeItem(`academic_test_score_${task.title}`);
+            localStorage.removeItem(`academic_test_score_${taskId}`);
+
+            // Сбрасываем переменные состояния
+            currentQuestionIdx = 0;
+            userAnswers = {};
+
+            // Очищаем стили визуального разбора в тексте слева
+            document.body.classList.remove('insert-text-mode');
+            document.querySelectorAll('.clickable-sentence').forEach(el => {
+                el.classList.remove('review-correct', 'review-wrong', 'selected');
+            });
+            document.querySelectorAll('.insert-square').forEach(el => {
+                el.classList.remove('review-square-correct', 'review-square-wrong', 'selected');
+            });
+
+            // Переключаем интерфейс обратно на окна вопросов
+            document.getElementById('resultsContainer').classList.add('hidden');
+            document.getElementById('quizContainer').classList.remove('hidden');
+            document.getElementById('navFooter').classList.remove('hidden');
+
+            // Запускаем тест заново с первого вопроса
+            showQuestion(currentQuestionIdx);
+            lucide.createIcons();
+        };
+
         async function finishTest() {
             let score = 0;
             let stats = {}; 
             const explanationsList = document.getElementById('explanationsList');
             explanationsList.innerHTML = ''; 
 
-            // Считаем баллы и формируем карточки разборов
             task.questions.forEach((q, idx) => {
                 const userAns = userAnswers[idx];
                 const isCorrect = userAns === q.correct;
@@ -283,7 +318,6 @@
                 stats[q.type].total += 1;
                 if (isCorrect) stats[q.type].earned += 1;
 
-                // Генерируем наполнение вариантов ответов под тип вопроса
                 let optionsReviewHtml = '';
                 
                 if (q.type === "Detail") {
@@ -306,7 +340,6 @@
                         `;
                     });
                 } else if (q.type === "Select a Sentence") {
-                    // Подсвечиваем в самом тексте слева
                     document.querySelector(`.clickable-sentence[data-id="${q.correct}"]`)?.classList.add('review-correct');
                     if (userAns && !isCorrect) {
                         document.querySelector(`.clickable-sentence[data-id="${userAns}"]`)?.classList.add('review-wrong');
@@ -324,7 +357,6 @@
                         </div>
                     `;
                 } else if (q.type === "Insert Text") {
-                    // Подсвечиваем квадраты слева
                     document.querySelector(`.insert-square[data-sq="${q.correct}"]`)?.classList.add('review-square-correct');
                     if (userAns && !isCorrect) {
                         document.querySelector(`.insert-square[data-sq="${userAns}"]`)?.classList.add('review-square-wrong');
@@ -350,7 +382,6 @@
                     });
                 }
 
-                // Шаблон красивой карточки вопроса
                 const qCard = `
                     <div class="bg-white rounded-2xl border ${isCorrect ? 'border-emerald-100' : 'border-rose-100'} p-5 shadow-xs">
                         <div class="flex items-center justify-between mb-3">
@@ -376,13 +407,11 @@
                 explanationsList.innerHTML += qCard;
             });
 
-            // Делаем все скрытые проверочные квадраты и предложения видимыми на тексте слева
             document.body.classList.add('insert-text-mode');
 
             const scorePercent = Math.round((score / task.questions.length) * 100);
             localStorage.setItem(`academic_test_score_${task.title}`, scorePercent);
 
-            // ОТПРАВЛЯЕМ В SUPABASE С ПОМЕТКОЙ 'academic'
             if (window.supabase) {
                 try {
                     const urlParams = new URLSearchParams(window.location.search);
@@ -393,7 +422,7 @@
                         .insert([
                             {
                                 task_id: parseInt(taskId),
-                                task_type: 'academic', // <-- Указали тип
+                                task_type: 'academic', 
                                 score_earned: score,
                                 score_total: task.questions.length,
                                 time_spent_seconds: 420,
@@ -407,7 +436,6 @@
                 }
             }
 
-            // Переключаем интерфейс на экран результатов
             document.getElementById('quizContainer').classList.add('hidden');
             document.getElementById('navFooter').classList.add('hidden');
             document.getElementById('resultsContainer').classList.remove('hidden');
