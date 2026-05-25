@@ -227,14 +227,22 @@
             }
         });
 
-        function processResults() {
+        // ⚠️ ОБНОВЛЕННАЯ ФУНКЦИЯ (Теперь она асинхронная и отправляет данные в Supabase)
+        async function processResults() {
             let correctCount = 0;
-            explanationsList.innerHTML = ''; // Очищаем список разборов
+            let categoryStats = {}; // Собираем стату по типам вопросов
+            explanationsList.innerHTML = ''; 
 
             currentTask.questions.forEach((q, idx) => {
                 const userAns = userAnswers[idx];
                 const isCorrect = userAns === q.correct;
                 if (isCorrect) correctCount++;
+
+                // Считаем статистику для дашборда
+                const qType = q.type || 'Detail';
+                if (!categoryStats[qType]) categoryStats[qType] = { earned: 0, total: 0 };
+                categoryStats[qType].total += 1;
+                if (isCorrect) categoryStats[qType].earned += 1;
 
                 // Рендерим плашку разбора для каждого вопроса
                 let optionsReviewHtml = '';
@@ -283,7 +291,27 @@
             });
 
             const scorePercent = Math.round((correctCount / currentTask.questions.length) * 100);
+            
+            // Сохраняем в localStorage для совместимости
             localStorage.setItem(`daily_test_score_${currentTask.id}`, scorePercent);
+
+            // ОТПРАВЛЯЕМ В SUPABASE С ПОМЕТКОЙ 'daily'
+            try {
+                const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                const { error } = await supabaseClient
+                    .from('reading_results')
+                    .insert([{
+                        task_id: currentTask.id,
+                        task_type: 'daily',
+                        score_earned: correctCount,
+                        score_total: currentTask.questions.length,
+                        category_stats: categoryStats
+                    }]);
+                
+                if (error) console.error("Ошибка сохранения в базу:", error);
+            } catch (err) {
+                console.error("Сбой сети/базы:", err);
+            }
 
             quizContainer.classList.add('hidden');
             resultsContainer.classList.remove('hidden');
@@ -297,5 +325,4 @@
     </script>
 </body>
 </html>
-
 
