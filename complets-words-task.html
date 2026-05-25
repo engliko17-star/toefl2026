@@ -6,6 +6,7 @@
     <title>Practice Task — TOEFL</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
@@ -13,7 +14,6 @@
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
         
-        /* Стили для инпутов, чтобы они плавно вписывались в текст */
         .letter-input {
             width: 24px;
             text-align: center;
@@ -59,7 +59,9 @@
                     </a>
                 </div>
 
-                <div id="textContent" class="text-[15px] leading-loose text-slate-700 font-medium space-y-5"></div>
+                <div id="textContent" class="text-[15px] leading-loose text-slate-700 font-medium space-y-5">
+                    <p id="loadingTaskMsg" class="text-sm text-gray-400">Fetching text from database...</p>
+                </div>
 
                 <div id="resultBlock" class="hidden mt-10">
                     <div class="bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-100/50 rounded-2xl p-6 relative overflow-hidden">
@@ -92,89 +94,71 @@
     </main>
 
     <script>
-        lucide.createIcons();
-
-        // Имитация БД (в будущем - Supabase)
-        const database = {
-            "1": { 
-                category: "History",
-                title: "The Origins of Agriculture", 
-                text: "<p>Agriculture began around 10,000 years ago in the Fertile Crescent.</p><p>It marked a massive shift in h[u]m[a]n history. People transitioned from nomadic hunter-gatherers to settled communities. This eventually led to the rise of early c[i]v[i]l[i]zations.</p>",
-                tips: "<span class='font-bold text-indigo-700'>Tip:</span> Notice the spelling of <strong>civilization</strong>. In TOEFL (US English) it uses a 'z', while UK English often uses 's' (civilisation)."
-            },
-            "2": { 
-                category: "Science",
-                title: "Cognitive Psychology", 
-                text: "<p>Cognitive psychology is the scientific study of mental processes such as attention, language use, memory, and perception.</p><p>It originated in the 1960s in a break from beh[a]v[i]orism. Researchers began applying the strict scientific m[e]th[o]d to studying the mind.</p>",
-                tips: "<span class='font-bold text-indigo-700'>Tip:</span> <strong>Behaviorism</strong>: US English ends in -or, UK English is -our. TOEFL expects US spelling."
-            }
-        };
-
         const urlParams = new URLSearchParams(window.location.search);
         const taskId = urlParams.get('id');
-        const currentTask = database[taskId];
+        let currentTaskTitle = ""; 
 
-        if (!currentTask) {
-            document.getElementById('taskTitle').innerText = "Test not found";
-            document.getElementById('taskCategory').innerText = "Error";
-            document.getElementById('submitContainer').style.display = 'none';
-        } else {
-            document.getElementById('taskTitle').innerText = currentTask.title;
-            document.getElementById('taskCategory').innerText = currentTask.category;
-            document.getElementById('tipsContent').innerHTML = currentTask.tips;
+        async function initTask() {
+            if (!taskId) {
+                showError("No Task ID provided.");
+                return;
+            }
 
-            // Превращаем [a] в <input>
-            const htmlWithInputs = currentTask.text.replace(/\[(.)\]/g, function(match, letter) {
-                return `<input type="text" maxlength="1" data-answer="${letter}" class="letter-input" autocomplete="off">`;
-            });
-
-            document.getElementById('textContent').innerHTML = htmlWithInputs;
-
-            // Настройка инпутов
-            setupInputs();
-
-            // Проверка ответов
-            document.getElementById('submitBtn').addEventListener('click', () => {
-                let correctCount = 0;
-                const inputs = document.querySelectorAll('.letter-input');
+            try {
+                const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
+                const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
                 
-                inputs.forEach(input => {
-                    input.disabled = true;
-                    const userAnswer = input.value.toLowerCase();
-                    const correctAnswer = input.getAttribute('data-answer').toLowerCase();
+                if (!window.supabaseClient) {
+                    window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                }
+                const supabase = window.supabaseClient;
 
-                    if (userAnswer === correctAnswer) {
-                        input.classList.add('correct');
-                        correctCount++;
-                    } else {
-                        input.classList.add('wrong');
-                        input.value = correctAnswer; // Показываем правильную букву
-                    }
+                // Запрос к Supabase по UUID
+                const { data: test, error } = await supabase
+                    .from('complete_words_tasks')
+                    .select('*')
+                    .eq('id', taskId)
+                    .single();
+
+                if (error || !test) {
+                    throw new Error(error ? error.message : "Task not found in DB");
+                }
+
+                currentTaskTitle = test.title;
+                document.getElementById('taskTitle').innerText = test.title;
+                document.getElementById('taskCategory').innerText = test.category || 'Practice';
+                document.getElementById('tipsContent').innerHTML = test.tips || `<span class='font-bold text-indigo-700'>Tip:</span> Pay close attention to contextual clues and academic spelling suffixes.`;
+
+                // Превращаем [a] в <input>
+                const htmlWithInputs = (test.passage || "").replace(/\[(.)\]/g, function(match, letter) {
+                    return `<input type="text" maxlength="1" data-answer="${letter}" class="letter-input" autocomplete="off">`;
                 });
 
-                const scorePercent = Math.round((correctCount / inputs.length) * 100);
-                
-                // Сохранение прогресса в localStorage
-                localStorage.setItem(`complete_words_score_${taskId}`, scorePercent);
+                document.getElementById('textContent').innerHTML = htmlWithInputs;
+                setupInputs();
+                lucide.createIcons();
 
-                document.getElementById('scoreDisplay').innerText = `${correctCount} / ${inputs.length} correct`;
-                document.getElementById('submitContainer').classList.add('hidden');
-                document.getElementById('resultBlock').classList.remove('hidden');
-            });
+            } catch (err) {
+                showError(err.message);
+            }
         }
 
-        // Вынос логики настройки инпутов в отдельную функцию, чтобы переиспользовать при сбросе
+        function showError(msg) {
+            document.getElementById('taskTitle').innerText = "Error Loading Test";
+            document.getElementById('taskCategory').innerText = "Error";
+            document.getElementById('textContent').innerHTML = `<p class="text-red-500 font-bold">${msg}</p>`;
+            document.getElementById('submitContainer').style.display = 'none';
+        }
+
         function setupInputs() {
             const inputs = document.querySelectorAll('.letter-input');
             inputs.forEach((input, index) => {
-                // Переход к следующему инпуту при вводе
                 input.addEventListener('input', function() {
-                    this.value = this.value.replace(/[^a-zA-Z]/g, '').toLowerCase(); // Только буквы
+                    this.value = this.value.replace(/[^a-zA-Z]/g, '').toLowerCase();
                     if (this.value.length === 1 && index < inputs.length - 1) {
                         inputs[index + 1].focus();
                     }
                 });
-                // Возврат назад при Backspace
                 input.addEventListener('keydown', function(e) {
                     if (e.key === 'Backspace' && this.value === '' && index > 0) {
                         inputs[index - 1].focus();
@@ -183,31 +167,63 @@
             });
         }
 
-        // Функция мгновенного сброса состояния задачи
+        // Клик по кнопке Check Answers
+        document.getElementById('submitBtn').addEventListener('click', () => {
+            const inputs = document.querySelectorAll('.letter-input');
+            if (inputs.length === 0) return;
+
+            let correctCount = 0;
+            inputs.forEach(input => {
+                input.disabled = true;
+                const userAnswer = input.value.toLowerCase();
+                const correctAnswer = input.getAttribute('data-answer').toLowerCase();
+
+                if (userAnswer === correctAnswer) {
+                    input.classList.add('correct');
+                    correctCount++;
+                } else {
+                    input.classList.add('wrong');
+                    input.value = correctAnswer; 
+                }
+            });
+
+            const scorePercent = Math.round((correctCount / inputs.length) * 100);
+            
+            // Сохраняем в localStorage по реальному taskId (UUID)
+            localStorage.setItem(`complete_words_score_${taskId}`, scorePercent);
+            if (currentTaskTitle) {
+                localStorage.setItem(`complete_words_score_${currentTaskTitle}`, scorePercent);
+            }
+
+            document.getElementById('scoreDisplay').innerText = `${correctCount} / ${inputs.length} correct`;
+            document.getElementById('submitContainer').classList.add('hidden');
+            document.getElementById('resultBlock').classList.remove('hidden');
+        });
+
+        // Функция перезапуска "Try Again" внутри карточки
         window.resetAndRestartCompleteWords = function() {
             if (!taskId) return;
 
-            // Зачищаем результаты
             localStorage.removeItem(`complete_words_score_${taskId}`);
-            if (currentTask) {
-                localStorage.removeItem(`complete_words_score_${currentTask.title}`);
+            if (currentTaskTitle) {
+                localStorage.removeItem(`complete_words_score_${currentTaskTitle}`);
             }
 
-            // Находим все инпуты, очищаем их и возвращаем к исходному виду
             const inputs = document.querySelectorAll('.letter-input');
             inputs.forEach(input => {
                 input.value = '';
                 input.disabled = false;
-                input.className = 'letter-input'; // Возвращаем чистый дефолтный класс
+                input.className = 'letter-input'; 
             });
 
-            // Переключаем видимость блоков обратно на процесс тестирования
             document.getElementById('resultBlock').classList.add('hidden');
             document.getElementById('submitContainer').classList.remove('hidden');
 
-            // Фокусируемся на первом инпуте для удобства
             if (inputs.length > 0) inputs[0].focus();
         };
+
+        // Запуск
+        initTask();
     </script>
 </body>
 </html>
