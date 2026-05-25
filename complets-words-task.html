@@ -113,7 +113,6 @@
                 }
                 const supabase = window.supabaseClient;
 
-                // Запрос к Supabase по UUID
                 const { data: test, error } = await supabase
                     .from('complete_words_tasks')
                     .select('*')
@@ -129,13 +128,31 @@
                 document.getElementById('taskCategory').innerText = test.category || 'Practice';
                 document.getElementById('tipsContent').innerHTML = test.tips || `<span class='font-bold text-indigo-700'>Tip:</span> Pay close attention to contextual clues and academic spelling suffixes.`;
 
-                // Превращаем [a] в <input>
                 const htmlWithInputs = (test.passage || "").replace(/\[(.)\]/g, function(match, letter) {
                     return `<input type="text" maxlength="1" data-answer="${letter}" class="letter-input" autocomplete="off">`;
                 });
 
                 document.getElementById('textContent').innerHTML = htmlWithInputs;
                 setupInputs();
+
+                // Автоматическая проверка: проходил ли пользователь этот тест ранее?
+                const savedScore = localStorage.getItem(`complete_words_score_${taskId}`);
+                if (savedScore !== null && !isNaN(savedScore)) {
+                    const inputs = document.querySelectorAll('.letter-input');
+                    let correctCount = 0;
+                    
+                    inputs.forEach(input => {
+                        input.disabled = true;
+                        const correctAnswer = input.getAttribute('data-answer');
+                        input.value = correctAnswer; // Заполняем правильными буквами для Review
+                        input.classList.add('correct');
+                    });
+
+                    document.getElementById('scoreDisplay').innerText = `Saved Score: ${savedScore}%`;
+                    document.getElementById('submitContainer').classList.add('hidden');
+                    document.getElementById('resultBlock').classList.remove('hidden');
+                }
+
                 lucide.createIcons();
 
             } catch (err) {
@@ -189,18 +206,20 @@
 
             const scorePercent = Math.round((correctCount / inputs.length) * 100);
             
-            // Сохраняем в localStorage по реальному taskId (UUID)
             localStorage.setItem(`complete_words_score_${taskId}`, scorePercent);
             if (currentTaskTitle) {
                 localStorage.setItem(`complete_words_score_${currentTaskTitle}`, scorePercent);
             }
 
-            document.getElementById('scoreDisplay').innerText = `${correctCount} / ${inputs.length} correct`;
+            document.getElementById('scoreDisplay').innerText = `${scorePercent}% (${correctCount} / ${inputs.length} correct)`;
             document.getElementById('submitContainer').classList.add('hidden');
             document.getElementById('resultBlock').classList.remove('hidden');
+            
+            // Перерисовываем иконки внутри открывшегося блока результатов
+            lucide.createIcons();
         });
 
-        // Функция перезапуска "Try Again" внутри карточки
+        // Функция перезапуска "Try Again"
         window.resetAndRestartCompleteWords = function() {
             if (!taskId) return;
 
@@ -222,7 +241,6 @@
             if (inputs.length > 0) inputs[0].focus();
         };
 
-        // Запуск
         initTask();
     </script>
 </body>
