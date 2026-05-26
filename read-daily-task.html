@@ -138,6 +138,95 @@
         const resultsContainer = document.getElementById('resultsContainer');
         const explanationsList = document.getElementById('explanationsList');
 
+        // ФУНКЦИЯ ДЛЯ ОТРИСОВКИ МАКЕТОВ (Email, Chat, Social Media, Notice)
+        function renderDailyLifeLayout(passage, layoutType, taskTitle) {
+            if (!passage) return "";
+            const cleanPassage = passage.replace(/[\[\]]/g, ''); 
+
+            switch(layoutType) {
+                case 'email':
+                    return `
+                        <div class="max-w-xl mx-auto bg-white border border-slate-200 rounded-lg overflow-hidden shadow-xs font-sans text-sm">
+                            <div class="bg-slate-50 p-4 border-b border-slate-200 space-y-1.5 text-slate-700">
+                                <div><span class="inline-block w-14 font-semibold text-slate-400">To:</span> <span class="bg-white px-2 py-0.5 border border-slate-200 rounded text-xs">student@toeflprep.com</span></div>
+                                <div><span class="inline-block w-14 font-semibold text-slate-400">From:</span> <span class="text-slate-600">newsletter@companyname.com</span></div>
+                                <div><span class="inline-block w-14 font-semibold text-slate-400">Date:</span> 09/26/2026</div>
+                                <div><span class="inline-block w-14 font-semibold text-slate-400">Subject:</span> <span class="font-medium text-slate-900">${taskTitle}</span></div>
+                            </div>
+                            <div class="p-6 text-slate-800 space-y-4 leading-relaxed font-normal bg-white">
+                                ${cleanPassage.replace(/\n/g, '<br>')}
+                            </div>
+                        </div>
+                    `;
+
+                case 'social_media':
+                    return `
+                        <div class="max-w-md mx-auto bg-white border border-slate-200 rounded-2xl p-5 shadow-xs font-sans">
+                            <div class="flex items-center space-x-3 mb-4">
+                                <div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-sm">
+                                    <i data-lucide="user" class="w-5 h-5"></i>
+                                </div>
+                                <div>
+                                    <div class="font-bold text-sm text-slate-900">Community Board</div>
+                                    <div class="text-[11px] text-slate-400 font-normal">Sponsored • Just now</div>
+                                </div>
+                            </div>
+                            <div class="text-slate-700 space-y-3 font-normal text-sm leading-relaxed mb-4">
+                                ${cleanPassage.replace(/\n/g, '<br>')}
+                            </div>
+                            <div class="pt-3 border-t border-slate-100 flex justify-around text-xs font-medium text-slate-500">
+                                <span class="flex items-center space-x-1.5 cursor-pointer hover:text-slate-900"><i data-lucide="thumbs-up" class="w-4 h-4"></i> <span>Like</span></span>
+                                <span class="flex items-center space-x-1.5 cursor-pointer hover:text-slate-900"><i data-lucide="message-square" class="w-4 h-4"></i> <span>Comment</span></span>
+                            </div>
+                        </div>
+                    `;
+
+                case 'notice':
+                    return `
+                        <div class="max-w-lg mx-auto bg-white border-2 border-slate-800 p-8 shadow-xs font-sans relative">
+                            <div class="absolute inset-1 border border-slate-200 pointer-events-none"></div>
+                            <h3 class="text-lg font-bold text-slate-900 text-center tracking-tight mb-6 uppercase">${taskTitle}</h3>
+                            <div class="text-slate-700 space-y-4 font-normal text-sm leading-relaxed relative z-10">
+                                ${cleanPassage.replace(/\n/g, '<br>')}
+                            </div>
+                        </div>
+                    `;
+
+                case 'chat':
+                    const lines = cleanPassage.split('\n');
+                    const chatHtml = lines.map(line => {
+                        if(!line.trim()) return '';
+                        const match = line.match(/^([^:]+):\s*(.*)$/);
+                        if (match) {
+                            return `
+                                <div class="mb-4 font-sans">
+                                    <div class="text-[11px] font-bold text-slate-500 mb-0.5 px-1">${match[1]}</div>
+                                    <div class="inline-block bg-white border border-slate-200 text-slate-800 rounded-2xl rounded-tl-none px-4 py-2.5 max-w-[90%] text-sm font-normal shadow-2xs">
+                                        ${match[2]}
+                                    </div>
+                                </div>
+                            `;
+                        }
+                        return `<p class="text-xs text-slate-400 italic my-2 text-center">${line}</p>`;
+                    }).join('');
+
+                    return `
+                        <div class="max-w-sm mx-auto bg-slate-50 border border-slate-200 rounded-3xl overflow-hidden shadow-sm flex flex-col h-[500px]">
+                            <div class="bg-slate-900 text-white border-b border-slate-800 p-3.5 text-center font-bold text-xs shrink-0 shadow-2xs flex items-center justify-center space-x-2">
+                                <div class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+                                <span>Group Chat</span>
+                            </div>
+                            <div class="flex-1 p-5 overflow-y-auto bg-slate-50 scrollbar-none">
+                                ${chatHtml}
+                            </div>
+                        </div>
+                    `;
+
+                default:
+                    return `<div class="text-slate-700 space-y-4 font-normal leading-relaxed text-base">${cleanPassage.replace(/\n/g, '<br>')}</div>`;
+            }
+        }
+
         async function init() {
             const urlParams = new URLSearchParams(window.location.search);
             const taskId = urlParams.get('id');
@@ -174,7 +263,14 @@
         function renderTask() {
             if (!currentTask || !currentTask.questions) return;
             taskTitle.innerText = currentTask.title;
-            passageContent.innerHTML = currentTask.passage;
+            
+            // Отрисовываем макет в зависимости от layout_type
+            const styledLayout = renderDailyLifeLayout(currentTask.passage, currentTask.layout_type, currentTask.title);
+            passageContent.innerHTML = styledLayout;
+            
+            // Обновляем иконки Lucide внутри новых макетов
+            setTimeout(() => lucide.createIcons(), 0);
+            
             showQuestion(0);
         }
 
@@ -348,4 +444,3 @@
     </script>
 </body>
 </html>
-
