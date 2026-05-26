@@ -61,12 +61,28 @@
         const testListContainer = document.getElementById('testList');
         const loadingMsg = document.getElementById('loadingMsg');
 
-        // Функция удаления результатов теста Complete the Words
-        function resetCompleteWordsTest(id, title) {
+        const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
+        
+        if (!window.supabaseClient) {
+            window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        }
+        const supabaseClient = window.supabaseClient;
+
+        async function resetCompleteWordsTest(id, title) {
             if (confirm(`Are you sure you want to reset the results for "${title}"?`)) {
-                localStorage.removeItem(`complete_words_score_${id}`);
-                localStorage.removeItem(`complete_words_score_${title}`); // на случай дублирования по названию
-                loadTests(); // Мгновенная перезагрузка карточек
+                try {
+                    const { error } = await supabaseClient
+                        .from('user_progress')
+                        .delete()
+                        .eq('task_id', id);
+
+                    if (error) throw error;
+                    
+                    loadTests(); 
+                } catch (err) {
+                    alert("Error resetting progress: " + err.message);
+                }
             }
         }
 
@@ -76,21 +92,24 @@
                     throw new Error("Библиотека Supabase не загрузилась.");
                 }
 
-                const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
-                const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
-                
-                if (!window.supabaseClient) {
-                    window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-                }
-                const supabase = window.supabaseClient;
-
-                const { data: tests, error } = await supabase
+                const { data: tests, error: testsError } = await supabaseClient
                     .from('complete_words_tasks')
                     .select('id, title, category, passage')
                     .order('id', { ascending: true });
 
-                if (error) {
-                    throw new Error(error.message || JSON.stringify(error));
+                if (testsError) throw new Error(testsError.message);
+
+                const { data: progressData, error: progressError } = await supabaseClient
+                    .from('user_progress')
+                    .select('task_id, score_percent');
+
+                if (progressError) throw new Error(progressError.message);
+
+                const progressMap = {};
+                if (progressData) {
+                    progressData.forEach(p => {
+                        progressMap[p.task_id] = p.score_percent;
+                    });
                 }
 
                 testListContainer.innerHTML = '';
@@ -104,11 +123,7 @@
                     const wordCount = test.passage ? test.passage.trim().split(/\s+/).length : 0;
                     const blanksCount = test.passage ? (test.passage.match(/\[/g) || []).length : 0;
 
-                    // Проверяем сохраненные результаты по ID теста
-                    let savedScore = localStorage.getItem(`complete_words_score_${test.id}`);
-                    if (savedScore === null) {
-                        savedScore = localStorage.getItem(`complete_words_score_${test.title}`);
-                    }
+                    let savedScore = progressMap[test.id] !== undefined ? progressMap[test.id] : null;
 
                     let actionButton = '';
                     let scoreDisplay = '';
@@ -116,12 +131,10 @@
                     if (savedScore !== null) {
                         const scoreNum = parseInt(savedScore);
                         
-                        // Цветовая разметка кольца (фиолетовый акцент для лексики)
                         let strokeColor = 'stroke-purple-500';
                         if (scoreNum < 50) strokeColor = 'stroke-rose-500';
                         else if (scoreNum < 75) strokeColor = 'stroke-amber-500';
 
-                        // Радиальный индикатор прогресса
                         scoreDisplay = `
                             <div class="relative flex items-center justify-center w-10 h-10 shrink-0">
                                 <svg class="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
@@ -132,21 +145,18 @@
                             </div>
                         `;
 
-                        // Кнопка Review Results
                         actionButton = `
                             <a href="complete-words-task.html?id=${test.id}" class="text-xs font-bold text-purple-700 bg-purple-50 border border-purple-100 px-4 py-2 rounded-xl hover:bg-purple-100 transition flex items-center justify-center w-full mt-auto shadow-xs">
                                 Review Results <i data-lucide="eye" class="w-3.5 h-3.5 ml-1.5"></i>
                             </a>
                         `;
                     } else {
-                        // Бейджик категории по умолчанию
                         scoreDisplay = `
                             <span class="text-[9px] font-bold text-purple-600 uppercase tracking-widest bg-purple-50 px-2 py-0.5 rounded-md border border-purple-100/40">
                                 ${test.category || 'Practice'}
                             </span>
                         `;
 
-                        // Стандартная кнопка старта
                         actionButton = `
                             <a href="complete-words-task.html?id=${test.id}" class="text-xs font-bold text-white bg-slate-900 px-4 py-2 rounded-xl hover:bg-purple-600 transition flex items-center shadow-sm w-full justify-center">
                                 Start Test <i data-lucide="arrow-right" class="w-3 h-3 ml-1.5"></i>
@@ -154,7 +164,6 @@
                         `;
                     }
 
-                    // Экранирование спецсимволов в названии для inline onClick
                     const escapedTitle = test.title.replace(/'/g, "\\'").replace(/"/g, '\\"');
 
                     const html = `
