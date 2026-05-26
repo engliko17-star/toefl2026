@@ -122,6 +122,7 @@
         let currentTask = null;
         let currentQuestionIdx = 0;
         let userAnswers = {}; 
+        let startTime = Date.now(); 
 
         const taskTitle = document.getElementById('taskTitle');
         const progressText = document.getElementById('progressText');
@@ -161,6 +162,7 @@
                     if (typeof currentTask.questions === 'string') {
                         currentTask.questions = JSON.parse(currentTask.questions);
                     }
+                    startTime = Date.now(); 
                     renderTask();
                 }
             } catch (error) {
@@ -231,27 +233,25 @@
             }
         });
 
-        // ФУНКЦИЯ ДЛЯ СБРОСА И СТАРТА ТЕСТА С НУЛЯ БЕЗ ПЕРЕЗАГРУЗКИ СТРАНИЦЫ
         window.resetAndRestartDailyTest = function() {
             if (!currentTask) return;
             
-            // Зачищаем локальные хранилища текущего ID
             localStorage.removeItem(`daily_test_score_${currentTask.id}`);
             localStorage.removeItem(`daily_test_score_${currentTask.title}`);
 
-            // Возвращаем переменные в дефолтное состояние
             currentQuestionIdx = 0;
             userAnswers = {};
+            startTime = Date.now(); 
 
-            // Меняем видимость экранов
             resultsContainer.classList.add('hidden');
             quizContainer.classList.remove('hidden');
 
-            // Запускаем отрисовку с первого вопроса
             showQuestion(currentQuestionIdx);
         };
 
         async function processResults() {
+            const timeSpentSeconds = Math.round((Date.now() - startTime) / 1000);
+            
             let correctCount = 0;
             let categoryStats = {}; 
             explanationsList.innerHTML = ''; 
@@ -312,7 +312,6 @@
             });
 
             const scorePercent = Math.round((correctCount / currentTask.questions.length) * 100);
-            
             localStorage.setItem(`daily_test_score_${currentTask.id}`, scorePercent);
 
             try {
@@ -320,14 +319,19 @@
                 const { error } = await supabaseClient
                     .from('reading_results')
                     .insert([{
-                        task_id: currentTask.id,
+                        task_id: parseInt(currentTask.id), 
                         task_type: 'daily',
                         score_earned: correctCount,
                         score_total: currentTask.questions.length,
+                        time_spent_seconds: timeSpentSeconds, 
                         category_stats: categoryStats
                     }]);
                 
-                if (error) console.error("Ошибка сохранения в базу:", error);
+                if (error) {
+                    console.error("Ошибка сохранения в базу:", error);
+                } else {
+                    console.log("Результат Daily успешно сохранен!");
+                }
             } catch (err) {
                 console.error("Сбой сети/базы:", err);
             }
