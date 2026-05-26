@@ -236,67 +236,174 @@
             let correctCount = 0;
             inputs.forEach(input => {
                 input.disabled = true;
-                const userAnswer = input.value.toLowerCase();
-                const correctAnswer = input.getAttribute('data-answer').toLowerCase();
+const urlParams = new URLSearchParams(window.location.search);
+const taskId = urlParams.get('id');
+let currentTaskTitle = ""; 
 
-                if (userAnswer === correctAnswer) {
-                    input.classList.add('correct');
-                    correctCount++;
-                } else {
-                    input.classList.add('wrong');
-                    input.value = correctAnswer; 
-                }
-            });
+// Инициализация Supabase клиента
+const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
 
-            const scorePercent = Math.round((correctCount / inputs.length) * 100);
+// МЫ ИЗМЕНИЛИ ИМЯ ЗДЕСЬ, чтобы не конфликтовать с глобальным объектом библиотеки:
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+async function initTask() {
+    if (!taskId) {
+        showError("No Task ID provided.");
+        return;
+    }
+
+    try {
+        // Используем supabaseClient
+        const { data: test, error } = await supabaseClient
+            .from('complete_words_tasks')
+            .select('*')
+            .eq('id', taskId)
+            .single();
+
+        if (error || !test) {
+            throw new Error(error ? error.message : "Task not found in DB");
+        }
+
+        currentTaskTitle = test.title;
+        document.getElementById('taskTitle').innerText = test.title;
+        document.getElementById('taskCategory').innerText = test.category || 'Practice';
+        document.getElementById('tipsContent').innerHTML = test.tips || `<span class='font-bold text-indigo-700'>Tip:</span> Pay close attention to contextual clues and academic spelling suffixes.`;
+
+        const htmlWithInputs = (test.passage || "").replace(/((?:\[.\])+)/g, function(match) {
+            const letters = match.match(/\[(.)\]/g).map(m => m.replace(/[\[\]]/g, ''));
             
-            // Сохраняем/обновляем прогресс в таблице user_progress
-            try {
-                const { error } = await supabase
-                    .from('user_progress')
-                    .upsert(
-                        { task_id: taskId, score_percent: scorePercent },
-                        { onConflict: 'task_id' }
-                    );
-
-                if (error) throw error;
-            } catch (dbErr) {
-                console.error("Error saving progress to Supabase:", dbErr.message);
-            }
-
-            document.getElementById('scoreDisplay').innerText = `${scorePercent}% (${correctCount} / ${inputs.length} correct)`;
-            document.getElementById('submitContainer').classList.add('hidden');
-            document.getElementById('resultBlock').classList.remove('hidden');
+            const inputsHtml = letters.map(letter => {
+                return `<input type="text" maxlength="1" data-answer="${letter}" class="letter-input" autocomplete="off">`;
+            }).join('');
             
-            lucide.createIcons();
+            return `<span class="letters-container">${inputsHtml}</span>`;
         });
 
-        // Функция перезапуска "Try Again" — сброс полей и удаление прогресса из базы
-        window.resetAndRestartCompleteWords = function() {
-            if (!taskId) return;
+        document.getElementById('textContent').innerHTML = htmlWithInputs;
+        setupInputs();
 
-            supabase
-                .from('user_progress')
-                .delete()
-                .eq('task_id', taskId)
-                .then(({ error }) => {
-                    if (error) console.error("Error resetting progress in DB:", error.message);
-                });
+        // Используем supabaseClient
+        const { data: progress, error: progressError } = await supabaseClient
+            .from('user_progress')
+            .select('score_percent')
+            .eq('task_id', taskId)
+            .maybeSingle();
 
+        if (!progressError && progress) {
+            const savedScore = progress.score_percent;
             const inputs = document.querySelectorAll('.letter-input');
             inputs.forEach(input => {
-                input.value = '';
-                input.disabled = false;
-                input.className = 'letter-input'; 
+                input.disabled = true;
+                const correctAnswer = input.getAttribute('data-answer');
+                input.value = correctAnswer; 
+                input.classList.add('correct');
             });
 
-            document.getElementById('resultBlock').classList.add('hidden');
-            document.getElementById('submitContainer').classList.remove('hidden');
+            document.getElementById('scoreDisplay').innerText = `Saved Score: ${savedScore}%`;
+            document.getElementById('submitContainer').classList.add('hidden');
+            document.getElementById('resultBlock').classList.remove('hidden');
+        }
 
-            if (inputs.length > 0) inputs[0].focus();
-        };
+        lucide.createIcons();
 
-        initTask();
+    } catch (err) {
+        showError(err.message);
+    }
+}
+
+function showError(msg) {
+    document.getElementById('taskTitle').innerText = "Error Loading Test";
+    document.getElementById('taskCategory').innerText = "Error";
+    document.getElementById('textContent').innerHTML = `<p class="text-red-500 font-bold">${msg}</p>`;
+    document.getElementById('submitContainer').style.display = 'none';
+}
+
+function setupInputs() {
+    const inputs = document.querySelectorAll('.letter-input');
+    inputs.forEach((input, index) => {
+        input.addEventListener('input', function() {
+            this.value = this.value.replace(/[^a-zA-Z]/g, '').toLowerCase();
+            if (this.value.length === 1 && index < inputs.length - 1) {
+                inputs[index + 1].focus();
+            }
+        });
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Backspace' && this.value === '' && index > 0) {
+                inputs[index - 1].focus();
+            }
+        });
+    });
+}
+
+document.getElementById('submitBtn').addEventListener('click', async () => {
+    const inputs = document.querySelectorAll('.letter-input');
+    if (inputs.length === 0) return;
+
+    let correctCount = 0;
+    inputs.forEach(input => {
+        input.disabled = true;
+        const userAnswer = input.value.toLowerCase();
+        const correctAnswer = input.getAttribute('data-answer').toLowerCase();
+
+        if (userAnswer === correctAnswer) {
+            input.classList.add('correct');
+            correctCount++;
+        } else {
+            input.classList.add('wrong');
+            input.value = correctAnswer; 
+        }
+    });
+
+    const scorePercent = Math.round((correctCount / inputs.length) * 100);
+    
+    try {
+        // Используем supabaseClient
+        const { error } = await supabaseClient
+            .from('user_progress')
+            .upsert(
+                { task_id: taskId, score_percent: scorePercent },
+                { onConflict: 'task_id' }
+            );
+
+        if (error) throw error;
+    } catch (dbErr) {
+        console.error("Error saving progress to Supabase:", dbErr.message);
+    }
+
+    document.getElementById('scoreDisplay').innerText = `${scorePercent}% (${correctCount} / ${inputs.length} correct)`;
+    document.getElementById('submitContainer').classList.add('hidden');
+    document.getElementById('resultBlock').classList.remove('hidden');
+    
+    lucide.createIcons();
+});
+
+window.resetAndRestartCompleteWords = function() {
+    if (!taskId) return;
+
+    // Используем supabaseClient
+    supabaseClient
+        .from('user_progress')
+        .delete()
+        .eq('task_id', taskId)
+        .then(({ error }) => {
+            if (error) console.error("Error resetting progress in DB:", error.message);
+        });
+
+    const inputs = document.querySelectorAll('.letter-input');
+    inputs.forEach(input => {
+        input.value = '';
+        input.disabled = false;
+        input.className = 'letter-input'; 
+    });
+
+    document.getElementById('resultBlock').classList.add('hidden');
+    document.getElementById('submitContainer').classList.remove('hidden');
+
+    if (inputs.length > 0) inputs[0].focus();
+};
+
+initTask();
     </script>
 </body>
 </html>
