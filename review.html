@@ -8,7 +8,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght=400;500;600;700&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
 
         /* Стили для 3D переворота карточки */
@@ -23,6 +23,15 @@
             -webkit-backface-visibility: hidden;
         }
         .card-back { transform: rotateY(180deg); }
+
+        /* Анимация плавного появления */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.4s ease-out forwards;
+        }
     </style>
 </head>
 <body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex items-center justify-center p-4">
@@ -44,8 +53,8 @@
             </div>
         </div>
 
-        <div id="quizArea" class="min-h-[280px] flex items-center justify-center">
-        </div>
+        <div id="quizArea" class="min-h-[280px] flex items-center justify-center flex-col">
+            </div>
 
         <p id="bottomHint" class="text-center text-[11px] text-gray-400 font-medium h-4">
             Кликните на карточку, чтобы перевернуть её
@@ -88,7 +97,6 @@
     </div>
 
     <script>
-        // Инициализация базы данных
         const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co'; 
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ'; 
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -97,8 +105,8 @@
         let currentIndex = 0;
         let correctAnswers = 0;
         let sessionSettings = null;
+        let currentMode = ''; // Отслеживает фактический режим для текущего слова
 
-        // Запуск сессии при загрузке страницы
         window.addEventListener('DOMContentLoaded', async () => {
             sessionSettings = JSON.parse(localStorage.getItem('reviewSettings'));
             
@@ -111,7 +119,6 @@
             await loadSessionWords();
         });
 
-        // Функция перемешивания массива слов
         function shuffle(array) {
             for (let i = array.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
@@ -120,7 +127,6 @@
             return array;
         }
 
-        // Загрузка слов из базы на основе списков ученика
         async function loadSessionWords() {
             const customLists = JSON.parse(localStorage.getItem('studentLists') || '{}');
             let uniqueWordNames = new Set();
@@ -143,11 +149,9 @@
                 return;
             }
 
-            // Фильтруем и перемешиваем
             reviewWords = data.filter(w => uniqueWordNames.has(w.word));
             reviewWords = shuffle(reviewWords);
 
-            // Показываем интерфейс
             document.getElementById('loader').classList.add('hidden');
             document.getElementById('sessionContainer').classList.remove('hidden');
 
@@ -161,6 +165,9 @@
         }
 
         function showWord() {
+            // Перед рендерингом нового слова сбрасываем текущую озвучку
+            window.speechSynthesis.cancel();
+
             if (currentIndex >= reviewWords.length) {
                 showResults();
                 return;
@@ -168,12 +175,12 @@
 
             const total = reviewWords.length;
             document.getElementById('progressText').innerText = `Word ${currentIndex + 1} of ${total}`;
-            document.getElementById('progressBar').style.width = `${((currentIndex) / total) * 100}%`;
+            document.getElementById('progressBar').style.width = `${(currentIndex / total) * 100}%`;
 
             const currentWordObj = reviewWords[currentIndex];
             
-            // Если выбран Mixed, случайно выбираем один из 3 режимов
-            let currentMode = sessionSettings.mode;
+            // Вычисляем режим для текущего карточки
+            currentMode = sessionSettings.mode;
             if (currentMode === 'mixed') {
                 const modes = ['flashcards', 'typing', 'dictation'];
                 currentMode = modes[Math.floor(Math.random() * modes.length)];
@@ -183,7 +190,10 @@
             const bottomHint = document.getElementById('bottomHint');
             quizArea.innerHTML = '';
 
-            // --- РЕЖИМ: КАРТОЧКИ ---
+            // Безопасное экранирование примера для вставки в HTML-атрибуты/строки
+            const safeExample = currentWordObj.example ? currentWordObj.example.replace(/"/g, '&quot;') : '';
+
+            // --- КАРТОЧКИ ---
             if (currentMode === 'flashcards') {
                 document.getElementById('sessionModeBadge').innerText = "Flashcards";
                 bottomHint.innerText = "Кликните на карточку, чтобы перевернуть её";
@@ -204,7 +214,7 @@
                 `;
 
                 const actionButtons = document.createElement('div');
-                actionButtons.className = "flex justify-center space-x-3 w-full mt-4";
+                actionButtons.className = "flex justify-center space-x-3 w-full mt-4 animate-fade-in";
                 actionButtons.innerHTML = `
                     <button onclick="event.stopPropagation(); nextWord(false)" class="px-5 py-2.5 bg-gray-50 text-slate-500 rounded-xl text-xs font-bold hover:bg-gray-100 transition flex items-center space-x-1 cursor-pointer">
                         <i data-lucide="frown" class="w-4 h-4 text-red-400"></i> <span>Forgot</span>
@@ -215,13 +225,13 @@
                 `;
                 quizArea.appendChild(actionButtons);
 
-            // --- РЕЖИМ: НАПИСАНИЕ ПО ОПРЕДЕЛЕНИЮ ---
+            // --- НАПИСАНИЕ ПО ОПРЕДЕЛЕНИЮ ---
             } else if (currentMode === 'typing') {
                 document.getElementById('sessionModeBadge').innerText = "Type the Word";
                 bottomHint.innerText = "Прочтите определение и введите слово";
 
                 quizArea.innerHTML = `
-                    <div class="w-full bg-slate-50/60 border border-gray-100 rounded-2xl p-6 space-y-5">
+                    <div class="w-full bg-slate-50/60 border border-gray-100 rounded-2xl p-6 space-y-5 animate-fade-in">
                         <div class="space-y-1">
                             <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Definition (${currentWordObj.part})</span>
                             <p class="text-slate-800 font-medium text-sm leading-relaxed">${currentWordObj.definition}</p>
@@ -237,13 +247,13 @@
                 `;
                 setupEnterKey('typingInput', 'typing');
 
-            // --- РЕЖИМ: АУДИО-ДИКТАНТ ---
+            // --- АУДИО-ДИКТАНТ ---
             } else if (currentMode === 'dictation') {
                 document.getElementById('sessionModeBadge').innerText = "Listen & Type";
                 bottomHint.innerText = "Послушайте произношение и введите слово";
 
                 quizArea.innerHTML = `
-                    <div class="w-full bg-slate-50/60 border border-gray-100 rounded-2xl p-6 space-y-6 flex flex-col items-center">
+                    <div class="w-full bg-slate-50/60 border border-gray-100 rounded-2xl p-6 space-y-6 flex flex-col items-center animate-fade-in">
                         <button onclick="playCurrentWordAudio()" class="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center hover:bg-indigo-200 transition shadow-sm cursor-pointer group">
                             <i data-lucide="volume-2" class="w-8 h-8 group-hover:scale-110 transition-transform"></i>
                         </button>
@@ -269,21 +279,21 @@
                 `;
 
                 setupEnterKey('dictationInput', 'dictation');
-                setTimeout(playCurrentWordAudio, 300);
+                setTimeout(playCurrentWordAudio, 400); // Небольшая задержка для естественного восприятия
             }
 
             lucide.createIcons();
             
-            // Фокус на инпут, если это не карточки
             const inputField = document.getElementById(currentMode === 'typing' ? 'typingInput' : (currentMode === 'dictation' ? 'dictationInput' : null));
             if(inputField) inputField.focus();
         }
 
-        // Воспроизведение звука
         function playCurrentWordAudio() {
+            window.speechSynthesis.cancel(); // Стопаем текущую речь перед запуском новой
             const wordText = reviewWords[currentIndex].word;
             const utterance = new SpeechSynthesisUtterance(wordText);
             utterance.lang = 'en-US';
+            utterance.rate = 0.9; // Слегка замедляем для учебного фокуса
             window.speechSynthesis.speak(utterance);
         }
 
@@ -296,16 +306,16 @@
             document.getElementById(inputId).addEventListener('keypress', function (e) {
                 if (e.key === 'Enter') {
                     const btnId = mode === 'typing' ? 'checkBtn' : 'checkDictationBtn';
-                    if (document.getElementById(btnId).innerText === 'Check Answer') {
+                    const btn = document.getElementById(btnId);
+                    if (btn.innerText === 'Check Answer') {
                         checkAnswer(mode);
                     } else {
-                        nextWord(document.getElementById(inputId).classList.contains('bg-green-50'));
+                        btn.click();
                     }
                 }
             });
         }
 
-        // Проверка ответа
         function checkAnswer(mode) {
             const inputId = mode === 'typing' ? 'typingInput' : 'dictationInput';
             const feedbackId = mode === 'typing' ? 'typingFeedback' : 'dictationFeedback';
@@ -346,7 +356,8 @@
         }
 
         function nextWord(wasCorrect) {
-            if (sessionSettings.mode === 'flashcards' && wasCorrect) {
+            // Теперь проверяем фактический режим карточки (currentMode), а не глобальный конфиг
+            if (currentMode === 'flashcards' && wasCorrect) {
                 correctAnswers++;
             }
             currentIndex++;
@@ -354,6 +365,7 @@
         }
 
         function showResults() {
+            window.speechSynthesis.cancel();
             document.getElementById('sessionContainer').classList.add('hidden');
             document.getElementById('bottomHint').classList.add('hidden');
             
