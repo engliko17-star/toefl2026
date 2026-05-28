@@ -8,7 +8,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght=400;500;600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
     </style>
 </head>
@@ -46,7 +46,7 @@
 
             <div class="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
                 <div class="flex items-center space-x-4 mb-3">
-                    <button id="playBtn" class="w-12 h-12 shrink-0 rounded-full bg-purple-600 text-white flex items-center justify-center hover:bg-purple-700 transition shadow-md shadow-purple-500/30 flex items-center justify-center">
+                    <button id="playBtn" class="w-12 h-12 shrink-0 rounded-full bg-purple-600 text-white hover:bg-purple-700 transition shadow-md shadow-purple-500/30 flex items-center justify-center">
                         <span id="playIconContainer" class="flex items-center justify-center">
                             <i data-lucide="play" class="w-5 h-5 ml-1"></i>
                         </span>
@@ -95,11 +95,11 @@
         const currentSet = urlParams.get('set') || 1;
         document.getElementById('setNumberDisplay').innerText = `#${currentSet}`;
 
-        // 2. Моковые данные
+        // 2. Моковые данные (ЗАМЕНЕНО НА НАДЕЖНЫЕ MP3)
         const mockQuestions = [
             {
                 id: 101,
-                audio_url: 'https://actions.google.com/sounds/v1/alarms/beep_short.ogg',
+                audio_url: 'https://s3.amazonaws.com/freecodecamp/drums/Heater-1.mp3', 
                 speaker_image: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=600',
                 options: [
                     "It depends on the traffic.",
@@ -111,7 +111,7 @@
             },
             {
                 id: 102,
-                audio_url: 'https://actions.google.com/sounds/v1/water/water_drop.ogg',
+                audio_url: 'https://s3.amazonaws.com/freecodecamp/drums/Heater-2.mp3',
                 speaker_image: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=600',
                 options: [
                     "It usually takes about 20 minutes by bus.",
@@ -123,7 +123,7 @@
             },
             {
                 id: 103,
-                audio_url: 'https://actions.google.com/sounds/v1/doors/wood_door_open.ogg',
+                audio_url: 'https://s3.amazonaws.com/freecodecamp/drums/Heater-3.mp3',
                 speaker_image: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&q=80&w=600',
                 options: [
                     "Sure, I can help you review your essay.",
@@ -233,11 +233,24 @@
             nextBtn.className = 'px-8 py-3.5 rounded-xl text-sm font-bold transition-all flex items-center bg-slate-900 hover:bg-purple-600 text-white shadow-md cursor-pointer';
         }
 
-        // 6. Управление аудио
+        // 6. Управление аудио с защитой от сбоев
         playBtn.addEventListener('click', () => {
             if (audioEl.paused) {
-                audioEl.play();
-                setPlayIcon('pause');
+                const playPromise = audioEl.play();
+                
+                if (playPromise !== undefined) {
+                    playPromise.then(() => {
+                        setPlayIcon('pause');
+                    }).catch(error => {
+                        console.error("Ошибка воспроизведения аудио:", error);
+                        // Если аудио не может проиграться - РАЗБЛОКИРУЕМ ОТВЕТЫ, чтобы можно было продолжить тест
+                        optionsList.classList.remove('opacity-25', 'pointer-events-none');
+                        optionsList.classList.add('opacity-100');
+                        setPlayIcon('play');
+                    });
+                } else {
+                    setPlayIcon('pause');
+                }
             } else {
                 audioEl.pause();
                 setPlayIcon('play');
@@ -250,7 +263,7 @@
             progressBar.style.width = `${(current / duration) * 100}%`;
             
             const formatTime = (time) => {
-                if(isNaN(time)) return '0:00';
+                if(isNaN(time) || !isFinite(time)) return '0:00';
                 const min = Math.floor(time / 60);
                 const sec = Math.floor(time % 60);
                 return `${min}:${sec < 10 ? '0' : ''}${sec}`;
@@ -260,7 +273,7 @@
             durationTimeEl.innerText = formatTime(duration);
         });
 
-        // Когда трек закончился
+        // Когда трек закончился - проявляем ответы!
         audioEl.addEventListener('ended', () => {
             setPlayIcon('play');
             optionsList.classList.remove('opacity-25', 'pointer-events-none');
