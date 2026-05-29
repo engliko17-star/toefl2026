@@ -35,7 +35,7 @@
 
     <main class="flex-1 max-w-6xl w-full mx-auto p-6 md:p-10 flex flex-col md:flex-row gap-8 md:gap-12 items-start">
         
-        <div class="w-full md:w-1/2 flex flex-col shrink-0 sticky top-[100px]">
+        <div class="w-full md:w-1/2 flex flex-col shrink-0 static md:sticky top-[100px]">
             <div class="relative w-full aspect-square md:aspect-[4/3] rounded-3xl overflow-hidden shadow-sm border border-gray-100 bg-white mb-6">
                 <img id="speakerImage" src="" alt="Speaker" class="w-full h-full object-cover transition-opacity duration-300">
                 <div class="absolute bottom-4 left-4 bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/20 shadow-sm flex items-center">
@@ -127,6 +127,8 @@
 
         const urlParams = new URLSearchParams(window.location.search);
         const currentSet = urlParams.get('set') || 1;
+        const isReviewMode = urlParams.get('review') === 'true'; // Проверяем режим ревью
+        
         document.getElementById('setNumberDisplay').innerText = `#${currentSet}`;
 
         const mockQuestions = [
@@ -296,6 +298,33 @@
             }
         });
 
+        // Функция ЗАГРУЗКИ РЕЖИМА REVIEW ИЗ БАЗЫ ДАННЫХ
+        async function initReviewMode() {
+            const userId = '00000000-0000-0000-0000-000000000000';
+            
+            // Вытягиваем данные по конкретному юзеру и сету
+            const { data, error } = await supabaseClient
+                .from('response_results')
+                .select('*')
+                .eq('user_id', userId)
+                .eq('set_number', parseInt(currentSet))
+                .maybeSingle();
+
+            if (error) {
+                console.error("Error loading review:", error);
+                loadQuestion(0); // В случае ошибки просто даем пройти тест
+                return;
+            }
+
+            if (data) {
+                userAnswers = data.user_answers;
+                showResultsUI(data.score_earned, data.score_total, Math.round((data.score_earned / data.score_total) * 100));
+            } else {
+                // Если результатов в базе нет, сбрасываем на прохождение теста
+                loadQuestion(0);
+            }
+        }
+
         function finishTest() {
             nextBtn.disabled = true;
             nextBtn.innerHTML = `<div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div> Saving...`;
@@ -307,13 +336,15 @@
             showResultsUI(scoreEarned, scoreTotal, accuracy);
 
             const userId = '00000000-0000-0000-0000-000000000000';
-            supabaseClient.from('response_results').insert([{
+            
+            // ИСПРАВЛЕНО: .upsert вместо .insert позволяет ПЕРЕСДАВАТЬ тест сколько угодно раз!
+            supabaseClient.from('response_results').upsert([{
                 user_id: userId,
                 set_number: parseInt(currentSet),
                 score_earned: scoreEarned,
                 score_total: scoreTotal,
                 user_answers: userAnswers
-            }]).catch(err => console.error("Error saving DB:", err));
+            }], { onConflict: 'user_id,set_number' }).catch(err => console.error("Error saving DB:", err));
         }
 
         function showResultsUI(score, total, accuracy) {
@@ -351,18 +382,15 @@
                     document.querySelectorAll('#reviewList > div').forEach(c => c.classList.remove('border-purple-400', 'ring-2', 'ring-purple-100'));
                     card.classList.add('border-purple-400', 'ring-2', 'ring-purple-100');
                     
-                    // Скролл к плееру на мобильных
                     if(window.innerWidth < 768) {
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                     }
                 };
 
-                // ГЕНЕРИРУЕМ ВСЕ 4 ВАРИАНТА ОТВЕТА
                 let optionsHTML = '<div class="space-y-2 mt-4">';
                 
                 q.options.forEach((optText, optIndex) => {
                     if (optIndex === q.correct_answer) {
-                        // Правильный ответ (Всегда зеленый)
                         optionsHTML += `
                             <div class="flex items-start bg-green-50 p-2.5 rounded-lg border border-green-200">
                                 <i data-lucide="check" class="w-4 h-4 text-green-600 mt-0.5 mr-2 shrink-0"></i>
@@ -370,7 +398,6 @@
                             </div>
                         `;
                     } else if (optIndex === ans.selected_index && !isCorrect) {
-                        // Выбранный, но неверный (Красный)
                         optionsHTML += `
                             <div class="flex items-start bg-red-50 p-2.5 rounded-lg border border-red-200">
                                 <i data-lucide="x" class="w-4 h-4 text-red-500 mt-0.5 mr-2 shrink-0"></i>
@@ -378,10 +405,10 @@
                             </div>
                         `;
                     } else {
-                        // Остальные невыбранные (Серые, нейтральные)
                         optionsHTML += `
                             <div class="flex items-start bg-gray-50 p-2.5 rounded-lg border border-gray-100 opacity-60">
-                                <div class="w-4 h-4 mr-2 shrink-0"></div> <span class="text-sm text-gray-500">${optText}</span>
+                                <div class="w-4 h-4 mr-2 shrink-0"></div>
+                                <span class="text-sm text-gray-500">${optText}</span>
                             </div>
                         `;
                     }
@@ -405,10 +432,19 @@
             });
             
             lucide.createIcons();
+
+            // Автоматически подгружаем медиа самого первого вопроса на экран разбора
+            if(reviewList.children.length > 0) {
+                reviewList.children[0].click();
+            }
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            loadQuestion(0);
+            if (isReviewMode) {
+                initReviewMode(); // Запускаем режим просмотра ошибок
+            } else {
+                loadQuestion(0); // Обычный запуск теста
+            }
         });
     </script>
 </body>
