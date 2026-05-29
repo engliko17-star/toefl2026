@@ -8,8 +8,12 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght=400;500;600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        
+        /* Убираем стандартный маркер у тега details (стрелочку) */
+        details > summary { list-style: none; }
+        details > summary::-webkit-details-marker { display: none; }
     </style>
 </head>
 <body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex flex-col">
@@ -131,11 +135,13 @@
         
         document.getElementById('setNumberDisplay').innerText = `#${currentSet}`;
 
+        // ДОБАВЛЕНО: поле transcript для каждого вопроса
         const mockQuestions = [
             {
                 id: 101,
                 audio_url: 'https://s3.amazonaws.com/freecodecamp/drums/Heater-1.mp3', 
                 speaker_image: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=600',
+                transcript: "Excuse me, do you know how long the wait is for a table?",
                 options: ["It depends on the traffic.", "The hotel is close to the beach.", "The drive was very scenic.", "I waited for an hour to get in."],
                 correct_answer: 0
             },
@@ -143,6 +149,7 @@
                 id: 102,
                 audio_url: 'https://s3.amazonaws.com/freecodecamp/drums/Heater-2.mp3',
                 speaker_image: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=600',
+                transcript: "How long does it usually take to commute to the campus?",
                 options: ["It usually takes about 20 minutes by bus.", "The dining hall opens at 7 AM.", "I haven't chosen my major yet.", "Sorry, I don't have a spare pen."],
                 correct_answer: 0
             },
@@ -150,6 +157,7 @@
                 id: 103,
                 audio_url: 'https://s3.amazonaws.com/freecodecamp/drums/Heater-3.mp3',
                 speaker_image: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&q=80&w=600',
+                transcript: "Are you going to the study group meeting tonight?",
                 options: ["Sure, I can help you review your essay.", "The lab is closed on weekends.", "He said the exam will cover chapters 1 to 4.", "I'd love to go, but I have to study."],
                 correct_answer: 3
             }
@@ -322,7 +330,6 @@
             }
         }
 
-        // УЛЬТРА-НАДЕЖНОЕ СОХРАНЕНИЕ: Сначала проверяем наличие, затем пишем нужный метод
         async function finishTest() {
             nextBtn.disabled = true;
             nextBtn.innerHTML = `<div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div> Saving...`;
@@ -334,7 +341,6 @@
             const userId = '00000000-0000-0000-0000-000000000000';
             
             try {
-                // 1. Проверяем, существует ли уже строчка для этого юзера и сета
                 const { data: existingRow, error: checkError } = await supabaseClient
                     .from('response_results')
                     .select('id')
@@ -347,7 +353,6 @@
                 let saveResult;
 
                 if (existingRow) {
-                    // 2. Если запись есть — обновляем её по конкретному ID записи
                     saveResult = await supabaseClient
                         .from('response_results')
                         .update({
@@ -357,7 +362,6 @@
                         })
                         .eq('id', existingRow.id);
                 } else {
-                    // 3. Если записи нет — создаем новую
                     saveResult = await supabaseClient
                         .from('response_results')
                         .insert([{
@@ -369,7 +373,6 @@
                         }]);
                 }
 
-                // Перехватываем внутренние скрытые ошибки от самого Supabase
                 if (saveResult.error) throw saveResult.error;
                 
                 console.log("Database updated successfully!");
@@ -379,7 +382,6 @@
                 alert("Supabase Error: " + dbError.message + "\n\nCheck RLS policies or Table schema.");
             }
 
-            // Рендерим UI результатов в любом случае, чтобы страница не зависала для студента
             showResultsUI(scoreEarned, scoreTotal, accuracy);
         }
 
@@ -406,9 +408,12 @@
                 const isCorrect = ans.is_correct;
                 
                 const card = document.createElement('div');
-                card.className = 'bg-white p-4 rounded-xl border border-gray-100 shadow-sm transition hover:border-gray-300 cursor-pointer group';
+                card.className = 'bg-white p-4 rounded-xl border border-gray-100 shadow-sm transition hover:border-gray-300 cursor-pointer group flex flex-col';
                 
-                card.onclick = () => {
+                card.onclick = (e) => {
+                    // Игнорируем клики по аккордеону расшифровки, чтобы карточка не переключала аудио, если ученик просто открывает текст
+                    if (e.target.closest('details')) return;
+
                     document.getElementById('speakerImage').src = q.speaker_image;
                     audioEl.src = q.audio_url;
                     audioEl.load();
@@ -452,16 +457,35 @@
                 
                 optionsHTML += '</div>';
 
+                // ДОБАВЛЕНО: Блок аккордеона с транскриптом (теги details / summary)
+                let transcriptHTML = '';
+                if (q.transcript) {
+                    transcriptHTML = `
+                        <div class="mt-4 pt-4 border-t border-gray-50">
+                            <details class="group/details">
+                                <summary class="text-xs font-bold text-gray-400 uppercase tracking-wider cursor-pointer flex items-center hover:text-purple-600 transition outline-none">
+                                    <i data-lucide="file-text" class="w-3.5 h-3.5 mr-1.5"></i> Audio Transcript
+                                    <i data-lucide="chevron-down" class="w-4 h-4 ml-auto group-open/details:rotate-180 transition-transform"></i>
+                                </summary>
+                                <div class="mt-3 text-sm text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-200 italic leading-relaxed">
+                                    "${q.transcript}"
+                                </div>
+                            </details>
+                        </div>
+                    `;
+                }
+
                 card.innerHTML = `
                     <div class="flex items-center justify-between mb-2">
                         <span class="text-xs font-extrabold tracking-wide ${isCorrect ? 'text-green-500' : 'text-red-500'}">
                             QUESTION ${index + 1} &mdash; ${isCorrect ? 'CORRECT' : 'INCORRECT'}
                         </span>
-                        <button class="text-[10px] bg-gray-100 text-gray-500 px-2.5 py-1.5 rounded-md font-bold group-hover:bg-purple-100 group-hover:text-purple-600 transition flex items-center">
-                            <i data-lucide="play" class="w-3 h-3 mr-1"></i> Listen Again
+                        <button class="text-[10px] bg-gray-100 text-gray-500 px-2.5 py-1.5 rounded-md font-bold hover:bg-purple-100 hover:text-purple-600 transition flex items-center">
+                            <i data-lucide="play" class="w-3 h-3 mr-1"></i> Listen
                         </button>
                     </div>
                     ${optionsHTML}
+                    ${transcriptHTML}
                 `;
                 
                 reviewList.appendChild(card);
@@ -484,3 +508,4 @@
     </script>
 </body>
 </html>
+
