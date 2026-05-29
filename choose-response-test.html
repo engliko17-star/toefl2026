@@ -8,7 +8,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght=400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
     </style>
 </head>
@@ -127,7 +127,7 @@
 
         const urlParams = new URLSearchParams(window.location.search);
         const currentSet = urlParams.get('set') || 1;
-        const isReviewMode = urlParams.get('review') === 'true'; // Проверяем режим ревью
+        const isReviewMode = urlParams.get('review') === 'true'; 
         
         document.getElementById('setNumberDisplay').innerText = `#${currentSet}`;
 
@@ -298,11 +298,9 @@
             }
         });
 
-        // Функция ЗАГРУЗКИ РЕЖИМА REVIEW ИЗ БАЗЫ ДАННЫХ
         async function initReviewMode() {
             const userId = '00000000-0000-0000-0000-000000000000';
             
-            // Вытягиваем данные по конкретному юзеру и сету
             const { data, error } = await supabaseClient
                 .from('response_results')
                 .select('*')
@@ -312,7 +310,7 @@
 
             if (error) {
                 console.error("Error loading review:", error);
-                loadQuestion(0); // В случае ошибки просто даем пройти тест
+                loadQuestion(0);
                 return;
             }
 
@@ -320,12 +318,12 @@
                 userAnswers = data.user_answers;
                 showResultsUI(data.score_earned, data.score_total, Math.round((data.score_earned / data.score_total) * 100));
             } else {
-                // Если результатов в базе нет, сбрасываем на прохождение теста
                 loadQuestion(0);
             }
         }
 
-        function finishTest() {
+        // УЛЬТРА-НАДЕЖНОЕ СОХРАНЕНИЕ: Сначала проверяем наличие, затем пишем нужный метод
+        async function finishTest() {
             nextBtn.disabled = true;
             nextBtn.innerHTML = `<div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div> Saving...`;
 
@@ -333,18 +331,56 @@
             const scoreTotal = mockQuestions.length;
             const accuracy = Math.round((scoreEarned / scoreTotal) * 100);
 
-            showResultsUI(scoreEarned, scoreTotal, accuracy);
-
             const userId = '00000000-0000-0000-0000-000000000000';
             
-            // ИСПРАВЛЕНО: .upsert вместо .insert позволяет ПЕРЕСДАВАТЬ тест сколько угодно раз!
-            supabaseClient.from('response_results').upsert([{
-                user_id: userId,
-                set_number: parseInt(currentSet),
-                score_earned: scoreEarned,
-                score_total: scoreTotal,
-                user_answers: userAnswers
-            }], { onConflict: 'user_id,set_number' }).catch(err => console.error("Error saving DB:", err));
+            try {
+                // 1. Проверяем, существует ли уже строчка для этого юзера и сета
+                const { data: existingRow, error: checkError } = await supabaseClient
+                    .from('response_results')
+                    .select('id')
+                    .eq('user_id', userId)
+                    .eq('set_number', parseInt(currentSet))
+                    .maybeSingle();
+
+                if (checkError) throw checkError;
+
+                let saveResult;
+
+                if (existingRow) {
+                    // 2. Если запись есть — обновляем её по конкретному ID записи
+                    saveResult = await supabaseClient
+                        .from('response_results')
+                        .update({
+                            score_earned: scoreEarned,
+                            score_total: scoreTotal,
+                            user_answers: userAnswers
+                        })
+                        .eq('id', existingRow.id);
+                } else {
+                    // 3. Если записи нет — создаем новую
+                    saveResult = await supabaseClient
+                        .from('response_results')
+                        .insert([{
+                            user_id: userId,
+                            set_number: parseInt(currentSet),
+                            score_earned: scoreEarned,
+                            score_total: scoreTotal,
+                            user_answers: userAnswers
+                        }]);
+                }
+
+                // Перехватываем внутренние скрытые ошибки от самого Supabase
+                if (saveResult.error) throw saveResult.error;
+                
+                console.log("Database updated successfully!");
+
+            } catch (dbError) {
+                console.error("CRITICAL DATABASE ERROR:", dbError);
+                alert("Supabase Error: " + dbError.message + "\n\nCheck RLS policies or Table schema.");
+            }
+
+            // Рендерим UI результатов в любом случае, чтобы страница не зависала для студента
+            showResultsUI(scoreEarned, scoreTotal, accuracy);
         }
 
         function showResultsUI(score, total, accuracy) {
@@ -433,7 +469,6 @@
             
             lucide.createIcons();
 
-            // Автоматически подгружаем медиа самого первого вопроса на экран разбора
             if(reviewList.children.length > 0) {
                 reviewList.children[0].click();
             }
@@ -441,12 +476,11 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             if (isReviewMode) {
-                initReviewMode(); // Запускаем режим просмотра ошибок
+                initReviewMode();
             } else {
-                loadQuestion(0); // Обычный запуск теста
+                loadQuestion(0);
             }
         });
     </script>
 </body>
 </html>
-
