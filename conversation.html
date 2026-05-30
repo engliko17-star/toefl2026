@@ -6,6 +6,7 @@
     <title>Conversation Practice — TOEFL</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
@@ -150,66 +151,44 @@
     <script>
         lucide.createIcons();
 
-        // --- MOCK DATA ---
-        const mockTests = [
-            {
-                id: "conv-1",
-                category: "DAILY LIFE",
-                title: "Housing Office Transfer",
-                questionCount: 4,
-                audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
-                imageUrl: "https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&q=80&w=800",
-                transcript: "Student: Hi, I'm here because I need to request a room transfer for next semester.\n\nHousing Officer: Okay, let me pull up your file. What seems to be the issue with your current dorm?\n\nStudent: Well, it's not the dorm itself. I'm in Miller Hall, which is fine, but my schedule has changed drastically. All my advanced biology labs are on the completely opposite side of campus. I'm spending over an hour just walking back and forth every day.\n\nHousing Officer: I see. We do prioritize transfers for academic reasons, but North Campus dorms are completely full right now. The only opening we have is a single in the old quad, but it costs $300 more per semester.\n\nStudent: Oh... I can't really afford a price increase right now. Is there a waitlist for the regular doubles on North Campus?\n\nHousing Officer: Yes, I can add you to it. Usually, a few spots open up after midterms when some students decide to move off-campus.",
-                questions: [
-                    {
-                        id: "q1", type: "main idea",
-                        text: "Why does the student go to the housing office?",
-                        options: [
-                            "To complain about her roommate.",
-                            "To request a transfer to a different dormitory.",
-                            "To pay a fee for a single room.",
-                            "To ask for directions to the biology lab."
-                        ], correctIndex: 1, explanation: "The student explicitly states in her first line: 'I'm here because I need to request a room transfer for next semester.'"
-                    },
-                    {
-                        id: "q2", type: "factual information",
-                        text: "Why is the student unhappy with her current room?",
-                        options: [
-                            "It is too expensive.",
-                            "It is too noisy to study.",
-                            "It is located too far from her classes.",
-                            "It is located in an old building."
-                        ], correctIndex: 2, explanation: "She mentions that her advanced biology labs are on the completely opposite side of campus, causing her to spend an hour walking."
-                    },
-                    {
-                        id: "q3", type: "factual information",
-                        text: "What is the problem with the available room the officer offers?",
-                        options: [
-                            "It is a shared room.",
-                            "It costs more money.",
-                            "It is in Miller Hall.",
-                            "It is only available next year."
-                        ], correctIndex: 1, explanation: "The housing officer says the only opening is a single in the old quad, 'but it costs $300 more per semester.'"
-                    },
-                    {
-                        id: "q4", type: "inference",
-                        text: "What will the student most likely do next?",
-                        options: [
-                            "Pay the extra $300 for the single room.",
-                            "Move off-campus immediately.",
-                            "Add her name to the waitlist.",
-                            "Drop her advanced biology labs."
-                        ], correctIndex: 2, explanation: "Because she cannot afford the price increase, and the officer offers the waitlist as an alternative, it is highly inferred she will choose to get on the waitlist."
-                    }
-                ]
-            }
-        ];
+        // --- НАСТРОЙКА SUPABASE ---
+        const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
+        
+        const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+        let mockTests = [];
         let currentTest = null;
         let currentQuestionIndex = 0;
         let userAnswers = {};
 
-        window.onload = () => { showList(); };
+        window.onload = async () => { 
+            await loadTestsFromSupabase();
+        };
+
+        // Загружаем данные из правильных таблиц
+        async function loadTestsFromSupabase() {
+            const grid = document.getElementById('testsGrid');
+            grid.innerHTML = '<div class="text-gray-400 text-sm col-span-full text-center py-12">Loading exercises from Supabase...</div>';
+
+            const { data, error } = await _supabase
+                .from('conversation_tests')
+                .select(`
+                    id, category, title, audio_url, image_url, transcript,
+                    questions:conversation_questions (
+                        id, type, text, options, correct_index, explanation
+                    )
+                `);
+
+            if (error) {
+                console.error('Error fetching data:', error);
+                grid.innerHTML = '<div class="text-rose-500 text-sm col-span-full text-center py-12">Failed to load data. Check console.</div>';
+                return;
+            }
+
+            mockTests = data || [];
+            showList(); 
+        }
 
         function hideAllViews() {
             document.getElementById('view-list').classList.add('hidden');
@@ -227,6 +206,11 @@
             const grid = document.getElementById('testsGrid');
             grid.innerHTML = '';
 
+            if (mockTests.length === 0) {
+                grid.innerHTML = '<div class="text-gray-400 text-sm col-span-full text-center py-12">No tests available. Add some in Supabase!</div>';
+                return;
+            }
+
             mockTests.forEach((test, index) => {
                 const savedResult = JSON.parse(localStorage.getItem(`toefl_result_${test.id}`));
                 const isCompleted = !!savedResult;
@@ -235,6 +219,8 @@
                 const circumference = 2 * Math.PI * 18; 
                 const strokeDashoffset = isCompleted ? circumference - (scorePct / 100) * circumference : circumference;
                 let strokeColor = scorePct >= 80 ? '#10b981' : (scorePct >= 50 ? '#f59e0b' : '#f43f5e');
+                
+                const questionCount = test.questions ? test.questions.length : 0;
 
                 let cardHTML = `
                     <div class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col transition hover:shadow-md">
@@ -254,7 +240,7 @@
                         </div>
                         
                         <h3 class="text-xl font-bold text-slate-900 mb-1.5">${test.title}</h3>
-                        <p class="text-sm text-gray-500 mb-6 flex-1">${test.questionCount} Questions</p>
+                        <p class="text-sm text-gray-500 mb-6 flex-1">${questionCount} Questions</p>
                         
                         ${isCompleted ? `
                             <div class="flex justify-between items-center mb-4 px-1">
@@ -294,9 +280,9 @@
             document.getElementById('test-questions-phase').classList.add('hidden');
             document.getElementById('test-questions-phase').classList.remove('flex');
             
-            document.getElementById('testImageMain').src = currentTest.imageUrl;
+            document.getElementById('testImageMain').src = currentTest.image_url || '';
             const audioPlayer = document.getElementById('activeAudioPlayer');
-            audioPlayer.src = currentTest.audioUrl;
+            audioPlayer.src = currentTest.audio_url;
             
             audioPlayer.onended = () => { transitionToQuestions(); };
         }
@@ -310,14 +296,13 @@
             questionsPhase.classList.remove('hidden');
             questionsPhase.classList.add('flex');
 
-            document.getElementById('testImageSide').src = currentTest.imageUrl;
+            document.getElementById('testImageSide').src = currentTest.image_url || '';
 
             currentQuestionIndex = 0;
             userAnswers = {};
             renderSingleQuestion();
         }
 
-        // ОБНОВЛЕННАЯ ФУНКЦИЯ: Отрисовка вопроса (без подсказки типа и со счетчиком справа)
         function renderSingleQuestion() {
             const q = currentTest.questions[currentQuestionIndex];
             const qContainer = document.getElementById('questionsContainer');
@@ -383,7 +368,7 @@
                 if (!categoryStats[q.type]) categoryStats[q.type] = { earned: 0, total: 0 };
                 categoryStats[q.type].total += 1;
 
-                if (userAnswers[q.id] === q.correctIndex) {
+                if (userAnswers[q.id] === q.correct_index) {
                     scoreEarned += 1;
                     categoryStats[q.type].earned += 1;
                 }
@@ -400,7 +385,6 @@
             showResults(currentTest.id);
         }
 
-        // ОБНОВЛЕННАЯ ФУНКЦИЯ: Показ результатов (с красивым бейджем типа вопроса)
         function showResults(testId) {
             currentTest = mockTests.find(t => t.id === testId);
             const savedResult = JSON.parse(localStorage.getItem(`toefl_result_${testId}`));
@@ -412,23 +396,23 @@
 
             document.getElementById('resultScore').innerText = `${savedResult.scoreEarned} / ${savedResult.scoreTotal}`;
             
-            document.getElementById('reviewImage').src = currentTest.imageUrl;
-            document.getElementById('reviewAudioPlayer').src = currentTest.audioUrl;
-            document.getElementById('reviewTranscript').innerText = currentTest.transcript;
+            document.getElementById('reviewImage').src = currentTest.image_url || '';
+            document.getElementById('reviewAudioPlayer').src = currentTest.audio_url;
+            document.getElementById('reviewTranscript').innerText = currentTest.transcript || '';
 
             const container = document.getElementById('reviewQuestionsContainer');
             container.innerHTML = '';
 
             currentTest.questions.forEach((q, index) => {
                 const userAnsIdx = savedResult.userAnswers[q.id];
-                const isCorrect = userAnsIdx === q.correctIndex;
+                const isCorrect = userAnsIdx === q.correct_index;
                 
                 let optionsHTML = '';
                 q.options.forEach((opt, optIndex) => {
                     let styleClass = "border-gray-100 bg-white text-gray-500";
                     let icon = `<div class="w-4 h-4 rounded-full border border-gray-300 shrink-0"></div>`;
                     
-                    if (optIndex === q.correctIndex) {
+                    if (optIndex === q.correct_index) {
                         styleClass = "border-emerald-200 bg-emerald-50 text-emerald-800 font-medium";
                         icon = `<i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500 shrink-0"></i>`;
                     } else if (optIndex === userAnsIdx && !isCorrect) {
@@ -463,7 +447,7 @@
                         <div class="space-y-2 pl-9 mb-4">${optionsHTML}</div>
                         <div class="ml-9 bg-slate-50 p-4 rounded-xl border border-slate-100 flex gap-3">
                             <i data-lucide="lightbulb" class="w-4 h-4 text-amber-500 shrink-0 mt-0.5"></i>
-                            <p class="text-xs text-slate-600 leading-relaxed">${q.explanation}</p>
+                            <p class="text-xs text-slate-600 leading-relaxed">${q.explanation || 'No explanation provided.'}</p>
                         </div>
                     </div>
                 `;
