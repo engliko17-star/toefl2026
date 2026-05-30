@@ -53,7 +53,7 @@
                 
                 <div class="text-center">
                     <span class="text-sm text-gray-400">Don't have an account?</span>
-                    <button onclick="handleSignup()" class="text-sm font-bold text-indigo-600 hover:text-indigo-700 ml-1 transition">Sign Up</button>
+                    <button type="button" id="signupBtn" onclick="handleSignup()" class="text-sm font-bold text-indigo-600 hover:text-indigo-700 ml-1 transition">Sign Up</button>
                 </div>
             </div>
         </form>
@@ -62,11 +62,11 @@
     <script>
         lucide.createIcons();
 
-        // Проверяем, может пользователь уже залогинен? Если да — кидаем его сразу на главную
+        // Проверяем сессию при загрузке
         window.onload = async () => {
             const { data: { session } } = await _supabase.auth.getSession();
             if (session) {
-                window.location.href = 'index.html'; // Замени на нужную главную страницу
+                window.location.href = 'index.html';
             }
         };
 
@@ -74,13 +74,26 @@
             const errorDiv = document.getElementById('errorMsg');
             errorDiv.innerText = msg;
             errorDiv.classList.remove('hidden');
+            
+            // Сбрасываем текст на кнопках, если произошла ошибка
+            document.getElementById('loginText').innerText = "Sign In";
+            const signupBtn = document.getElementById('signupBtn');
+            if(signupBtn) {
+                signupBtn.innerText = "Sign Up";
+                signupBtn.disabled = false;
+            }
         }
 
         async function handleSignup() {
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
             
-            if(!email || !password) return showError("Please fill in both fields");
+            if(!email || !password) return showError("Please fill in both fields (min 6 chars for password)");
+
+            // Показываем процесс регистрации
+            const signupBtn = document.getElementById('signupBtn');
+            signupBtn.innerText = "Creating account...";
+            signupBtn.disabled = true;
 
             // Команда Supabase создать нового пользователя
             const { data, error } = await _supabase.auth.signUp({
@@ -91,7 +104,17 @@
             if (error) {
                 showError(error.message);
             } else {
-                window.location.href = 'index.html'; // Успешно зарегались — идем на главную
+                // Если регистрация успешна — логиним автоматически
+                const { error: loginError } = await _supabase.auth.signInWithPassword({
+                    email: email,
+                    password: password,
+                });
+                
+                if (loginError) {
+                    showError("Account created. Please sign in manually.");
+                } else {
+                    window.location.href = 'index.html';
+                }
             }
         }
 
@@ -104,7 +127,6 @@
             const btnText = document.getElementById('loginText');
             btnText.innerText = "Signing in...";
 
-            // Команда Supabase проверить логин/пароль
             const { data, error } = await _supabase.auth.signInWithPassword({
                 email: email,
                 password: password,
@@ -112,9 +134,8 @@
 
             if (error) {
                 showError("Invalid email or password.");
-                btnText.innerText = "Sign In";
             } else {
-                window.location.href = 'index.html'; // Успешно вошли — идем на главную
+                window.location.href = 'index.html';
             }
         }
     </script>
