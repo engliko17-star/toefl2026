@@ -56,24 +56,30 @@
         <a href="reading.html" class="flex flex-col items-center text-slate-900"><i data-lucide="book-text" class="w-5 h-5"></i><span class="text-[9px] mt-1 font-bold">Reading</span></a>
     </nav>
 
-    <script>
+     <script>
         lucide.createIcons();
 
         const testListContainer = document.getElementById('testList');
         const loadingMsg = document.getElementById('loadingMsg');
 
-        // Безопасная инициализация: создаем клиент, если auth.js еще не успел этого сделать
-        const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
-        
-        if (!window.supabaseClient) {
-            window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Умная и безопасная функция получения базы данных
+        function getDatabaseClient() {
+            // Вариант 1: Если auth.js создал обычную переменную supabaseClient
+            if (typeof supabaseClient !== 'undefined') return supabaseClient;
+            // Вариант 2: Если auth.js прикрепил её к window
+            if (typeof window !== 'undefined' && window.supabaseClient) return window.supabaseClient;
+            
+            // Вариант 3: Надежный запасной план (переменные спрятаны внутри функции и не вызовут конфликтов)
+            const fallbackUrl = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
+            const fallbackKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
+            return window.supabase.createClient(fallbackUrl, fallbackKey);
         }
-        const supabaseClient = window.supabaseClient;
 
+        // Получаем рабочего клиента БД
+        const db = getDatabaseClient();
         let currentUser = null;
 
-        // Инициализация с проверкой авторизации
+        // Инициализация страницы
         async function initPage() {
             try {
                 if (typeof requireAuth !== 'function') {
@@ -94,7 +100,7 @@
         async function resetCompleteWordsTest(id, title) {
             if (confirm(`Are you sure you want to reset the results for "${title}"?`)) {
                 try {
-                    const { error } = await supabaseClient
+                    const { error } = await db
                         .from('user_progress')
                         .delete()
                         .eq('task_id', id)
@@ -111,18 +117,18 @@
 
         async function loadTests() {
             try {
-                if (!supabaseClient) {
+                if (!db) {
                     throw new Error("Клиент Supabase не был инициализирован.");
                 }
 
-                const { data: tests, error: testsError } = await supabaseClient
+                const { data: tests, error: testsError } = await db
                     .from('complete_words_tasks')
                     .select('id, title, category, passage')
                     .order('id', { ascending: true });
 
                 if (testsError) throw new Error(testsError.message);
 
-                const { data: progressData, error: progressError } = await supabaseClient
+                const { data: progressData, error: progressError } = await db
                     .from('user_progress')
                     .select('task_id, score_percent')
                     .eq('user_id', currentUser.id);
