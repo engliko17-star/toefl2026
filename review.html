@@ -9,10 +9,9 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <script src="auth.js"></script>
-    <script src="words.js"></script>
 
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght=400;500;600;700&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
 
         /* Стили для 3D переворота карточки */
@@ -101,9 +100,8 @@
     </div>
 
     <script>
-        const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co'; 
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ'; 
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Не объявляем константы заново, а используем те, что уже есть в auth.js
+        const supabaseClient = window.supabaseClient || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         let reviewWords = [];
         let currentIndex = 0;
@@ -112,15 +110,14 @@
         let currentMode = ''; 
         let currentUser = null;
 
-        // Главная функция инициализации сессии
         window.addEventListener('DOMContentLoaded', async () => {
             lucide.createIcons();
             
-            // 1. Проверяем авторизацию (если нет, функция сама перекинет на login.html)
+            // 1. Проверяем сессию пользователя
             currentUser = await requireAuth();
             if (!currentUser) return; 
 
-            // 2. Берем НАСТРОЙКИ (какие списки выбраны) из localStorage
+            // 2. Получаем настройки текущего ревью (режим и выбранные списки)
             sessionSettings = JSON.parse(localStorage.getItem('reviewSettings'));
             
             if (!sessionSettings || !sessionSettings.lists || sessionSettings.lists.length === 0) {
@@ -129,7 +126,7 @@
                 return;
             }
 
-            // 3. Загружаем сами слова
+            // 3. Запускаем загрузку данных из БД
             await loadSessionWords();
         });
 
@@ -142,22 +139,21 @@
         }
 
         async function loadSessionWords() {
-            // 1. Качаем слова пользователя напрямую из базы Supabase
-            const { data, error } = await supabaseClient
+            // 1. Шаг первый: достаем связи слов и списков конкретно ЭТОГО пользователя
+            const { data: userVocabData, error: vocabError } = await supabaseClient
                 .from('user_vocabulary')
                 .select('word, list_name')
                 .eq('user_id', currentUser.id);
 
-            if (error) {
-                console.error("Ошибка при получении списков:", error);
-                alert("Не удалось загрузить списки слов. Попробуйте еще раз.");
-                window.location.href = 'vocabulary.html';
+            if (vocabError) {
+                console.error("Ошибка user_vocabulary:", vocabError);
+                alert("Не удалось загрузить списки слов из вашего личного кабинета.");
                 return;
             }
 
-            // 2. Отбираем только уникальные слова из тех списков, которые юзер выбрал
+            // Фильтруем, оставляя только слова из списков, выбранных галочками на прошлой странице
             let uniqueWordNames = new Set();
-            data.forEach(row => {
+            userVocabData.forEach(row => {
                 if (sessionSettings.lists.includes(row.list_name)) {
                     uniqueWordNames.add(row.word);
                 }
@@ -169,16 +165,22 @@
                 return;
             }
 
-            // 3. Фильтруем массив allWords (из файла words.js), чтобы достать дефиниции и примеры
-            if (typeof allWords === 'undefined' || allWords.length === 0) {
-                 alert("Общая база слов не загружена. Проверьте подключение words.js");
-                 return;
+            // 2. Шаг второй: качаем глобальные определения (дефиниции, примеры, части речи) из таблицы 'words'
+            const { data: wordsTableData, error: wordsError } = await supabaseClient
+                .from('words')
+                .select('*');
+
+            if (wordsError) {
+                console.error("Ошибка таблицы words:", wordsError);
+                alert("Ошибка загрузки данных из основной базы слов.");
+                return;
             }
 
-            reviewWords = allWords.filter(w => uniqueWordNames.has(w.word));
+            // Оставляем только те слова с дефинициями, которые есть в сессии у пользователя
+            reviewWords = wordsTableData.filter(w => uniqueWordNames.has(w.word));
             reviewWords = shuffle(reviewWords);
 
-            // Переключаем экраны
+            // Прячем лоадер, показываем интерфейс карточек
             document.getElementById('loader').classList.add('hidden');
             document.getElementById('sessionContainer').classList.remove('hidden');
 
@@ -192,7 +194,6 @@
         }
 
         function showWord() {
-            // Перед рендерингом нового слова сбрасываем текущую озвучку
             window.speechSynthesis.cancel();
 
             if (currentIndex >= reviewWords.length) {
@@ -206,7 +207,6 @@
 
             const currentWordObj = reviewWords[currentIndex];
             
-            // Вычисляем режим для текущей карточки
             currentMode = sessionSettings.mode;
             if (currentMode === 'mixed') {
                 const modes = ['flashcards', 'typing', 'dictation'];
@@ -323,6 +323,7 @@
             window.speechSynthesis.speak(utterance);
         }
 
+        // Переворот карточки
         function flipCard() {
             const cardInner = document.getElementById('cardInner');
             if (cardInner) cardInner.classList.toggle('card-flipped');
@@ -389,7 +390,6 @@
             showWord();
         }
 
-        // Вывод результатов тестирования
         function showResults() {
             window.speechSynthesis.cancel();
             document.getElementById('sessionContainer').classList.add('hidden');
@@ -400,11 +400,7 @@
             
             document.getElementById('resultsContainer').classList.remove('hidden');
             lucide.createIcons();
-
-            // В будущем: здесь можно добавить функцию отправки результата 
-            // в таблицу статистики в Supabase!
         }
     </script>
 </body>
 </html>
-
