@@ -7,6 +7,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <script src="auth.js"></script>
+
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
@@ -259,20 +262,43 @@
     <script>
         lucide.createIcons();
 
-        const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
-        
-        async function fetchAndRenderListeningAnalytics() {
+        // Безопасное подключение к базе данных без конфликта ключей
+        function getDatabaseClient() {
+            if (typeof supabaseClient !== 'undefined') return supabaseClient;
+            if (typeof window !== 'undefined' && window.supabaseClient) return window.supabaseClient;
+            const fallbackUrl = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
+            const fallbackKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
+            return window.supabase.createClient(fallbackUrl, fallbackKey);
+        }
+
+        const db = getDatabaseClient();
+
+        // Функция инициализации страницы с защитой
+        async function initPage() {
             try {
-                const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-                
-                const { data, error } = await supabaseClient
+                if (typeof window.requireAuth !== 'function') throw new Error("auth.js не найден");
+                const user = await window.requireAuth();
+                if (!user) return; // Если не авторизован, выполнение останавливается
+
+                await fetchAndRenderListeningAnalytics(user);
+            } catch (err) {
+                console.error("Auth initialization error:", err);
+            }
+        }
+
+        async function fetchAndRenderListeningAnalytics(user) {
+            try {
+                // ВАЖНО: Фильтруем данные только для текущего авторизованного пользователя
+                const { data, error } = await db
                     .from('listening_results')
-                    .select('*');
+                    .select('*')
+                    .eq('user_id', user.id); 
 
-                let workingData = data;
+                let workingData = data || [];
 
-                if (error || !data || data.length === 0) {
+                // Заглушка применяется ТОЛЬКО если таблица вообще не отвечает (ошибка соединения)
+                if (error) {
+                    console.error("Network or table error, showing mock data:", error);
                     workingData = [
                         { score_earned: 4, score_total: 5, category_stats: {"Gist-Content": {earned: 1, total: 1}, "Detail": {earned: 2, total: 3}, "Function": {earned: 1, total: 1}} },
                         { score_earned: 3, score_total: 6, category_stats: {"Detail": {earned: 1, total: 2}, "Attitude": {earned: 0, total: 2}, "Inference": {earned: 2, total: 2}} },
@@ -307,7 +333,9 @@
                 document.getElementById('scoreCirclePath').setAttribute('stroke-dasharray', `${overallAccuracy}, 100`);
 
                 let badge = document.getElementById('overallScoreBadge');
-                if (overallAccuracy >= 80) {
+                if (totalTracks === 0) {
+                    badge.innerText = "No data yet"; badge.className = "text-[10px] text-gray-400 font-bold";
+                } else if (overallAccuracy >= 80) {
                     badge.innerText = "Excellent"; badge.className = "text-[10px] text-teal-500 font-bold";
                 } else if (overallAccuracy >= 60) {
                     badge.innerText = "Good"; badge.className = "text-[10px] text-blue-500 font-bold";
@@ -336,49 +364,55 @@
                 const overviewContainer = document.getElementById('questionStatsContainer');
                 overviewContainer.innerHTML = ''; 
 
-                questionStatsArray.forEach(stat => {
-                    overviewContainer.innerHTML += `
-                        <div>
-                            <div class="flex justify-between text-xs mb-1.5 items-center">
-                                <div class="flex items-center">
-                                    <span class="w-1.5 h-1.5 rounded-full ${stat.color} mr-2"></span>
-                                    <span class="font-medium text-slate-700">${stat.name}</span>
+                if (questionStatsArray.length === 0) {
+                    overviewContainer.innerHTML = '<div class="text-center text-xs text-gray-400 py-4">Complete a task to see your breakdown.</div>';
+                } else {
+                    questionStatsArray.forEach(stat => {
+                        overviewContainer.innerHTML += `
+                            <div>
+                                <div class="flex justify-between text-xs mb-1.5 items-center">
+                                    <div class="flex items-center">
+                                        <span class="w-1.5 h-1.5 rounded-full ${stat.color} mr-2"></span>
+                                        <span class="font-medium text-slate-700">${stat.name}</span>
+                                    </div>
+                                    <span class="font-bold text-slate-900">${stat.score}%</span>
                                 </div>
-                                <span class="font-bold text-slate-900">${stat.score}%</span>
+                                <div class="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                                    <div class="${stat.color} h-1.5 rounded-full transition-all duration-1000 ease-out" style="width: 0%" data-target="${stat.score}%"></div>
+                                </div>
                             </div>
-                            <div class="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                                <div class="${stat.color} h-1.5 rounded-full transition-all duration-1000 ease-out" style="width: 0%" data-target="${stat.score}%"></div>
-                            </div>
-                        </div>
-                    `;
-                });
-
-                setTimeout(() => {
-                    document.querySelectorAll('#questionStatsContainer .transition-all').forEach(bar => {
-                        bar.style.width = bar.getAttribute('data-target');
+                        `;
                     });
-                }, 100);
+
+                    setTimeout(() => {
+                        document.querySelectorAll('#questionStatsContainer .transition-all').forEach(bar => {
+                            bar.style.width = bar.getAttribute('data-target');
+                        });
+                    }, 100);
+                }
 
                 questionStatsArray.sort((a, b) => a.score - b.score);
 
                 const weakContainer = document.getElementById('weakAreasContainer');
                 weakContainer.innerHTML = '';
                 
-                let worstTwo = questionStatsArray.slice(0, 2);
-                if (worstTwo.length > 0) {
+                if (questionStatsArray.length < 2) {
+                    weakContainer.innerHTML = '<span class="text-xs text-gray-400">Need more data</span>';
+                } else {
+                    let worstTwo = questionStatsArray.slice(0, 2);
                     worstTwo.forEach((stat, index) => {
                         let colorClass = index === 0 ? "bg-rose-50 text-rose-600 border-rose-100" : "bg-orange-50 text-orange-600 border-orange-100";
                         weakContainer.innerHTML += `<span class="px-2 py-1 ${colorClass} text-[10px] font-bold rounded-md border">${stat.name}</span>`;
                     });
-                } else {
-                    weakContainer.innerHTML = '<span class="text-xs text-gray-400">Need more data</span>';
                 }
 
                 const topStrengthsContainer = document.getElementById('topStrengthsContainer');
                 topStrengthsContainer.innerHTML = '<p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Top Strengths</p>';
                 
-                let topThree = questionStatsArray.slice(-3).reverse();
-                if (topThree.length > 0) {
+                if (questionStatsArray.length === 0) {
+                    topStrengthsContainer.innerHTML += '<span class="text-xs text-gray-400">Need more data</span>';
+                } else {
+                    let topThree = questionStatsArray.slice(-3).reverse();
                     topThree.forEach(stat => {
                         topStrengthsContainer.innerHTML += `
                             <div>
@@ -392,8 +426,6 @@
                             </div>
                         `;
                     });
-                } else {
-                    topStrengthsContainer.innerHTML += '<span class="text-xs text-gray-400">Need more data</span>';
                 }
 
             } catch (err) {
@@ -402,7 +434,8 @@
             }
         }
 
-        fetchAndRenderListeningAnalytics();
+        // Запускаем инициализацию с проверкой
+        initPage();
     </script>
 </body>
 </html>
