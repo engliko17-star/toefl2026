@@ -7,6 +7,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <script src="auth.js"></script>
+
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
@@ -251,18 +254,27 @@
     </nav>
 
     <script>
-        lucide.createIcons();
+        const supabaseClient = window.supabaseClient || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        let currentUser = null;
 
-        const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
+        window.addEventListener('DOMContentLoaded', async () => {
+            lucide.createIcons();
+            
+            // 1. Проверяем авторизацию
+            currentUser = await requireAuth();
+            if (!currentUser) return; 
+
+            // 2. Загружаем персональную аналитику
+            await fetchAndRenderAnalytics();
+        });
         
         async function fetchAndRenderAnalytics() {
             try {
-                const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-                
+                // ДОБАВЛЕН ФИЛЬТР ПО ТЕКУЩЕМУ ПОЛЬЗОВАТЕЛЮ: .eq('user_id', currentUser.id)
                 const { data, error } = await supabaseClient
                     .from('reading_results')
-                    .select('*');
+                    .select('*')
+                    .eq('user_id', currentUser.id);
 
                 if (error) throw error;
 
@@ -438,8 +450,6 @@
                 document.getElementById('questionStatsContainer').innerHTML = '<div class="text-xs text-red-500">Error loading analytics data.</div>';
             }
         }
-
-        fetchAndRenderAnalytics();
     </script>
 </body>
 </html>
