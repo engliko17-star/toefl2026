@@ -8,6 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="auth.js"></script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -69,13 +70,34 @@
         }
         const supabaseClient = window.supabaseClient;
 
+        let currentUser = null;
+
+        // Инициализация с проверкой авторизации
+        async function initPage() {
+            try {
+                if (typeof requireAuth !== 'function') {
+                    throw new Error("Функция requireAuth не найдена. Проверьте auth.js");
+                }
+                currentUser = await requireAuth();
+                if (currentUser) {
+                    await loadTests();
+                }
+            } catch (err) {
+                console.error("Initialization error:", err);
+                if (loadingMsg) {
+                    loadingMsg.innerHTML = `<span class="text-red-600 font-bold">Initialization Error:</span> ${err.message}`;
+                }
+            }
+        }
+
         async function resetCompleteWordsTest(id, title) {
             if (confirm(`Are you sure you want to reset the results for "${title}"?`)) {
                 try {
                     const { error } = await supabaseClient
                         .from('user_progress')
                         .delete()
-                        .eq('task_id', id);
+                        .eq('task_id', id)
+                        .eq('user_id', currentUser.id);
 
                     if (error) throw error;
                     
@@ -101,7 +123,8 @@
 
                 const { data: progressData, error: progressError } = await supabaseClient
                     .from('user_progress')
-                    .select('task_id, score_percent');
+                    .select('task_id, score_percent')
+                    .eq('user_id', currentUser.id);
 
                 if (progressError) throw new Error(progressError.message);
 
@@ -201,13 +224,15 @@
                 lucide.createIcons();
 
             } catch (err) {
+                console.error("Load tests error:", err);
                 if (loadingMsg) {
                     loadingMsg.innerHTML = `<span class="text-red-600 font-bold">System Error:</span> ${err.message}`;
                 }
             }
         }
 
-        loadTests();
+        initPage();
     </script>
 </body>
 </html>
+
