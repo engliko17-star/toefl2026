@@ -7,6 +7,9 @@
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <script src="auth.js"></script>
+
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
@@ -125,11 +128,33 @@
         const taskId = urlParams.get('id');
         let currentTaskTitle = ""; 
 
-        const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
-        
-        // Исправленное имя переменной
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // 1. Умная и безопасная функция получения базы данных (как в предыдущем файле)
+        function getDatabaseClient() {
+            if (typeof supabaseClient !== 'undefined') return supabaseClient;
+            if (typeof window !== 'undefined' && window.supabaseClient) return window.supabaseClient;
+            
+            const fallbackUrl = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
+            const fallbackKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
+            return window.supabase.createClient(fallbackUrl, fallbackKey);
+        }
+
+        const db = getDatabaseClient();
+        let currentUser = null;
+
+        // 2. Инициализация страницы с защитой
+        window.addEventListener('DOMContentLoaded', async () => {
+            try {
+                if (typeof requireAuth !== 'function') {
+                    throw new Error("Функция requireAuth не найдена.");
+                }
+                currentUser = await requireAuth();
+                if (currentUser) {
+                    initTask();
+                }
+            } catch (err) {
+                showError("Authorization required. Please log in.");
+            }
+        });
 
         async function initTask() {
             if (!taskId) {
@@ -138,7 +163,8 @@
             }
 
             try {
-                const { data: test, error } = await supabaseClient
+                // Текст задания общий для всех, фильтр по user_id здесь не нужен
+                const { data: test, error } = await db
                     .from('complete_words_tasks')
                     .select('*')
                     .eq('id', taskId)
@@ -166,10 +192,12 @@
                 document.getElementById('textContent').innerHTML = htmlWithInputs;
                 setupInputs();
 
-                const { data: progress, error: progressError } = await supabaseClient
+                // Проверяем, есть ли прогресс ТОЛЬКО у этого пользователя
+                const { data: progress, error: progressError } = await db
                     .from('user_progress')
                     .select('score_percent')
                     .eq('task_id', taskId)
+                    .eq('user_id', currentUser.id) // <-- ЗАЩИТА ЛИЧНЫХ ДАННЫХ
                     .maybeSingle();
 
                 if (!progressError && progress) {
@@ -240,12 +268,15 @@
             const scorePercent = Math.round((correctCount / inputs.length) * 100);
             
             try {
-                const { error } = await supabaseClient
+                // Используем .insert() с указанием user_id вместо .upsert(),
+                // так как старые записи удаляются при нажатии Try Again
+                const { error } = await db
                     .from('user_progress')
-                    .upsert(
-                        { task_id: taskId, score_percent: scorePercent },
-                        { onConflict: 'task_id' }
-                    );
+                    .insert([{ 
+                        task_id: taskId, 
+                        user_id: currentUser.id, 
+                        score_percent: scorePercent 
+                    }]);
 
                 if (error) throw error;
             } catch (dbErr) {
@@ -260,12 +291,13 @@
         });
 
         window.resetAndRestartCompleteWords = function() {
-            if (!taskId) return;
+            if (!taskId || !currentUser) return;
 
-            supabaseClient
-                .from('user_progress')
+            // Удаляем прогресс ТОЛЬКО у этого пользователя
+            db.from('user_progress')
                 .delete()
                 .eq('task_id', taskId)
+                .eq('user_id', currentUser.id)
                 .then(({ error }) => {
                     if (error) console.error("Error resetting progress in DB:", error.message);
                 });
@@ -282,8 +314,6 @@
 
             if (inputs.length > 0) inputs[0].focus();
         };
-
-        initTask();
     </script>
 </body>
 </html>
