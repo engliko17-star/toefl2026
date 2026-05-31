@@ -4,11 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Review Session — TOEFL</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <script src="auth.js"></script>
+    <script src="words.js"></script>
+
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght=400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
 
         /* Стили для 3D переворота карточки */
@@ -105,17 +109,27 @@
         let currentIndex = 0;
         let correctAnswers = 0;
         let sessionSettings = null;
-        let currentMode = ''; // Отслеживает фактический режим для текущего слова
+        let currentMode = ''; 
+        let currentUser = null;
 
+        // Главная функция инициализации сессии
         window.addEventListener('DOMContentLoaded', async () => {
+            lucide.createIcons();
+            
+            // 1. Проверяем авторизацию (если нет, функция сама перекинет на login.html)
+            currentUser = await requireAuth();
+            if (!currentUser) return; 
+
+            // 2. Берем НАСТРОЙКИ (какие списки выбраны) из localStorage
             sessionSettings = JSON.parse(localStorage.getItem('reviewSettings'));
             
             if (!sessionSettings || !sessionSettings.lists || sessionSettings.lists.length === 0) {
-                alert("Настройки сессии не найдены. Возврат в библиотеку.");
+                alert("Настройки сессии не найдены. Выберите списки для повторения.");
                 window.location.href = 'vocabulary.html';
                 return;
             }
 
+            // 3. Загружаем сами слова
             await loadSessionWords();
         });
 
@@ -128,12 +142,25 @@
         }
 
         async function loadSessionWords() {
-            const customLists = JSON.parse(localStorage.getItem('studentLists') || '{}');
+            // 1. Качаем слова пользователя напрямую из базы Supabase
+            const { data, error } = await supabaseClient
+                .from('user_vocabulary')
+                .select('word, list_name')
+                .eq('user_id', currentUser.id);
+
+            if (error) {
+                console.error("Ошибка при получении списков:", error);
+                alert("Не удалось загрузить списки слов. Попробуйте еще раз.");
+                window.location.href = 'vocabulary.html';
+                return;
+            }
+
+            // 2. Отбираем только уникальные слова из тех списков, которые юзер выбрал
             let uniqueWordNames = new Set();
-            
-            sessionSettings.lists.forEach(listName => {
-                const wordsInList = customLists[listName] || [];
-                wordsInList.forEach(w => uniqueWordNames.add(w));
+            data.forEach(row => {
+                if (sessionSettings.lists.includes(row.list_name)) {
+                    uniqueWordNames.add(row.word);
+                }
             });
 
             if (uniqueWordNames.size === 0) {
@@ -142,16 +169,16 @@
                 return;
             }
 
-            const { data, error } = await supabaseClient.from('words').select('*');
-            if (error) {
-                console.error(error);
-                alert("Ошибка загрузки данных из базы.");
-                return;
+            // 3. Фильтруем массив allWords (из файла words.js), чтобы достать дефиниции и примеры
+            if (typeof allWords === 'undefined' || allWords.length === 0) {
+                 alert("Общая база слов не загружена. Проверьте подключение words.js");
+                 return;
             }
 
-            reviewWords = data.filter(w => uniqueWordNames.has(w.word));
+            reviewWords = allWords.filter(w => uniqueWordNames.has(w.word));
             reviewWords = shuffle(reviewWords);
 
+            // Переключаем экраны
             document.getElementById('loader').classList.add('hidden');
             document.getElementById('sessionContainer').classList.remove('hidden');
 
@@ -179,7 +206,7 @@
 
             const currentWordObj = reviewWords[currentIndex];
             
-            // Вычисляем режим для текущего карточки
+            // Вычисляем режим для текущей карточки
             currentMode = sessionSettings.mode;
             if (currentMode === 'mixed') {
                 const modes = ['flashcards', 'typing', 'dictation'];
@@ -190,7 +217,6 @@
             const bottomHint = document.getElementById('bottomHint');
             quizArea.innerHTML = '';
 
-            // Безопасное экранирование примера для вставки в HTML-атрибуты/строки
             const safeExample = currentWordObj.example ? currentWordObj.example.replace(/"/g, '&quot;') : '';
 
             // --- КАРТОЧКИ ---
@@ -279,7 +305,7 @@
                 `;
 
                 setupEnterKey('dictationInput', 'dictation');
-                setTimeout(playCurrentWordAudio, 400); // Небольшая задержка для естественного восприятия
+                setTimeout(playCurrentWordAudio, 400); 
             }
 
             lucide.createIcons();
@@ -289,11 +315,11 @@
         }
 
         function playCurrentWordAudio() {
-            window.speechSynthesis.cancel(); // Стопаем текущую речь перед запуском новой
+            window.speechSynthesis.cancel(); 
             const wordText = reviewWords[currentIndex].word;
             const utterance = new SpeechSynthesisUtterance(wordText);
             utterance.lang = 'en-US';
-            utterance.rate = 0.9; // Слегка замедляем для учебного фокуса
+            utterance.rate = 0.9; 
             window.speechSynthesis.speak(utterance);
         }
 
@@ -356,7 +382,6 @@
         }
 
         function nextWord(wasCorrect) {
-            // Теперь проверяем фактический режим карточки (currentMode), а не глобальный конфиг
             if (currentMode === 'flashcards' && wasCorrect) {
                 correctAnswers++;
             }
@@ -364,6 +389,7 @@
             showWord();
         }
 
+        // Вывод результатов тестирования
         function showResults() {
             window.speechSynthesis.cancel();
             document.getElementById('sessionContainer').classList.add('hidden');
@@ -374,6 +400,9 @@
             
             document.getElementById('resultsContainer').classList.remove('hidden');
             lucide.createIcons();
+
+            // В будущем: здесь можно добавить функцию отправки результата 
+            // в таблицу статистики в Supabase!
         }
     </script>
 </body>
