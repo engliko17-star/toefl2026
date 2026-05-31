@@ -7,6 +7,9 @@
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <script src="auth.js"></script>
+
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
@@ -57,6 +60,7 @@
         lucide.createIcons();
 
         const testListContainer = document.getElementById('testList');
+        const loadingMsg = document.getElementById('loadingMsg');
 
         const mockDailyTests = [
             { id: 1, title: "Library Notice & Room Booking", category: "Daily Life", questions_count: 4 },
@@ -64,37 +68,94 @@
             { id: 3, title: "Campus Cafeteria Changes", category: "Daily Life", questions_count: 3 }
         ];
 
-        // Функция сброса результатов повседневного теста
-        function resetDailyTest(id, title) {
-            if (confirm(`Are you sure you want to reset the results for "${title}"?`)) {
-                localStorage.removeItem(`daily_test_score_${title}`);
-                localStorage.removeItem(`daily_test_score_${id}`);
-                loadTests(); // Мгновенно обновляем карточки на экране
+        // 1. Функция получения безопасного клиента базы данных
+        function getDatabaseClient() {
+            if (typeof supabaseClient !== 'undefined') return supabaseClient;
+            if (typeof window !== 'undefined' && window.supabaseClient) return window.supabaseClient;
+            
+            const fallbackUrl = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
+            const fallbackKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
+            return window.supabase.createClient(fallbackUrl, fallbackKey);
+        }
+
+        const db = getDatabaseClient();
+        let currentUser = null;
+
+        // 2. Инициализация страницы и проверка авторизации
+        async function initPage() {
+            try {
+                if (typeof requireAuth !== 'function') {
+                    throw new Error("Функция requireAuth не найдена. Убедитесь, что auth.js подключен.");
+                }
+                currentUser = await requireAuth();
+                if (currentUser) {
+                    await loadTests();
+                }
+            } catch (err) {
+                console.error("Initialization error:", err);
+                if (loadingMsg) {
+                    loadingMsg.innerHTML = `<span class="text-red-600 font-bold">Authorization required.</span> Please log in.`;
+                }
             }
         }
 
+        // 3. Безопасный сброс результатов повседневного теста в базе данных
+        window.resetDailyTest = async function(id, title) {
+            if (!currentUser || !db) return;
+            
+            if (confirm(`Are you sure you want to reset the results for "${title}"?`)) {
+                try {
+                    // Удаляем запись из таблицы результатов именно для этого пользователя и типа 'daily'
+                    const { error } = await db
+                        .from('reading_results')
+                        .delete()
+                        .eq('task_id', id)
+                        .eq('task_type', 'daily')
+                        .eq('user_id', currentUser.id);
+
+                    if (error) throw error;
+                    
+                    await loadTests(); // Перезагружаем карточки тестов на экране
+                } catch (err) {
+                    console.error("Error resetting daily test:", err.message);
+                    alert("Failed to reset progress. Please try again.");
+                }
+            }
+        };
+
+        // 4. Загрузка тестов и сопоставление с личными результатами
         async function loadTests() {
             try {
                 let tests = [];
-                
-                if (window.supabase) {
-                    const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
-                    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
-                    
-                    if (!window.supabaseClient) {
-                        window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-                    }
-                    const supabase = window.supabaseClient;
+                let userResults = {}; // Будем складывать сюда результаты вида { task_id: { score_earned, score_total } }
 
-                    const { data, error } = await supabase
+                if (db) {
+                    // Шаг А: Тянем список всех доступных тестов daily
+                    const { data: tasksData, error: tasksError } = await db
                         .from('daily_life_tasks')
                         .select('id, title, category, questions_count')
                         .order('id', { ascending: true });
                     
-                    if (!error && data && data.length > 0) {
-                        tests = data;
+                    if (!tasksError && tasksData && tasksData.length > 0) {
+                        tests = tasksData;
                     } else {
                         tests = mockDailyTests;
+                    }
+
+                    // Шаг Б: Тянем результаты только текущего авторизованного пользователя
+                    if (currentUser) {
+                        const { data: resultsData, error: resultsError } = await db
+                            .from('reading_results')
+                            .select('task_id, score_earned, score_total')
+                            .eq('user_id', currentUser.id)
+                            .eq('task_type', 'daily');
+
+                        if (!resultsError && resultsData) {
+                            // Сохраняем в объект для быстрого O(1) поиска при рендере карточек
+                            resultsData.forEach(res => {
+                                userResults[res.task_id] = res;
+                            });
+                        }
                     }
                 } else {
                     tests = mockDailyTests;
@@ -102,17 +163,21 @@
 
                 testListContainer.innerHTML = '';
 
+                // Шаг В: Отрисовка карточек
                 tests.forEach(test => {
-                    let savedScore = localStorage.getItem(`daily_test_score_${test.title}`);
-                    if (savedScore === null) {
-                        savedScore = localStorage.getItem(`daily_test_score_${test.id}`);
+                    const matchedResult = userResults[test.id];
+                    let savedScore = null;
+
+                    // Если результат в БД есть, высчитываем процент правильных ответов
+                    if (matchedResult && matchedResult.score_total > 0) {
+                        savedScore = Math.round((matchedResult.score_earned / matchedResult.score_total) * 100);
                     }
 
                     let actionButton = '';
                     let scoreDisplay = '';
 
                     if (savedScore !== null) {
-                        const scoreNum = parseInt(savedScore);
+                        const scoreNum = savedScore;
                         
                         let strokeColor = 'stroke-emerald-500';
                         if (scoreNum < 50) strokeColor = 'stroke-rose-500';
@@ -147,7 +212,7 @@
                         `;
                     }
 
-                    // Экранирование кавычек для корректной передачи в onClick
+                    // Экранирование кавычек для передачи параметров в onClick
                     const escapedTitle = test.title.replace(/'/g, "\\'").replace(/"/g, '\\"');
 
                     testListContainer.innerHTML += `
@@ -181,11 +246,14 @@
                 lucide.createIcons();
 
             } catch (err) {
-                testListContainer.innerHTML = `<span class="text-red-600 font-bold">System Error:</span> ${err.message}`;
+                if (loadingMsg) {
+                    loadingMsg.innerHTML = `<span class="text-red-600 font-bold">System Error:</span> ${err.message}`;
+                }
             }
         }
 
-        loadTests();
+        // Запуск проверки и рендера
+        initPage();
     </script>
 </body>
 </html>
