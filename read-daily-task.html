@@ -7,6 +7,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <script src="auth.js"></script>
+
     <style>
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
@@ -116,13 +119,11 @@
     <script>
         lucide.createIcons();
 
-        const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
-
         let currentTask = null;
         let currentQuestionIdx = 0;
         let userAnswers = {}; 
         let startTime = Date.now(); 
+        let currentUser = null; // Пользователь из Supabase Auth
 
         const taskTitle = document.getElementById('taskTitle');
         const progressText = document.getElementById('progressText');
@@ -137,6 +138,18 @@
         const quizContainer = document.getElementById('quizContainer');
         const resultsContainer = document.getElementById('resultsContainer');
         const explanationsList = document.getElementById('explanationsList');
+
+        // 1. Безопасная инициализация базы данных
+        function getDatabaseClient() {
+            if (typeof supabaseClient !== 'undefined') return supabaseClient;
+            if (typeof window !== 'undefined' && window.supabaseClient) return window.supabaseClient;
+            
+            const fallbackUrl = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
+            const fallbackKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
+            return window.supabase.createClient(fallbackUrl, fallbackKey);
+        }
+
+        const db = getDatabaseClient();
 
         // ФУНКЦИЯ ДЛЯ ОТРИСОВКИ МАКЕТОВ (Email, Chat, Social Media, Notice, Advertisement)
         function renderDailyLifeLayout(passage, layoutType, taskTitle) {
@@ -239,18 +252,25 @@
             }
         }
 
+        // 2. Инициализация и проверка авторизации
         async function init() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const taskId = urlParams.get('id');
-
-            if (!taskId) {
-                taskTitle.innerText = "Error: No Test ID";
-                return;
-            }
-
             try {
-                const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-                const { data, error } = await supabaseClient
+                if (typeof requireAuth !== 'function') {
+                    throw new Error("Функция requireAuth не найдена. Проверьте auth.js");
+                }
+                
+                currentUser = await requireAuth();
+                if (!currentUser) return; // Если не авторизован, auth.js сам сделает редирект
+
+                const urlParams = new URLSearchParams(window.location.search);
+                const taskId = urlParams.get('id');
+
+                if (!taskId) {
+                    taskTitle.innerText = "Error: No Test ID";
+                    return;
+                }
+
+                const { data, error } = await db
                     .from('daily_life_tasks')
                     .select('*')
                     .eq('id', taskId)
@@ -267,7 +287,7 @@
                     renderTask();
                 }
             } catch (error) {
-                console.error(error);
+                console.error("Initialization error:", error);
                 taskTitle.innerText = "Error loading content";
             }
         }
@@ -276,16 +296,9 @@
             if (!currentTask || !currentTask.questions) return;
             taskTitle.innerText = currentTask.title;
             
-            // ПОДСТРАХОВКА: Проверяем оба варианта колонки, переводим в нижний регистр и убираем пробелы
             const rawLayoutType = currentTask.layout_type || currentTask.layout_tupe || '';
             const cleanLayoutType = rawLayoutType.toString().toLowerCase().trim();
             
-            // ВЫВОД В КОНСОЛЬ ДЛЯ ОРГАНИЗАЦИИ ПРОВЕРКИ
-            console.log("=== ДИАГНОСТИКА МАКЕТА ===");
-            console.log("Данные из базы:", currentTask);
-            console.log("Полученный тип макета:", `"${cleanLayoutType}"`);
-
-            // Отрисовываем макет
             const styledLayout = renderDailyLifeLayout(currentTask.passage, cleanLayoutType, currentTask.title);
             passageContent.innerHTML = styledLayout;
             
@@ -348,12 +361,10 @@
             }
         });
 
+        // 3. Сброс теста - удален localStorage
         window.resetAndRestartDailyTest = function() {
             if (!currentTask) return;
             
-            localStorage.removeItem(`daily_test_score_${currentTask.id}`);
-            localStorage.removeItem(`daily_test_score_${currentTask.title}`);
-
             currentQuestionIdx = 0;
             userAnswers = {};
             startTime = Date.now(); 
@@ -364,6 +375,7 @@
             showQuestion(currentQuestionIdx);
         };
 
+        // 4. Обработка результатов и сохранение в БД с привязкой к пользователю
         async function processResults() {
             const timeSpentSeconds = Math.round((Date.now() - startTime) / 1000);
             
@@ -427,28 +439,30 @@
             });
 
             const scorePercent = Math.round((correctCount / currentTask.questions.length) * 100);
-            localStorage.setItem(`daily_test_score_${currentTask.id}`, scorePercent);
 
-            try {
-                const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-                const { error } = await supabaseClient
-                    .from('reading_results')
-                    .insert([{
-                        task_id: parseInt(currentTask.id), 
-                        task_type: 'daily',
-                        score_earned: correctCount,
-                        score_total: currentTask.questions.length,
-                        time_spent_seconds: timeSpentSeconds, 
-                        category_stats: categoryStats
-                    }]);
-                
-                if (error) {
-                    console.error("Ошибка сохранения в базу:", error);
-                } else {
-                    console.log("Результат Daily успешно сохранен!");
+            // Сохраняем результат в БД с привязкой к currentUser.id
+            if (currentUser && db) {
+                try {
+                    const { error } = await db
+                        .from('reading_results')
+                        .insert([{
+                            user_id: currentUser.id,
+                            task_id: parseInt(currentTask.id), 
+                            task_type: 'daily',
+                            score_earned: correctCount,
+                            score_total: currentTask.questions.length,
+                            time_spent_seconds: timeSpentSeconds, 
+                            category_stats: categoryStats
+                        }]);
+                    
+                    if (error) {
+                        console.error("Ошибка сохранения в базу:", error);
+                    } else {
+                        console.log("Результат Daily успешно сохранен для текущего пользователя!");
+                    }
+                } catch (err) {
+                    console.error("Сбой сети/базы:", err);
                 }
-            } catch (err) {
-                console.error("Сбой сети/базы:", err);
             }
 
             quizContainer.classList.add('hidden');
@@ -459,6 +473,7 @@
             lucide.createIcons();
         }
 
+        // Запуск
         init();
     </script>
 </body>
