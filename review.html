@@ -80,7 +80,7 @@
             </div>
             <div class="border-l border-gray-200/60">
                 <span class="block text-2xl font-extrabold text-slate-700" id="resTotalCount">0</span>
-                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Всего слов</span>
+                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Всего ответов</span>
             </div>
         </div>
 
@@ -100,7 +100,6 @@
     </div>
 
     <script>
-        // Не объявляем константы заново, а используем те, что уже есть в auth.js
         const supabaseClient = window.supabaseClient || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         let reviewWords = [];
@@ -113,11 +112,9 @@
         window.addEventListener('DOMContentLoaded', async () => {
             lucide.createIcons();
             
-            // 1. Проверяем сессию пользователя
             currentUser = await requireAuth();
             if (!currentUser) return; 
 
-            // 2. Получаем настройки текущего ревью (режим и выбранные списки)
             sessionSettings = JSON.parse(localStorage.getItem('reviewSettings'));
             
             if (!sessionSettings || !sessionSettings.lists || sessionSettings.lists.length === 0) {
@@ -126,7 +123,6 @@
                 return;
             }
 
-            // 3. Запускаем загрузку данных из БД
             await loadSessionWords();
         });
 
@@ -139,7 +135,6 @@
         }
 
         async function loadSessionWords() {
-            // 1. Шаг первый: достаем связи слов и списков конкретно ЭТОГО пользователя
             const { data: userVocabData, error: vocabError } = await supabaseClient
                 .from('user_vocabulary')
                 .select('word, list_name')
@@ -151,7 +146,6 @@
                 return;
             }
 
-            // Фильтруем, оставляя только слова из списков, выбранных галочками на прошлой странице
             let uniqueWordNames = new Set();
             userVocabData.forEach(row => {
                 if (sessionSettings.lists.includes(row.list_name)) {
@@ -165,7 +159,6 @@
                 return;
             }
 
-            // 2. Шаг второй: качаем глобальные определения (дефиниции, примеры, части речи) из таблицы 'words'
             const { data: wordsTableData, error: wordsError } = await supabaseClient
                 .from('words')
                 .select('*');
@@ -176,11 +169,26 @@
                 return;
             }
 
-            // Оставляем только те слова с дефинициями, которые есть в сессии у пользователя
-            reviewWords = wordsTableData.filter(w => uniqueWordNames.has(w.word));
+            // Получаем чистый список уникальных объектов слов для этой сессии
+            let baseWords = wordsTableData.filter(w => uniqueWordNames.has(w.word));
+
+            // --- НОВАЯ ЛОГИКА ДЛЯ РЕЖИМА MIXED ---
+            if (sessionSettings.mode === 'mixed') {
+                reviewWords = [];
+                baseWords.forEach(wordObj => {
+                    // Создаем 3 копии слова, жестко закрепляя за каждой её формат
+                    reviewWords.push({ ...wordObj, fixedMode: 'flashcards' });
+                    reviewWords.push({ ...wordObj, fixedMode: 'typing' });
+                    reviewWords.push({ ...wordObj, fixedMode: 'dictation' });
+                });
+            } else {
+                // Если выбран конкретный режим (например, только карточки), оставляем как обычно
+                reviewWords = baseWords.map(wordObj => ({ ...wordObj, fixedMode: sessionSettings.mode }));
+            }
+
+            // Перемешиваем весь итоговый массив, чтобы форматы шли вразброс
             reviewWords = shuffle(reviewWords);
 
-            // Прячем лоадер, показываем интерфейс карточек
             document.getElementById('loader').classList.add('hidden');
             document.getElementById('sessionContainer').classList.remove('hidden');
 
@@ -207,11 +215,8 @@
 
             const currentWordObj = reviewWords[currentIndex];
             
-            currentMode = sessionSettings.mode;
-            if (currentMode === 'mixed') {
-                const modes = ['flashcards', 'typing', 'dictation'];
-                currentMode = modes[Math.floor(Math.random() * modes.length)];
-            }
+            // Теперь режим берется из самого объекта слова (сформированного в loadSessionWords)
+            currentMode = currentWordObj.fixedMode;
 
             const quizArea = document.getElementById('quizArea');
             const bottomHint = document.getElementById('bottomHint');
@@ -323,7 +328,6 @@
             window.speechSynthesis.speak(utterance);
         }
 
-        // Переворот карточки
         function flipCard() {
             const cardInner = document.getElementById('cardInner');
             if (cardInner) cardInner.classList.toggle('card-flipped');
@@ -404,3 +408,4 @@
     </script>
 </body>
 </html>
+
