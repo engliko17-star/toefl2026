@@ -7,6 +7,10 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="auth.js"></script>
+
     <style>
         body { font-family: 'Inter', sans-serif; }
     </style>
@@ -72,7 +76,7 @@
                     <button data-tab="strategies" class="pb-3 border-b-2 border-transparent text-gray-500 hover:text-slate-800 font-medium text-sm whitespace-nowrap transition">Core Strategies</button>
                 </div>
                 <div class="text-sm text-gray-400 py-3 sm:py-0 font-medium" id="articles-count">
-                    5 ARTICLES
+                    Loading...
                 </div>
             </div>
 
@@ -101,7 +105,7 @@
     </nav>
 
     <script>
-        // База данных статей прямо в коде
+        // Статьи остаются жестко прописанными в коде
         const articlesData = [
             {
                 id: 1,
@@ -164,16 +168,14 @@
         const countDisplay = document.getElementById('articles-count');
         const tabs = document.querySelectorAll('#tab-container button');
 
-        // Функция отрисовки карточек
+        // Функция рендера контента
         function renderArticles(filter = 'all') {
             const filtered = filter === 'all' 
                 ? articlesData 
                 : articlesData.filter(item => item.category === filter);
             
-            // Обновляем счетчик
             countDisplay.textContent = `${filtered.length} ${filtered.length === 1 ? 'ARTICLE' : 'ARTICLES'}`;
 
-            // Генерируем HTML
             grid.innerHTML = filtered.map(article => `
                 <a href="article-view.html?id=${article.id}" class="bg-white rounded-3xl p-6 border border-gray-100 flex flex-col h-full hover:shadow-xl hover:shadow-indigo-500/5 transition-all duration-300 group cursor-pointer">
                     <div class="flex justify-between items-start mb-4">
@@ -194,25 +196,40 @@
                 </a>
             `).join('');
 
-            // Переинициализируем иконки Lucide для новых элементов
             lucide.createIcons();
         }
 
-        // Логика переключения активного класса у табов
+        // Логика табов
         tabs.forEach(tab => {
             tab.addEventListener('click', (e) => {
-                tabs.forEach(t => {
-                    t.className = "pb-3 border-b-2 border-transparent text-gray-500 hover:text-slate-800 font-medium text-sm whitespace-nowrap transition";
-                });
-                
+                tabs.forEach(t => t.className = "pb-3 border-b-2 border-transparent text-gray-500 hover:text-slate-800 font-medium text-sm whitespace-nowrap transition");
                 e.target.className = "pb-3 border-b-2 border-indigo-600 text-indigo-600 font-semibold text-sm whitespace-nowrap";
-                
                 renderArticles(e.target.dataset.tab);
             });
         });
 
-        // Первая инициализация при загрузке
-        renderArticles();
+        // ЗАЩИТА СТРАНИЦЫ
+        async function initProtectedPage() {
+            try {
+                // Вызываем функцию проверки из твоего auth.js
+                const user = await window.requireAuth();
+                
+                // Если проверка пройдена, показываем контент
+                if (user) {
+                    renderArticles();
+                } else {
+                    // Если requireAuth не перекинул пользователя на страницу логина автоматически
+                    grid.innerHTML = `<div class="col-span-full text-center py-12 text-rose-500 font-medium">Please log in to access the Master Class materials.</div>`;
+                    countDisplay.textContent = "0 ARTICLES";
+                }
+            } catch (error) {
+                console.error("Authorization check failed:", error);
+            }
+        }
+
+        // Запускаем проверку при загрузке
+        initProtectedPage();
+        lucide.createIcons();
     </script>
 </body>
 </html>
