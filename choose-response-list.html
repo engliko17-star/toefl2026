@@ -17,7 +17,7 @@
         ::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
     </style>
 </head>
-<body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex flex-col md:flex-row">
+<body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex flex-col md:flex-row opacity-0 transition-opacity duration-200" id="mainBody">
 
     <aside class="hidden md:flex flex-col w-64 bg-white border-r border-gray-100 px-4 py-6 h-screen sticky top-0 shrink-0">
         <div class="font-bold text-2xl tracking-tighter mb-8 px-2 flex items-center space-x-2">
@@ -108,12 +108,39 @@
 
         const QUESTIONS_PER_SET = 12; 
         const TOTAL_SETS = 6; 
+        let currentUser = null; // Будем хранить текущего юзера глобально
+
+        // ИСПРАВЛЕНО: Главная функция инициализации страницы с защитой
+        async function checkAuthAndLoad() {
+            try {
+                const { data: { session }, error } = await supabaseClient.auth.getSession();
+                
+                if (error || !session) {
+                    // Если сессии нет, перенаправляем на авторизацию (index.html)
+                    window.location.replace('index.html');
+                    return;
+                }
+
+                // Сессия есть — сохраняем пользователя и плавно показываем интерфейс
+                currentUser = session.user;
+                document.getElementById('mainBody').classList.remove('opacity-0');
+
+                // Загружаем список паков для этого конкретного пользователя
+                await loadSetsList();
+
+            } catch (err) {
+                console.error("Auth protection error:", err);
+                window.location.replace('index.html');
+            }
+        }
 
         async function loadSetsList() {
             try {
+                // ИСПРАВЛЕНО: Добавлен фильтр .eq('user_id', currentUser.id), чтобы каждый видел строго свои результаты
                 const { data: results, error } = await supabaseClient
                     .from('response_results')
-                    .select('*');
+                    .select('*')
+                    .eq('user_id', currentUser.id);
 
                 if (error) throw error;
 
@@ -146,7 +173,6 @@
                     if (userResult) {
                         const pct = Math.round((userResult.score_earned / userResult.score_total) * 100);
                         
-                        // ИСПРАВЛЕНО: Ссылка теперь ведет обратно на страницу теста, но передает параметр review=true
                         cardHtml = `
                             <div class="bg-white rounded-2xl p-5 border border-purple-100 shadow-xs flex flex-col justify-between relative overflow-hidden group border-t-4 border-t-purple-500">
                                 <div>
@@ -204,13 +230,17 @@
         }
 
         async function resetTest(setNumber) {
+            // ИСПРАВЛЕНО: Добавлена проверка на всякий случай
+            if (!currentUser) return;
             if (!confirm(`Are you sure you want to reset your score for Set #${setNumber}? This will erase your past answers.`)) return;
 
             try {
+                // ИСПРАВЛЕНО: Удаление теперь тоже строго привязано к user_id текущего пользователя
                 const { error } = await supabaseClient
                     .from('response_results')
                     .delete()
-                    .eq('set_number', setNumber);
+                    .eq('set_number', setNumber)
+                    .eq('user_id', currentUser.id);
 
                 if (error) throw error;
 
@@ -221,7 +251,9 @@
             }
         }
 
-        document.addEventListener('DOMContentLoaded', loadSetsList);
+        // ИСПРАВЛЕНО: Вместо прямой загрузки сначала запускаем проверку авторизации
+        document.addEventListener('DOMContentLoaded', checkAuthAndLoad);
     </script>
 </body>
 </html>
+
