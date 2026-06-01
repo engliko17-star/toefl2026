@@ -16,7 +16,7 @@
         details > summary::-webkit-details-marker { display: none; }
     </style>
 </head>
-<body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex flex-col">
+<body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex flex-col opacity-0 transition-opacity duration-200" id="mainBody">
 
     <header class="bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between sticky top-0 z-50 shrink-0 shadow-sm">
         <div class="flex items-center space-x-4">
@@ -135,12 +135,11 @@
         
         document.getElementById('setNumberDisplay').innerText = `#${currentSet}`;
 
-        // Теперь данные хранятся в пустом массиве и будут загружаться из Supabase
         let currentQuestions = [];
-        
         let currentIndex = 0;
         let selectedOptionIndex = null;
         let userAnswers = [];
+        let currentUser = null; // Храним реального юзера
 
         const audioEl = document.getElementById('audioElement');
         const playBtn = document.getElementById('playBtn');
@@ -166,7 +165,6 @@
             
             document.getElementById('questionCounter').innerText = `${index + 1} / ${currentQuestions.length}`;
             
-            // Если speaker_image пустой в базе, подставляем заглушку
             document.getElementById('speakerImage').src = q.speaker_image || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&q=80&w=600';
             
             audioEl.src = q.audio_url;
@@ -284,7 +282,6 @@
             }
         });
 
-        // ФУНКЦИЯ ЗАГРУЗКИ ДАННЫХ ИЗ БАЗЫ
         async function fetchQuestionsFromDB() {
             document.getElementById('playerInstruction').innerText = "Loading questions from database...";
 
@@ -293,7 +290,7 @@
                     .from('listening_questions')
                     .select('*')
                     .eq('set_number', parseInt(currentSet))
-                    .order('id', { ascending: true }); // Сортируем по ID
+                    .order('id', { ascending: true });
 
                 if (error) throw error;
 
@@ -314,12 +311,11 @@
         }
 
         async function initReviewMode() {
-            const userId = '00000000-0000-0000-0000-000000000000';
-            
+            // ИСПОЛЬЗУЕМ РЕАЛЬНЫЙ ID
             const { data, error } = await supabaseClient
                 .from('response_results')
                 .select('*')
-                .eq('user_id', userId)
+                .eq('user_id', currentUser.id) 
                 .eq('set_number', parseInt(currentSet))
                 .maybeSingle();
 
@@ -345,13 +341,12 @@
             const scoreTotal = currentQuestions.length;
             const accuracy = Math.round((scoreEarned / scoreTotal) * 100);
 
-            const userId = '00000000-0000-0000-0000-000000000000';
-            
             try {
+                // ИСПОЛЬЗУЕМ РЕАЛЬНЫЙ ID
                 const { data: existingRow, error: checkError } = await supabaseClient
                     .from('response_results')
                     .select('id')
-                    .eq('user_id', userId)
+                    .eq('user_id', currentUser.id)
                     .eq('set_number', parseInt(currentSet))
                     .maybeSingle();
 
@@ -372,7 +367,7 @@
                     saveResult = await supabaseClient
                         .from('response_results')
                         .insert([{
-                            user_id: userId,
+                            user_id: currentUser.id, // СОХРАНЯЕМ РЕАЛЬНЫЙ ID
                             set_number: parseInt(currentSet),
                             score_earned: scoreEarned,
                             score_total: scoreTotal,
@@ -420,7 +415,6 @@
                 card.onclick = (e) => {
                     if (e.target.closest('details')) return;
 
-                    // Если speaker_image пустой в базе, подставляем заглушку
                     document.getElementById('speakerImage').src = q.speaker_image || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&q=80&w=600';
                     audioEl.src = q.audio_url;
                     audioEl.load();
@@ -504,20 +498,40 @@
             }
         }
 
-        // ОБНОВЛЕННАЯ ИНИЦИАЛИЗАЦИЯ
-        document.addEventListener('DOMContentLoaded', async () => {
-            // Ждем скачивания вопросов
-            const isLoaded = await fetchQuestionsFromDB();
-            
-            if (isLoaded) {
-                if (isReviewMode) {
-                    initReviewMode();
-                } else {
-                    loadQuestion(0);
+        // НОВАЯ ФУНКЦИЯ ИНИЦИАЛИЗАЦИИ И ЗАЩИТЫ
+        async function checkAuthAndInit() {
+            try {
+                // Проверяем сессию в Supabase
+                const { data: { session }, error } = await supabaseClient.auth.getSession();
+                
+                // Если юзера нет - кидаем на главную страницу
+                if (error || !session) {
+                    window.location.replace('index.html');
+                    return;
                 }
+
+                // Юзер есть, сохраняем его ID и показываем контент
+                currentUser = session.user;
+                document.getElementById('mainBody').classList.remove('opacity-0');
+
+                // Качаем вопросы
+                const isLoaded = await fetchQuestionsFromDB();
+                
+                if (isLoaded) {
+                    if (isReviewMode) {
+                        initReviewMode();
+                    } else {
+                        loadQuestion(0);
+                    }
+                }
+            } catch (err) {
+                console.error("Auth error:", err);
+                window.location.replace('index.html');
             }
-        });
+        }
+
+        // Запускаем защиту при загрузке страницы
+        document.addEventListener('DOMContentLoaded', checkAuthAndInit);
     </script>
 </body>
 </html>
-
