@@ -392,25 +392,31 @@
             // 1. Сохраняем локально, чтобы на дашборде сразу появился круговой прогресс
             localStorage.setItem(`toefl_result_${currentTest.id}`, JSON.stringify(resultObj));
 
-            // 2. Спрашиваем имя ученика
-            const studentName = prompt("Enter your name to save your progress in the system:") || "Anonymous Student";
+            // 2. Получаем текущую сессию пользователя из Supabase Auth
+            const { data: { session } } = await _supabase.auth.getSession();
+            const user = session?.user;
 
-            // 3. Отправляем в Supabase
-            const { error } = await _supabase
-                .from('conversation_results')
-                .insert([{
-                    student_name: studentName,
-                    test_id: currentTest.id,
-                    score_earned: scoreEarned,
-                    score_total: currentTest.questions.length,
-                    user_answers: userAnswers
-                }]);
+            if (user) {
+                // 3. Отправляем в ОБЩУЮ таблицу listening_results с task_type
+                const { error } = await _supabase
+                    .from('listening_results')
+                    .insert([{
+                        user_id: user.id,
+                        task_id: currentTest.id,
+                        score_earned: scoreEarned,
+                        score_total: currentTest.questions.length,
+                        category_stats: categoryStats,
+                        task_type: 'conversation'
+                    }]);
 
-            if (error) {
-                console.error("Error saving results to Supabase:", error);
-                alert("Could not save to the database, but your local results are saved.");
+                if (error) {
+                    console.error("Error saving results to Supabase:", error);
+                    alert("Could not save to the database, but your local results are saved.");
+                } else {
+                    console.log("Results successfully saved to listening_results!");
+                }
             } else {
-                console.log("Results successfully saved to conversation_results!");
+                console.warn("User is not authenticated. RLS policies will likely block database save.");
             }
 
             // 4. Показываем результаты
