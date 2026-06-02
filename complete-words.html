@@ -101,7 +101,7 @@
             if (confirm(`Are you sure you want to reset the results for "${title}"?`)) {
                 try {
                     const { error } = await db
-                        .from('user_progress')
+                        .from('complete_words_results') // ОБНОВЛЕНО: Используем новую таблицу
                         .delete()
                         .eq('task_id', id)
                         .eq('user_id', currentUser.id);
@@ -121,6 +121,7 @@
                     throw new Error("Клиент Supabase не был инициализирован.");
                 }
 
+                // Загружаем сами тесты
                 const { data: tests, error: testsError } = await db
                     .from('complete_words_tasks')
                     .select('id, title, category, passage')
@@ -128,8 +129,9 @@
 
                 if (testsError) throw new Error(testsError.message);
 
+                // Загружаем прогресс пользователя из новой таблицы
                 const { data: progressData, error: progressError } = await db
-                    .from('user_progress')
+                    .from('complete_words_results') // ОБНОВЛЕНО: Используем новую таблицу
                     .select('task_id, score_percent')
                     .eq('user_id', currentUser.id);
 
@@ -138,7 +140,8 @@
                 const progressMap = {};
                 if (progressData) {
                     progressData.forEach(p => {
-                        progressMap[p.task_id] = p.score_percent;
+                        // ОБНОВЛЕНО: Строго приводим к строке для безопасности
+                        progressMap[String(p.task_id)] = p.score_percent;
                     });
                 }
 
@@ -153,7 +156,8 @@
                     const wordCount = test.passage ? test.passage.trim().split(/\s+/).length : 0;
                     const blanksCount = test.passage ? (test.passage.match(/\[/g) || []).length : 0;
 
-                    let savedScore = progressMap[test.id] !== undefined ? progressMap[test.id] : null;
+                    // ОБНОВЛЕНО: Ищем по строковому ключу
+                    let savedScore = progressMap[String(test.id)] !== undefined ? progressMap[String(test.id)] : null;
 
                     let actionButton = '';
                     let scoreDisplay = '';
