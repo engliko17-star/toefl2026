@@ -128,7 +128,7 @@
         const taskId = urlParams.get('id');
         let currentTaskTitle = ""; 
 
-        // 1. Умная и безопасная функция получения базы данных (как в предыдущем файле)
+        // Умная и безопасная функция получения базы данных
         function getDatabaseClient() {
             if (typeof supabaseClient !== 'undefined') return supabaseClient;
             if (typeof window !== 'undefined' && window.supabaseClient) return window.supabaseClient;
@@ -141,7 +141,7 @@
         const db = getDatabaseClient();
         let currentUser = null;
 
-        // 2. Инициализация страницы с защитой
+        // Инициализация страницы с защитой
         window.addEventListener('DOMContentLoaded', async () => {
             try {
                 if (typeof requireAuth !== 'function') {
@@ -163,7 +163,6 @@
             }
 
             try {
-                // Текст задания общий для всех, фильтр по user_id здесь не нужен
                 const { data: test, error } = await db
                     .from('complete_words_tasks')
                     .select('*')
@@ -192,12 +191,12 @@
                 document.getElementById('textContent').innerHTML = htmlWithInputs;
                 setupInputs();
 
-                // Проверяем, есть ли прогресс ТОЛЬКО у этого пользователя
+                // ОБНОВЛЕНО: Ищем прогресс в новой таблице complete_words_results
                 const { data: progress, error: progressError } = await db
-                    .from('user_progress')
+                    .from('complete_words_results')
                     .select('score_percent')
                     .eq('task_id', taskId)
-                    .eq('user_id', currentUser.id) // <-- ЗАЩИТА ЛИЧНЫХ ДАННЫХ
+                    .eq('user_id', currentUser.id)
                     .maybeSingle();
 
                 if (!progressError && progress) {
@@ -268,15 +267,14 @@
             const scorePercent = Math.round((correctCount / inputs.length) * 100);
             
             try {
-                // Используем .insert() с указанием user_id вместо .upsert(),
-                // так как старые записи удаляются при нажатии Try Again
+                // ОБНОВЛЕНО: Используем новую таблицу и upsert для безопасности
                 const { error } = await db
-                    .from('user_progress')
-                    .insert([{ 
+                    .from('complete_words_results')
+                    .upsert([{ 
                         task_id: taskId, 
                         user_id: currentUser.id, 
                         score_percent: scorePercent 
-                    }]);
+                    }], { onConflict: 'user_id, task_id' });
 
                 if (error) throw error;
             } catch (dbErr) {
@@ -293,8 +291,8 @@
         window.resetAndRestartCompleteWords = function() {
             if (!taskId || !currentUser) return;
 
-            // Удаляем прогресс ТОЛЬКО у этого пользователя
-            db.from('user_progress')
+            // ОБНОВЛЕНО: Удаляем прогресс из новой таблицы
+            db.from('complete_words_results')
                 .delete()
                 .eq('task_id', taskId)
                 .eq('user_id', currentUser.id)
