@@ -300,7 +300,6 @@
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ'; 
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // Инициализация сессии и синхронизация списков
         async function initAuth() {
             const { data: { session } } = await supabaseClient.auth.getSession();
             
@@ -316,7 +315,6 @@
             updateGlobalListsCount();
         }
 
-        // Загрузка списков слов из базы данных user_vocabulary
         async function loadUserListsFromSupabase() {
             if (!currentUser) return;
 
@@ -560,31 +558,36 @@
                 if (!studentLists[targetList]) studentLists[targetList] = [];
             }
             
+            // ТИХАЯ ПРОВЕРКА: Если слово уже в списке локально, просто выходим
             if (studentLists[targetList] && studentLists[targetList].includes(wordToSave)) {
-                alert(`Слово уже есть в списке "${targetList}"`);
                 closeSaveModal();
                 return;
             }
 
-            // Отправляем запись в таблицу user_vocabulary
+            // ИСПОЛЬЗУЕМ UPSERT: обновит данные, если они уже есть в базе, без ошибок
             const { error } = await supabaseClient
                 .from('user_vocabulary')
-                .insert([{
+                .upsert([{
                     user_id: currentUser.id,
                     word: wordToSave,
                     list_name: targetList
-                }]);
+                }], {
+                    onConflict: 'user_id,word,list_name'
+                });
 
             if (error) {
                 alert(`Ошибка Supabase при сохранении: ${error.message}`);
+                console.error(error);
                 return;
             }
             
+            // Обновляем локальный стейт, чтобы иконка закрасилась
             if (!studentLists[targetList]) studentLists[targetList] = [];
             studentLists[targetList].push(wordToSave);
             
             closeSaveModal();
             
+            // Мгновенно перерисовываем нужный экран
             if (currentViewMode === 'all') {
                 applyFilters();
             } else {
