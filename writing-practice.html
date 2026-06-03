@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TOEFL Writing Practice Engine</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+    </style>
+</head>
+<body class="bg-white text-slate-900 min-h-screen flex flex-col antialiased select-none">
+
+    <!-- TOP BLUE EXAM BAR (Matches Screenshots Perfectly) -->
+    <header class="bg-[#0b46b4] px-6 py-3 flex items-center justify-between shadow-md shrink-0">
+        <a href="writing.html" class="bg-white text-[#0b46b4] text-xs font-bold px-5 py-1.5 rounded-full hover:bg-opacity-90 transition shadow-sm">
+            Exit
+        </a>
+        <button onclick="handleNextQuestion()" class="bg-[#1a1d20] text-white text-xs font-bold px-6 py-1.5 rounded-full hover:bg-opacity-90 transition flex items-center space-x-1 shadow-sm">
+            <span>Next</span> <i data-lucide="chevron-right" class="w-4 h-4"></i>
+        </button>
+    </header>
+
+    <!-- SUB-BAR / STATUS INFO -->
+    <div class="bg-gray-50 border-b border-gray-200 px-6 py-2 flex justify-between items-center text-xs font-bold text-gray-500 uppercase tracking-wider shrink-0">
+        <div>Writing</div>
+        <div id="questionProgress">Questions 1 of 1</div>
+    </div>
+
+    <!-- MAIN ENGINE WORKSPACE CONTAINER -->
+    <main class="flex-1 flex flex-col overflow-hidden" id="workspaceContainer">
+        <!-- Content will be injected dynamically by JavaScript depending on ?type= -->
+    </main>
+
+    <script>
+        // Parse current exercise type
+        const urlParams = new URLSearchParams(window.location.search);
+        const taskType = urlParams.get('type') || 'sentence';
+
+        // State variables for interactive Sentence task
+        let sentenceBank = ["must", "a long", "commuting", "be exhausting", "such", "distance"];
+        let sentenceSlots = [null, null, null, null, null, null];
+        let wordCountVisible = true;
+
+        // Render Workspace Based on Type
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            renderTask();
+        });
+
+        function renderTask() {
+            const container = document.getElementById('workspaceContainer');
+            const progressText = document.getElementById('questionProgress');
+
+            if (taskType === 'sentence') {
+                progressText.innerText = "Questions 1 of 5";
+                container.innerHTML = `
+                    <div class="flex-1 flex flex-col items-center justify-center p-8 max-w-4xl mx-auto w-full">
+                        <h2 class="text-2xl font-bold text-center tracking-tight mb-16">Make an appropriate sentence.</h2>
+                        
+                        <div class="w-full space-y-8 mb-16">
+                            <!-- Avatar Line 1 -->
+                            <div class="flex items-start space-x-4">
+                                <div class="flex flex-col items-center shrink-0">
+                                    <div class="w-14 h-14 rounded-full border-2 border-blue-500 bg-gray-100 flex items-center justify-center overflow-hidden font-bold text-slate-500 text-lg shadow-sm">
+                                        👨‍💼
+                                    </div>
+                                </div>
+                                <div class="bg-gray-50 border border-gray-100 rounded-2xl px-5 py-3.5 text-sm font-medium text-slate-700 max-w-md mt-1">
+                                    The new office is very far from here.
+                                </div>
+                            </div>
+
+                            <!-- Interactive Avatar Line 2 -->
+                            <div class="flex items-start space-x-4 pt-4">
+                                <div class="flex flex-col items-center shrink-0">
+                                    <div class="w-14 h-14 rounded-full border-2 border-rose-400 bg-gray-100 flex items-center justify-center overflow-hidden font-bold text-slate-500 text-lg shadow-sm">
+                                        👩‍💼
+                                    </div>
+                                </div>
+                                
+                                <!-- Build Slots Row -->
+                                <div class="flex-1 flex flex-wrap items-center gap-x-2 gap-y-4 pt-4 border-b border-dashed border-gray-200 pb-4 min-h-[60px]" id="slotsContainer">
+                                    <!-- Rendered dynamically -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Bottom Words Bank -->
+                        <div class="flex flex-wrap justify-center gap-3 bg-gray-50 border border-gray-100 p-5 rounded-2xl w-full" id="wordBankContainer">
+                            <!-- Rendered dynamically -->
+                        </div>
+                    </div>
+                `;
+                renderSentenceMechanics();
+
+            } else if (taskType === 'email') {
+                progressText.innerText = "Questions 1 of 1";
+                container.innerHTML = `
+                    <div class="flex-1 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-200 h-full overflow-hidden">
+                        
+                        <!-- LEFT PANEL: Instruction & Scenario -->
+                        <div class="p-8 overflow-y-auto space-y-6">
+                            <div class="prose prose-slate max-w-none">
+                                <p class="text-sm text-slate-700 leading-relaxed font-medium">
+                                    You are planning a camping trip to the mountains during the upcoming semester break. Your friend Daniel recently spent a few days camping in the same area and told you he had a great experience. You would like to ask him for advice before you finalize your plans.
+                                </p>
+                                <div class="h-px bg-gray-100 my-6"></div>
+                                <h3 class="text-sm font-bold text-slate-900 uppercase tracking-wide">Write an email to Daniel. In the email, do each of the following:</h3>
+                                <ul class="list-disc pl-5 text-sm text-slate-600 space-y-2.5 mt-3">
+                                    <li>Tell Daniel about your plans for the camping trip</li>
+                                    <li>Ask Daniel for advice about the area</li>
+                                    <li>Mention any preferences or concerns you have about the trip</li>
+                                </ul>
+                                <p class="text-xs font-semibold text-gray-400 mt-6 italic">
+                                    Write as much as you can and in complete sentences.
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- RIGHT PANEL: Input Area -->
+                        <div class="p-8 bg-gray-50/50 flex flex-col overflow-hidden h-full">
+                            <div class="bg-white border border-gray-100 rounded-2xl p-6 flex flex-col flex-1 shadow-sm overflow-hidden">
+                                <div class="space-y-1.5 text-xs font-bold text-slate-500 mb-4 border-b border-gray-100 pb-3">
+                                    <div class="flex"><span class="w-16 text-gray-400">Your response:</span></div>
+                                    <div class="flex"><span class="w-16 text-gray-400">To:</span> <span class="text-slate-800">Daniel</span></div>
+                                    <div class="flex"><span class="w-16 text-gray-400">Subject:</span> <span class="text-slate-800">Camping recommendations</span></div>
+                                </div>
+
+                                <!-- Toolbar Controls -->
+                                <div class="flex items-center justify-between bg-gray-50 border border-gray-200/60 px-3 py-1.5 rounded-xl mb-4 text-xs font-bold text-slate-600">
+                                    <div class="flex items-center space-x-1">
+                                        <button class="px-3 py-1 rounded hover:bg-gray-200/70 transition">Cut</button>
+                                        <button class="px-3 py-1 rounded hover:bg-gray-200/70 transition">Paste</button>
+                                        <button class="px-3 py-1 rounded hover:bg-gray-200/70 transition">Undo</button>
+                                        <button class="px-3 py-1 rounded hover:bg-gray-200/70 transition">Redo</button>
+                                    </div>
+                                    <button onclick="toggleWordCount()" class="flex items-center space-x-1 text-gray-500 hover:text-slate-800 transition py-1 px-2 rounded">
+                                        <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+                                        <span id="wordCountLabel">Hide Word Count : 0</span>
+                                    </button>
+                                </div>
+
+                                <!-- Editor Input Container -->
+                                <div class="flex-1 relative overflow-hidden">
+                                    <textarea id="editorArea" oninput="updateWordCount()" placeholder="Write your response here..." class="w-full h-full resize-none border-0 outline-none p-2 text-sm leading-relaxed text-slate-800 placeholder-gray-300 focus:ring-0" focus></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                `;
+            } else if (taskType === 'academic') {
+                progressText.innerText = "Questions 1 of 1";
+                container.innerHTML = `
+                    <div class="flex-1 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-200 h-full overflow-hidden">
+                        
+                        <!-- LEFT PANEL: Professor Prompt -->
+                        <div class="p-8 overflow-y-auto space-y-6">
+                            <div class="prose prose-slate max-w-none text-xs">
+                                <p class="text-sm text-slate-700 font-medium leading-relaxed">
+                                    Your professor is teaching a class on sociology. Write a post responding to the professor's question.
+                                </p>
+                                <div class="bg-teal-50 border border-teal-100 rounded-xl px-4 py-2.5 text-xs font-bold text-teal-800 mt-2">
+                                    In your response, you should express and support your opinion, making a contribution to the discussion. An effective response will contain at least 100 words.
+                                </div>
+                                
+                                <div class="h-px bg-gray-100 my-6"></div>
+
+                                <!-- Professor Bio & Box -->
+                                <div class="flex items-start space-x-4 bg-gray-50/80 p-5 rounded-2xl border border-gray-100">
+                                    <div class="flex flex-col items-center text-center shrink-0">
+                                        <div class="w-12 h-12 rounded-full border border-gray-200 bg-white flex items-center justify-center overflow-hidden text-lg shadow-sm">
+                                            👨‍🏫
+                                        </div>
+                                        <span class="text-[10px] font-bold text-slate-800 mt-2">Prof. Delgado</span>
+                                    </div>
+                                    <p class="text-xs text-slate-600 leading-relaxed font-medium pt-1">
+                                        In sociology, researchers often study geographic mobility, which refers to how frequently people move to different cities or regions during their lives. Some scholars argue that high geographic mobility benefits individuals because moving to new places exposes people to different cultures, ideas, and opportunities. Others believe that living in the same place for a long time is more beneficial because it provides stability and allows people to build strong social ties within their communities. What is your opinion on this?
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- RIGHT PANEL: Interactive Chat Feed & Input Box -->
+                        <div class="p-6 bg-gray-50/50 flex flex-col overflow-hidden h-full space-y-4">
+                            
+                            <!-- Scrollable Peer Feed Box -->
+                            <div class="flex-1 overflow-y-auto space-y-4 pr-1 max-h-[45%] border-b border-gray-200/60 pb-3">
+                                <!-- Student 1 -->
+                                <div class="flex items-start space-x-3 bg-white p-3.5 rounded-xl border border-gray-100 shadow-sm">
+                                    <div class="flex flex-col items-center shrink-0">
+                                        <div class="w-9 h-9 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-sm shadow-sm">👩</div>
+                                        <span class="text-[9px] font-bold text-gray-400 mt-1">Elena</span>
+                                    </div>
+                                    <p class="text-xs text-slate-600 leading-normal">
+                                        I believe geographic mobility is beneficial because it allows people to experience different cultures and perspectives. When individuals move to new cities or countries, they encounter different lifestyles and social norms.
+                                    </p>
+                                </div>
+
+                                <!-- Student 2 -->
+                                <div class="flex items-start space-x-3 bg-white p-3.5 rounded-xl border border-gray-100 shadow-sm">
+                                    <div class="flex flex-col items-center shrink-0">
+                                        <div class="w-9 h-9 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center text-sm shadow-sm">👨</div>
+                                        <span class="text-[9px] font-bold text-gray-400 mt-1">Marcus</span>
+                                    </div>
+                                    <p class="text-xs text-slate-600 leading-normal">
+                                        In my opinion, living in one place for a long time is more beneficial. When people remain in the same community, they are able to build stronger relationships with neighbors, coworkers, and local institutions.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <!-- Input Box Area -->
+                            <div class="bg-white border border-gray-100 rounded-2xl p-4 flex flex-col h-[50%] shadow-sm overflow-hidden">
+                                <!-- Toolbar Controls -->
+                                <div class="flex items-center justify-between bg-gray-50 border border-gray-200/60 px-2.5 py-1.5 rounded-xl mb-3 text-[11px] font-bold text-slate-600">
+                                    <div class="flex items-center space-x-1">
+                                        <button class="px-2.5 py-0.5 rounded hover:bg-gray-200 transition">Cut</button>
+                                        <button class="px-2.5 py-0.5 rounded hover:bg-gray-200 transition">Paste</button>
+                                        <button class="px-2.5 py-0.5 rounded hover:bg-gray-200 transition">Undo</button>
+                                        <button class="px-2.5 py-0.5 rounded hover:bg-gray-200 transition">Redo</button>
+                                    </div>
+                                    <button onclick="toggleWordCount()" class="flex items-center space-x-1 text-gray-400 hover:text-slate-800 transition">
+                                        <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+                                        <span id="wordCountLabel">Hide Word Count : 0</span>
+                                    </button>
+                                </div>
+
+                                <div class="flex-1 overflow-hidden">
+                                    <textarea id="editorArea" oninput="updateWordCount()" placeholder="Write your contribution here..." class="w-full h-full resize-none border-0 outline-none text-xs leading-relaxed text-slate-800 placeholder-gray-300 focus:ring-0"></textarea>
+                                </div>
+                            </div>
+
+                        </div>
+
+                    </div>
+                `;
+            }
+            lucide.createIcons();
+        }
+
+        // --- SENTENCE BUILDING LOGIC ---
+        function renderSentenceMechanics() {
+            const slotsContainer = document.getElementById('slotsContainer');
+            const bankContainer = document.getElementById('wordBankContainer');
+
+            // Render Slots Area
+            slotsContainer.innerHTML = '';
+            sentenceSlots.forEach((word, idx) => {
+                if (word) {
+                    slotsContainer.innerHTML += `
+                        <button onclick="removeWordFromSlot(${idx})" class="bg-white border border-gray-200 text-slate-800 text-sm font-medium px-4 py-1.5 rounded-xl shadow-sm hover:border-rose-400 hover:text-rose-500 transition">
+                            ${word}
+                        </button>
+                    `;
+                } else {
+                    slotsContainer.innerHTML += `
+                        <div class="w-24 border-b-2 border-gray-200 h-9 mx-1"></div>
+                    `;
+                }
+            });
+            // Append static full stop line
+            slotsContainer.innerHTML += `<span class="text-xl font-bold text-slate-400 select-none">.</span>`;
+
+            // Render Bank Words
+            bankContainer.innerHTML = '';
+            sentenceBank.forEach((word) => {
+                if (sentenceSlots.includes(word)) {
+                    // Word is used, show grayed placeholder
+                    bankContainer.innerHTML += `
+                        <span class="bg-gray-100 text-gray-300 text-sm font-medium px-4 py-1.5 rounded-xl border border-dashed border-gray-200 cursor-not-allowed">
+                            ${word}
+                        </span>
+                    `;
+                } else {
+                    // Available to select
+                    bankContainer.innerHTML += `
+                        <button onclick="addWordToSlot('${word}')" class="bg-white border border-gray-200 text-slate-700 text-sm font-semibold px-4 py-1.5 rounded-xl shadow-sm hover:border-blue-500 hover:text-blue-600 transition">
+                            ${word}
+                        </button>
+                    `;
+                }
+            });
+        }
+
+        function addWordToSlot(word) {
+            const emptyIdx = sentenceSlots.indexOf(null);
+            if (emptyIdx !== -1) {
+                sentenceSlots[emptyIdx] = word;
+                renderSentenceMechanics();
+            }
+        }
+
+        function removeWordFromSlot(idx) {
+            sentenceSlots[idx] = null;
+            // Pack array to eliminate gaps
+            let temp = sentenceSlots.filter(x => x !== null);
+            while(temp.length < 6) temp.push(null);
+            sentenceSlots = temp;
+            renderSentenceMechanics();
+        }
+
+        // --- TEXT ENGINE WORD COUNT LOGIC ---
+        let actualCount = 0;
+        function updateWordCount() {
+            const text = document.getElementById('editorArea').value.trim();
+            actualCount = text === "" ? 0 : text.split(/\s+/).length;
+            
+            const label = document.getElementById('wordCountLabel');
+            if (wordCountVisible) {
+                label.innerText = `Hide Word Count : ${actualCount}`;
+            } else {
+                label.innerText = `Show Word Count`;
+            }
+        }
+
+        function toggleWordCount() {
+            wordCountVisible = !wordCountVisible;
+            updateWordCount();
+        }
+
+        // --- NAVIGATION CLICK ---
+        function handleNextQuestion() {
+            alert("Your response has been saved. Processing evaluation criteria...");
+            window.location.replace('writing.html');
+        }
+    </script>
+</body>
+</html>
+
