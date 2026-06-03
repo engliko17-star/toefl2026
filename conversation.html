@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conversation Practice — TOEFL</title>
+    <title>Practice — TOEFL</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -61,7 +61,7 @@
                 <a href="listening-practice.html" class="mr-4 text-gray-400 hover:text-slate-800 transition">
                     <i data-lucide="arrow-left" class="w-5 h-5"></i>
                 </a>
-                <h1 id="pageTitle" class="text-lg font-bold text-slate-900">Conversations</h1>
+                <h1 id="pageTitle" class="text-lg font-bold text-slate-900">Listening Practice</h1>
             </div>
             <div id="testProgress" class="hidden text-sm font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg">
                 Test in Progress
@@ -72,11 +72,11 @@
             
             <div id="view-list" class="max-w-5xl mx-auto space-y-6 fade-in">
                 <div class="mb-6">
-                    <h2 class="text-2xl font-extrabold text-slate-900">Listen in Daily Life</h2>
-                    <p class="text-sm text-gray-500 mt-1">Short conversations from campus situations. Select a test to practice.</p>
+                    <h2 id="listTitle" class="text-2xl font-extrabold text-slate-900">Practice Session</h2>
+                    <p id="listSubtitle" class="text-sm text-gray-500 mt-1">Select a test to practice.</p>
                 </div>
                 <div id="testsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    </div>
+                </div>
             </div>
 
             <div id="view-test" class="hidden max-w-5xl mx-auto fade-in h-full flex flex-col">
@@ -84,7 +84,7 @@
                 <div id="test-audio-phase" class="flex-1 flex flex-col items-center justify-center fade-in">
                     <img id="testImageMain" src="" alt="Context" class="w-full max-w-md rounded-2xl shadow-lg mb-8 object-cover aspect-video">
                     <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 w-full max-w-md text-center">
-                        <p class="text-sm font-bold text-slate-900 mb-4">Listen to the conversation. You cannot pause or replay.</p>
+                        <p class="text-sm font-bold text-slate-900 mb-4">Listen to the audio track. You cannot pause or replay.</p>
                         <audio id="activeAudioPlayer" class="w-full mb-4" controls controlsList="nodownload noplaybackrate"></audio>
                         <button onclick="transitionToQuestions()" class="text-[10px] text-gray-400 underline">Skip audio (Dev Mode)</button>
                     </div>
@@ -104,7 +104,7 @@
                     <div class="md:w-2/3">
                         <div class="bg-white p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm min-h-[400px] flex flex-col">
                             <div id="questionsContainer" class="flex-1">
-                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -140,13 +140,21 @@
 
                     <div class="lg:w-3/5 space-y-6">
                         <div id="reviewQuestionsContainer" class="space-y-6">
-                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
 
         </div>
     </main>
+
+    <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex justify-around py-2 z-40">
+        <a href="index.html" class="flex flex-col items-center text-gray-400"><i data-lucide="home" class="w-5 h-5"></i><span class="text-[9px] mt-1 font-medium">Home</span></a>
+        <a href="vocabulary.html" class="flex flex-col items-center text-gray-400"><i data-lucide="book-open" class="w-5 h-5"></i><span class="text-[9px] mt-1 font-medium">Vocab</span></a>
+        <a href="reading.html" class="flex flex-col items-center text-gray-400"><i data-lucide="book-text" class="w-5 h-5"></i><span class="text-[9px] mt-1 font-medium">Reading</span></a>
+        <a href="listening.html" class="flex flex-col items-center text-slate-900"><i data-lucide="headphones" class="w-5 h-5"></i><span class="text-[9px] mt-1 font-bold">Listen</span></a>
+        <a href="tests.html" class="flex flex-col items-center text-gray-400"><i data-lucide="file-check" class="w-5 h-5"></i><span class="text-[9px] mt-1 font-medium">Tests</span></a>
+    </nav>
 
     <script>
         lucide.createIcons();
@@ -166,19 +174,36 @@
             await loadTestsFromSupabase();
         };
 
-        // Загружаем данные из правильных таблиц
+        // Исправлено: универсальная функция динамически настраивает тексты и тянет данные из НОВОЙ общей таблицы
         async function loadTestsFromSupabase() {
             const grid = document.getElementById('testsGrid');
             grid.innerHTML = '<div class="text-gray-400 text-sm col-span-full text-center py-12">Loading exercises from Supabase...</div>';
 
+            // 1. Извлекаем текущий тип из адресной строки (?type=...)
+            const urlParams = new URLSearchParams(window.location.search);
+            const currentType = urlParams.get('type') || 'conversation';
+
+            // 2. Словарь текстов для кастомизации заголовков страницы под разные типы
+            const typeMeta = {
+                'response': { page: 'Choose a Response', list: 'Choose a Response', sub: 'Listen to short statements and pick the best logical answer or continuation.' },
+                'conversation': { page: 'Conversations', list: 'Listen in Daily Life', sub: 'Short conversations from campus situations. Select a test to practice.' },
+                'announcement': { page: 'Announcements', list: 'Campus Announcements', sub: 'Focus on short broadcasts about campus policies, events, or changes.' },
+                'academic': { page: 'Academic Talks', list: 'Academic Lectures', sub: 'Listen to comprehensive university lectures. Requires strong note-taking skills.' }
+            };
+
+            const currentMeta = typeMeta[currentType] || typeMeta['conversation'];
+            
+            // Динамически обновляем интерфейс
+            document.getElementById('pageTitle').innerText = currentMeta.page;
+            document.getElementById('listTitle').innerText = currentMeta.list;
+            document.getElementById('listSubtitle').innerText = currentMeta.sub;
+            document.title = `${currentMeta.page} Practice — TOEFL`;
+
+            // 3. Делаем запрос к НОВОЙ общей таблице с фильтрацией по task_type
             const { data, error } = await _supabase
-                .from('conversation_tests')
-                .select(`
-                    id, category, title, audio_url, image_url, transcript,
-                    questions:conversation_questions (
-                        id, type, text, options, correct_index, explanation
-                    )
-                `);
+                .from('listening_tests')
+                .select('id, title, audio_url, image_url, transcript, questions, task_type')
+                .eq('task_type', currentType);
 
             if (error) {
                 console.error('Error fetching data:', error);
@@ -195,7 +220,12 @@
             document.getElementById('view-test').classList.add('hidden');
             document.getElementById('view-results').classList.add('hidden');
             document.getElementById('testProgress').classList.add('hidden');
-            document.getElementById('pageTitle').innerText = "Conversations";
+            
+            // Восстанавливаем динамический заголовок
+            const urlParams = new URLSearchParams(window.location.search);
+            const currentType = urlParams.get('type') || 'conversation';
+            const pageTitles = { 'response': 'Choose a Response', 'conversation': 'Conversations', 'announcement': 'Announcements', 'academic': 'Academic Talks' };
+            document.getElementById('pageTitle').innerText = pageTitles[currentType] || "Listening Practice";
         }
 
         // VIEW 1: Test List
@@ -211,6 +241,9 @@
                 return;
             }
 
+            const urlParams = new URLSearchParams(window.location.search);
+            const currentType = urlParams.get('type') || 'conversation';
+
             mockTests.forEach((test, index) => {
                 const savedResult = JSON.parse(localStorage.getItem(`toefl_result_${test.id}`));
                 const isCompleted = !!savedResult;
@@ -221,11 +254,12 @@
                 let strokeColor = scorePct >= 80 ? '#10b981' : (scorePct >= 50 ? '#f59e0b' : '#f43f5e');
                 
                 const questionCount = test.questions ? test.questions.length : 0;
+                const displayBadge = currentType.toUpperCase();
 
                 let cardHTML = `
                     <div class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col transition hover:shadow-md">
                         <div class="flex justify-between items-start mb-5">
-                            <span class="bg-emerald-50 text-emerald-600 text-[10px] font-bold px-3 py-1.5 rounded-full uppercase tracking-wider">${test.category}</span>
+                            <span class="bg-emerald-50 text-emerald-600 text-[10px] font-bold px-3 py-1.5 rounded-full uppercase tracking-wider">${displayBadge}</span>
                             
                             ${isCompleted ? `
                             <div class="relative flex items-center justify-center w-12 h-12">
@@ -350,7 +384,11 @@
 
         function saveAnswerAndNext() {
             const selected = document.querySelector('input[name="currentQ"]:checked').value;
-            userAnswers[currentTest.questions[currentQuestionIndex].id] = parseInt(selected);
+            const currentQ = currentTest.questions[currentQuestionIndex];
+            
+            // Подстраховка на случай отсутствия q.id в JSON массиве
+            const qKey = currentQ.id !== undefined ? currentQ.id : currentQuestionIndex;
+            userAnswers[qKey] = parseInt(selected);
 
             if (currentQuestionIndex < currentTest.questions.length - 1) {
                 currentQuestionIndex++;
@@ -360,25 +398,27 @@
             }
         }
 
-        // ОБНОВЛЕННАЯ ФУНКЦИЯ ДЛЯ СОХРАНЕНИЯ В SUPABASE
+        // Исправлено: функция динамически сохраняет данные под нужным task_type в общую таблицу результатов
         async function finishTestLogic() {
             let scoreEarned = 0;
             let categoryStats = {};
 
-            // Отключаем кнопку "Finish Test", чтобы ученик не нажал её дважды, пока идет сохранение
             const nextBtn = document.getElementById('nextBtn');
             if(nextBtn) {
                 nextBtn.disabled = true;
                 nextBtn.innerText = "Saving results...";
             }
 
-            currentTest.questions.forEach(q => {
-                if (!categoryStats[q.type]) categoryStats[q.type] = { earned: 0, total: 0 };
-                categoryStats[q.type].total += 1;
+            currentTest.questions.forEach((q, qIdx) => {
+                const qKey = q.id !== undefined ? q.id : qIdx;
+                const typeKey = q.type || 'general';
+                
+                if (!categoryStats[typeKey]) categoryStats[typeKey] = { earned: 0, total: 0 };
+                categoryStats[typeKey].total += 1;
 
-                if (userAnswers[q.id] === q.correct_index) {
+                if (userAnswers[qKey] === q.correct_index) {
                     scoreEarned += 1;
-                    categoryStats[q.type].earned += 1;
+                    categoryStats[typeKey].earned += 1;
                 }
             });
 
@@ -389,15 +429,19 @@
                 categoryStats: categoryStats
             };
 
-            // 1. Сохраняем локально, чтобы на дашборде сразу появился круговой прогресс
+            // 1. Сохраняем локально для мгновенного обновления кругов прогресса
             localStorage.setItem(`toefl_result_${currentTest.id}`, JSON.stringify(resultObj));
 
-            // 2. Получаем текущую сессию пользователя из Supabase Auth
+            // 2. Получаем текущую сессию пользователя
             const { data: { session } } = await _supabase.auth.getSession();
             const user = session?.user;
 
+            // 3. Вычисляем текущий тип задания из адресной строки для отправки в БД
+            const urlParams = new URLSearchParams(window.location.search);
+            const currentType = urlParams.get('type') || 'conversation';
+
             if (user) {
-                // 3. Отправляем в ОБЩУЮ таблицу listening_results с task_type
+                // 4. Отправляем в ОБЩУЮ таблицу listening_results с динамическим task_type
                 const { error } = await _supabase
                     .from('listening_results')
                     .insert([{
@@ -406,7 +450,7 @@
                         score_earned: scoreEarned,
                         score_total: currentTest.questions.length,
                         category_stats: categoryStats,
-                        task_type: 'conversation'
+                        task_type: currentType
                     }]);
 
                 if (error) {
@@ -419,7 +463,7 @@
                 console.warn("User is not authenticated. RLS policies will likely block database save.");
             }
 
-            // 4. Показываем результаты
+            // 5. Показываем результаты
             showResults(currentTest.id);
         }
 
@@ -442,8 +486,10 @@
             container.innerHTML = '';
 
             currentTest.questions.forEach((q, index) => {
-                const userAnsIdx = savedResult.userAnswers[q.id];
+                const qKey = q.id !== undefined ? q.id : index;
+                const userAnsIdx = savedResult.userAnswers[qKey];
                 const isCorrect = userAnsIdx === q.correct_index;
+                const typeBadge = q.type || 'Question';
                 
                 let optionsHTML = '';
                 q.options.forEach((opt, optIndex) => {
@@ -477,7 +523,7 @@
                                 <span class="w-6 h-6 rounded-full ${isCorrect ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'} flex items-center justify-center font-bold shrink-0 text-xs">${index + 1}</span>
                                 <div>
                                     <h4 class="font-bold text-slate-900 text-sm mb-1.5">${q.text}</h4>
-                                    <span class="bg-indigo-50 text-indigo-600 text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wider block w-max">${q.type}</span>
+                                    <span class="bg-indigo-50 text-indigo-600 text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wider block w-max">${typeBadge}</span>
                                 </div>
                             </div>
                             ${statusBadge}
