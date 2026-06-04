@@ -37,7 +37,9 @@
     </div>
 
     <script>
-        // Мы НЕ объявляем const supabase здесь, так как он берется из auth.js
+        // Инициализируем клиент под уникальным именем 'db'. 
+        // SUPABASE_URL и SUPABASE_ANON_KEY автоматически берутся из подключенного выше auth.js
+        const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         
         const urlParams = new URLSearchParams(window.location.search);
         const taskType = urlParams.get('type') || 'sentence';
@@ -49,10 +51,9 @@
 
         document.addEventListener('DOMContentLoaded', async () => {
             lucide.createIcons();
-            // Даем время auth.js инициализироваться
             setTimeout(async () => {
                 await loadTasksAndProgress();
-            }, 200);
+            }, 100);
         });
 
         async function loadTasksAndProgress() {
@@ -60,13 +61,8 @@
             if (!container) return;
 
             try {
-                // Проверяем, существует ли supabase (глобальная переменная из auth.js)
-                if (typeof supabase === 'undefined') {
-                    throw new Error("Supabase client not found. Check auth.js initialization.");
-                }
-
-                // 1. Проверяем авторизацию
-                const { data: { session }, error: authError } = await supabase.auth.getSession();
+                // 1. Проверяем авторизацию через наш клиент db
+                const { data: { session }, error: authError } = await db.auth.getSession();
                 
                 if (authError || !session) {
                     console.warn("User not logged in, redirecting...");
@@ -76,7 +72,7 @@
                 const userId = session.user.id;
 
                 // 2. Получаем все задания этого типа
-                const { data: tasks, error: tasksError } = await supabase
+                const { data: tasks, error: tasksError } = await db
                     .from('writing_tasks')
                     .select('id, title, progress')
                     .eq('type', taskType)
@@ -85,7 +81,7 @@
                 if (tasksError) throw tasksError;
 
                 // 3. Получаем ответы этого студента
-                const { data: responses, error: respError } = await supabase
+                const { data: responses, error: respError } = await db
                     .from('student_responses')
                     .select('id, task_id, response_content')
                     .eq('user_id', userId)
@@ -95,7 +91,7 @@
 
                 if (!tasks || tasks.length === 0) {
                     container.className = "flex justify-center items-center py-20 w-full";
-                    container.innerHTML = `<div class="text-center text-gray-500">No tasks available yet.</div>`;
+                    container.innerHTML = `<div class="text-center text-gray-500 font-medium">No tasks available yet.</div>`;
                     return;
                 }
 
@@ -126,7 +122,7 @@
                                     <span class="text-[10px] font-bold text-gray-400 uppercase block mb-1">Your Answer:</span>
                                     ${studentResponse.response_content}
                                 </div>
-                                <button onclick="resetTask('${studentResponse.id}')" class="mt-2 text-[10px] font-bold text-gray-400 hover:text-rose-500 uppercase">Reset Task</button>
+                                <button onclick="resetTask('${studentResponse.id}')" class="mt-3 w-full text-center text-[10px] font-bold text-gray-400 hover:text-rose-500 uppercase transition">Reset Progress</button>
                             ` : `
                                 <a href="writing-practice.html?type=${taskType}&id=${task.id}" class="w-full flex items-center justify-center space-x-2 bg-slate-900 text-white hover:bg-slate-800 transition py-3 rounded-xl font-bold text-sm shadow-sm">
                                     <span>Start Task</span> <i data-lucide="arrow-right" class="w-4 h-4"></i>
@@ -138,7 +134,11 @@
                 lucide.createIcons();
             } catch (err) {
                 console.error("Error:", err);
-                container.innerHTML = `<div class="text-red-500 p-4">Error: ${err.message}</div>`;
+                container.innerHTML = `
+                    <div class="col-span-full bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl">
+                        <strong>Error:</strong> ${err.message}
+                    </div>
+                `;
             }
         }
 
@@ -147,9 +147,18 @@
         }
 
         async function resetTask(responseId) {
-            if (!confirm("Reset progress?")) return;
-            await supabase.from('student_responses').delete().eq('id', responseId);
-            await loadTasksAndProgress();
+            if (!confirm("Are you sure you want to reset this task? Your answer will be deleted.")) return;
+            
+            // Используем наш клиент db для удаления
+            const { error } = await db.from('student_responses').delete().eq('id', responseId);
+            
+            if (error) {
+                alert("Error resetting task: " + error.message);
+            } else {
+                // Снова вызываем загрузку, чтобы обновить интерфейс
+                document.getElementById('tasksContainer').innerHTML = '<div class="col-span-full text-center py-10 text-gray-500">Refreshing...</div>';
+                await loadTasksAndProgress();
+            }
         }
     </script>
 </body>
