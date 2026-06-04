@@ -9,15 +9,15 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght=400;500;600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
     </style>
 </head>
-<body class="bg-[#f8f9fa] text-slate-900 min-h-screen antialiased p-8">
+<body class="bg-[#f8f9fa] text-slate-900 min-h-screen antialiased p-4 md:p-8">
 
     <div class="max-w-4xl mx-auto">
         <div class="flex items-center space-x-4 mb-8">
-            <a href="writing.html" class="flex items-center justify-center w-10 h-10 rounded-xl border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-slate-800 transition shadow-sm">
+            <a href="writing.html" class="flex items-center justify-center w-10 h-10 rounded-xl border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-slate-800 transition shadow-sm shrink-0">
                 <i data-lucide="arrow-left" class="w-5 h-5"></i>
             </a>
             <div>
@@ -29,22 +29,17 @@
         <div id="tasksContainer" class="space-y-4">
             <div class="animate-pulse flex space-x-4">
                 <div class="flex-1 space-y-4 py-1">
-                    <div class="h-24 bg-gray-200 rounded-2xl"></div>
-                    <div class="h-24 bg-gray-200 rounded-2xl"></div>
+                    <div class="h-32 bg-gray-200 rounded-2xl"></div>
+                    <div class="h-32 bg-gray-200 rounded-2xl"></div>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        // Инициализируем клиент. Переменные берутся из auth.js
         const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        
         const urlParams = new URLSearchParams(window.location.search);
-        // Получаем тип задания из URL
         const taskType = urlParams.get('type') || 'sentence';
-        
-        console.log("=== ДЕБАГ: Текущий taskType из URL ===", taskType);
         
         const pageTitle = document.getElementById('pageTitle');
         if (pageTitle) {
@@ -63,31 +58,22 @@
             if (!container) return;
 
             try {
-                if (typeof db === 'undefined') {
-                    throw new Error("Supabase client (db) is not initialized.");
-                }
-
-                // 1. Проверяем сессию пользователя
                 const { data: { session }, error: authError } = await db.auth.getSession();
                 if (authError || !session) {
-                    console.warn("Пользователь не авторизован, перенаправление...");
                     window.location.replace('index.html');
                     return;
                 }
                 const userId = session.user.id;
 
-                // 2. Получаем задания. Используем ilike для игнорирования регистра (чтобы 'Sentence' и 'sentence' совпадали)
+                // Загружаем задания, включая новые колонки sample_answer и explanation
                 const { data: tasks, error: tasksError } = await db
                     .from('writing_tasks')
-                    .select('id, title, progress, type')
+                    .select('id, title, progress, type, sample_answer, explanation')
                     .ilike('type', taskType)
                     .order('id', { ascending: true });
 
                 if (tasksError) throw tasksError;
 
-                console.log(`=== ДЕБАГ: Найдено заданий для типа "${taskType}" ===`, tasks);
-
-                // 3. Получаем ответы студента
                 const { data: responses, error: respError } = await db
                     .from('student_responses')
                     .select('id, task_id, response_content')
@@ -96,7 +82,6 @@
 
                 if (respError) throw respError;
 
-                // Если задания не найдены
                 if (!tasks || tasks.length === 0) {
                     container.className = "flex justify-center items-center py-20 w-full";
                     container.innerHTML = `
@@ -105,10 +90,7 @@
                                 <i data-lucide="file-x" class="w-8 h-8"></i>
                             </div>
                             <h3 class="text-lg font-bold text-slate-800 mb-1">No tasks available yet</h3>
-                            <p class="text-sm text-gray-500 mb-4">В базе данных не найдено заданий с типом "${taskType}".</p>
-                            <div class="text-xs bg-gray-100 p-2 text-left rounded-lg text-gray-600 max-w-sm mx-auto font-mono">
-                                Подсказка: Проверь колонку "type" в таблице "writing_tasks". Значение должно быть строго "${taskType}" (без пробелов).
-                            </div>
+                            <p class="text-sm text-gray-500">В базе данных не найдено заданий.</p>
                         </div>
                     `;
                     lucide.createIcons();
@@ -121,33 +103,88 @@
                 tasks.forEach(task => {
                     const studentResponse = responses.find(r => String(r.task_id) === String(task.id));
                     const isCompleted = !!studentResponse;
+                    let cardContent = '';
 
-                    container.innerHTML += `
-                        <div class="bg-white p-6 rounded-[1.5rem] border border-gray-100 shadow-sm hover:shadow-md transition-shadow relative flex flex-col justify-between">
-                            <div class="flex justify-between items-start mb-4">
-                                <span class="text-[10px] font-bold ${isCompleted ? 'text-emerald-700 bg-emerald-50' : 'text-slate-500 bg-gray-100'} tracking-wider uppercase px-2 py-1 rounded-md">
-                                    ${isCompleted ? 'Completed' : taskType}
-                                </span>
-                                ${isCompleted ? '<div class="w-10 h-10 rounded-full border-4 border-emerald-500 border-l-emerald-100 flex items-center justify-center shrink-0 text-[10px] font-bold">100%</div>' : ''}
+                    if (isCompleted) {
+                        cardContent = `
+                            <div class="flex justify-between items-start mb-5">
+                                <div class="flex flex-col gap-2">
+                                    <span class="w-fit px-3 py-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 rounded-full tracking-wider uppercase">
+                                        ${taskType}
+                                    </span>
+                                    <div class="flex items-center text-emerald-600 font-semibold text-sm mt-1">
+                                        <i data-lucide="check" class="w-4 h-4 mr-1"></i> Completed
+                                        <button onclick="resetTask('${studentResponse.id}')" class="ml-2 text-gray-400 hover:text-slate-700 transition flex items-center" title="Reset Progress">
+                                            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="w-12 h-12 rounded-full border-[3px] border-orange-400 border-r-orange-100 flex items-center justify-center shrink-0">
+                                    <span class="text-xs font-bold text-slate-800">100%</span>
+                                </div>
                             </div>
                             
-                            <h2 class="text-lg font-bold text-slate-900 mb-1 ${!isCompleted ? 'mt-9' : ''}">${task.title}</h2>
-                            <p class="text-xs text-gray-500 font-medium mb-6">${task.progress || '1 Task • Writing'}</p>
+                            <div class="mb-6">
+                                <h2 class="text-xl font-bold text-slate-900 mb-2">${task.title}</h2>
+                                <p class="text-sm text-gray-500">${task.progress || 'Writing Task'}</p>
+                            </div>
                             
-                            ${isCompleted ? `
-                                <button onclick="togglePreview('${task.id}')" class="w-full flex items-center justify-center space-x-2 bg-[#f0fdf4] text-emerald-700 hover:bg-[#dcfce7] transition py-3 rounded-xl font-bold text-sm">
-                                    <span>Review Results</span> <i data-lucide="eye" class="w-4 h-4"></i>
-                                </button>
-                                <div class="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-100 text-sm text-slate-700 hidden" id="preview-${task.id}">
-                                    <span class="text-[10px] font-bold text-gray-400 uppercase block mb-1">Your Answer:</span>
-                                    ${studentResponse.response_content}
+                            <button onclick="togglePreview('${task.id}')" class="w-full flex items-center justify-center space-x-2 bg-[#f0fdf4] text-emerald-700 hover:bg-[#dcfce7] transition py-3 rounded-2xl font-bold text-sm">
+                                <span>Review Results</span>
+                                <i data-lucide="eye" class="w-4 h-4"></i>
+                            </button>
+
+                            <div class="mt-4 p-4 bg-gray-50 rounded-2xl border border-gray-100 text-sm hidden" id="preview-${task.id}">
+                                
+                                <div class="mb-4">
+                                    <span class="text-[10px] font-bold text-gray-400 uppercase block mb-2">Your Answer:</span>
+                                    <div class="text-slate-700 whitespace-pre-wrap leading-relaxed">${studentResponse.response_content}</div>
                                 </div>
-                                <button onclick="resetTask('${studentResponse.id}')" class="mt-3 w-full text-center text-[10px] font-bold text-gray-400 hover:text-rose-500 uppercase transition">Reset Progress</button>
-                            ` : `
-                                <a href="writing-practice.html?type=${taskType}&id=${task.id}" class="w-full flex items-center justify-center space-x-2 bg-slate-900 text-white hover:bg-slate-800 transition py-3 rounded-xl font-bold text-sm shadow-sm">
-                                    <span>Start Task</span> <i data-lucide="arrow-right" class="w-4 h-4"></i>
-                                </a>
-                            `}
+
+                                ${(task.sample_answer || task.explanation) ? `<div class="border-t border-gray-200 my-4"></div>` : ''}
+
+                                ${task.sample_answer ? `
+                                    <div class="mb-4">
+                                        <span class="text-[10px] font-bold text-indigo-500 uppercase flex items-center gap-1.5 mb-2">
+                                            <i data-lucide="book-open" class="w-3 h-3"></i> Sample Answer
+                                        </span>
+                                        <div class="p-3 bg-indigo-50 rounded-xl border border-indigo-100 text-indigo-900 whitespace-pre-wrap leading-relaxed">${task.sample_answer}</div>
+                                    </div>
+                                ` : ''}
+
+                                ${task.explanation ? `
+                                    <div>
+                                        <span class="text-[10px] font-bold text-amber-500 uppercase flex items-center gap-1.5 mb-2">
+                                            <i data-lucide="lightbulb" class="w-3 h-3"></i> Teacher's Note
+                                        </span>
+                                        <div class="text-gray-600 whitespace-pre-wrap leading-relaxed">${task.explanation}</div>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `;
+                    } else {
+                        cardContent = `
+                            <div class="flex justify-between items-start mb-5">
+                                <span class="px-3 py-1 text-[10px] font-bold text-slate-500 bg-slate-100 rounded-full tracking-wider uppercase">
+                                    ${taskType}
+                                </span>
+                            </div>
+                            
+                            <div class="mb-6 mt-6">
+                                <h2 class="text-xl font-bold text-slate-900 mb-2">${task.title}</h2>
+                                <p class="text-sm text-gray-500">${task.progress || 'Level: Medium'}</p>
+                            </div>
+                            
+                            <a href="writing-practice.html?type=${taskType}&id=${task.id}" class="w-full flex items-center justify-center space-x-2 bg-[#121629] text-white hover:bg-slate-800 transition py-3.5 rounded-2xl font-bold text-sm shadow-sm">
+                                <span>Start Task</span>
+                                <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                            </a>
+                        `;
+                    }
+
+                    container.innerHTML += `
+                        <div class="bg-white p-6 rounded-[1.5rem] border border-gray-100 shadow-sm hover:shadow-md transition-all relative flex flex-col justify-between h-full">
+                            ${cardContent}
                         </div>
                     `;
                 });
@@ -155,7 +192,7 @@
             } catch (err) {
                 console.error("Critical error:", err);
                 container.innerHTML = `
-                    <div class="col-span-full bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl">
+                    <div class="col-span-full bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-2xl">
                         <strong>Error:</strong> ${err.message}
                     </div>
                 `;
@@ -164,7 +201,9 @@
 
         function togglePreview(taskId) {
             const preview = document.getElementById(`preview-${taskId}`);
-            if (preview) preview.classList.toggle('hidden');
+            if (preview) {
+                preview.classList.toggle('hidden');
+            }
         }
 
         async function resetTask(responseId) {
