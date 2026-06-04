@@ -2,41 +2,160 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Select Task</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Select Task — TOEFL</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght=400;500;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+    </style>
 </head>
-<body class="bg-[#f8f9fa] p-8">
-    <div class="max-w-2xl mx-auto">
-        <h1 class="text-2xl font-bold mb-6" id="categoryTitle">Tasks</h1>
-        <div id="taskList" class="grid gap-4">
+<body class="bg-[#f8f9fa] text-slate-900 min-h-screen antialiased p-8">
+
+    <div class="max-w-3xl mx-auto">
+        <div class="flex items-center space-x-4 mb-8">
+            <a href="writing.html" class="flex items-center justify-center w-10 h-10 rounded-xl border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-slate-800 transition shadow-sm">
+                <i data-lucide="arrow-left" class="w-5 h-5"></i>
+            </a>
+            <div>
+                <h1 class="text-2xl font-bold tracking-tight text-slate-900 capitalize" id="pageTitle">Loading Tasks...</h1>
+                <p class="text-sm text-gray-500 font-medium">Select a module to practice</p>
             </div>
+        </div>
+
+        <div id="tasksContainer" class="space-y-4">
+            <div class="animate-pulse flex space-x-4">
+                <div class="flex-1 space-y-4 py-1">
+                    <div class="h-24 bg-gray-200 rounded-2xl"></div>
+                    <div class="h-24 bg-gray-200 rounded-2xl"></div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
-        const category = new URLSearchParams(window.location.search).get('category');
-        document.getElementById('categoryTitle').innerText = category.toUpperCase() + " TASKS";
+        const urlParams = new URLSearchParams(window.location.search);
+        const taskType = urlParams.get('type') || 'sentence';
+        
+        document.getElementById('pageTitle').innerText = `${taskType} Practice`;
 
-        async function loadTasks() {
-            const { data: tasks, error } = await supabase
+        document.addEventListener('DOMContentLoaded', async () => {
+            lucide.createIcons();
+            await loadTasksAndProgress();
+        });
+
+        async function loadTasksAndProgress() {
+            if (!window.supabase) return;
+
+            // 1. Проверяем авторизацию
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+                window.location.href = 'login.html';
+                return;
+            }
+            const userId = session.user.id;
+
+            // 2. Получаем все задания этого типа
+            const { data: tasks, error: tasksError } = await supabase
                 .from('writing_tasks')
-                .select('id, title')
-                .eq('category', category);
+                .select('id, title, progress')
+                .eq('type', taskType)
+                .order('id', { ascending: true });
 
-            const list = document.getElementById('taskList');
+            // 3. Получаем ответы этого студента для этих заданий
+            const { data: responses, error: respError } = await supabase
+                .from('student_responses')
+                .select('id, task_id, response_content')
+                .eq('user_id', userId)
+                .eq('task_type', taskType);
+
+            const container = document.getElementById('tasksContainer');
+            container.innerHTML = '';
+
+            if (tasks.length === 0) {
+                container.innerHTML = `<p class="text-gray-500 text-center py-10">No tasks available for this category yet.</p>`;
+                return;
+            }
+
+            // 4. Рендерим карточки
             tasks.forEach(task => {
-                list.innerHTML += `
-                    <a href="writing-practice.html?id=${task.id}&type=${category}" 
-                       class="block bg-white p-6 rounded-2xl border border-gray-200 hover:border-slate-900 transition shadow-sm">
-                        <h2 class="font-bold">${task.title}</h2>
-                        <p class="text-xs text-gray-400">Click to start practicing</p>
-                    </a>
+                // Ищем, есть ли ответ на это задание
+                const studentResponse = responses.find(r => String(r.task_id) === String(task.id));
+                const isCompleted = !!studentResponse;
+
+                let actionButtons = '';
+                let statusBadge = '';
+                let responsePreview = '';
+
+                if (isCompleted) {
+                    statusBadge = `<span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-green-50 text-green-700 border border-green-200"><i data-lucide="check" class="w-3 h-3 mr-1"></i> Completed</span>`;
+                    
+                    responsePreview = `
+                        <div class="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-100 text-sm text-slate-700 hidden" id="preview-${task.id}">
+                            <span class="text-xs font-bold text-gray-400 uppercase block mb-1">Your Answer:</span>
+                            ${studentResponse.response_content}
+                        </div>
+                    `;
+
+                    actionButtons = `
+                        <div class="flex items-center space-x-2">
+                            <button onclick="togglePreview('${task.id}')" class="px-4 py-2 bg-white border border-gray-200 text-slate-700 text-sm font-bold rounded-xl hover:bg-gray-50 transition">View Result</button>
+                            <button onclick="resetTask('${studentResponse.id}')" class="px-4 py-2 bg-rose-50 border border-rose-100 text-rose-600 text-sm font-bold rounded-xl hover:bg-rose-100 transition">Reset</button>
+                        </div>
+                    `;
+                } else {
+                    statusBadge = `<span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200"><i data-lucide="clock" class="w-3 h-3 mr-1"></i> Pending</span>`;
+                    
+                    actionButtons = `
+                        <a href="writing-practice.html?type=${taskType}&id=${task.id}" class="px-5 py-2 bg-slate-900 text-white text-sm font-bold rounded-xl hover:bg-slate-800 transition shadow-sm">Start Task</a>
+                    `;
+                }
+
+                container.innerHTML += `
+                    <div class="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm hover:border-slate-300 transition-colors">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <div class="flex items-center space-x-3 mb-1">
+                                    <h2 class="text-lg font-bold text-slate-900">${task.title}</h2>
+                                    ${statusBadge}
+                                </div>
+                                <p class="text-xs text-gray-400 font-medium">${task.progress || 'Practice Exercise'}</p>
+                            </div>
+                            ${actionButtons}
+                        </div>
+                        ${responsePreview}
+                    </div>
                 `;
             });
+
+            lucide.createIcons();
         }
-        loadTasks();
+
+        // Показать/скрыть результат
+        function togglePreview(taskId) {
+            const previewDiv = document.getElementById(`preview-${taskId}`);
+            previewDiv.classList.toggle('hidden');
+        }
+
+        // Сбросить (удалить) результат из базы
+        async function resetTask(responseId) {
+            if (!confirm("Are you sure you want to reset this task? Your answer will be deleted.")) return;
+
+            const { error } = await supabase
+                .from('student_responses')
+                .delete()
+                .eq('id', responseId);
+
+            if (error) {
+                alert("Error resetting task: " + error.message);
+            } else {
+                // Перезагружаем список
+                await loadTasksAndProgress();
+            }
+        }
     </script>
 </body>
 </html>
-
