@@ -16,17 +16,14 @@
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght=400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
         
-        /* Кастомный скроллбар для текстовых зон */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
 
-        /* Эффекты перетаскивания SortableJS */
         .sortable-ghost { opacity: 0.2; background-color: #f1f5f9; border: 2px dashed #94a3b8; color: transparent; }
         .sortable-drag { cursor: grabbing !important; transform: scale(1.03); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05); }
         
-        /* Стили для подчеркиваний (слотов) в задании на сборку предложений */
         .word-slot { min-width: 90px; min-height: 40px; transition: all 0.2s; }
     </style>
 </head>
@@ -34,7 +31,7 @@
 
     <header class="bg-white px-6 py-4 flex items-center justify-between border-b border-gray-100 shrink-0 sticky top-0 z-10 shadow-sm">
         <div class="flex items-center space-x-4">
-            <a href="writing.html" class="flex items-center justify-center w-10 h-10 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-slate-800 transition">
+            <a id="backBtn" href="writing.html" class="flex items-center justify-center w-10 h-10 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-slate-800 transition">
                 <i data-lucide="arrow-left" class="w-5 h-5"></i>
             </a>
             <div>
@@ -55,15 +52,19 @@
     </main>
 
     <script>
-        // ГЛОБАЛЬНОЕ СОСТОЯНИЕ МОДУЛЯ
+        // Инициализируем клиент Supabase
+        const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
         const urlParams = new URLSearchParams(window.location.search);
         const taskType = urlParams.get('type') || 'sentence';
-        const taskId = urlParams.get('id') || '1'; // ID текущего задания
+        const taskId = urlParams.get('id') || '1';
 
         let currentQuestion = null;
         let wordCountVisible = true;
 
-        // Резервные локальные данные (Fallback) на случай отсутствия записей в БД
+        // Корректируем ссылку "Назад", чтобы возвращала в список по типу
+        document.getElementById('backBtn').href = `task-list.html?type=${taskType}`;
+
         const MOCK_DATA = {
             sentence: {
                 title: "Build a Sentence",
@@ -72,10 +73,10 @@
                 avatar_left: "👨‍💼",
                 avatar_right: "👩‍💼",
                 structure: [
-                    { type: 'text', value: 'Commuting' }, // Предустановленное статичное слово для помощи
+                    { type: 'text', value: 'Commuting' },
                     { type: 'slot' }, { type: 'slot' }, { type: 'slot' }, { type: 'slot' }, { type: 'slot' }
                 ],
-                bank: ["such", "a long", "distance", "must", "be exhausting", "everyday"] // "everyday" — лишнее слово
+                bank: ["such", "a long", "distance", "must", "be exhausting", "everyday"]
             },
             email: {
                 title: "Write an Email",
@@ -103,18 +104,15 @@
             }
         };
 
-        // Инициализация при загрузке страницы
         document.addEventListener('DOMContentLoaded', async () => {
             await fetchTaskData();
             lucide.createIcons();
         });
 
-        // Загрузка данных (из базы данных или из моков)
         async function fetchTaskData() {
-            // Проверяем, существует ли инициализированный клиент supabase (из auth.js)
-            if (window.supabase) {
+            if (db) {
                 try {
-                    const { data, error } = await supabase
+                    const { data, error } = await db
                         .from('writing_tasks')
                         .select('*')
                         .eq('id', taskId)
@@ -122,20 +120,33 @@
                     
                     if (data && !error) {
                         currentQuestion = data;
+                        
+                        // Безопасный парсинг JSON полей на случай хранения в виде строк
+                        if (typeof currentQuestion.structure === 'string') {
+                            currentQuestion.structure = JSON.parse(currentQuestion.structure);
+                        }
+                        if (typeof currentQuestion.bank === 'string') {
+                            currentQuestion.bank = JSON.parse(currentQuestion.bank);
+                        }
+                        if (typeof currentQuestion.instructions === 'string') {
+                            currentQuestion.instructions = JSON.parse(currentQuestion.instructions);
+                        }
+                        if (typeof currentQuestion.peers === 'string') {
+                            currentQuestion.peers = JSON.parse(currentQuestion.peers);
+                        }
+
                         renderWorkspace();
                         return;
                     }
                 } catch (e) {
-                    console.warn("Supabase connection issue. Loading mock fallback.", e);
+                    console.warn("Supabase data parse error. Loading mock fallback.", e);
                 }
             }
             
-            // Если базы данных нет или произошла ошибка — загружаем локальный объект
             currentQuestion = MOCK_DATA[taskType];
             renderWorkspace();
         }
 
-        // Рендеринг интерфейсов в зависимости от типа
         function renderWorkspace() {
             const container = document.getElementById('workspaceContainer');
             document.getElementById('taskTitle').innerText = currentQuestion.title || "Writing Exercise";
@@ -157,13 +168,13 @@
                         <h2 class="text-xl font-bold text-center tracking-tight mb-8 text-slate-800">Make an appropriate sentence.</h2>
                         <div class="w-full space-y-8 mb-12 bg-white p-8 rounded-3xl border border-gray-100 shadow-sm">
                             <div class="flex items-start space-x-4">
-                                <div class="text-2xl p-2 bg-blue-50 border border-blue-100 rounded-full shrink-0">${currentQuestion.avatar_left}</div>
+                                <div class="text-2xl p-2 bg-blue-50 border border-blue-100 rounded-full shrink-0">${currentQuestion.avatar_left || '👨‍💼'}</div>
                                 <div class="bg-gray-50 border border-gray-100 rounded-2xl px-5 py-3 text-sm font-medium text-slate-700 max-w-md mt-1">
                                     ${currentQuestion.prompt_context}
                                 </div>
                             </div>
                             <div class="flex items-start space-x-4 pt-4 border-t border-dashed border-gray-100">
-                                <div class="text-2xl p-2 bg-rose-50 border border-rose-100 rounded-full shrink-0">${currentQuestion.avatar_right}</div>
+                                <div class="text-2xl p-2 bg-rose-50 border border-rose-100 rounded-full shrink-0">${currentQuestion.avatar_right || '👩‍💼'}</div>
                                 <div class="flex-1 flex flex-wrap items-end gap-y-3 pt-2" id="sentenceDropzoneContainer">
                                     ${sentenceHTML}
                                 </div>
@@ -178,22 +189,22 @@
                 initSentenceDragAndDrop();
 
             } else if (taskType === 'email') {
-                let instructionsHTML = currentQuestion.instructions.map(li => `<li>${li}</li>`).join('');
+                let instructionsHTML = (currentQuestion.instructions || []).map(li => `<li>${li}</li>`).join('');
                 container.innerHTML = `
                     <div class="flex-1 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-100 h-full overflow-hidden">
                         <div class="p-8 overflow-y-auto space-y-6 bg-white">
                             <div class="prose prose-slate max-w-none">
                                 <p class="text-sm text-slate-700 leading-relaxed font-medium">${currentQuestion.prompt_context}</p>
                                 <div class="h-px bg-gray-100 my-6"></div>
-                                <h3 class="text-sm font-bold text-slate-900 uppercase tracking-wide">Write an email to ${currentQuestion.meta_to}. In the email, do each of the following:</h3>
+                                <h3 class="text-sm font-bold text-slate-900 uppercase tracking-wide">Write an email to ${currentQuestion.meta_to || 'Receiver'}. In the email, do each of the following:</h3>
                                 <ul class="list-disc pl-5 text-sm text-slate-600 space-y-2.5 mt-3">${instructionsHTML}</ul>
                             </div>
                         </div>
                         <div class="p-6 bg-[#f8f9fa] flex flex-col overflow-hidden h-full">
                             <div class="bg-white border border-gray-200 rounded-3xl p-6 flex flex-col flex-1 shadow-sm overflow-hidden">
                                 <div class="space-y-1.5 text-xs text-slate-500 mb-4 border-b border-gray-100 pb-4">
-                                    <div class="flex items-center mt-1"><span class="w-16 font-bold text-gray-400">To:</span> <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-md font-semibold">${currentQuestion.meta_to}</span></div>
-                                    <div class="flex items-center"><span class="w-16 font-bold text-gray-400">Subject:</span> <span class="text-slate-800 font-semibold">${currentQuestion.meta_subject}</span></div>
+                                    <div class="flex items-center mt-1"><span class="w-16 font-bold text-gray-400">To:</span> <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-md font-semibold">${currentQuestion.meta_to || 'Receiver'}</span></div>
+                                    <div class="flex items-center"><span class="w-16 font-bold text-gray-400">Subject:</span> <span class="text-slate-800 font-semibold">${currentQuestion.meta_subject || 'No Subject'}</span></div>
                                 </div>
                                 ${renderToolbar()}
                                 <div class="flex-1 relative overflow-hidden">
@@ -205,10 +216,10 @@
                 `;
 
             } else if (taskType === 'academic') {
-                let peersHTML = currentQuestion.peers.map(peer => `
+                let peersHTML = (currentQuestion.peers || []).map(peer => `
                     <div class="flex items-start space-x-3 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
                         <div class="flex flex-col items-center shrink-0">
-                            <div class="w-10 h-10 rounded-full bg-slate-50 border border-gray-100 flex items-center justify-center text-lg shadow-sm">${peer.avatar}</div>
+                            <div class="w-10 h-10 rounded-full bg-slate-50 border border-gray-100 flex items-center justify-center text-lg shadow-sm">${peer.avatar || '👤'}</div>
                             <span class="text-[9px] font-bold text-gray-400 mt-1">${peer.name}</span>
                         </div>
                         <p class="text-xs text-slate-600 leading-relaxed mt-1">${peer.text}</p>
@@ -219,11 +230,11 @@
                     <div class="flex-1 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-100 h-full overflow-hidden">
                         <div class="p-8 overflow-y-auto space-y-6 bg-white">
                             <div class="prose prose-slate max-w-none">
-                                <div class="bg-teal-50 border border-teal-100 rounded-xl px-4 py-3 text-xs font-bold text-teal-800 mb-6 leading-relaxed">${currentQuestion.instruction_box}</div>
+                                <div class="bg-teal-50 border border-teal-100 rounded-xl px-4 py-3 text-xs font-bold text-teal-800 mb-6 leading-relaxed">${currentQuestion.instruction_box || 'Respond to the professor.'}</div>
                                 <div class="flex items-start space-x-4 bg-gray-50/80 p-5 rounded-2xl border border-gray-100">
                                     <div class="flex flex-col items-center text-center shrink-0">
-                                        <div class="text-2xl p-2 bg-white rounded-full shadow-sm border border-gray-100">${currentQuestion.professor_avatar}</div>
-                                        <span class="text-[10px] font-bold text-slate-800 mt-2">${currentQuestion.professor_name}</span>
+                                        <div class="text-2xl p-2 bg-white rounded-full shadow-sm border border-gray-100">${currentQuestion.professor_avatar || '👨‍🏫'}</div>
+                                        <span class="text-[10px] font-bold text-slate-800 mt-2">${currentQuestion.professor_name || 'Professor'}</span>
                                     </div>
                                     <p class="text-xs text-slate-600 leading-relaxed font-medium pt-1">${currentQuestion.professor_prompt}</p>
                                 </div>
@@ -247,8 +258,7 @@
             return `
                 <div class="flex items-center justify-between bg-gray-50 border border-gray-100 px-3 py-1.5 rounded-xl mb-3 text-[11px] font-bold text-slate-600">
                     <div class="flex items-center space-x-1">
-                        <button class="px-2.5 py-1 rounded hover:bg-gray-200 transition">Cut</button>
-                        <button class="px-2.5 py-1 rounded hover:bg-gray-200 transition">Paste</button>
+                        <button class="px-2.5 py-1 rounded hover:bg-gray-200 transition" onclick="document.getElementById('editorArea').focus()">Edit</button>
                     </div>
                     <button onclick="toggleWordCount()" class="flex items-center space-x-1.5 text-gray-400 hover:text-slate-800 transition py-1 px-2 rounded bg-white border border-gray-200 shadow-sm">
                         <i data-lucide="eye" class="w-3 h-3"></i>
@@ -258,12 +268,12 @@
             `;
         }
 
-        // ИНИЦИАЛИЗАЦИЯ DRAG & DROP ДЛЯ BUILD A SENTENCE
         function initSentenceDragAndDrop() {
             const bankContainer = document.getElementById('wordBankContainer');
             const slots = document.querySelectorAll('.word-slot');
+            if(!bankContainer) return;
 
-            currentQuestion.bank.forEach((word) => {
+            (currentQuestion.bank || []).forEach((word) => {
                 bankContainer.innerHTML += `
                     <div class="draggable-word bg-white border border-gray-200 text-slate-700 text-xs font-bold px-4 py-2 rounded-xl shadow-sm cursor-grab active:cursor-grabbing hover:border-slate-400 hover:text-slate-900 transition touch-manipulation select-none flex-shrink-0">
                         ${word}
@@ -286,7 +296,6 @@
                     dragClass: 'sortable-drag',
                     onAdd: function (evt) {
                         const currentSlot = evt.to;
-                        // Если в слоте уже лежит слово, выталкиваем старое обратно в нижний банк
                         if (currentSlot.children.length > 1) {
                             Array.from(currentSlot.children).forEach(child => {
                                 if (child !== evt.item) {
@@ -299,7 +308,6 @@
             });
         }
 
-        // ЛОГИКА ТЕКСТОВОГО СЧЕТЧИКА СЛОВ
         let actualCount = 0;
         function updateWordCount() {
             const text = document.getElementById('editorArea').value.trim();
@@ -315,7 +323,6 @@
             updateWordCount();
         }
 
-        // СБОР РЕЗУЛЬТАТА И ОТПРАВКА В СУБД С ПРИВЯЗКОЙ К USER ИЗ AUTH.JS
         async function handleSubmitResponse() {
             let userResult = "";
 
@@ -329,32 +336,34 @@
                         if (slotNode && slotNode.children.length > 0) {
                             parts.push(slotNode.children[0].innerText.trim());
                         } else {
-                            parts.push("____"); // Если пропустил слот
+                            parts.push("____");
                         }
                     }
                 });
                 userResult = parts.join(" ") + ".";
             } else {
-                userResult = document.getElementById('editorArea').value.trim();
+                const editor = document.getElementById('editorArea');
+                userResult = editor ? editor.value.trim() : "";
             }
 
-            console.log("Submitting content:", userResult);
+            if (!userResult || userResult === "." || userResult === "____.") {
+                alert("Please complete the task before submitting.");
+                return;
+            }
 
-            if (window.supabase) {
+            if (db) {
                 try {
-                    // Тянем сессию из нашего глобального инстанса supabase
-                    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+                    const { data: { session }, error: sessionError } = await db.auth.getSession();
                     
                     if (sessionError || !session) {
                         alert("Session not found. Please log in first.");
-                        window.location.href = 'login.html';
+                        window.location.href = 'index.html';
                         return;
                     }
 
                     const userId = session.user.id;
 
-                    // Пушим ответ в таблицу student_responses вместе с UUID студента
-                    const { error } = await supabase
+                    const { error } = await db
                         .from('student_responses')
                         .insert([
                             { 
@@ -362,20 +371,22 @@
                                 task_type: taskType, 
                                 response_content: userResult,
                                 user_id: userId,
-                                created_at: new Date()
+                                score: null // Изначально пустой балл (на проверку преподавателю)
                             }
                         ]);
                         
                     if (error) throw error;
-                    alert("Your answer was successfully linked and saved to your profile!");
-                    window.location.href = 'writing.html';
+                    
+                    alert("Your answer was successfully saved!");
+                    // Перенаправляем обратно в список задач нужного типа
+                    window.location.href = `task-list.html?type=${taskType}`;
 
                 } catch (err) {
                     alert("Database write error: " + err.message);
                 }
             } else {
-                alert(`No database script detected. Saved to cache memory:\n\n"${userResult}"`);
-                window.location.href = 'writing.html';
+                alert(`No database script detected. Mock redirect.`);
+                window.location.href = `task-list.html?type=${taskType}`;
             }
         }
     </script>
