@@ -37,11 +37,8 @@
     </div>
 
     <script>
-        // Инициализация Supabase напрямую для гарантированной загрузки данных
-        const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
+        // Мы НЕ объявляем const supabase здесь, так как он берется из auth.js
+        
         const urlParams = new URLSearchParams(window.location.search);
         const taskType = urlParams.get('type') || 'sentence';
         
@@ -52,7 +49,10 @@
 
         document.addEventListener('DOMContentLoaded', async () => {
             lucide.createIcons();
-            await loadTasksAndProgress();
+            // Даем время auth.js инициализироваться
+            setTimeout(async () => {
+                await loadTasksAndProgress();
+            }, 200);
         });
 
         async function loadTasksAndProgress() {
@@ -60,6 +60,11 @@
             if (!container) return;
 
             try {
+                // Проверяем, существует ли supabase (глобальная переменная из auth.js)
+                if (typeof supabase === 'undefined') {
+                    throw new Error("Supabase client not found. Check auth.js initialization.");
+                }
+
                 // 1. Проверяем авторизацию
                 const { data: { session }, error: authError } = await supabase.auth.getSession();
                 
@@ -79,7 +84,7 @@
 
                 if (tasksError) throw tasksError;
 
-                // 3. Получаем ответы этого студента для этих заданий
+                // 3. Получаем ответы этого студента
                 const { data: responses, error: respError } = await supabase
                     .from('student_responses')
                     .select('id, task_id, response_content')
@@ -88,122 +93,63 @@
 
                 if (respError) throw respError;
 
-                // Рендер пустого состояния, если заданий нет
                 if (!tasks || tasks.length === 0) {
                     container.className = "flex justify-center items-center py-20 w-full";
-                    container.innerHTML = `
-                        <div class="text-center">
-                            <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-400">
-                                <i data-lucide="file-x" class="w-8 h-8"></i>
-                            </div>
-                            <h3 class="text-lg font-bold text-slate-800 mb-1">No tasks found</h3>
-                            <p class="text-sm text-gray-500">There are no ${taskType} tasks available yet.</p>
-                        </div>
-                    `;
-                    lucide.createIcons();
+                    container.innerHTML = `<div class="text-center text-gray-500">No tasks available yet.</div>`;
                     return;
                 }
 
-                // 4. Переключаем контейнер в режим сетки и рендерим карточки
                 container.className = "grid grid-cols-1 md:grid-cols-2 gap-5";
                 container.innerHTML = '';
 
                 tasks.forEach(task => {
                     const studentResponse = responses.find(r => String(r.task_id) === String(task.id));
                     const isCompleted = !!studentResponse;
-                    let cardContent = '';
-
-                    if (isCompleted) {
-                        cardContent = `
-                            <div class="flex justify-between items-start mb-4">
-                                <div>
-                                    <span class="text-[10px] font-bold text-emerald-700 tracking-wider uppercase bg-emerald-50 px-2 py-1 rounded-md">${taskType}</span>
-                                    <div class="flex items-center space-x-2 mt-4">
-                                        <i data-lucide="check" class="w-4 h-4 text-emerald-500"></i>
-                                        <span class="text-sm font-bold text-emerald-600">Completed</span>
-                                        <button onclick="resetTask('${studentResponse.id}')" class="text-gray-400 hover:text-slate-800 transition ml-2 flex items-center justify-center w-6 h-6 rounded-full hover:bg-gray-100" title="Reset Task">
-                                            <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="w-10 h-10 rounded-full border-4 border-emerald-500 border-l-emerald-100 flex items-center justify-center shrink-0">
-                                    <span class="text-[10px] font-bold text-slate-700">100%</span>
-                                </div>
-                            </div>
-                            
-                            <h2 class="text-lg font-bold text-slate-900 mb-1">${task.title}</h2>
-                            <p class="text-xs text-gray-500 font-medium mb-6">${task.progress || '1 Task • Writing'}</p>
-                            
-                            <button onclick="togglePreview('${task.id}')" class="w-full flex items-center justify-center space-x-2 bg-[#f0fdf4] text-emerald-700 hover:bg-[#dcfce7] transition py-3 rounded-xl font-bold text-sm">
-                                <span>Review Results</span>
-                                <i data-lucide="eye" class="w-4 h-4"></i>
-                            </button>
-
-                            <div class="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-100 text-sm text-slate-700 hidden" id="preview-${task.id}">
-                                <span class="text-[10px] font-bold text-gray-400 uppercase block mb-1">Your Answer:</span>
-                                ${studentResponse.response_content}
-                            </div>
-                        `;
-                    } else {
-                        cardContent = `
-                            <div class="flex justify-between items-start mb-4">
-                                <div>
-                                    <span class="text-[10px] font-bold text-slate-500 tracking-wider uppercase bg-gray-100 px-2 py-1 rounded-md">${taskType}</span>
-                                </div>
-                            </div>
-                            
-                            <h2 class="text-lg font-bold text-slate-900 mb-1 mt-9">${task.title}</h2>
-                            <p class="text-xs text-gray-500 font-medium mb-6">${task.progress || '1 Task • Writing'}</p>
-                            
-                            <a href="writing-practice.html?type=${taskType}&id=${task.id}" class="w-full flex items-center justify-center space-x-2 bg-slate-900 text-white hover:bg-slate-800 transition py-3 rounded-xl font-bold text-sm shadow-sm">
-                                <span>Start Task</span>
-                                <i data-lucide="arrow-right" class="w-4 h-4"></i>
-                            </a>
-                        `;
-                    }
 
                     container.innerHTML += `
                         <div class="bg-white p-6 rounded-[1.5rem] border border-gray-100 shadow-sm hover:shadow-md transition-shadow relative flex flex-col justify-between">
-                            ${cardContent}
+                            <div class="flex justify-between items-start mb-4">
+                                <span class="text-[10px] font-bold ${isCompleted ? 'text-emerald-700 bg-emerald-50' : 'text-slate-500 bg-gray-100'} tracking-wider uppercase px-2 py-1 rounded-md">
+                                    ${isCompleted ? 'Completed' : taskType}
+                                </span>
+                                ${isCompleted ? '<div class="w-10 h-10 rounded-full border-4 border-emerald-500 border-l-emerald-100 flex items-center justify-center shrink-0 text-[10px] font-bold">100%</div>' : ''}
+                            </div>
+                            
+                            <h2 class="text-lg font-bold text-slate-900 mb-1 ${!isCompleted ? 'mt-9' : ''}">${task.title}</h2>
+                            <p class="text-xs text-gray-500 font-medium mb-6">${task.progress || '1 Task • Writing'}</p>
+                            
+                            ${isCompleted ? `
+                                <button onclick="togglePreview('${task.id}')" class="w-full flex items-center justify-center space-x-2 bg-[#f0fdf4] text-emerald-700 hover:bg-[#dcfce7] transition py-3 rounded-xl font-bold text-sm">
+                                    <span>Review Results</span> <i data-lucide="eye" class="w-4 h-4"></i>
+                                </button>
+                                <div class="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-100 text-sm text-slate-700 hidden" id="preview-${task.id}">
+                                    <span class="text-[10px] font-bold text-gray-400 uppercase block mb-1">Your Answer:</span>
+                                    ${studentResponse.response_content}
+                                </div>
+                                <button onclick="resetTask('${studentResponse.id}')" class="mt-2 text-[10px] font-bold text-gray-400 hover:text-rose-500 uppercase">Reset Task</button>
+                            ` : `
+                                <a href="writing-practice.html?type=${taskType}&id=${task.id}" class="w-full flex items-center justify-center space-x-2 bg-slate-900 text-white hover:bg-slate-800 transition py-3 rounded-xl font-bold text-sm shadow-sm">
+                                    <span>Start Task</span> <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                                </a>
+                            `}
                         </div>
                     `;
                 });
-
                 lucide.createIcons();
-
             } catch (err) {
-                console.error("Critical error loading tasks:", err);
-                container.className = "w-full";
-                container.innerHTML = `
-                    <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl relative" role="alert">
-                        <strong class="font-bold">Error loading tasks!</strong>
-                        <span class="block sm:inline"> ${err.message}</span>
-                        <p class="text-xs mt-2 opacity-70">Check DevTools Console (F12) for more details.</p>
-                    </div>
-                `;
+                console.error("Error:", err);
+                container.innerHTML = `<div class="text-red-500 p-4">Error: ${err.message}</div>`;
             }
         }
 
         function togglePreview(taskId) {
-            const previewDiv = document.getElementById(`preview-${taskId}`);
-            if (previewDiv) previewDiv.classList.toggle('hidden');
+            document.getElementById(`preview-${taskId}`).classList.toggle('hidden');
         }
 
         async function resetTask(responseId) {
-            if (!confirm("Are you sure you want to reset your progress? This will delete your current answer.")) return;
-
-            try {
-                const { error } = await supabase
-                    .from('student_responses')
-                    .delete()
-                    .eq('id', responseId);
-
-                if (error) throw error;
-                
-                await loadTasksAndProgress();
-            } catch (err) {
-                alert("Error resetting task: " + err.message);
-            }
+            if (!confirm("Reset progress?")) return;
+            await supabase.from('student_responses').delete().eq('id', responseId);
+            await loadTasksAndProgress();
         }
     </script>
 </body>
