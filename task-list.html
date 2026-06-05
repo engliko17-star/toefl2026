@@ -9,7 +9,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght=400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
     </style>
 </head>
@@ -65,7 +65,7 @@
                 }
                 const userId = session.user.id;
 
-                // Загружаем задания, включая новые колонки sample_answer и explanation
+                // Подгружаем задания с пояснениями
                 const { data: tasks, error: tasksError } = await db
                     .from('writing_tasks')
                     .select('id, title, progress, type, sample_answer, explanation')
@@ -74,9 +74,10 @@
 
                 if (tasksError) throw tasksError;
 
+                // Тянем ответы и их score
                 const { data: responses, error: respError } = await db
                     .from('student_responses')
-                    .select('id, task_id, response_content')
+                    .select('id, task_id, response_content, score')
                     .eq('user_id', userId)
                     .ilike('task_type', taskType);
 
@@ -106,6 +107,12 @@
                     let cardContent = '';
 
                     if (isCompleted) {
+                        // Если балл выставлен — кружок оранжевый, если нет — серый с часиками
+                        const hasScore = studentResponse.score !== null && studentResponse.score !== undefined && studentResponse.score !== '';
+                        const scoreHTML = hasScore 
+                            ? `<span class="text-xs font-bold text-slate-800">${studentResponse.score}</span>`
+                            : `<i data-lucide="clock" class="w-4 h-4 text-amber-500" title="Awaiting Review"></i>`;
+
                         cardContent = `
                             <div class="flex justify-between items-start mb-5">
                                 <div class="flex flex-col gap-2">
@@ -114,13 +121,13 @@
                                     </span>
                                     <div class="flex items-center text-emerald-600 font-semibold text-sm mt-1">
                                         <i data-lucide="check" class="w-4 h-4 mr-1"></i> Completed
-                                        <button onclick="resetTask('${studentResponse.id}')" class="ml-2 text-gray-400 hover:text-slate-700 transition flex items-center" title="Reset Progress">
+                                        <button onclick="resetTask('${studentResponse.id}')" class="ml-2 text-gray-400 hover:text-rose-500 transition flex items-center" title="Reset Progress">
                                             <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
                                         </button>
                                     </div>
                                 </div>
-                                <div class="w-12 h-12 rounded-full border-[3px] border-orange-400 border-r-orange-100 flex items-center justify-center shrink-0">
-                                    <span class="text-xs font-bold text-slate-800">100%</span>
+                                <div class="w-11 h-11 rounded-full border-[3px] ${hasScore ? 'border-orange-400 border-r-orange-100' : 'border-dashed border-gray-300'} flex items-center justify-center shrink-0">
+                                    ${scoreHTML}
                                 </div>
                             </div>
                             
@@ -135,9 +142,8 @@
                             </button>
 
                             <div class="mt-4 p-4 bg-gray-50 rounded-2xl border border-gray-100 text-sm hidden" id="preview-${task.id}">
-                                
                                 <div class="mb-4">
-                                    <span class="text-[10px] font-bold text-gray-400 uppercase block mb-2">Your Answer:</span>
+                                    <span class="text-[10px] font-bold text-gray-400 uppercase block mb-1">Your Answer:</span>
                                     <div class="text-slate-700 whitespace-pre-wrap leading-relaxed">${studentResponse.response_content}</div>
                                 </div>
 
@@ -145,16 +151,16 @@
 
                                 ${task.sample_answer ? `
                                     <div class="mb-4">
-                                        <span class="text-[10px] font-bold text-indigo-500 uppercase flex items-center gap-1.5 mb-2">
+                                        <span class="text-[10px] font-bold text-indigo-500 uppercase flex items-center gap-1.5 mb-1">
                                             <i data-lucide="book-open" class="w-3 h-3"></i> Sample Answer
                                         </span>
-                                        <div class="p-3 bg-indigo-50 rounded-xl border border-indigo-100 text-indigo-900 whitespace-pre-wrap leading-relaxed">${task.sample_answer}</div>
+                                        <div class="p-3 bg-indigo-50/60 rounded-xl border border-indigo-100 text-indigo-900 whitespace-pre-wrap leading-relaxed">${task.sample_answer}</div>
                                     </div>
                                 ` : ''}
 
                                 ${task.explanation ? `
                                     <div>
-                                        <span class="text-[10px] font-bold text-amber-500 uppercase flex items-center gap-1.5 mb-2">
+                                        <span class="text-[10px] font-bold text-amber-600 uppercase flex items-center gap-1.5 mb-1">
                                             <i data-lucide="lightbulb" class="w-3 h-3"></i> Teacher's Note
                                         </span>
                                         <div class="text-gray-600 whitespace-pre-wrap leading-relaxed">${task.explanation}</div>
@@ -201,9 +207,7 @@
 
         function togglePreview(taskId) {
             const preview = document.getElementById(`preview-${taskId}`);
-            if (preview) {
-                preview.classList.toggle('hidden');
-            }
+            if (preview) preview.classList.toggle('hidden');
         }
 
         async function resetTask(responseId) {
