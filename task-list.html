@@ -27,7 +27,6 @@
         </div>
 
         <div id="tasksContainer" class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <!-- Скелетон загрузки -->
             <div class="h-44 bg-white border border-gray-100 rounded-3xl p-6 animate-pulse space-y-4">
                 <div class="flex justify-between"><div class="h-4 w-16 bg-gray-200 rounded"></div><div class="h-8 w-8 bg-gray-200 rounded-full"></div></div>
                 <div class="h-6 w-3/4 bg-gray-200 rounded"></div>
@@ -74,10 +73,22 @@
                     let progressCircleHTML = '';
 
                     if (isCompleted) {
-                        // Отрендерим SVG кольцо как на макете 1000066085.jpg
-                        const scoreVal = response.score ? parseInt(response.score) : null;
-                        const hasScore = scoreVal !== null && !isNaN(scoreVal);
-                        const percent = hasScore ? Math.min(100, Math.round((scoreVal / 5) * 100)) : 0; 
+                        // Динамический расчет процентов для кругового графика
+                        let percent = 0;
+                        let hasScore = false;
+
+                        if (response.score !== null && response.score !== undefined) {
+                            hasScore = true;
+                            if (String(response.score).includes('/')) {
+                                const [earned, max] = String(response.score).split('/').map(Number);
+                                if (max > 0) percent = Math.round((earned / max) * 100);
+                            } else {
+                                const earned = parseInt(response.score);
+                                if (!isNaN(earned)) percent = Math.round((earned / 5) * 100);
+                                else hasScore = false;
+                            }
+                        }
+
                         const strokeDash = 2 * Math.PI * 16;
                         const offset = strokeDash - (percent / 100) * strokeDash;
 
@@ -95,9 +106,14 @@
                         `;
 
                         actionButton = `
-                            <a href="writing-practice.html?type=${taskType}&id=${task.id}" class="w-full flex items-center justify-center space-x-2 bg-[#edfdf4] text-emerald-700 hover:bg-[#dcfce7] transition py-3 rounded-2xl font-bold text-sm">
-                                <span>Review Results</span> <i data-lucide="eye" class="w-4 h-4"></i>
-                            </a>
+                            <div class="flex gap-2">
+                                <a href="writing-practice.html?type=${taskType}&id=${task.id}" class="flex-1 flex items-center justify-center space-x-2 bg-[#edfdf4] text-emerald-700 hover:bg-[#dcfce7] transition py-3 rounded-2xl font-bold text-sm">
+                                    <span>Review Results</span> <i data-lucide="eye" class="w-4 h-4"></i>
+                                </a>
+                                <button onclick="resetTaskFromList('${task.id}')" class="w-12 flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-100 transition py-3 rounded-2xl shrink-0 border border-rose-100" title="Reset Progress">
+                                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                                </button>
+                            </div>
                         `;
                     } else {
                         progressCircleHTML = `<span class="text-xs font-bold text-gray-300 tracking-wide">${testNum}</span>`;
@@ -132,7 +148,33 @@
                 console.error(err);
             }
         }
+
+        // Функция сброса прогресса прямиком из списка
+        async function resetTaskFromList(taskId) {
+            if (!confirm("Are you sure you want to reset your progress for this task?")) return;
+            
+            try {
+                // Показываем визуальную обратную связь (меняем курсор)
+                document.body.style.cursor = 'wait';
+                
+                const { data: { session } } = await db.auth.getSession();
+                if (!session) return;
+
+                const { error } = await db.from('student_responses')
+                    .delete()
+                    .eq('task_id', taskId)
+                    .eq('user_id', session.user.id);
+                    
+                if (error) throw error;
+
+                // Перерисовываем список, чтобы показать кнопку "Start Practice"
+                await loadTasksAndProgress(); 
+            } catch (err) {
+                alert("Error resetting task: " + err.message);
+            } finally {
+                document.body.style.cursor = 'default';
+            }
+        }
     </script>
 </body>
 </html>
-
