@@ -62,6 +62,16 @@
             lucide.createIcons();
         });
 
+        // Функция для перемешивания элементов массива
+        function shuffleArray(array) {
+            let shuffled = [...array]; // Создаем копию, чтобы не менять оригинальный массив
+            for (let i = shuffled.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+            }
+            return shuffled;
+        }
+
         async function fetchTaskAndStatus() {
             try {
                 const { data: { session } } = await db.auth.getSession();
@@ -102,12 +112,10 @@
             }
         }
 
-        // --- ЭКРАН РЕЗУЛЬТАТОВ С ДИНАМИЧЕСКОЙ ОЦЕНКОЙ X/Y ---
         function renderResultsView(container) {
             let scoreText = 'Awaiting';
             let accuracyPercent = 0;
             
-            // Парсим оценку, даже если она записана в формате "7/8"
             if (studentResponse.score) {
                 if (String(studentResponse.score).includes('/')) {
                     const [earned, max] = String(studentResponse.score).split('/').map(Number);
@@ -196,7 +204,6 @@
             lucide.createIcons();
         }
 
-        // --- ЭКРАН САМОЙ ПРАКТИКИ ---
         function renderPracticeView(container) {
             container.className = "flex-1 flex flex-col overflow-hidden bg-white";
             
@@ -313,7 +320,12 @@
             const slots = document.querySelectorAll('.word-slot');
             if(!bankContainer) return;
 
-            (currentQuestion.bank || []).forEach(word => {
+            // Получаем массив слов и перемешиваем его
+            const words = currentQuestion.bank || [];
+            const shuffledWords = shuffleArray(words);
+
+            // Рендерим уже перемешанные слова
+            shuffledWords.forEach(word => {
                 bankContainer.innerHTML += `<div class="draggable-word bg-white border border-gray-200 text-slate-700 text-xs font-bold px-4 py-2 rounded-xl shadow-sm cursor-grab active:cursor-grabbing hover:border-slate-400 select-none">${word}</div>`;
             });
 
@@ -342,7 +354,7 @@
 
         async function handleSubmitResponse() {
             let userResult = "";
-            let calculatedScore = null; // По умолчанию оценка пустая (будет ждать учителя)
+            let calculatedScore = null; 
 
             if (taskType === 'sentence') {
                 let parts = [];
@@ -354,11 +366,9 @@
                     }
                 });
                 
-                // Собираем ответ, склеивая слова и удаляя пробелы перед точками
                 userResult = parts.join(" ").replace(/\s+([.?!])/g, "$1").trim();
                 if (!userResult.endsWith(".")) userResult += ".";
 
-                // АВТОМАТИЧЕСКАЯ ПРОВЕРКА ДЛЯ ПРЕДЛОЖЕНИЙ
                 if (currentQuestion.sample_answer) {
                     const sampleSents = currentQuestion.sample_answer.split(/[.?!]/).map(s => s.replace(/\s+/g, ' ').trim().toLowerCase()).filter(s => s.length > 0);
                     const userSents = userResult.split(/[.?!]/).map(s => s.replace(/\s+/g, ' ').trim().toLowerCase()).filter(s => s.length > 0);
@@ -366,12 +376,10 @@
                     let maxScore = sampleSents.length > 0 ? sampleSents.length : 1;
                     let correctCount = 0;
                     
-                    // Сверяем предложения одно за другим
                     sampleSents.forEach((sent, index) => {
                         if (userSents[index] === sent) correctCount++;
                     });
 
-                    // Запасной план: если разделение по точкам не помогло, сверяем строку целиком
                     if (maxScore === 1 && correctCount === 0) {
                         const cleanUser = userResult.replace(/[^\w\s]/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
                         const cleanSample = currentQuestion.sample_answer.replace(/[^\w\s]/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -379,11 +387,9 @@
                             correctCount = 1;
                         }
                     }
-                    // Сохраняем в базу в формате X/Y (например, 7/7)
                     calculatedScore = `${correctCount}/${maxScore}`;
                 }
             } else {
-                // Для Email и Academic берем текст из поля
                 userResult = document.getElementById('editorArea')?.value.trim() || "";
             }
 
@@ -399,7 +405,7 @@
                         task_type: taskType, 
                         response_content: userResult, 
                         user_id: session.user.id,
-                        score: calculatedScore // Передаем вычисленный балл (или null)
+                        score: calculatedScore 
                     }
                 ]).select().single();
 
