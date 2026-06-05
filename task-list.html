@@ -15,23 +15,23 @@
 </head>
 <body class="bg-[#f8f9fa] text-slate-900 min-h-screen antialiased p-4 md:p-8">
 
-    <div class="max-w-4xl mx-auto">
-        <div class="flex items-center space-x-4 mb-8">
+    <div class="max-w-5xl mx-auto">
+        <div class="flex items-center space-x-4 mb-6">
             <a href="writing.html" class="flex items-center justify-center w-10 h-10 rounded-xl border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-slate-800 transition shadow-sm shrink-0">
                 <i data-lucide="arrow-left" class="w-5 h-5"></i>
             </a>
             <div>
-                <h1 class="text-2xl font-bold tracking-tight text-slate-900 capitalize" id="pageTitle">Loading Tasks...</h1>
-                <p class="text-sm text-gray-500 font-medium">Select a module to practice</p>
+                <span class="text-[11px] font-bold text-gray-400 uppercase tracking-wider" id="backBreadcrumb">← Back to Writing</span>
+                <h1 class="text-2xl font-extrabold tracking-tight text-slate-900 capitalize mt-0.5" id="pageTitle">Writing Practice</h1>
             </div>
         </div>
 
-        <div id="tasksContainer" class="space-y-4">
-            <div class="animate-pulse flex space-x-4">
-                <div class="flex-1 space-y-4 py-1">
-                    <div class="h-32 bg-gray-200 rounded-2xl"></div>
-                    <div class="h-32 bg-gray-200 rounded-2xl"></div>
-                </div>
+        <div id="tasksContainer" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Скелетон загрузки -->
+            <div class="h-44 bg-white border border-gray-100 rounded-3xl p-6 animate-pulse space-y-4">
+                <div class="flex justify-between"><div class="h-4 w-16 bg-gray-200 rounded"></div><div class="h-8 w-8 bg-gray-200 rounded-full"></div></div>
+                <div class="h-6 w-3/4 bg-gray-200 rounded"></div>
+                <div class="h-10 w-full bg-gray-100 rounded-xl"></div>
             </div>
         </div>
     </div>
@@ -41,183 +41,95 @@
         const urlParams = new URLSearchParams(window.location.search);
         const taskType = urlParams.get('type') || 'sentence';
         
-        const pageTitle = document.getElementById('pageTitle');
-        if (pageTitle) {
-            pageTitle.innerText = taskType.charAt(0).toUpperCase() + taskType.slice(1) + ' Practice';
-        }
+        document.getElementById('pageTitle').innerText = taskType === 'sentence' ? 'Build a Sentence' : taskType === 'email' ? 'Write an Email' : 'Academic Discussion';
 
-        document.addEventListener('DOMContentLoaded', async () => {
-            lucide.createIcons();
-            setTimeout(async () => {
-                await loadTasksAndProgress();
-            }, 100);
-        });
+        document.addEventListener('DOMContentLoaded', loadTasksAndProgress);
 
         async function loadTasksAndProgress() {
             const container = document.getElementById('tasksContainer');
-            if (!container) return;
-
             try {
-                const { data: { session }, error: authError } = await db.auth.getSession();
-                if (authError || !session) {
-                    window.location.replace('index.html');
-                    return;
-                }
+                const { data: { session } } = await db.auth.getSession();
+                if (!session) { window.location.replace('index.html'); return; }
                 const userId = session.user.id;
 
-                // Подгружаем задания с пояснениями
-                const { data: tasks, error: tasksError } = await db
-                    .from('writing_tasks')
-                    .select('id, title, progress, type, sample_answer, explanation')
-                    .ilike('type', taskType)
-                    .order('id', { ascending: true });
-
-                if (tasksError) throw tasksError;
-
-                // Тянем ответы и их score
-                const { data: responses, error: respError } = await db
-                    .from('student_responses')
-                    .select('id, task_id, response_content, score')
-                    .eq('user_id', userId)
-                    .ilike('task_type', taskType);
-
-                if (respError) throw respError;
+                const { data: tasks } = await db.from('writing_tasks').select('*').ilike('type', taskType).order('id', { ascending: true });
+                const { data: responses } = await db.from('student_responses').select('*').eq('user_id', userId).ilike('task_type', taskType);
 
                 if (!tasks || tasks.length === 0) {
-                    container.className = "flex justify-center items-center py-20 w-full";
-                    container.innerHTML = `
-                        <div class="text-center">
-                            <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-400">
-                                <i data-lucide="file-x" class="w-8 h-8"></i>
-                            </div>
-                            <h3 class="text-lg font-bold text-slate-800 mb-1">No tasks available yet</h3>
-                            <p class="text-sm text-gray-500">В базе данных не найдено заданий.</p>
-                        </div>
-                    `;
+                    container.className = "flex justify-center items-center py-20 w-full col-span-full";
+                    container.innerHTML = `<div class="text-center text-gray-400"><i data-lucide="file-x" class="w-12 h-12 mx-auto mb-2"></i><p class="font-medium">No tasks found.</p></div>`;
                     lucide.createIcons();
                     return;
                 }
 
-                container.className = "grid grid-cols-1 md:grid-cols-2 gap-5";
+                container.className = "grid grid-cols-1 md:grid-cols-2 gap-6";
                 container.innerHTML = '';
 
-                tasks.forEach(task => {
-                    const studentResponse = responses.find(r => String(r.task_id) === String(task.id));
-                    const isCompleted = !!studentResponse;
-                    let cardContent = '';
+                tasks.forEach((task, index) => {
+                    const response = responses.find(r => String(r.task_id) === String(task.id));
+                    const isCompleted = !!response;
+                    const testNum = `Test #${index + 1}`;
+                    
+                    let actionButton = '';
+                    let progressCircleHTML = '';
 
                     if (isCompleted) {
-                        // Если балл выставлен — кружок оранжевый, если нет — серый с часиками
-                        const hasScore = studentResponse.score !== null && studentResponse.score !== undefined && studentResponse.score !== '';
-                        const scoreHTML = hasScore 
-                            ? `<span class="text-xs font-bold text-slate-800">${studentResponse.score}</span>`
-                            : `<i data-lucide="clock" class="w-4 h-4 text-amber-500" title="Awaiting Review"></i>`;
+                        // Отрендерим SVG кольцо как на макете 1000066085.jpg
+                        const scoreVal = response.score ? parseInt(response.score) : null;
+                        const hasScore = scoreVal !== null && !isNaN(scoreVal);
+                        const percent = hasScore ? Math.min(100, Math.round((scoreVal / 5) * 100)) : 0; 
+                        const strokeDash = 2 * Math.PI * 16;
+                        const offset = strokeDash - (percent / 100) * strokeDash;
 
-                        cardContent = `
-                            <div class="flex justify-between items-start mb-5">
-                                <div class="flex flex-col gap-2">
-                                    <span class="w-fit px-3 py-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 rounded-full tracking-wider uppercase">
-                                        ${taskType}
-                                    </span>
-                                    <div class="flex items-center text-emerald-600 font-semibold text-sm mt-1">
-                                        <i data-lucide="check" class="w-4 h-4 mr-1"></i> Completed
-                                        <button onclick="resetTask('${studentResponse.id}')" class="ml-2 text-gray-400 hover:text-rose-500 transition flex items-center" title="Reset Progress">
-                                            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
-                                        </button>
-                                    </div>
+                        progressCircleHTML = `
+                            <div class="relative flex items-center justify-center w-11 h-11 shrink-0">
+                                <svg class="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                                    <circle cx="18" cy="18" r="16" fill="transparent" stroke="#f1f5f9" stroke-width="3.5"></circle>
+                                    <circle cx="18" cy="18" r="16" fill="transparent" stroke="${hasScore ? '#f43f5e' : '#cbd5e1'}" stroke-width="3.5" 
+                                        stroke-dasharray="${strokeDash}" stroke-dashoffset="${hasScore ? offset : 0}" stroke-linecap="round"></circle>
+                                </svg>
+                                <div class="absolute text-[10px] font-extrabold text-slate-700">
+                                    ${hasScore ? `${percent}%` : '<i data-lucide="clock" class="w-3.5 h-3.5 text-gray-400"></i>'}
                                 </div>
-                                <div class="w-11 h-11 rounded-full border-[3px] ${hasScore ? 'border-orange-400 border-r-orange-100' : 'border-dashed border-gray-300'} flex items-center justify-center shrink-0">
-                                    ${scoreHTML}
-                                </div>
-                            </div>
-                            
-                            <div class="mb-6">
-                                <h2 class="text-xl font-bold text-slate-900 mb-2">${task.title}</h2>
-                                <p class="text-sm text-gray-500">${task.progress || 'Writing Task'}</p>
-                            </div>
-                            
-                            <button onclick="togglePreview('${task.id}')" class="w-full flex items-center justify-center space-x-2 bg-[#f0fdf4] text-emerald-700 hover:bg-[#dcfce7] transition py-3 rounded-2xl font-bold text-sm">
-                                <span>Review Results</span>
-                                <i data-lucide="eye" class="w-4 h-4"></i>
-                            </button>
-
-                            <div class="mt-4 p-4 bg-gray-50 rounded-2xl border border-gray-100 text-sm hidden" id="preview-${task.id}">
-                                <div class="mb-4">
-                                    <span class="text-[10px] font-bold text-gray-400 uppercase block mb-1">Your Answer:</span>
-                                    <div class="text-slate-700 whitespace-pre-wrap leading-relaxed">${studentResponse.response_content}</div>
-                                </div>
-
-                                ${(task.sample_answer || task.explanation) ? `<div class="border-t border-gray-200 my-4"></div>` : ''}
-
-                                ${task.sample_answer ? `
-                                    <div class="mb-4">
-                                        <span class="text-[10px] font-bold text-indigo-500 uppercase flex items-center gap-1.5 mb-1">
-                                            <i data-lucide="book-open" class="w-3 h-3"></i> Sample Answer
-                                        </span>
-                                        <div class="p-3 bg-indigo-50/60 rounded-xl border border-indigo-100 text-indigo-900 whitespace-pre-wrap leading-relaxed">${task.sample_answer}</div>
-                                    </div>
-                                ` : ''}
-
-                                ${task.explanation ? `
-                                    <div>
-                                        <span class="text-[10px] font-bold text-amber-600 uppercase flex items-center gap-1.5 mb-1">
-                                            <i data-lucide="lightbulb" class="w-3 h-3"></i> Teacher's Note
-                                        </span>
-                                        <div class="text-gray-600 whitespace-pre-wrap leading-relaxed">${task.explanation}</div>
-                                    </div>
-                                ` : ''}
                             </div>
                         `;
+
+                        actionButton = `
+                            <a href="writing-practice.html?type=${taskType}&id=${task.id}" class="w-full flex items-center justify-center space-x-2 bg-[#edfdf4] text-emerald-700 hover:bg-[#dcfce7] transition py-3 rounded-2xl font-bold text-sm">
+                                <span>Review Results</span> <i data-lucide="eye" class="w-4 h-4"></i>
+                            </a>
+                        `;
                     } else {
-                        cardContent = `
-                            <div class="flex justify-between items-start mb-5">
-                                <span class="px-3 py-1 text-[10px] font-bold text-slate-500 bg-slate-100 rounded-full tracking-wider uppercase">
-                                    ${taskType}
-                                </span>
-                            </div>
-                            
-                            <div class="mb-6 mt-6">
-                                <h2 class="text-xl font-bold text-slate-900 mb-2">${task.title}</h2>
-                                <p class="text-sm text-gray-500">${task.progress || 'Level: Medium'}</p>
-                            </div>
-                            
+                        progressCircleHTML = `<span class="text-xs font-bold text-gray-300 tracking-wide">${testNum}</span>`;
+                        actionButton = `
                             <a href="writing-practice.html?type=${taskType}&id=${task.id}" class="w-full flex items-center justify-center space-x-2 bg-[#121629] text-white hover:bg-slate-800 transition py-3.5 rounded-2xl font-bold text-sm shadow-sm">
-                                <span>Start Task</span>
-                                <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                                <span>Start Practice</span> <i data-lucide="arrow-right" class="w-4 h-4"></i>
                             </a>
                         `;
                     }
 
                     container.innerHTML += `
-                        <div class="bg-white p-6 rounded-[1.5rem] border border-gray-100 shadow-sm hover:shadow-md transition-all relative flex flex-col justify-between h-full">
-                            ${cardContent}
+                        <div class="bg-white p-6 rounded-[1.5rem] border border-gray-100 shadow-sm hover:shadow-md transition-all flex flex-col justify-between min-h-[190px]">
+                            <div>
+                                <div class="flex justify-between items-center mb-4">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="px-2.5 py-1 text-[9px] font-extrabold rounded-md tracking-wider uppercase ${isCompleted ? 'text-emerald-700 bg-emerald-50' : 'text-slate-500 bg-slate-100'}">
+                                            ${taskType === 'academic' ? 'ACADEMIC' : taskType.toUpperCase()}
+                                        </span>
+                                        ${isCompleted ? `<span class="text-[11px] font-bold text-emerald-600 flex items-center"><i data-lucide="check" class="w-3.5 h-3.5 mr-0.5"></i> Completed</span>` : ''}
+                                    </div>
+                                    ${progressCircleHTML}
+                                </div>
+                                <h2 class="text-base font-extrabold text-slate-900 mb-1 leading-tight line-clamp-1">${task.title}</h2>
+                                <p class="text-xs text-gray-400 font-medium mb-5">1 Questions • 1 answer type</p>
+                            </div>
+                            ${actionButton}
                         </div>
                     `;
                 });
                 lucide.createIcons();
             } catch (err) {
-                console.error("Critical error:", err);
-                container.innerHTML = `
-                    <div class="col-span-full bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-2xl">
-                        <strong>Error:</strong> ${err.message}
-                    </div>
-                `;
-            }
-        }
-
-        function togglePreview(taskId) {
-            const preview = document.getElementById(`preview-${taskId}`);
-            if (preview) preview.classList.toggle('hidden');
-        }
-
-        async function resetTask(responseId) {
-            if (!confirm("Are you sure you want to reset this task? Your answer will be deleted.")) return;
-            const { error } = await db.from('student_responses').delete().eq('id', responseId);
-            if (error) {
-                alert("Error resetting task: " + error.message);
-            } else {
-                document.getElementById('tasksContainer').innerHTML = '<div class="col-span-full text-center py-10 text-gray-500">Refreshing...</div>';
-                await loadTasksAndProgress();
+                console.error(err);
             }
         }
     </script>
