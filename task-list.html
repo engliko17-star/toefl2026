@@ -9,7 +9,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght=400;500;600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
     </style>
 </head>
@@ -73,19 +73,26 @@
                     let progressCircleHTML = '';
 
                     if (isCompleted) {
-                        // Динамический расчет процентов для кругового графика
                         let percent = 0;
                         let hasScore = false;
+                        let displayText = '';
 
                         if (response.score !== null && response.score !== undefined) {
                             hasScore = true;
-                            if (String(response.score).includes('/')) {
-                                const [earned, max] = String(response.score).split('/').map(Number);
+                            const scoreStr = String(response.score);
+                            
+                            if (scoreStr.includes('/')) {
+                                const [earned, max] = scoreStr.split('/').map(Number);
                                 if (max > 0) percent = Math.round((earned / max) * 100);
+                                displayText = scoreStr; // Показываем саму дробь, например "7/8"
                             } else {
-                                const earned = parseInt(response.score);
-                                if (!isNaN(earned)) percent = Math.round((earned / 5) * 100);
-                                else hasScore = false;
+                                const earned = parseInt(scoreStr);
+                                if (!isNaN(earned)) {
+                                    percent = Math.round((earned / 5) * 100);
+                                    displayText = `${percent}%`; // Для старых записей показываем процент
+                                } else {
+                                    hasScore = false;
+                                }
                             }
                         }
 
@@ -99,8 +106,8 @@
                                     <circle cx="18" cy="18" r="16" fill="transparent" stroke="${hasScore ? '#f43f5e' : '#cbd5e1'}" stroke-width="3.5" 
                                         stroke-dasharray="${strokeDash}" stroke-dashoffset="${hasScore ? offset : 0}" stroke-linecap="round"></circle>
                                 </svg>
-                                <div class="absolute text-[10px] font-extrabold text-slate-700">
-                                    ${hasScore ? `${percent}%` : '<i data-lucide="clock" class="w-3.5 h-3.5 text-gray-400"></i>'}
+                                <div class="absolute text-[9px] font-extrabold text-slate-700 tracking-tight">
+                                    ${hasScore ? displayText : '<i data-lucide="clock" class="w-3.5 h-3.5 text-gray-400"></i>'}
                                 </div>
                             </div>
                         `;
@@ -149,12 +156,10 @@
             }
         }
 
-        // Функция сброса прогресса прямиком из списка
         async function resetTaskFromList(taskId) {
             if (!confirm("Are you sure you want to reset your progress for this task?")) return;
             
             try {
-                // Показываем визуальную обратную связь (меняем курсор)
                 document.body.style.cursor = 'wait';
                 
                 const { data: { session } } = await db.auth.getSession();
@@ -167,7 +172,6 @@
                     
                 if (error) throw error;
 
-                // Перерисовываем список, чтобы показать кнопку "Start Practice"
                 await loadTasksAndProgress(); 
             } catch (err) {
                 alert("Error resetting task: " + err.message);
@@ -178,3 +182,188 @@
     </script>
 </body>
 </html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Select Task — TOEFL</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="auth.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+    </style>
+</head>
+<body class="bg-[#f8f9fa] text-slate-900 min-h-screen antialiased p-4 md:p-8">
+
+    <div class="max-w-5xl mx-auto">
+        <div class="flex items-center space-x-4 mb-6">
+            <a href="writing.html" class="flex items-center justify-center w-10 h-10 rounded-xl border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-slate-800 transition shadow-sm shrink-0">
+                <i data-lucide="arrow-left" class="w-5 h-5"></i>
+            </a>
+            <div>
+                <span class="text-[11px] font-bold text-gray-400 uppercase tracking-wider" id="backBreadcrumb">← Back to Writing</span>
+                <h1 class="text-2xl font-extrabold tracking-tight text-slate-900 capitalize mt-0.5" id="pageTitle">Writing Practice</h1>
+            </div>
+        </div>
+
+        <div id="tasksContainer" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="h-44 bg-white border border-gray-100 rounded-3xl p-6 animate-pulse space-y-4">
+                <div class="flex justify-between"><div class="h-4 w-16 bg-gray-200 rounded"></div><div class="h-8 w-8 bg-gray-200 rounded-full"></div></div>
+                <div class="h-6 w-3/4 bg-gray-200 rounded"></div>
+                <div class="h-10 w-full bg-gray-100 rounded-xl"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const urlParams = new URLSearchParams(window.location.search);
+        const taskType = urlParams.get('type') || 'sentence';
+        
+        document.getElementById('pageTitle').innerText = taskType === 'sentence' ? 'Build a Sentence' : taskType === 'email' ? 'Write an Email' : 'Academic Discussion';
+
+        document.addEventListener('DOMContentLoaded', loadTasksAndProgress);
+
+        async function loadTasksAndProgress() {
+            const container = document.getElementById('tasksContainer');
+            try {
+                const { data: { session } } = await db.auth.getSession();
+                if (!session) { window.location.replace('index.html'); return; }
+                const userId = session.user.id;
+
+                const { data: tasks } = await db.from('writing_tasks').select('*').ilike('type', taskType).order('id', { ascending: true });
+                const { data: responses } = await db.from('student_responses').select('*').eq('user_id', userId).ilike('task_type', taskType);
+
+                if (!tasks || tasks.length === 0) {
+                    container.className = "flex justify-center items-center py-20 w-full col-span-full";
+                    container.innerHTML = `<div class="text-center text-gray-400"><i data-lucide="file-x" class="w-12 h-12 mx-auto mb-2"></i><p class="font-medium">No tasks found.</p></div>`;
+                    lucide.createIcons();
+                    return;
+                }
+
+                container.className = "grid grid-cols-1 md:grid-cols-2 gap-6";
+                container.innerHTML = '';
+
+                tasks.forEach((task, index) => {
+                    const response = responses.find(r => String(r.task_id) === String(task.id));
+                    const isCompleted = !!response;
+                    const testNum = `Test #${index + 1}`;
+                    
+                    let actionButton = '';
+                    let progressCircleHTML = '';
+
+                    if (isCompleted) {
+                        let percent = 0;
+                        let hasScore = false;
+                        let displayText = '';
+
+                        if (response.score !== null && response.score !== undefined) {
+                            hasScore = true;
+                            const scoreStr = String(response.score);
+                            
+                            if (scoreStr.includes('/')) {
+                                const [earned, max] = scoreStr.split('/').map(Number);
+                                if (max > 0) percent = Math.round((earned / max) * 100);
+                                displayText = scoreStr; // Показываем саму дробь, например "7/8"
+                            } else {
+                                const earned = parseInt(scoreStr);
+                                if (!isNaN(earned)) {
+                                    percent = Math.round((earned / 5) * 100);
+                                    displayText = `${percent}%`; // Для старых записей показываем процент
+                                } else {
+                                    hasScore = false;
+                                }
+                            }
+                        }
+
+                        const strokeDash = 2 * Math.PI * 16;
+                        const offset = strokeDash - (percent / 100) * strokeDash;
+
+                        progressCircleHTML = `
+                            <div class="relative flex items-center justify-center w-11 h-11 shrink-0">
+                                <svg class="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                                    <circle cx="18" cy="18" r="16" fill="transparent" stroke="#f1f5f9" stroke-width="3.5"></circle>
+                                    <circle cx="18" cy="18" r="16" fill="transparent" stroke="${hasScore ? '#f43f5e' : '#cbd5e1'}" stroke-width="3.5" 
+                                        stroke-dasharray="${strokeDash}" stroke-dashoffset="${hasScore ? offset : 0}" stroke-linecap="round"></circle>
+                                </svg>
+                                <div class="absolute text-[9px] font-extrabold text-slate-700 tracking-tight">
+                                    ${hasScore ? displayText : '<i data-lucide="clock" class="w-3.5 h-3.5 text-gray-400"></i>'}
+                                </div>
+                            </div>
+                        `;
+
+                        actionButton = `
+                            <div class="flex gap-2">
+                                <a href="writing-practice.html?type=${taskType}&id=${task.id}" class="flex-1 flex items-center justify-center space-x-2 bg-[#edfdf4] text-emerald-700 hover:bg-[#dcfce7] transition py-3 rounded-2xl font-bold text-sm">
+                                    <span>Review Results</span> <i data-lucide="eye" class="w-4 h-4"></i>
+                                </a>
+                                <button onclick="resetTaskFromList('${task.id}')" class="w-12 flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-100 transition py-3 rounded-2xl shrink-0 border border-rose-100" title="Reset Progress">
+                                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                        `;
+                    } else {
+                        progressCircleHTML = `<span class="text-xs font-bold text-gray-300 tracking-wide">${testNum}</span>`;
+                        actionButton = `
+                            <a href="writing-practice.html?type=${taskType}&id=${task.id}" class="w-full flex items-center justify-center space-x-2 bg-[#121629] text-white hover:bg-slate-800 transition py-3.5 rounded-2xl font-bold text-sm shadow-sm">
+                                <span>Start Practice</span> <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                            </a>
+                        `;
+                    }
+
+                    container.innerHTML += `
+                        <div class="bg-white p-6 rounded-[1.5rem] border border-gray-100 shadow-sm hover:shadow-md transition-all flex flex-col justify-between min-h-[190px]">
+                            <div>
+                                <div class="flex justify-between items-center mb-4">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="px-2.5 py-1 text-[9px] font-extrabold rounded-md tracking-wider uppercase ${isCompleted ? 'text-emerald-700 bg-emerald-50' : 'text-slate-500 bg-slate-100'}">
+                                            ${taskType === 'academic' ? 'ACADEMIC' : taskType.toUpperCase()}
+                                        </span>
+                                        ${isCompleted ? `<span class="text-[11px] font-bold text-emerald-600 flex items-center"><i data-lucide="check" class="w-3.5 h-3.5 mr-0.5"></i> Completed</span>` : ''}
+                                    </div>
+                                    ${progressCircleHTML}
+                                </div>
+                                <h2 class="text-base font-extrabold text-slate-900 mb-1 leading-tight line-clamp-1">${task.title}</h2>
+                                <p class="text-xs text-gray-400 font-medium mb-5">1 Questions • 1 answer type</p>
+                            </div>
+                            ${actionButton}
+                        </div>
+                    `;
+                });
+                lucide.createIcons();
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function resetTaskFromList(taskId) {
+            if (!confirm("Are you sure you want to reset your progress for this task?")) return;
+            
+            try {
+                document.body.style.cursor = 'wait';
+                
+                const { data: { session } } = await db.auth.getSession();
+                if (!session) return;
+
+                const { error } = await db.from('student_responses')
+                    .delete()
+                    .eq('task_id', taskId)
+                    .eq('user_id', session.user.id);
+                    
+                if (error) throw error;
+
+                await loadTasksAndProgress(); 
+            } catch (err) {
+                alert("Error resetting task: " + err.message);
+            } finally {
+                document.body.style.cursor = 'default';
+            }
+        }
+    </script>
+</body>
+</html>
+
