@@ -12,7 +12,7 @@
     <script src="auth.js"></script>
 
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght=400;500;600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -67,18 +67,15 @@
                 const { data: { session } } = await db.auth.getSession();
                 const userId = session ? session.user.id : null;
 
-                // 1. Получаем само задание
                 const { data: task } = await db.from('writing_tasks').select('*').eq('id', taskId).single();
                 if (task) {
                     currentQuestion = task;
-                    // Парсинг строк в JSON, если необходимо
                     if (typeof currentQuestion.structure === 'string') currentQuestion.structure = JSON.parse(currentQuestion.structure);
                     if (typeof currentQuestion.bank === 'string') currentQuestion.bank = JSON.parse(currentQuestion.bank);
                     if (typeof currentQuestion.instructions === 'string') currentQuestion.instructions = JSON.parse(currentQuestion.instructions);
                     if (typeof currentQuestion.peers === 'string') currentQuestion.peers = JSON.parse(currentQuestion.peers);
                 }
 
-                // 2. Ищем ответ студента
                 if (userId) {
                     const { data: resp } = await db.from('student_responses').select('*').eq('user_id', userId).eq('task_id', taskId).maybeSingle();
                     if (resp) studentResponse = resp;
@@ -97,22 +94,35 @@
             document.getElementById('taskTitle').innerText = currentQuestion?.title || "Writing Exercise";
 
             if (studentResponse) {
-                // ЕСЛИ ЗАДАНИЕ УЖЕ ЗАВЕРШЕНО -> Показываем структуру в стиле скрина 1000066086.jpg
                 if (submitBtn) submitBtn.classList.add('hidden');
                 renderResultsView(container);
             } else {
-                // ЕСЛИ ЕЩЕ НЕ ВЫПОЛНЕНО -> Показываем форму практики
                 if (submitBtn) submitBtn.classList.remove('hidden');
                 renderPracticeView(container);
             }
         }
 
-        // --- ЭКРАН РЕЗУЛЬТАТОВ (По образу 1000066086.jpg) ---
+        // --- ЭКРАН РЕЗУЛЬТАТОВ С ДИНАМИЧЕСКОЙ ОЦЕНКОЙ X/Y ---
         function renderResultsView(container) {
-            const scoreVal = studentResponse.score ? parseInt(studentResponse.score) : null;
-            const hasScore = scoreVal !== null && !isNaN(scoreVal);
-            const accuracyPercent = hasScore ? Math.round((scoreVal / 5) * 100) : 0;
-            const scoreText = hasScore ? `${scoreVal} / 5` : 'Awaiting';
+            let scoreText = 'Awaiting';
+            let accuracyPercent = 0;
+            
+            // Парсим оценку, даже если она записана в формате "7/8"
+            if (studentResponse.score) {
+                if (String(studentResponse.score).includes('/')) {
+                    const [earned, max] = String(studentResponse.score).split('/').map(Number);
+                    if (max > 0) {
+                        accuracyPercent = Math.round((earned / max) * 100);
+                        scoreText = `${earned} / ${max}`;
+                    }
+                } else {
+                    const earned = parseInt(studentResponse.score);
+                    if (!isNaN(earned)) {
+                        accuracyPercent = Math.round((earned / 5) * 100);
+                        scoreText = `${earned} / 5`;
+                    }
+                }
+            }
 
             let leftSidePromptHTML = `
                 <div class="p-8 overflow-y-auto space-y-6 bg-white h-full border-r border-gray-100">
@@ -126,7 +136,6 @@
                 ${leftSidePromptHTML}
                 
                 <div class="p-6 md:p-8 overflow-y-auto h-full space-y-6 flex flex-col">
-                    <!-- Карточка "Test Completed!" -->
                     <div class="bg-white border border-gray-100 rounded-3xl p-6 text-center shadow-sm space-y-5">
                         <div class="w-10 h-10 bg-emerald-50 rounded-full flex items-center justify-center mx-auto text-emerald-600">
                             <i data-lucide="trophy" class="w-5 h-5"></i>
@@ -137,7 +146,7 @@
                         <div class="grid grid-cols-2 gap-4 max-w-sm mx-auto pt-2">
                             <div class="bg-gray-50/70 p-4 rounded-2xl border border-gray-100">
                                 <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wide block mb-1">Accuracy</span>
-                                <span class="text-lg font-black text-slate-900">${hasScore ? accuracyPercent + '%' : '—'}</span>
+                                <span class="text-lg font-black text-slate-900">${scoreText !== 'Awaiting' ? accuracyPercent + '%' : '—'}</span>
                             </div>
                             <div class="bg-gray-50/70 p-4 rounded-2xl border border-gray-100">
                                 <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wide block mb-1">Raw Score</span>
@@ -154,19 +163,16 @@
                         </div>
                     </div>
 
-                    <!-- Разбор ответов и пояснения -->
                     <div class="space-y-4">
                         <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                             <i data-lucide="file-text" class="w-3.5 h-3.5"></i> Review Answers & Explanations
                         </h4>
                         
-                        <!-- Your Answer -->
                         <div class="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
                             <span class="text-[10px] font-bold text-gray-400 uppercase block mb-2">Your Answer</span>
                             <div class="text-sm text-slate-800 font-medium leading-relaxed whitespace-pre-wrap">${studentResponse.response_content}</div>
                         </div>
 
-                        <!-- Sample Answer (из базы) -->
                         ${currentQuestion.sample_answer ? `
                             <div class="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
                                 <span class="text-[10px] font-bold text-indigo-500 uppercase flex items-center gap-1 block mb-2">
@@ -176,7 +182,6 @@
                             </div>
                         ` : ''}
 
-                        <!-- Teacher's Note / Explanation (из базы) -->
                         ${currentQuestion.explanation ? `
                             <div class="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
                                 <span class="text-[10px] font-bold text-amber-600 uppercase flex items-center gap-1 block mb-2">
@@ -337,6 +342,8 @@
 
         async function handleSubmitResponse() {
             let userResult = "";
+            let calculatedScore = null; // По умолчанию оценка пустая (будет ждать учителя)
+
             if (taskType === 'sentence') {
                 let parts = [];
                 currentQuestion.structure.forEach((item, index) => {
@@ -346,8 +353,37 @@
                         parts.push(s && s.children.length > 0 ? s.children[0].innerText.trim() : "____");
                     }
                 });
-                userResult = parts.join(" ") + ".";
+                
+                // Собираем ответ, склеивая слова и удаляя пробелы перед точками
+                userResult = parts.join(" ").replace(/\s+([.?!])/g, "$1").trim();
+                if (!userResult.endsWith(".")) userResult += ".";
+
+                // АВТОМАТИЧЕСКАЯ ПРОВЕРКА ДЛЯ ПРЕДЛОЖЕНИЙ
+                if (currentQuestion.sample_answer) {
+                    const sampleSents = currentQuestion.sample_answer.split(/[.?!]/).map(s => s.replace(/\s+/g, ' ').trim().toLowerCase()).filter(s => s.length > 0);
+                    const userSents = userResult.split(/[.?!]/).map(s => s.replace(/\s+/g, ' ').trim().toLowerCase()).filter(s => s.length > 0);
+                    
+                    let maxScore = sampleSents.length > 0 ? sampleSents.length : 1;
+                    let correctCount = 0;
+                    
+                    // Сверяем предложения одно за другим
+                    sampleSents.forEach((sent, index) => {
+                        if (userSents[index] === sent) correctCount++;
+                    });
+
+                    // Запасной план: если разделение по точкам не помогло, сверяем строку целиком
+                    if (maxScore === 1 && correctCount === 0) {
+                        const cleanUser = userResult.replace(/[^\w\s]/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
+                        const cleanSample = currentQuestion.sample_answer.replace(/[^\w\s]/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
+                        if (cleanUser === cleanSample && cleanSample !== "") {
+                            correctCount = 1;
+                        }
+                    }
+                    // Сохраняем в базу в формате X/Y (например, 7/7)
+                    calculatedScore = `${correctCount}/${maxScore}`;
+                }
             } else {
+                // Для Email и Academic берем текст из поля
                 userResult = document.getElementById('editorArea')?.value.trim() || "";
             }
 
@@ -358,12 +394,17 @@
                 if (!session) return alert("Log in first.");
 
                 const { data, error } = await db.from('student_responses').insert([
-                    { task_id: taskId, task_type: taskType, response_content: userResult, user_id: session.user.id }
+                    { 
+                        task_id: taskId, 
+                        task_type: taskType, 
+                        response_content: userResult, 
+                        user_id: session.user.id,
+                        score: calculatedScore // Передаем вычисленный балл (или null)
+                    }
                 ]).select().single();
 
                 if (error) throw error;
 
-                // Вместо редиректа фиксируем ответ локально и на лету переключаем экран
                 studentResponse = data;
                 renderWorkspace();
             } catch (err) {
