@@ -53,7 +53,7 @@
         let studentResponses = [];
         let currentSlide = 0;
         let isTestCompleted = false;
-        let wordCountStates = {}; // Храним состояние видимости счетчика для каждого слайда
+        let wordCountStates = {}; 
         let currentUserId = null;
 
         document.addEventListener('DOMContentLoaded', async () => {
@@ -75,22 +75,18 @@
                 const { data: { session } } = await db.auth.getSession();
                 currentUserId = session ? session.user.id : null;
 
-                // 1. Ищем стартовый вопрос, чтобы понять, есть ли у него test_id
                 const { data: firstTask } = await db.from('writing_tasks').select('*').eq('id', taskId).single();
                 
                 if (firstTask) {
                     if (firstTask.test_id) {
-                        // Если есть test_id, загружаем весь тест разом
                         const { data: allTestTasks } = await db.from('writing_tasks').select('*').eq('test_id', firstTask.test_id).order('id', { ascending: true });
                         testQuestions = allTestTasks;
                         document.getElementById('testHeaderTitle').innerText = `Practice Set ${firstTask.test_id}`;
                     } else {
-                        // Если это одиночный вопрос без теста
                         testQuestions = [firstTask];
                         document.getElementById('testHeaderTitle').innerText = firstTask.title || "Writing Exercise";
                     }
 
-                    // Парсим JSON поля для всех вопросов
                     testQuestions.forEach(q => {
                         if (typeof q.structure === 'string') q.structure = JSON.parse(q.structure);
                         if (typeof q.bank === 'string') q.bank = JSON.parse(q.bank);
@@ -98,7 +94,6 @@
                         if (typeof q.peers === 'string') q.peers = JSON.parse(q.peers);
                     });
 
-                    // 2. Ищем ответы студента на эти вопросы
                     if (currentUserId) {
                         const questionIds = testQuestions.map(q => q.id);
                         const { data: resps } = await db.from('student_responses').select('*').eq('user_id', currentUserId).in('task_id', questionIds);
@@ -116,13 +111,13 @@
 
         function renderTestSlider() {
             const container = document.getElementById('sliderContainer');
-            container.innerHTML = ''; // Очищаем спиннер загрузки
+            container.innerHTML = ''; 
 
             testQuestions.forEach((q, index) => {
-                wordCountStates[index] = true; // По умолчанию счетчик слов включен
+                wordCountStates[index] = true; 
 
                 const responseForThisTask = studentResponses.find(r => String(r.task_id) === String(q.id));
-                const isHidden = index === 0 ? '' : 'hidden'; // Показываем только первый слайд
+                const isHidden = index === 0 ? '' : 'hidden'; 
 
                 let slideHTML = `<div id="slide-${index}" class="slide-container ${isHidden} flex-col h-full w-full absolute inset-0 bg-white">`;
 
@@ -138,7 +133,6 @@
                 container.insertAdjacentHTML('beforeend', slideHTML);
             });
 
-            // Активируем Drag & Drop для всех предложений, если режим "практика"
             if (!isTestCompleted && taskType === 'sentence') {
                 testQuestions.forEach((q, index) => {
                     const response = studentResponses.find(r => String(r.task_id) === String(q.id));
@@ -149,7 +143,6 @@
             lucide.createIcons();
         }
 
-        // --- ГЕНЕРАЦИЯ ИНТЕРФЕЙСА ПРАКТИКИ ---
         function generatePracticeView(q, qIndex) {
             if (taskType === 'sentence') {
                 let sentenceHTML = '';
@@ -254,25 +247,13 @@
             }
         }
 
-        // --- ГЕНЕРАЦИЯ ИНТЕРФЕЙСА РЕЗУЛЬТАТОВ ---
+        // --- ОБНОВЛЕННАЯ ФУНКЦИЯ РЕЗУЛЬТАТОВ (БЕЗ ПРОЦЕНТОВ) ---
         function generateResultView(q, resp, qIndex) {
             let scoreText = 'Awaiting';
-            let accuracyPercent = 0;
             
             if (resp.score) {
-                if (String(resp.score).includes('/')) {
-                    const [earned, max] = String(resp.score).split('/').map(Number);
-                    if (max > 0) {
-                        accuracyPercent = Math.round((earned / max) * 100);
-                        scoreText = `${earned} / ${max}`;
-                    }
-                } else {
-                    const earned = parseInt(resp.score);
-                    if (!isNaN(earned)) {
-                        accuracyPercent = Math.round((earned / 5) * 100);
-                        scoreText = `${earned} / 5`;
-                    }
-                }
+                // Если счет имеет вид "2/2", делаем его красивее: "2 / 2"
+                scoreText = String(resp.score).replace('/', ' / ');
             }
 
             return `
@@ -281,14 +262,10 @@
                         <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Original Prompt</h3>
                         <p class="text-sm text-slate-700 leading-relaxed font-medium bg-gray-50 p-5 rounded-2xl border border-gray-100">${q.prompt_context || ''}</p>
                         
-                        <div class="grid grid-cols-2 gap-4 mt-8">
-                            <div class="bg-emerald-50/70 p-4 rounded-2xl border border-emerald-100 text-center">
+                        <div class="mt-8">
+                            <div class="inline-block bg-emerald-50/70 px-8 py-4 rounded-2xl border border-emerald-100 text-center min-w-[140px] shadow-sm">
                                 <span class="text-[10px] font-bold text-emerald-600 uppercase tracking-wide block mb-1">Score</span>
-                                <span class="text-2xl font-black text-emerald-700">${scoreText}</span>
-                            </div>
-                            <div class="bg-gray-50/70 p-4 rounded-2xl border border-gray-100 text-center">
-                                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wide block mb-1">Accuracy</span>
-                                <span class="text-2xl font-black text-slate-900">${scoreText !== 'Awaiting' ? accuracyPercent + '%' : '—'}</span>
+                                <span class="text-3xl font-black text-emerald-700">${scoreText}</span>
                             </div>
                         </div>
                     </div>
@@ -325,7 +302,6 @@
             `;
         }
 
-        // --- ВЕРХНЯЯ ПАНЕЛЬ И НАВИГАЦИЯ ---
         function generateToolbar(qIndex) {
             return `
                 <div class="flex items-center justify-between bg-gray-50 border border-gray-100 px-3 py-1.5 rounded-xl mb-3 text-[11px] font-bold text-slate-600 shrink-0">
@@ -359,7 +335,6 @@
             `;
         }
 
-        // --- ЛОГИКА СЛАЙДЕРА ---
         function showSlide(index) {
             document.querySelectorAll('.slide-container').forEach((el, i) => {
                 if (i === index) {
@@ -381,7 +356,6 @@
             if (currentSlide > 0) showSlide(currentSlide - 1);
         }
 
-        // --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
         function initSentenceDragAndDrop(q, qIndex) {
             const bankContainer = document.getElementById(`wordBankContainer-${qIndex}`);
             const slots = document.querySelectorAll(`[id^="slot-${qIndex}-"]`);
@@ -421,7 +395,6 @@
             updateWordCount(qIndex); 
         }
 
-        // --- СОХРАНЕНИЕ ТЕСТА В БАЗУ ---
         function extractAnswerFromUI(q, qIndex) {
             if (taskType === 'sentence') {
                 let parts = [];
@@ -446,7 +419,7 @@
         }
 
         function calculateScore(q, userResult) {
-            if (taskType !== 'sentence') return null; // Для эссе и писем оценку ставит препод
+            if (taskType !== 'sentence') return null; 
             
             if (!q.sample_answer) return null;
             
@@ -473,15 +446,13 @@
 
             let payloads = [];
 
-            // 1. Собираем и проверяем все ответы
             for (let i = 0; i < testQuestions.length; i++) {
                 const q = testQuestions[i];
                 const ans = extractAnswerFromUI(q, i);
                 
-                // Простая защита от пустых ответов
                 if (!ans || ans === "." || ans === "?" || ans === "!" || ans.includes("____")) {
                     alert(`Question ${i + 1} is incomplete. Please finish it before submitting the test.`);
-                    showSlide(i); // Перекидываем студента на пустой вопрос
+                    showSlide(i); 
                     return;
                 }
 
@@ -494,13 +465,11 @@
                 });
             }
 
-            // 2. Отправляем в базу одним пакетом
             try {
                 document.body.style.cursor = 'wait';
                 const { error } = await db.from('student_responses').insert(payloads);
                 if (error) throw error;
                 
-                // Перезагружаем страницу, чтобы переключить ее в режим просмотра результатов
                 window.location.reload();
             } catch (err) {
                 alert("Error saving test: " + err.message);
