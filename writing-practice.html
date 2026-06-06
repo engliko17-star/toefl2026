@@ -54,6 +54,8 @@
         let currentQuestion = null;
         let studentResponse = null;
         let wordCountVisible = true;
+        let hasNextQuestion = false;
+        let nextTaskId = null; // Храним ID следующего вопроса
 
         document.getElementById('backBtn').href = `task-list.html?type=${taskType}`;
 
@@ -62,9 +64,8 @@
             lucide.createIcons();
         });
 
-        // Функция для перемешивания элементов массива
         function shuffleArray(array) {
-            let shuffled = [...array]; // Создаем копию, чтобы не менять оригинальный массив
+            let shuffled = [...array];
             for (let i = shuffled.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
@@ -77,6 +78,7 @@
                 const { data: { session } } = await db.auth.getSession();
                 const userId = session ? session.user.id : null;
 
+                // Загружаем текущую задачу
                 const { data: task } = await db.from('writing_tasks').select('*').eq('id', taskId).single();
                 if (task) {
                     currentQuestion = task;
@@ -84,6 +86,28 @@
                     if (typeof currentQuestion.bank === 'string') currentQuestion.bank = JSON.parse(currentQuestion.bank);
                     if (typeof currentQuestion.instructions === 'string') currentQuestion.instructions = JSON.parse(currentQuestion.instructions);
                     if (typeof currentQuestion.peers === 'string') currentQuestion.peers = JSON.parse(currentQuestion.peers);
+                    
+                    // Умный поиск следующего вопроса по test_id
+                    if (currentQuestion.test_id) {
+                        const { data: nextTask } = await db
+                            .from('writing_tasks')
+                            .select('id')
+                            .eq('test_id', currentQuestion.test_id)
+                            .gt('id', taskId)
+                            .order('id', { ascending: true })
+                            .limit(1)
+                            .maybeSingle();
+
+                        if (nextTask) {
+                            hasNextQuestion = true;
+                            nextTaskId = nextTask.id;
+                        } else {
+                            hasNextQuestion = false;
+                            nextTaskId = null;
+                        }
+                    } else {
+                        hasNextQuestion = false;
+                    }
                 }
 
                 if (userId) {
@@ -139,6 +163,36 @@
                 </div>
             `;
 
+            let navigationControlsHTML = '';
+            if (hasNextQuestion) {
+                navigationControlsHTML = `
+                    <div class="flex flex-col gap-3 max-w-sm mx-auto pt-2 w-full">
+                        <button onclick="handleNextTask()" class="w-full bg-slate-900 text-white font-bold text-sm py-3.5 rounded-xl hover:bg-slate-800 transition flex items-center justify-center gap-2 shadow-md">
+                            Next Question <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                        </button>
+                        <div class="flex gap-3">
+                            <button onclick="handleResetAndRetry()" class="flex-1 bg-white border border-gray-200 text-slate-600 font-bold text-xs py-2.5 rounded-xl hover:bg-gray-50 transition flex items-center justify-center gap-1.5">
+                                <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Retry
+                            </button>
+                            <a href="task-list.html?type=${taskType}" class="flex-1 bg-gray-100 text-slate-600 font-bold text-xs py-2.5 rounded-xl hover:bg-gray-200 transition flex items-center justify-center">
+                                Dashboard
+                            </a>
+                        </div>
+                    </div>
+                `;
+            } else {
+                navigationControlsHTML = `
+                    <div class="flex gap-3 max-w-sm mx-auto pt-2">
+                        <button onclick="handleResetAndRetry()" class="flex-1 bg-slate-900 text-white font-bold text-xs py-3 rounded-xl hover:bg-slate-800 transition flex items-center justify-center gap-1.5 shadow-sm">
+                            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Try Again
+                        </button>
+                        <a href="task-list.html?type=${taskType}" class="flex-1 bg-gray-100 text-slate-700 font-bold text-xs py-3 rounded-xl hover:bg-gray-200 transition flex items-center justify-center shadow-sm">
+                            Dashboard
+                        </a>
+                    </div>
+                `;
+            }
+
             container.className = "flex-1 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 divide-gray-100 h-full overflow-hidden bg-[#f8f9fa]";
             container.innerHTML = `
                 ${leftSidePromptHTML}
@@ -161,14 +215,7 @@
                                 <span class="text-lg font-black text-slate-900">${scoreText}</span>
                             </div>
                         </div>
-                        <div class="flex gap-3 max-w-sm mx-auto pt-2">
-                            <button onclick="handleResetAndRetry()" class="flex-1 bg-slate-900 text-white font-bold text-xs py-3 rounded-xl hover:bg-slate-800 transition flex items-center justify-center gap-1.5 shadow-sm">
-                                <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Try Again
-                            </button>
-                            <a href="task-list.html?type=${taskType}" class="flex-1 bg-gray-100 text-slate-700 font-bold text-xs py-3 rounded-xl hover:bg-gray-200 transition flex items-center justify-center shadow-sm">
-                                Dashboard
-                            </a>
-                        </div>
+                        ${navigationControlsHTML}
                     </div>
 
                     <div class="space-y-4">
@@ -217,7 +264,6 @@
                     }
                 });
                 
-                // ДИНАМИЧЕСКИЙ ЗНАК В КОНЦЕ
                 let endMark = ".";
                 if (currentQuestion.sample_answer) {
                     const lastChar = currentQuestion.sample_answer.trim().slice(-1);
@@ -327,11 +373,9 @@
             const slots = document.querySelectorAll('.word-slot');
             if(!bankContainer) return;
 
-            // Получаем массив слов и перемешиваем его
             const words = currentQuestion.bank || [];
             const shuffledWords = shuffleArray(words);
 
-            // Рендерим уже перемешанные слова
             shuffledWords.forEach(word => {
                 bankContainer.innerHTML += `<div class="draggable-word bg-white border border-gray-200 text-slate-700 text-xs font-bold px-4 py-2 rounded-xl shadow-sm cursor-grab active:cursor-grabbing hover:border-slate-400 select-none">${word}</div>`;
             });
@@ -359,6 +403,12 @@
 
         function toggleWordCount() { wordCountVisible = !wordCountVisible; updateWordCount(); }
 
+        function handleNextTask() {
+            if (nextTaskId) {
+                window.location.href = `writing-practice.html?type=${taskType}&id=${nextTaskId}`;
+            }
+        }
+
         async function handleSubmitResponse() {
             let userResult = "";
             let calculatedScore = null; 
@@ -375,7 +425,6 @@
                 
                 userResult = parts.join(" ").replace(/\s+([.?!])/g, "$1").trim();
                 
-                // ДИНАМИЧЕСКИЙ ЗНАК В КОНЦЕ ПРИ ПРОВЕРКЕ
                 let endMark = ".";
                 if (currentQuestion.sample_answer) {
                     const lastChar = currentQuestion.sample_answer.trim().slice(-1);
@@ -407,7 +456,6 @@
                 userResult = document.getElementById('editorArea')?.value.trim() || "";
             }
 
-            // Учитываем динамический знак при пустом ответе
             if (!userResult || userResult === "." || userResult === "?" || userResult === "!" || userResult === "____." || userResult === "____?" || userResult === "____!") {
                 return alert("Please complete the task.");
             }
@@ -446,3 +494,4 @@
     </script>
 </body>
 </html>
+
