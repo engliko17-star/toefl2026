@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Writing Practice Engine — TOEFL</title>
+    <title>Test Engine — TOEFL</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -29,17 +29,13 @@
                 <i data-lucide="arrow-left" class="w-5 h-5"></i>
             </a>
             <div>
-                <h1 class="text-sm font-bold text-slate-900" id="taskTitle">Loading...</h1>
-                <p class="text-[11px] font-bold text-gray-400 mt-0.5 uppercase tracking-wider" id="questionProgress">Writing Section</p>
+                <h1 class="text-sm font-bold text-slate-900" id="testHeaderTitle">Loading Test...</h1>
+                <p class="text-[11px] font-bold text-gray-400 mt-0.5 uppercase tracking-wider">Writing Section</p>
             </div>
         </div>
-        
-        <button id="submitBtn" onclick="handleSubmitResponse()" class="bg-slate-900 text-white text-sm font-bold px-5 py-2.5 rounded-xl hover:bg-slate-800 transition flex items-center space-x-2 shadow-sm">
-            <span>Submit Task</span> <i data-lucide="check-circle" class="w-4 h-4"></i>
-        </button>
     </header>
 
-    <main class="flex-1 flex flex-col overflow-hidden bg-white" id="workspaceContainer">
+    <main class="flex-1 flex flex-col overflow-hidden relative bg-[#f8f9fa]" id="sliderContainer">
         <div class="flex-1 flex items-center justify-center">
             <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
         </div>
@@ -51,16 +47,17 @@
         const taskType = urlParams.get('type') || 'sentence';
         const taskId = urlParams.get('id') || '1';
 
-        let currentQuestion = null;
-        let studentResponse = null;
-        let wordCountVisible = true;
-        let hasNextQuestion = false;
-        let nextTaskId = null; // Храним ID следующего вопроса
-
         document.getElementById('backBtn').href = `task-list.html?type=${taskType}`;
 
+        let testQuestions = [];
+        let studentResponses = [];
+        let currentSlide = 0;
+        let isTestCompleted = false;
+        let wordCountStates = {}; // Храним состояние видимости счетчика для каждого слайда
+        let currentUserId = null;
+
         document.addEventListener('DOMContentLoaded', async () => {
-            await fetchTaskAndStatus();
+            await fetchTestContext();
             lucide.createIcons();
         });
 
@@ -73,253 +70,154 @@
             return shuffled;
         }
 
-        async function fetchTaskAndStatus() {
+        async function fetchTestContext() {
             try {
                 const { data: { session } } = await db.auth.getSession();
-                const userId = session ? session.user.id : null;
+                currentUserId = session ? session.user.id : null;
 
-                // Загружаем текущую задачу
-                const { data: task } = await db.from('writing_tasks').select('*').eq('id', taskId).single();
-                if (task) {
-                    currentQuestion = task;
-                    if (typeof currentQuestion.structure === 'string') currentQuestion.structure = JSON.parse(currentQuestion.structure);
-                    if (typeof currentQuestion.bank === 'string') currentQuestion.bank = JSON.parse(currentQuestion.bank);
-                    if (typeof currentQuestion.instructions === 'string') currentQuestion.instructions = JSON.parse(currentQuestion.instructions);
-                    if (typeof currentQuestion.peers === 'string') currentQuestion.peers = JSON.parse(currentQuestion.peers);
-                    
-                    // Умный поиск следующего вопроса по test_id
-                    if (currentQuestion.test_id) {
-                        const { data: nextTask } = await db
-                            .from('writing_tasks')
-                            .select('id')
-                            .eq('test_id', currentQuestion.test_id)
-                            .gt('id', taskId)
-                            .order('id', { ascending: true })
-                            .limit(1)
-                            .maybeSingle();
-
-                        if (nextTask) {
-                            hasNextQuestion = true;
-                            nextTaskId = nextTask.id;
-                        } else {
-                            hasNextQuestion = false;
-                            nextTaskId = null;
-                        }
-                    } else {
-                        hasNextQuestion = false;
-                    }
-                }
-
-                if (userId) {
-                    const { data: resp } = await db.from('student_responses').select('*').eq('user_id', userId).eq('task_id', taskId).maybeSingle();
-                    if (resp) studentResponse = resp;
-                }
-
-                renderWorkspace();
-            } catch (e) {
-                console.error("Error initializing template data:", e);
-            }
-        }
-
-        function renderWorkspace() {
-            const container = document.getElementById('workspaceContainer');
-            const submitBtn = document.getElementById('submitBtn');
-            
-            document.getElementById('taskTitle').innerText = currentQuestion?.title || "Writing Exercise";
-
-            if (studentResponse) {
-                if (submitBtn) submitBtn.classList.add('hidden');
-                renderResultsView(container);
-            } else {
-                if (submitBtn) submitBtn.classList.remove('hidden');
-                renderPracticeView(container);
-            }
-        }
-
-        function renderResultsView(container) {
-            let scoreText = 'Awaiting';
-            let accuracyPercent = 0;
-            
-            if (studentResponse.score) {
-                if (String(studentResponse.score).includes('/')) {
-                    const [earned, max] = String(studentResponse.score).split('/').map(Number);
-                    if (max > 0) {
-                        accuracyPercent = Math.round((earned / max) * 100);
-                        scoreText = `${earned} / ${max}`;
-                    }
-                } else {
-                    const earned = parseInt(studentResponse.score);
-                    if (!isNaN(earned)) {
-                        accuracyPercent = Math.round((earned / 5) * 100);
-                        scoreText = `${earned} / 5`;
-                    }
-                }
-            }
-
-            let leftSidePromptHTML = `
-                <div class="p-8 overflow-y-auto space-y-6 bg-white h-full border-r border-gray-100">
-                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Original Context</h3>
-                    <p class="text-sm text-slate-700 leading-relaxed font-medium bg-gray-50 p-5 rounded-2xl border border-gray-100">${currentQuestion.prompt_context || ''}</p>
-                </div>
-            `;
-
-            let navigationControlsHTML = '';
-            if (hasNextQuestion) {
-                navigationControlsHTML = `
-                    <div class="flex flex-col gap-3 max-w-sm mx-auto pt-2 w-full">
-                        <button onclick="handleNextTask()" class="w-full bg-slate-900 text-white font-bold text-sm py-3.5 rounded-xl hover:bg-slate-800 transition flex items-center justify-center gap-2 shadow-md">
-                            Next Question <i data-lucide="arrow-right" class="w-4 h-4"></i>
-                        </button>
-                        <div class="flex gap-3">
-                            <button onclick="handleResetAndRetry()" class="flex-1 bg-white border border-gray-200 text-slate-600 font-bold text-xs py-2.5 rounded-xl hover:bg-gray-50 transition flex items-center justify-center gap-1.5">
-                                <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Retry
-                            </button>
-                            <a href="task-list.html?type=${taskType}" class="flex-1 bg-gray-100 text-slate-600 font-bold text-xs py-2.5 rounded-xl hover:bg-gray-200 transition flex items-center justify-center">
-                                Dashboard
-                            </a>
-                        </div>
-                    </div>
-                `;
-            } else {
-                navigationControlsHTML = `
-                    <div class="flex gap-3 max-w-sm mx-auto pt-2">
-                        <button onclick="handleResetAndRetry()" class="flex-1 bg-slate-900 text-white font-bold text-xs py-3 rounded-xl hover:bg-slate-800 transition flex items-center justify-center gap-1.5 shadow-sm">
-                            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Try Again
-                        </button>
-                        <a href="task-list.html?type=${taskType}" class="flex-1 bg-gray-100 text-slate-700 font-bold text-xs py-3 rounded-xl hover:bg-gray-200 transition flex items-center justify-center shadow-sm">
-                            Dashboard
-                        </a>
-                    </div>
-                `;
-            }
-
-            container.className = "flex-1 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 divide-gray-100 h-full overflow-hidden bg-[#f8f9fa]";
-            container.innerHTML = `
-                ${leftSidePromptHTML}
+                // 1. Ищем стартовый вопрос, чтобы понять, есть ли у него test_id
+                const { data: firstTask } = await db.from('writing_tasks').select('*').eq('id', taskId).single();
                 
-                <div class="p-6 md:p-8 overflow-y-auto h-full space-y-6 flex flex-col">
-                    <div class="bg-white border border-gray-100 rounded-3xl p-6 text-center shadow-sm space-y-5">
-                        <div class="w-10 h-10 bg-emerald-50 rounded-full flex items-center justify-center mx-auto text-emerald-600">
-                            <i data-lucide="trophy" class="w-5 h-5"></i>
-                        </div>
-                        <div>
-                            <h2 class="text-lg font-extrabold text-slate-900">Test Completed!</h2>
-                        </div>
-                        <div class="grid grid-cols-2 gap-4 max-w-sm mx-auto pt-2">
-                            <div class="bg-gray-50/70 p-4 rounded-2xl border border-gray-100">
-                                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wide block mb-1">Accuracy</span>
-                                <span class="text-lg font-black text-slate-900">${scoreText !== 'Awaiting' ? accuracyPercent + '%' : '—'}</span>
-                            </div>
-                            <div class="bg-gray-50/70 p-4 rounded-2xl border border-gray-100">
-                                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wide block mb-1">Raw Score</span>
-                                <span class="text-lg font-black text-slate-900">${scoreText}</span>
-                            </div>
-                        </div>
-                        ${navigationControlsHTML}
-                    </div>
+                if (firstTask) {
+                    if (firstTask.test_id) {
+                        // Если есть test_id, загружаем весь тест разом
+                        const { data: allTestTasks } = await db.from('writing_tasks').select('*').eq('test_id', firstTask.test_id).order('id', { ascending: true });
+                        testQuestions = allTestTasks;
+                        document.getElementById('testHeaderTitle').innerText = `Practice Set ${firstTask.test_id}`;
+                    } else {
+                        // Если это одиночный вопрос без теста
+                        testQuestions = [firstTask];
+                        document.getElementById('testHeaderTitle').innerText = firstTask.title || "Writing Exercise";
+                    }
 
-                    <div class="space-y-4">
-                        <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                            <i data-lucide="file-text" class="w-3.5 h-3.5"></i> Review Answers & Explanations
-                        </h4>
-                        
-                        <div class="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
-                            <span class="text-[10px] font-bold text-gray-400 uppercase block mb-2">Your Answer</span>
-                            <div class="text-sm text-slate-800 font-medium leading-relaxed whitespace-pre-wrap">${studentResponse.response_content}</div>
-                        </div>
+                    // Парсим JSON поля для всех вопросов
+                    testQuestions.forEach(q => {
+                        if (typeof q.structure === 'string') q.structure = JSON.parse(q.structure);
+                        if (typeof q.bank === 'string') q.bank = JSON.parse(q.bank);
+                        if (typeof q.instructions === 'string') q.instructions = JSON.parse(q.instructions);
+                        if (typeof q.peers === 'string') q.peers = JSON.parse(q.peers);
+                    });
 
-                        ${currentQuestion.sample_answer ? `
-                            <div class="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
-                                <span class="text-[10px] font-bold text-indigo-500 uppercase flex items-center gap-1 block mb-2">
-                                    <i data-lucide="book-open" class="w-3 h-3"></i> Sample Answer
-                                </span>
-                                <div class="text-sm text-indigo-950 font-medium bg-indigo-50/40 p-3 rounded-xl border border-indigo-100/70 leading-relaxed whitespace-pre-wrap">${currentQuestion.sample_answer}</div>
-                            </div>
-                        ` : ''}
+                    // 2. Ищем ответы студента на эти вопросы
+                    if (currentUserId) {
+                        const questionIds = testQuestions.map(q => q.id);
+                        const { data: resps } = await db.from('student_responses').select('*').eq('user_id', currentUserId).in('task_id', questionIds);
+                        studentResponses = resps || [];
+                        isTestCompleted = studentResponses.length === testQuestions.length;
+                    }
+                }
 
-                        ${currentQuestion.explanation ? `
-                            <div class="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
-                                <span class="text-[10px] font-bold text-amber-600 uppercase flex items-center gap-1 block mb-2">
-                                    <i data-lucide="lightbulb" class="w-3 h-3"></i> Teacher's Note
-                                </span>
-                                <div class="text-sm text-gray-600 font-medium leading-relaxed whitespace-pre-wrap">${currentQuestion.explanation}</div>
-                            </div>
-                        ` : ''}
-                    </div>
-                </div>
-            `;
+                renderTestSlider();
+            } catch (e) {
+                console.error("Error loading test:", e);
+                document.getElementById('sliderContainer').innerHTML = `<div class="text-center p-10 text-red-500 font-bold">Error loading test data.</div>`;
+            }
+        }
+
+        function renderTestSlider() {
+            const container = document.getElementById('sliderContainer');
+            container.innerHTML = ''; // Очищаем спиннер загрузки
+
+            testQuestions.forEach((q, index) => {
+                wordCountStates[index] = true; // По умолчанию счетчик слов включен
+
+                const responseForThisTask = studentResponses.find(r => String(r.task_id) === String(q.id));
+                const isHidden = index === 0 ? '' : 'hidden'; // Показываем только первый слайд
+
+                let slideHTML = `<div id="slide-${index}" class="slide-container ${isHidden} flex-col h-full w-full absolute inset-0 bg-white">`;
+
+                if (responseForThisTask) {
+                    slideHTML += generateResultView(q, responseForThisTask, index);
+                } else {
+                    slideHTML += generatePracticeView(q, index);
+                }
+
+                slideHTML += generateBottomNavigation(index);
+                slideHTML += `</div>`;
+
+                container.insertAdjacentHTML('beforeend', slideHTML);
+            });
+
+            // Активируем Drag & Drop для всех предложений, если режим "практика"
+            if (!isTestCompleted && taskType === 'sentence') {
+                testQuestions.forEach((q, index) => {
+                    const response = studentResponses.find(r => String(r.task_id) === String(q.id));
+                    if (!response) initSentenceDragAndDrop(q, index);
+                });
+            }
+
             lucide.createIcons();
         }
 
-        function renderPracticeView(container) {
-            container.className = "flex-1 flex flex-col overflow-hidden bg-white";
-            
+        // --- ГЕНЕРАЦИЯ ИНТЕРФЕЙСА ПРАКТИКИ ---
+        function generatePracticeView(q, qIndex) {
             if (taskType === 'sentence') {
                 let sentenceHTML = '';
-                (currentQuestion.structure || []).forEach((item, index) => {
+                (q.structure || []).forEach((item, slotIndex) => {
                     if (item.type === 'text') {
                         sentenceHTML += `<div class="inline-flex items-center justify-center px-1.5 py-2 text-sm font-bold text-slate-800 select-none">${item.value}</div>`;
                     } else if (item.type === 'slot') {
-                        sentenceHTML += `<div class="word-slot inline-flex items-center justify-center border-b-2 border-gray-300 mx-1 pb-1 align-bottom" id="slot-${index}"></div>`;
+                        sentenceHTML += `<div class="word-slot inline-flex items-center justify-center border-b-2 border-gray-300 mx-1 pb-1 align-bottom" id="slot-${qIndex}-${slotIndex}"></div>`;
                     }
                 });
                 
                 let endMark = ".";
-                if (currentQuestion.sample_answer) {
-                    const lastChar = currentQuestion.sample_answer.trim().slice(-1);
+                if (q.sample_answer) {
+                    const lastChar = q.sample_answer.trim().slice(-1);
                     if (['.', '?', '!'].includes(lastChar)) endMark = lastChar;
                 }
                 sentenceHTML += `<span class="text-2xl font-bold text-slate-400 select-none ml-1 align-bottom leading-none">${endMark}</span>`;
 
-                container.innerHTML = `
-                    <div class="flex-1 flex flex-col items-center justify-center p-6 max-w-4xl mx-auto w-full bg-white">
-                        <h2 class="text-xl font-bold text-center tracking-tight mb-8 text-slate-800">Make an appropriate sentence.</h2>
-                        <div class="w-full space-y-8 mb-12 bg-[#f8f9fa] p-8 rounded-3xl border border-gray-100 shadow-sm">
-                            <div class="flex items-start space-x-4">
-                                <div class="text-2xl p-2 bg-blue-50 border border-blue-100 rounded-full shrink-0">${currentQuestion.avatar_left || '👨‍💼'}</div>
-                                <div class="bg-white border border-gray-100 rounded-2xl px-5 py-3 text-sm font-medium text-slate-700 max-w-md mt-1">${currentQuestion.prompt_context}</div>
+                return `
+                    <div class="flex-1 overflow-y-auto flex flex-col items-center justify-center p-6 w-full">
+                        <div class="max-w-4xl w-full">
+                            <h2 class="text-xl font-bold text-center tracking-tight mb-8 text-slate-800">${q.title || 'Make an appropriate sentence'}</h2>
+                            <div class="w-full space-y-8 mb-12 bg-[#f8f9fa] p-8 rounded-3xl border border-gray-100 shadow-sm">
+                                <div class="flex items-start space-x-4">
+                                    <div class="text-2xl p-2 bg-blue-50 border border-blue-100 rounded-full shrink-0">${q.avatar_left || '👨‍💼'}</div>
+                                    <div class="bg-white border border-gray-100 rounded-2xl px-5 py-3 text-sm font-medium text-slate-700 max-w-md mt-1">${q.prompt_context}</div>
+                                </div>
+                                <div class="flex items-start space-x-4 pt-4 border-t border-dashed border-gray-200">
+                                    <div class="text-2xl p-2 bg-rose-50 border border-rose-100 rounded-full shrink-0">${q.avatar_right || '👩‍💼'}</div>
+                                    <div class="flex-1 flex flex-wrap items-end gap-y-3 pt-2" id="sentenceDropzoneContainer-${qIndex}">${sentenceHTML}</div>
+                                </div>
                             </div>
-                            <div class="flex items-start space-x-4 pt-4 border-t border-dashed border-gray-200">
-                                <div class="text-2xl p-2 bg-rose-50 border border-rose-100 rounded-full shrink-0">${currentQuestion.avatar_right || '👩‍💼'}</div>
-                                <div class="flex-1 flex flex-wrap items-end gap-y-3 pt-2" id="sentenceDropzoneContainer">${sentenceHTML}</div>
+                            <div class="w-full max-w-2xl mx-auto">
+                                <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center mb-3">Drag words to the empty slots above</p>
+                                <div class="flex flex-wrap justify-center gap-2.5 bg-gray-50 border border-gray-200 p-5 rounded-3xl min-h-[80px]" id="wordBankContainer-${qIndex}"></div>
                             </div>
-                        </div>
-                        <div class="w-full max-w-2xl">
-                            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center mb-3">Drag words to the empty slots above</p>
-                            <div class="flex flex-wrap justify-center gap-2.5 bg-gray-50 border border-gray-200 p-5 rounded-3xl min-h-[80px]" id="wordBankContainer"></div>
                         </div>
                     </div>
                 `;
-                initSentenceDragAndDrop();
-
             } else if (taskType === 'email') {
-                let instructionsHTML = (currentQuestion.instructions || []).map(li => `<li>${li}</li>`).join('');
-                container.innerHTML = `
-                    <div class="flex-1 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-100 h-full overflow-hidden">
+                let instructionsHTML = (q.instructions || []).map(li => `<li>${li}</li>`).join('');
+                return `
+                    <div class="flex-1 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-100 overflow-hidden">
                         <div class="p-8 overflow-y-auto space-y-6 bg-white">
+                            <h2 class="text-lg font-bold mb-4 text-slate-900">${q.title}</h2>
                             <div class="prose prose-slate max-w-none">
-                                <p class="text-sm text-slate-700 leading-relaxed font-medium">${currentQuestion.prompt_context}</p>
+                                <p class="text-sm text-slate-700 leading-relaxed font-medium">${q.prompt_context}</p>
                                 <div class="h-px bg-gray-100 my-6"></div>
-                                <h3 class="text-sm font-bold text-slate-900 uppercase tracking-wide">Write an email to ${currentQuestion.meta_to || 'Daniel'}. In the email, do each of the following:</h3>
+                                <h3 class="text-sm font-bold text-slate-900 uppercase tracking-wide">Write an email to ${q.meta_to || 'Daniel'}. In the email, do each of the following:</h3>
                                 <ul class="list-disc pl-5 text-sm text-slate-600 space-y-2.5 mt-3">${instructionsHTML}</ul>
                             </div>
                         </div>
                         <div class="p-6 bg-[#f8f9fa] flex flex-col overflow-hidden h-full">
                             <div class="bg-white border border-gray-200 rounded-3xl p-6 flex flex-col flex-1 shadow-sm overflow-hidden">
                                 <div class="space-y-1.5 text-xs text-slate-500 mb-4 border-b border-gray-100 pb-4">
-                                    <div class="flex items-center mt-1"><span class="w-16 font-bold text-gray-400">To:</span> <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-md font-semibold">${currentQuestion.meta_to || 'Daniel'}</span></div>
-                                    <div class="flex items-center"><span class="w-16 font-bold text-gray-400">Subject:</span> <span class="text-slate-800 font-semibold">${currentQuestion.meta_subject || 'Camping'}</span></div>
+                                    <div class="flex items-center mt-1"><span class="w-16 font-bold text-gray-400">To:</span> <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-md font-semibold">${q.meta_to || 'Recipient'}</span></div>
+                                    <div class="flex items-center"><span class="w-16 font-bold text-gray-400">Subject:</span> <span class="text-slate-800 font-semibold">${q.meta_subject || 'Topic'}</span></div>
                                 </div>
-                                ${renderToolbar()}
+                                ${generateToolbar(qIndex)}
                                 <div class="flex-1 relative overflow-hidden">
-                                    <textarea id="editorArea" oninput="updateWordCount()" placeholder="Write your response here..." class="w-full h-full resize-none border-0 outline-none p-1 text-sm leading-relaxed text-slate-800 placeholder-gray-300 focus:ring-0"></textarea>
+                                    <textarea id="editorArea-${qIndex}" oninput="updateWordCount(${qIndex})" placeholder="Write your response here..." class="w-full h-full resize-none border-0 outline-none p-1 text-sm leading-relaxed text-slate-800 placeholder-gray-300 focus:ring-0"></textarea>
                                 </div>
                             </div>
                         </div>
                     </div>
                 `;
             } else if (taskType === 'academic') {
-                let peersHTML = (currentQuestion.peers || []).map(peer => `
+                let peersHTML = (q.peers || []).map(peer => `
                     <div class="flex items-start space-x-3 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
                         <div class="flex flex-col items-center shrink-0">
                             <div class="w-10 h-10 rounded-full bg-slate-50 border border-gray-100 flex items-center justify-center text-lg">${peer.avatar}</div>
@@ -329,26 +227,25 @@
                     </div>
                 `).join('');
 
-                container.innerHTML = `
-                    <div class="flex-1 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-100 h-full overflow-hidden">
+                return `
+                    <div class="flex-1 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-100 overflow-hidden">
                         <div class="p-8 overflow-y-auto space-y-6 bg-white">
-                            <div class="prose prose-slate max-w-none">
-                                <div class="bg-teal-50 border border-teal-100 rounded-xl px-4 py-3 text-xs font-bold text-teal-800 mb-6">${currentQuestion.instruction_box}</div>
-                                <div class="flex items-start space-x-4 bg-gray-50/80 p-5 rounded-2xl border border-gray-100">
-                                    <div class="flex flex-col items-center shrink-0">
-                                        <div class="text-2xl p-2 bg-white rounded-full shadow-sm border border-gray-100">${currentQuestion.professor_avatar}</div>
-                                        <span class="text-[10px] font-bold text-slate-800 mt-2">${currentQuestion.professor_name}</span>
-                                    </div>
-                                    <p class="text-xs text-slate-600 leading-relaxed font-medium pt-1">${currentQuestion.professor_prompt}</p>
+                            <h2 class="text-lg font-bold mb-4 text-slate-900">${q.title}</h2>
+                            <div class="bg-teal-50 border border-teal-100 rounded-xl px-4 py-3 text-xs font-bold text-teal-800 mb-6">${q.instruction_box}</div>
+                            <div class="flex items-start space-x-4 bg-gray-50/80 p-5 rounded-2xl border border-gray-100">
+                                <div class="flex flex-col items-center shrink-0">
+                                    <div class="text-2xl p-2 bg-white rounded-full shadow-sm border border-gray-100">${q.professor_avatar}</div>
+                                    <span class="text-[10px] font-bold text-slate-800 mt-2">${q.professor_name}</span>
                                 </div>
+                                <p class="text-xs text-slate-600 leading-relaxed font-medium pt-1">${q.professor_prompt}</p>
                             </div>
                         </div>
                         <div class="p-6 bg-[#f8f9fa] flex flex-col overflow-hidden h-full space-y-4">
                             <div class="flex-1 overflow-y-auto space-y-3 pr-2 max-h-[45%]">${peersHTML}</div>
                             <div class="bg-white border border-gray-200 rounded-3xl p-5 flex flex-col h-[55%] shadow-sm overflow-hidden">
-                                ${renderToolbar()}
+                                ${generateToolbar(qIndex)}
                                 <div class="flex-1 overflow-hidden relative">
-                                    <textarea id="editorArea" oninput="updateWordCount()" placeholder="Write your contribution here..." class="w-full h-full resize-none border-0 outline-none text-sm leading-relaxed text-slate-800 placeholder-gray-300 focus:ring-0 p-1"></textarea>
+                                    <textarea id="editorArea-${qIndex}" oninput="updateWordCount(${qIndex})" placeholder="Write your contribution here..." class="w-full h-full resize-none border-0 outline-none text-sm leading-relaxed text-slate-800 placeholder-gray-300 focus:ring-0 p-1"></textarea>
                                 </div>
                             </div>
                         </div>
@@ -357,33 +254,150 @@
             }
         }
 
-        function renderToolbar() {
+        // --- ГЕНЕРАЦИЯ ИНТЕРФЕЙСА РЕЗУЛЬТАТОВ ---
+        function generateResultView(q, resp, qIndex) {
+            let scoreText = 'Awaiting';
+            let accuracyPercent = 0;
+            
+            if (resp.score) {
+                if (String(resp.score).includes('/')) {
+                    const [earned, max] = String(resp.score).split('/').map(Number);
+                    if (max > 0) {
+                        accuracyPercent = Math.round((earned / max) * 100);
+                        scoreText = `${earned} / ${max}`;
+                    }
+                } else {
+                    const earned = parseInt(resp.score);
+                    if (!isNaN(earned)) {
+                        accuracyPercent = Math.round((earned / 5) * 100);
+                        scoreText = `${earned} / 5`;
+                    }
+                }
+            }
+
             return `
-                <div class="flex items-center justify-between bg-gray-50 border border-gray-100 px-3 py-1.5 rounded-xl mb-3 text-[11px] font-bold text-slate-600">
+                <div class="flex-1 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 divide-gray-100 h-full overflow-hidden bg-[#f8f9fa]">
+                    <div class="p-8 overflow-y-auto space-y-6 bg-white border-r border-gray-100">
+                        <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Original Prompt</h3>
+                        <p class="text-sm text-slate-700 leading-relaxed font-medium bg-gray-50 p-5 rounded-2xl border border-gray-100">${q.prompt_context || ''}</p>
+                        
+                        <div class="grid grid-cols-2 gap-4 mt-8">
+                            <div class="bg-emerald-50/70 p-4 rounded-2xl border border-emerald-100 text-center">
+                                <span class="text-[10px] font-bold text-emerald-600 uppercase tracking-wide block mb-1">Score</span>
+                                <span class="text-2xl font-black text-emerald-700">${scoreText}</span>
+                            </div>
+                            <div class="bg-gray-50/70 p-4 rounded-2xl border border-gray-100 text-center">
+                                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wide block mb-1">Accuracy</span>
+                                <span class="text-2xl font-black text-slate-900">${scoreText !== 'Awaiting' ? accuracyPercent + '%' : '—'}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="p-6 md:p-8 overflow-y-auto h-full space-y-6">
+                        <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                            <i data-lucide="file-text" class="w-3.5 h-3.5"></i> Review Answers
+                        </h4>
+                        
+                        <div class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase block mb-2">Your Answer</span>
+                            <div class="text-sm text-slate-800 font-medium leading-relaxed whitespace-pre-wrap">${resp.response_content}</div>
+                        </div>
+
+                        ${q.sample_answer ? `
+                            <div class="bg-white border border-indigo-100 rounded-2xl p-5 shadow-sm">
+                                <span class="text-[10px] font-bold text-indigo-500 uppercase flex items-center gap-1 block mb-2">
+                                    <i data-lucide="book-open" class="w-3 h-3"></i> Sample Answer
+                                </span>
+                                <div class="text-sm text-indigo-950 font-medium bg-indigo-50/40 p-3 rounded-xl border border-indigo-100/70 leading-relaxed whitespace-pre-wrap">${q.sample_answer}</div>
+                            </div>
+                        ` : ''}
+
+                        ${q.explanation ? `
+                            <div class="bg-white border border-amber-100 rounded-2xl p-5 shadow-sm">
+                                <span class="text-[10px] font-bold text-amber-600 uppercase flex items-center gap-1 block mb-2">
+                                    <i data-lucide="lightbulb" class="w-3 h-3"></i> Teacher's Note
+                                </span>
+                                <div class="text-sm text-amber-900 font-medium bg-amber-50/40 p-3 rounded-xl border border-amber-100/70 leading-relaxed whitespace-pre-wrap">${q.explanation}</div>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- ВЕРХНЯЯ ПАНЕЛЬ И НАВИГАЦИЯ ---
+        function generateToolbar(qIndex) {
+            return `
+                <div class="flex items-center justify-between bg-gray-50 border border-gray-100 px-3 py-1.5 rounded-xl mb-3 text-[11px] font-bold text-slate-600 shrink-0">
                     <span class="text-gray-400">TOEFL Editor</span>
-                    <button onclick="toggleWordCount()" class="flex items-center space-x-1.5 text-gray-400 hover:text-slate-800 transition py-1 px-2 rounded bg-white border border-gray-200 shadow-sm">
-                        <i data-lucide="eye" class="w-3 h-3"></i> <span id="wordCountLabel">Words : 0</span>
+                    <button onclick="toggleWordCount(${qIndex})" class="flex items-center space-x-1.5 text-gray-400 hover:text-slate-800 transition py-1 px-2 rounded bg-white border border-gray-200 shadow-sm">
+                        <i data-lucide="eye" class="w-3 h-3"></i> <span id="wordCountLabel-${qIndex}">Words : 0</span>
                     </button>
                 </div>
             `;
         }
 
-        function initSentenceDragAndDrop() {
-            const bankContainer = document.getElementById('wordBankContainer');
-            const slots = document.querySelectorAll('.word-slot');
+        function generateBottomNavigation(index) {
+            const isFirst = index === 0;
+            const isLast = index === testQuestions.length - 1;
+            
+            let primaryButton = '';
+            if (isLast && !isTestCompleted) {
+                primaryButton = `<button onclick="submitEntireTest()" class="px-6 py-3 bg-emerald-600 text-white font-bold rounded-xl text-sm hover:bg-emerald-700 transition flex items-center space-x-2 shadow-sm"><span>Submit Test</span> <i data-lucide="check-circle" class="w-4 h-4"></i></button>`;
+            } else if (isLast && isTestCompleted) {
+                primaryButton = `<a href="task-list.html?type=${taskType}" class="px-6 py-3 bg-slate-900 text-white font-bold rounded-xl text-sm hover:bg-slate-800 transition flex items-center space-x-2 shadow-sm"><span>Dashboard</span> <i data-lucide="home" class="w-4 h-4"></i></a>`;
+            } else {
+                primaryButton = `<button onclick="nextSlide()" class="px-6 py-3 bg-slate-900 text-white font-bold rounded-xl text-sm hover:bg-slate-800 transition flex items-center space-x-2 shadow-sm"><span>Next</span> <i data-lucide="arrow-right" class="w-4 h-4"></i></button>`;
+            }
+
+            return `
+                <div class="p-4 md:px-8 bg-white border-t border-gray-200 flex justify-between items-center shrink-0 z-10">
+                     <button onclick="prevSlide()" class="${isFirst ? 'invisible' : ''} px-6 py-3 bg-gray-100 text-slate-600 font-bold rounded-xl text-sm hover:bg-gray-200 transition">Back</button>
+                     <div class="text-xs font-bold text-gray-400 hidden md:block">Question ${index + 1} of ${testQuestions.length}</div>
+                     ${primaryButton}
+                </div>
+            `;
+        }
+
+        // --- ЛОГИКА СЛАЙДЕРА ---
+        function showSlide(index) {
+            document.querySelectorAll('.slide-container').forEach((el, i) => {
+                if (i === index) {
+                    el.classList.remove('hidden');
+                    el.classList.add('flex');
+                } else {
+                    el.classList.add('hidden');
+                    el.classList.remove('flex');
+                }
+            });
+            currentSlide = index;
+        }
+
+        function nextSlide() {
+            if (currentSlide < testQuestions.length - 1) showSlide(currentSlide + 1);
+        }
+
+        function prevSlide() {
+            if (currentSlide > 0) showSlide(currentSlide - 1);
+        }
+
+        // --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
+        function initSentenceDragAndDrop(q, qIndex) {
+            const bankContainer = document.getElementById(`wordBankContainer-${qIndex}`);
+            const slots = document.querySelectorAll(`[id^="slot-${qIndex}-"]`);
             if(!bankContainer) return;
 
-            const words = currentQuestion.bank || [];
+            const words = q.bank || [];
             const shuffledWords = shuffleArray(words);
 
             shuffledWords.forEach(word => {
                 bankContainer.innerHTML += `<div class="draggable-word bg-white border border-gray-200 text-slate-700 text-xs font-bold px-4 py-2 rounded-xl shadow-sm cursor-grab active:cursor-grabbing hover:border-slate-400 select-none">${word}</div>`;
             });
 
-            new Sortable(bankContainer, { group: 'shared', animation: 150, ghostClass: 'sortable-ghost' });
+            new Sortable(bankContainer, { group: `shared-${qIndex}`, animation: 150, ghostClass: 'sortable-ghost' });
             slots.forEach(slot => {
                 new Sortable(slot, {
-                    group: 'shared', animation: 150, ghostClass: 'sortable-ghost',
+                    group: `shared-${qIndex}`, animation: 150, ghostClass: 'sortable-ghost',
                     onAdd: function (evt) {
                         if (evt.to.children.length > 1) {
                             Array.from(evt.to.children).forEach(child => { if (child !== evt.item) bankContainer.appendChild(child); });
@@ -393,102 +407,105 @@
             });
         }
 
-        let actualCount = 0;
-        function updateWordCount() {
-            const text = document.getElementById('editorArea').value.trim();
-            actualCount = text === "" ? 0 : text.split(/\s+/).length;
-            const label = document.getElementById('wordCountLabel');
-            if (label) label.innerText = wordCountVisible ? `Words : ${actualCount}` : `Hidden`;
+        function updateWordCount(qIndex) {
+            const area = document.getElementById(`editorArea-${qIndex}`);
+            if (!area) return;
+            const text = area.value.trim();
+            const actualCount = text === "" ? 0 : text.split(/\s+/).length;
+            const label = document.getElementById(`wordCountLabel-${qIndex}`);
+            if (label) label.innerText = wordCountStates[qIndex] ? `Words : ${actualCount}` : `Hidden`;
         }
 
-        function toggleWordCount() { wordCountVisible = !wordCountVisible; updateWordCount(); }
-
-        function handleNextTask() {
-            if (nextTaskId) {
-                window.location.href = `writing-practice.html?type=${taskType}&id=${nextTaskId}`;
-            }
+        function toggleWordCount(qIndex) { 
+            wordCountStates[qIndex] = !wordCountStates[qIndex]; 
+            updateWordCount(qIndex); 
         }
 
-        async function handleSubmitResponse() {
-            let userResult = "";
-            let calculatedScore = null; 
-
+        // --- СОХРАНЕНИЕ ТЕСТА В БАЗУ ---
+        function extractAnswerFromUI(q, qIndex) {
             if (taskType === 'sentence') {
                 let parts = [];
-                currentQuestion.structure.forEach((item, index) => {
+                (q.structure || []).forEach((item, slotIndex) => {
                     if (item.type === 'text') parts.push(item.value);
                     else {
-                        const s = document.getElementById(`slot-${index}`);
+                        const s = document.getElementById(`slot-${qIndex}-${slotIndex}`);
                         parts.push(s && s.children.length > 0 ? s.children[0].innerText.trim() : "____");
                     }
                 });
-                
-                userResult = parts.join(" ").replace(/\s+([.?!])/g, "$1").trim();
-                
+                let userResult = parts.join(" ").replace(/\s+([.?!])/g, "$1").trim();
                 let endMark = ".";
-                if (currentQuestion.sample_answer) {
-                    const lastChar = currentQuestion.sample_answer.trim().slice(-1);
+                if (q.sample_answer) {
+                    const lastChar = q.sample_answer.trim().slice(-1);
                     if (['.', '?', '!'].includes(lastChar)) endMark = lastChar;
                 }
                 if (!userResult.endsWith(endMark)) userResult += endMark;
-
-                if (currentQuestion.sample_answer) {
-                    const sampleSents = currentQuestion.sample_answer.split(/[.?!]/).map(s => s.replace(/\s+/g, ' ').trim().toLowerCase()).filter(s => s.length > 0);
-                    const userSents = userResult.split(/[.?!]/).map(s => s.replace(/\s+/g, ' ').trim().toLowerCase()).filter(s => s.length > 0);
-                    
-                    let maxScore = sampleSents.length > 0 ? sampleSents.length : 1;
-                    let correctCount = 0;
-                    
-                    sampleSents.forEach((sent, index) => {
-                        if (userSents[index] === sent) correctCount++;
-                    });
-
-                    if (maxScore === 1 && correctCount === 0) {
-                        const cleanUser = userResult.replace(/[^\w\s]/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
-                        const cleanSample = currentQuestion.sample_answer.replace(/[^\w\s]/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
-                        if (cleanUser === cleanSample && cleanSample !== "") {
-                            correctCount = 1;
-                        }
-                    }
-                    calculatedScore = `${correctCount}/${maxScore}`;
-                }
+                return userResult;
             } else {
-                userResult = document.getElementById('editorArea')?.value.trim() || "";
-            }
-
-            if (!userResult || userResult === "." || userResult === "?" || userResult === "!" || userResult === "____." || userResult === "____?" || userResult === "____!") {
-                return alert("Please complete the task.");
-            }
-
-            try {
-                const { data: { session } } = await db.auth.getSession();
-                if (!session) return alert("Log in first.");
-
-                const { data, error } = await db.from('student_responses').insert([
-                    { 
-                        task_id: taskId, 
-                        task_type: taskType, 
-                        response_content: userResult, 
-                        user_id: session.user.id,
-                        score: calculatedScore 
-                    }
-                ]).select().single();
-
-                if (error) throw error;
-
-                studentResponse = data;
-                renderWorkspace();
-            } catch (err) {
-                alert("Error saving: " + err.message);
+                return document.getElementById(`editorArea-${qIndex}`)?.value.trim() || "";
             }
         }
 
-        async function handleResetAndRetry() {
-            if (!confirm("Reset progress and try again?")) return;
-            if (studentResponse) {
-                await db.from('student_responses').delete().eq('id', studentResponse.id);
-                studentResponse = null;
-                await fetchTaskAndStatus();
+        function calculateScore(q, userResult) {
+            if (taskType !== 'sentence') return null; // Для эссе и писем оценку ставит препод
+            
+            if (!q.sample_answer) return null;
+            
+            const sampleSents = q.sample_answer.split(/[.?!]/).map(s => s.replace(/\s+/g, ' ').trim().toLowerCase()).filter(s => s.length > 0);
+            const userSents = userResult.split(/[.?!]/).map(s => s.replace(/\s+/g, ' ').trim().toLowerCase()).filter(s => s.length > 0);
+            
+            let maxScore = sampleSents.length > 0 ? sampleSents.length : 1;
+            let correctCount = 0;
+            
+            sampleSents.forEach((sent, index) => {
+                if (userSents[index] === sent) correctCount++;
+            });
+
+            if (maxScore === 1 && correctCount === 0) {
+                const cleanUser = userResult.replace(/[^\w\s]/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
+                const cleanSample = q.sample_answer.replace(/[^\w\s]/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
+                if (cleanUser === cleanSample && cleanSample !== "") correctCount = 1;
+            }
+            return `${correctCount}/${maxScore}`;
+        }
+
+        async function submitEntireTest() {
+            if (!currentUserId) return alert("Please log in first.");
+
+            let payloads = [];
+
+            // 1. Собираем и проверяем все ответы
+            for (let i = 0; i < testQuestions.length; i++) {
+                const q = testQuestions[i];
+                const ans = extractAnswerFromUI(q, i);
+                
+                // Простая защита от пустых ответов
+                if (!ans || ans === "." || ans === "?" || ans === "!" || ans.includes("____")) {
+                    alert(`Question ${i + 1} is incomplete. Please finish it before submitting the test.`);
+                    showSlide(i); // Перекидываем студента на пустой вопрос
+                    return;
+                }
+
+                payloads.push({
+                    task_id: q.id,
+                    task_type: taskType,
+                    response_content: ans,
+                    user_id: currentUserId,
+                    score: calculateScore(q, ans)
+                });
+            }
+
+            // 2. Отправляем в базу одним пакетом
+            try {
+                document.body.style.cursor = 'wait';
+                const { error } = await db.from('student_responses').insert(payloads);
+                if (error) throw error;
+                
+                // Перезагружаем страницу, чтобы переключить ее в режим просмотра результатов
+                window.location.reload();
+            } catch (err) {
+                alert("Error saving test: " + err.message);
+            } finally {
+                document.body.style.cursor = 'default';
             }
         }
     </script>
