@@ -119,7 +119,6 @@
                 testQuestions.forEach((q, index) => {
                     wordCountStates[index] = true; 
                     
-                    // ИСПРАВЛЕНИЕ: Гарантируем, что активный слайд имеет класс flex, а не схлопывается
                     const displayClass = index === 0 ? 'flex' : 'hidden'; 
                     let slideHTML = `<div id="slide-${index}" class="slide-container ${displayClass} flex-col h-full w-full absolute inset-0 bg-white">`;
                     
@@ -154,7 +153,15 @@
                 }
             });
 
-            const scoreDisplay = hasScores ? `${totalEarned} / ${totalMax}` : 'Awaiting';
+            // Форматируем общий балл: для sentence со слэшем, для email/academic — только число
+            let scoreDisplay = 'Awaiting';
+            if (hasScores) {
+                if (taskType === 'sentence') {
+                    scoreDisplay = `${totalEarned} / ${totalMax}`;
+                } else {
+                    scoreDisplay = Number.isInteger(totalEarned) ? totalEarned.toString() : totalEarned.toFixed(1);
+                }
+            }
 
             let leftPanelContent = '';
             if (taskType === 'sentence') {
@@ -180,8 +187,15 @@
             const questionsHtml = testQuestions.map((q, index) => {
                 const resp = studentResponses.find(r => String(r.task_id) === String(q.id)) || {};
                 let qScore = 'Awaiting';
+                
                 if (resp.score) {
-                    qScore = String(resp.score).replace('/', ' / ');
+                    if (taskType === 'sentence') {
+                        qScore = String(resp.score).replace('/', ' / ');
+                    } else {
+                        // Показываем только чистый балл (левую часть до слэша)
+                        const earned = parseFloat(String(resp.score).split('/')[0]);
+                        qScore = isNaN(earned) ? 'Awaiting' : (Number.isInteger(earned) ? earned.toString() : earned.toFixed(1));
+                    }
                 }
 
                 const hasExplanation = q.explanation && q.explanation.trim().toLowerCase() !== 'none' && q.explanation.trim() !== '';
@@ -478,7 +492,8 @@
         }
 
         function calculateScore(q, userResult) {
-            if (taskType !== 'sentence') return null; 
+            // Для email и academic возвращаем дефолтную заглушку 0/6.0
+            if (taskType !== 'sentence') return "0/6.0"; 
             if (!q.sample_answer) return null;
             
             const sampleSents = q.sample_answer.split(/[.?!]/).map(s => s.replace(/\s+/g, ' ').trim().toLowerCase()).filter(s => s.length > 0);
