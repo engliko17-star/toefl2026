@@ -44,6 +44,9 @@
 
         document.addEventListener('DOMContentLoaded', loadTasksAndProgress);
 
+        // Хранилище сгруппированных ID для сброса прогресса
+        let currentTestGroups = {};
+
         async function loadTasksAndProgress() {
             const container = document.getElementById('tasksContainer');
             try {
@@ -51,6 +54,7 @@
                 if (!session) { window.location.replace('index.html'); return; }
                 const userId = session.user.id;
 
+                // Получаем все вопросы и сортируем их по ID
                 const { data: tasks } = await db.from('writing_tasks').select('*').ilike('type', taskType).order('id', { ascending: true });
                 const { data: responses } = await db.from('student_responses').select('*').eq('user_id', userId).ilike('task_type', taskType);
 
@@ -61,39 +65,72 @@
                     return;
                 }
 
+                // Группируем вопросы по test_id
+                const testGroups = {};
+                tasks.forEach(task => {
+                    const groupId = task.test_id ? `test_${task.test_id}` : `task_${task.id}`;
+                    if (!testGroups[groupId]) testGroups[groupId] = [];
+                    testGroups[groupId].push(task);
+                });
+
                 container.className = "grid grid-cols-1 md:grid-cols-2 gap-6";
                 container.innerHTML = '';
+                currentTestGroups = {};
 
-                tasks.forEach((task, index) => {
-                    const response = responses.find(r => String(r.task_id) === String(task.id));
-                    const isCompleted = !!response;
-                    const testNum = `Test #${index + 1}`;
+                let groupIndex = 1;
+
+                Object.keys(testGroups).forEach((groupId) => {
+                    const groupTasks = testGroups[groupId];
+                    const firstTask = groupTasks[0];
+                    const totalQuestions = groupTasks.length;
                     
+                    // Сохраняем все ID этой группы, чтобы кнопка Reset могла удалить их все разом
+                    currentTestGroups[groupId] = groupTasks.map(t => t.id);
+
+                    // Ищем ответы студента для текущей группы вопросов
+                    const groupResponses = groupTasks.map(t => responses.find(r => String(r.task_id) === String(t.id))).filter(r => r);
+                    const completedCount = groupResponses.length;
+                    
+                    const isFullyCompleted = completedCount === totalQuestions;
+                    const isPartiallyCompleted = completedCount > 0 && completedCount < totalQuestions;
+
                     let actionButton = '';
                     let progressCircleHTML = '';
+                    let statusLabelHTML = '';
 
-                    if (isCompleted) {
-                        let percent = 0;
+                    const cardTitle = firstTask.test_id ? `Practice Set ${firstTask.test_id}` : firstTask.title;
+
+                    if (isFullyCompleted) {
+                        statusLabelHTML = `<span class="text-[11px] font-bold text-emerald-600 flex items-center"><i data-lucide="check-circle" class="w-3.5 h-3.5 mr-1"></i> Completed</span>`;
+                        
+                        let totalEarned = 0;
+                        let totalMax = 0;
                         let hasScore = false;
-                        let displayText = '';
 
-                        if (response.score !== null && response.score !== undefined) {
-                            hasScore = true;
-                            const scoreStr = String(response.score);
-                            
-                            if (scoreStr.includes('/')) {
-                                const [earned, max] = scoreStr.split('/').map(Number);
-                                if (max > 0) percent = Math.round((earned / max) * 100);
-                                displayText = scoreStr; 
-                            } else {
-                                const earned = parseInt(scoreStr);
-                                if (!isNaN(earned)) {
-                                    percent = Math.round((earned / 5) * 100);
-                                    displayText = `${percent}%`; 
+                        // Суммируем баллы за все вопросы в тесте
+                        groupResponses.forEach(resp => {
+                            if (resp.score) {
+                                hasScore = true;
+                                const scoreStr = String(resp.score);
+                                if (scoreStr.includes('/')) {
+                                    const [earned, max] = scoreStr.split('/').map(Number);
+                                    totalEarned += (earned || 0);
+                                    totalMax += (max || 0);
                                 } else {
-                                    hasScore = false;
+                                    const earned = parseInt(scoreStr);
+                                    if (!isNaN(earned)) {
+                                        totalEarned += earned;
+                                        totalMax += 5; // Стандартный макс балл для других типов
+                                    }
                                 }
                             }
+                        });
+
+                        let percent = 0;
+                        let displayScore = '';
+                        if (hasScore && totalMax > 0) {
+                            percent = Math.round((totalEarned / totalMax) * 100);
+                            displayScore = taskType === 'sentence' ? `${percent}%` : `${totalEarned}/${totalMax}`;
                         }
 
                         const strokeDash = 2 * Math.PI * 16;
@@ -103,30 +140,63 @@
                             <div class="relative flex items-center justify-center w-11 h-11 shrink-0">
                                 <svg class="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
                                     <circle cx="18" cy="18" r="16" fill="transparent" stroke="#f1f5f9" stroke-width="3.5"></circle>
-                                    <circle cx="18" cy="18" r="16" fill="transparent" stroke="${hasScore ? '#f43f5e' : '#cbd5e1'}" stroke-width="3.5" 
+                                    <circle cx="18" cy="18" r="16" fill="transparent" stroke="${hasScore ? '#10b981' : '#cbd5e1'}" stroke-width="3.5" 
                                         stroke-dasharray="${strokeDash}" stroke-dashoffset="${hasScore ? offset : 0}" stroke-linecap="round"></circle>
                                 </svg>
                                 <div class="absolute text-[9px] font-extrabold text-slate-700 tracking-tight">
-                                    ${hasScore ? displayText : '<i data-lucide="clock" class="w-3.5 h-3.5 text-gray-400"></i>'}
+                                    ${hasScore ? displayScore : '<i data-lucide="check" class="w-4 h-4 text-emerald-500"></i>'}
                                 </div>
                             </div>
                         `;
 
                         actionButton = `
                             <div class="flex gap-2">
-                                <a href="writing-practice.html?type=${taskType}&id=${task.id}" class="flex-1 flex items-center justify-center space-x-2 bg-[#edfdf4] text-emerald-700 hover:bg-[#dcfce7] transition py-3 rounded-2xl font-bold text-sm">
+                                <a href="writing-practice.html?type=${taskType}&id=${firstTask.id}" class="flex-1 flex items-center justify-center space-x-2 bg-[#edfdf4] text-emerald-700 hover:bg-[#dcfce7] transition py-3 rounded-2xl font-bold text-sm">
                                     <span>Review Results</span> <i data-lucide="eye" class="w-4 h-4"></i>
                                 </a>
-                                <button onclick="resetTaskFromList('${task.id}')" class="w-12 flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-100 transition py-3 rounded-2xl shrink-0 border border-rose-100" title="Reset Progress">
+                                <button onclick="resetGroup('${groupId}')" class="w-12 flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-100 transition py-3 rounded-2xl shrink-0 border border-rose-100" title="Reset Entire Test">
+                                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                        `;
+                    } else if (isPartiallyCompleted) {
+                        statusLabelHTML = `<span class="text-[11px] font-bold text-blue-600 flex items-center"><i data-lucide="loader" class="w-3.5 h-3.5 mr-1"></i> In Progress</span>`;
+                        
+                        // Ищем первый нерешённый вопрос в этом тесте
+                        const firstUncompletedTask = groupTasks.find(t => !groupResponses.some(r => String(r.task_id) === String(t.id)));
+
+                        let percent = Math.round((completedCount / totalQuestions) * 100);
+                        const strokeDash = 2 * Math.PI * 16;
+                        const offset = strokeDash - (percent / 100) * strokeDash;
+
+                        progressCircleHTML = `
+                            <div class="relative flex items-center justify-center w-11 h-11 shrink-0" title="${completedCount} of ${totalQuestions} done">
+                                <svg class="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                                    <circle cx="18" cy="18" r="16" fill="transparent" stroke="#f1f5f9" stroke-width="3.5"></circle>
+                                    <circle cx="18" cy="18" r="16" fill="transparent" stroke="#3b82f6" stroke-width="3.5" 
+                                        stroke-dasharray="${strokeDash}" stroke-dashoffset="${offset}" stroke-linecap="round"></circle>
+                                </svg>
+                                <div class="absolute text-[9px] font-extrabold text-slate-700 tracking-tight">
+                                    ${completedCount}/${totalQuestions}
+                                </div>
+                            </div>
+                        `;
+
+                        actionButton = `
+                            <div class="flex gap-2">
+                                <a href="writing-practice.html?type=${taskType}&id=${firstUncompletedTask.id}" class="flex-1 flex items-center justify-center space-x-2 bg-blue-50 text-blue-700 hover:bg-blue-100 transition py-3 rounded-2xl font-bold text-sm">
+                                    <span>Resume Test</span> <i data-lucide="play" class="w-4 h-4"></i>
+                                </a>
+                                <button onclick="resetGroup('${groupId}')" class="w-12 flex items-center justify-center bg-gray-50 text-gray-400 hover:bg-gray-100 transition py-3 rounded-2xl shrink-0 border border-gray-200" title="Reset Entire Test">
                                     <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
                                 </button>
                             </div>
                         `;
                     } else {
-                        progressCircleHTML = `<span class="text-xs font-bold text-gray-300 tracking-wide">${testNum}</span>`;
+                        progressCircleHTML = `<span class="text-xs font-bold text-gray-300 tracking-wide">Test #${firstTask.test_id || groupIndex}</span>`;
                         actionButton = `
-                            <a href="writing-practice.html?type=${taskType}&id=${task.id}" class="w-full flex items-center justify-center space-x-2 bg-[#121629] text-white hover:bg-slate-800 transition py-3.5 rounded-2xl font-bold text-sm shadow-sm">
-                                <span>Start Practice</span> <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                            <a href="writing-practice.html?type=${taskType}&id=${firstTask.id}" class="w-full flex items-center justify-center space-x-2 bg-[#121629] text-white hover:bg-slate-800 transition py-3.5 rounded-2xl font-bold text-sm shadow-sm">
+                                <span>Start Test</span> <i data-lucide="arrow-right" class="w-4 h-4"></i>
                             </a>
                         `;
                     }
@@ -136,19 +206,20 @@
                             <div>
                                 <div class="flex justify-between items-center mb-4">
                                     <div class="flex items-center space-x-2">
-                                        <span class="px-2.5 py-1 text-[9px] font-extrabold rounded-md tracking-wider uppercase ${isCompleted ? 'text-emerald-700 bg-emerald-50' : 'text-slate-500 bg-slate-100'}">
+                                        <span class="px-2.5 py-1 text-[9px] font-extrabold rounded-md tracking-wider uppercase ${isFullyCompleted ? 'text-emerald-700 bg-emerald-50' : 'text-slate-500 bg-slate-100'}">
                                             ${taskType === 'academic' ? 'ACADEMIC' : taskType.toUpperCase()}
                                         </span>
-                                        ${isCompleted ? `<span class="text-[11px] font-bold text-emerald-600 flex items-center"><i data-lucide="check" class="w-3.5 h-3.5 mr-0.5"></i> Completed</span>` : ''}
+                                        ${statusLabelHTML}
                                     </div>
                                     ${progressCircleHTML}
                                 </div>
-                                <h2 class="text-base font-extrabold text-slate-900 mb-1 leading-tight line-clamp-1">${task.title}</h2>
-                                <p class="text-xs text-gray-400 font-medium mb-5">1 Questions • 1 answer type</p>
+                                <h2 class="text-base font-extrabold text-slate-900 mb-1 leading-tight line-clamp-1">${cardTitle}</h2>
+                                <p class="text-xs text-gray-400 font-medium mb-5">${totalQuestions} Question${totalQuestions > 1 ? 's' : ''}</p>
                             </div>
                             ${actionButton}
                         </div>
                     `;
+                    groupIndex++;
                 });
                 lucide.createIcons();
             } catch (err) {
@@ -156,23 +227,28 @@
             }
         }
 
-        async function resetTaskFromList(taskId) {
-            if (!confirm("Are you sure you want to reset your progress for this task?")) return;
+        // Новая функция сброса: теперь она удаляет прогресс сразу у ВСЕХ вопросов внутри теста
+        async function resetGroup(groupId) {
+            const taskIds = currentTestGroups[groupId];
+            if (!taskIds || taskIds.length === 0) return;
+
+            if (!confirm("Are you sure you want to reset your progress for this entire test?")) return;
             
             try {
                 document.body.style.cursor = 'wait';
                 const { data: { session } } = await db.auth.getSession();
                 if (!session) return;
 
+                // Удаляем ответы где task_id совпадает с любым id из нашей группы
                 const { error } = await db.from('student_responses')
                     .delete()
-                    .eq('task_id', taskId)
+                    .in('task_id', taskIds)
                     .eq('user_id', session.user.id);
                     
                 if (error) throw error;
                 await loadTasksAndProgress(); 
             } catch (err) {
-                alert("Error resetting task: " + err.message);
+                alert("Error resetting test: " + err.message);
             } finally {
                 document.body.style.cursor = 'default';
             }
