@@ -184,19 +184,19 @@
                         
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div class="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center justify-center text-center">
-                                <span class="text-2xl font-extrabold text-slate-900">0</span>
+                                <span id="stat-tasks" class="text-2xl font-extrabold text-slate-900">0</span>
                                 <span class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mt-1">Tasks Done</span>
                             </div>
                             <div class="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center justify-center text-center">
-                                <span class="text-2xl font-extrabold text-emerald-600">0</span>
+                                <span id="stat-words" class="text-2xl font-extrabold text-emerald-600">0</span>
                                 <span class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mt-1">Words Written</span>
                             </div>
                             <div class="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center justify-center text-center">
-                                <span class="text-2xl font-extrabold text-slate-900">-</span>
+                                <span id="stat-score" class="text-2xl font-extrabold text-slate-900">-</span>
                                 <span class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mt-1">Avg. Score</span>
                             </div>
                             <div class="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center justify-center text-center">
-                                <span class="text-2xl font-extrabold text-blue-600">0</span>
+                                <span id="stat-emails" class="text-2xl font-extrabold text-blue-600">0</span>
                                 <span class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mt-1">Emails Sent</span>
                             </div>
                         </div>
@@ -216,11 +216,11 @@
                         
                         <div class="mt-5">
                             <div class="w-full h-1.5 bg-white/20 rounded-full overflow-hidden">
-                                <div class="bg-white h-full rounded-full transition-all duration-300" style="width: 0%;"></div>
+                                <div id="goal-bar" class="bg-white h-full rounded-full transition-all duration-700 ease-out" style="width: 0%;"></div>
                             </div>
                             <div class="flex justify-between text-[10px] font-bold text-teal-100 mt-2">
                                 <span>Progress</span>
-                                <span>0 / 5</span>
+                                <span id="goal-text">0 / 5</span>
                             </div>
                         </div>
                     </div>
@@ -286,6 +286,72 @@
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+        async function loadWritingStats(userId) {
+            try {
+                // Забираем все ответы студента из категории Writing
+                const { data: responses, error } = await supabaseClient
+                    .from('student_responses')
+                    .select('*')
+                    .eq('user_id', userId)
+                    .in('task_type', ['sentence', 'email', 'academic']);
+
+                if (error || !responses) return;
+
+                let tasksDone = responses.length;
+                let wordsWritten = 0;
+                let emailsSent = 0;
+                let totalPercent = 0;
+                let scoredTasksCount = 0;
+
+                responses.forEach(r => {
+                    // 1. Считаем написанные слова
+                    if (r.response_content) {
+                        // Убираем лишние пробелы и считаем длину массива слов
+                        const words = r.response_content.trim().split(/\s+/).filter(w => w.length > 0);
+                        wordsWritten += words.length;
+                    }
+
+                    // 2. Считаем отправленные email-задания
+                    if (r.task_type === 'email') {
+                        emailsSent++;
+                    }
+
+                    // 3. Считаем средний процент
+                    if (r.score && String(r.score).includes('/')) {
+                        const [earned, max] = String(r.score).split('/').map(Number);
+                        if (max > 0 && !isNaN(earned)) {
+                            // Приводим все баллы к процентам (и sentence 1/1, и email 5/6)
+                            totalPercent += (earned / max) * 100;
+                            scoredTasksCount++;
+                        }
+                    }
+                });
+
+                // Формируем средний балл (в процентах)
+                let avgScore = scoredTasksCount > 0 ? Math.round(totalPercent / scoredTasksCount) + '%' : '-';
+
+                // Обновляем текст на странице
+                document.getElementById('stat-tasks').innerText = tasksDone;
+                document.getElementById('stat-words').innerText = wordsWritten;
+                document.getElementById('stat-score').innerText = avgScore;
+                document.getElementById('stat-emails').innerText = emailsSent;
+
+                // Обновляем прогресс-бар Weekly Goal (цель: 5 заданий)
+                const goalTotal = 5;
+                const goalCurrent = Math.min(tasksDone, goalTotal); // Ограничиваем максимум пятью
+                const goalPercent = (goalCurrent / goalTotal) * 100;
+                
+                // Делаем небольшую задержку для анимации ползунка
+                setTimeout(() => {
+                    document.getElementById('goal-bar').style.width = goalPercent + '%';
+                }, 100);
+                document.getElementById('goal-text').innerText = `${goalCurrent} / ${goalTotal}`;
+
+            } catch (err) {
+                console.error("Error loading stats:", err);
+            }
+        }
+
         async function checkAuth() {
             try {
                 const { data: { session }, error } = await supabaseClient.auth.getSession();
@@ -295,7 +361,12 @@
                     return;
                 }
 
+                // Показываем страницу
                 document.getElementById('mainBody').classList.remove('opacity-0');
+                
+                // Запускаем подгрузку статистики
+                await loadWritingStats(session.user.id);
+
             } catch (err) {
                 console.error("Auth protection error:", err);
                 window.location.replace('index.html');
