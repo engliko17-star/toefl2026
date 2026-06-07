@@ -23,7 +23,8 @@
 </head>
 <body class="bg-[#f8f9fa] text-slate-900 min-h-screen flex flex-col antialiased">
 
-    <header class="bg-white px-6 py-4 flex items-center justify-between border-b border-gray-100 shrink-0 sticky top-0 z-10 shadow-sm">
+    <header class="bg-white px-6 py-4 flex items-center justify-between border-b border-gray-100 shrink-0 sticky top-0 z-50 shadow-sm">
+        
         <div class="flex items-center space-x-4">
             <a id="backBtn" href="#" class="flex items-center justify-center w-10 h-10 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-slate-800 transition">
                 <i data-lucide="arrow-left" class="w-5 h-5"></i>
@@ -31,6 +32,26 @@
             <div>
                 <h1 class="text-sm font-bold text-slate-900" id="testHeaderTitle">Loading Test...</h1>
                 <p class="text-[11px] font-bold text-gray-400 mt-0.5 uppercase tracking-wider">Writing Section</p>
+            </div>
+        </div>
+
+        <div id="topNavigation" class="hidden flex items-center space-x-6">
+            <div class="text-sm font-bold text-slate-700">
+                Question <span id="current-q-label">1</span> of <span id="total-q-label">1</span>
+            </div>
+
+            <div class="flex items-center space-x-2">
+                <button id="btn-prev" onclick="prevSlide()" class="flex items-center px-4 py-2 text-sm font-bold text-slate-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    <i data-lucide="arrow-left" class="w-4 h-4 mr-1"></i> Back
+                </button>
+                
+                <button id="btn-next" onclick="nextSlide()" class="flex items-center px-4 py-2 text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-lg shadow-sm transition-colors">
+                    Next <i data-lucide="arrow-right" class="w-4 h-4 ml-1"></i>
+                </button>
+
+                <button id="btn-submit" onclick="submitEntireTest()" class="hidden flex items-center px-4 py-2 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm transition-colors">
+                    Submit <i data-lucide="check-circle" class="w-4 h-4 ml-1"></i>
+                </button>
             </div>
         </div>
     </header>
@@ -111,11 +132,15 @@
 
         function renderTestSlider() {
             const container = document.getElementById('sliderContainer');
+            const topNav = document.getElementById('topNavigation');
             container.innerHTML = ''; 
 
             if (isTestCompleted) {
+                if (topNav) topNav.classList.add('hidden'); // Прячем панель навигации на экране результатов
                 container.innerHTML = generateFullResultsView();
             } else {
+                if (topNav) topNav.classList.remove('hidden'); // Показываем панель навигации
+                
                 testQuestions.forEach((q, index) => {
                     wordCountStates[index] = true; 
                     
@@ -123,7 +148,7 @@
                     let slideHTML = `<div id="slide-${index}" class="slide-container ${displayClass} flex-col h-full w-full absolute inset-0 bg-white">`;
                     
                     slideHTML += generatePracticeView(q, index);
-                    slideHTML += generateBottomNavigation(index);
+                    // Нижняя навигация удалена отсюда
                     slideHTML += `</div>`;
 
                     container.insertAdjacentHTML('beforeend', slideHTML);
@@ -134,9 +159,66 @@
                         initSentenceDragAndDrop(q, index);
                     });
                 }
+                
+                // Инициализируем состояние верхней панели для первого слайда
+                updateTopNavigation(0);
             }
 
             lucide.createIcons();
+        }
+
+        // ОБНОВЛЕНИЕ ВЕРХНЕЙ ПАНЕЛИ
+        function updateTopNavigation(index) {
+            const total = testQuestions.length;
+            
+            document.getElementById('current-q-label').innerText = index + 1;
+            document.getElementById('total-q-label').innerText = total;
+
+            const btnPrev = document.getElementById('btn-prev');
+            const btnNext = document.getElementById('btn-next');
+            const btnSubmit = document.getElementById('btn-submit');
+
+            // Управление кнопкой Back (Previous)
+            if (index === 0) {
+                btnPrev.disabled = true;
+                btnPrev.classList.add('opacity-50', 'cursor-not-allowed');
+            } else {
+                btnPrev.disabled = false;
+                btnPrev.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+
+            // Управление кнопками Next и Submit
+            if (index === total - 1) {
+                btnNext.classList.add('hidden');
+                btnSubmit.classList.remove('hidden');
+                btnSubmit.classList.add('flex');
+            } else {
+                btnNext.classList.remove('hidden');
+                btnNext.classList.add('flex');
+                btnSubmit.classList.add('hidden');
+            }
+        }
+
+        function showSlide(index) {
+            document.querySelectorAll('.slide-container').forEach((el, i) => {
+                if (i === index) {
+                    el.classList.remove('hidden');
+                    el.classList.add('flex');
+                } else {
+                    el.classList.add('hidden');
+                    el.classList.remove('flex');
+                }
+            });
+            currentSlide = index;
+            updateTopNavigation(index); // Обновляем шапку при смене слайда
+        }
+
+        function nextSlide() {
+            if (currentSlide < testQuestions.length - 1) showSlide(currentSlide + 1);
+        }
+
+        function prevSlide() {
+            if (currentSlide > 0) showSlide(currentSlide - 1);
         }
 
         function generateFullResultsView() {
@@ -153,7 +235,6 @@
                 }
             });
 
-            // Форматируем общий балл: для sentence со слэшем, для email/academic — только число
             let scoreDisplay = 'Awaiting';
             if (hasScores) {
                 if (taskType === 'sentence') {
@@ -192,7 +273,6 @@
                     if (taskType === 'sentence') {
                         qScore = String(resp.score).replace('/', ' / ');
                     } else {
-                        // Показываем только чистый балл (левую часть до слэша)
                         const earned = parseFloat(String(resp.score).split('/')[0]);
                         qScore = isNaN(earned) ? 'Awaiting' : (Number.isInteger(earned) ? earned.toString() : earned.toFixed(1));
                     }
@@ -388,47 +468,6 @@
             `;
         }
 
-        function generateBottomNavigation(index) {
-            const isFirst = index === 0;
-            const isLast = index === testQuestions.length - 1;
-            
-            let primaryButton = '';
-            if (isLast) {
-                primaryButton = `<button onclick="submitEntireTest()" class="px-6 py-3 bg-emerald-600 text-white font-bold rounded-xl text-sm hover:bg-emerald-700 transition flex items-center space-x-2 shadow-sm"><span>Submit Test</span> <i data-lucide="check-circle" class="w-4 h-4"></i></button>`;
-            } else {
-                primaryButton = `<button onclick="nextSlide()" class="px-6 py-3 bg-slate-900 text-white font-bold rounded-xl text-sm hover:bg-slate-800 transition flex items-center space-x-2 shadow-sm"><span>Next</span> <i data-lucide="arrow-right" class="w-4 h-4"></i></button>`;
-            }
-
-            return `
-                <div class="p-4 md:px-8 bg-white border-t border-gray-200 flex justify-between items-center shrink-0 z-10">
-                     <button onclick="prevSlide()" class="${isFirst ? 'invisible' : ''} px-6 py-3 bg-gray-100 text-slate-600 font-bold rounded-xl text-sm hover:bg-gray-200 transition">Back</button>
-                     <div class="text-xs font-bold text-gray-400 hidden md:block">Question ${index + 1} of ${testQuestions.length}</div>
-                     ${primaryButton}
-                </div>
-            `;
-        }
-
-        function showSlide(index) {
-            document.querySelectorAll('.slide-container').forEach((el, i) => {
-                if (i === index) {
-                    el.classList.remove('hidden');
-                    el.classList.add('flex');
-                } else {
-                    el.classList.add('hidden');
-                    el.classList.remove('flex');
-                }
-            });
-            currentSlide = index;
-        }
-
-        function nextSlide() {
-            if (currentSlide < testQuestions.length - 1) showSlide(currentSlide + 1);
-        }
-
-        function prevSlide() {
-            if (currentSlide > 0) showSlide(currentSlide - 1);
-        }
-
         function initSentenceDragAndDrop(q, qIndex) {
             const bankContainer = document.getElementById(`wordBankContainer-${qIndex}`);
             const slots = document.querySelectorAll(`[id^="slot-${qIndex}-"]`);
@@ -492,7 +531,6 @@
         }
 
         function calculateScore(q, userResult) {
-            // Для email и academic возвращаем дефолтную заглушку 0/6.0
             if (taskType !== 'sentence') return "0/6.0"; 
             if (!q.sample_answer) return null;
             
