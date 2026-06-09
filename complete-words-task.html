@@ -17,45 +17,52 @@
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
         
-        /* Контейнер теперь не имеет отступов и сливается со словом */
+        /* Контейнер для ВСЕГО слова целиком */
+        .puzzle-word {
+            display: inline-flex;
+            align-items: baseline;
+            vertical-align: baseline;
+            margin: 0 6px; /* Создает красивый отступ в ~2 пробела от соседних слов */
+        }
+        
+        /* Единая плашка для пропущенных букв внутри слова */
         .letters-container {
             display: inline-flex;
             align-items: baseline;
             vertical-align: baseline;
-            margin: 0;
-            padding: 0;
+            background-color: #f1f5f9;
+            border-radius: 4px;
+            padding: 0 2px;
+            margin: 0; /* Прижимает плашку к обычной части слова без зазоров */
+            transition: all 0.2s ease;
+        }
+        
+        .puzzle-word:focus-within .letters-container {
+            background-color: #e2e8f0;
         }
 
-        /* Инпуты плотно прилегают друг к другу, образуя единый фон */
+        /* Инпуты сидят идеально ровно на линии шрифта */
         .letter-input {
-            width: 16px; /* Чуть шире для комфортного ввода */
+            width: 14px;
             text-align: center;
             border: none;
             border-bottom: 2px solid #94a3b8;
             outline: none;
             font-weight: 700;
             color: #1e293b;
-            background-color: #f1f5f9; /* Фон теперь на самих инпутах */
-            margin: 0; /* Никаких зазоров между буквами! */
+            background: transparent;
+            margin: 0 1px;
             padding: 0;
             font-family: inherit;
             font-size: inherit;
+            vertical-align: baseline;
             transition: all 0.2s;
-        }
-
-        /* Скругляем края только у крайних букв, чтобы выглядело как цельный маркер */
-        .letter-input:first-child {
-            border-top-left-radius: 4px;
-        }
-        .letter-input:last-child {
-            border-top-right-radius: 4px;
         }
         
         .letter-input:focus {
-            background-color: #e2e8f0;
             border-bottom-color: #7e22ce;
         }
-
+        
         .letter-input.correct { 
             border-bottom-color: #10b981; 
             color: #065f46; 
@@ -182,14 +189,21 @@
                 document.getElementById('taskCategory').innerText = test.category || 'Practice';
                 document.getElementById('tipsContent').innerHTML = test.tips || `<span class='font-bold text-indigo-700'>Tip:</span> Pay close attention to contextual clues and academic spelling suffixes.`;
 
-                const htmlWithInputs = (test.passage || "").replace(/((?:\[.\])+)/g, function(match) {
-                    const letters = match.match(/\[(.)\]/g).map(m => m.replace(/[\[\]]/g, ''));
+                // УМНЫЙ ПАРСИНГ: Находим слово целиком вместе с пропущенными буквами в скобках
+                const htmlWithInputs = (test.passage || "").replace(/\b\w*(?:\[.\])+\w*\b/g, function(match) {
+                    // Разбираем внутренности слова и изолируем блоки [а][b] в красивый контейнер
+                    let wordHtml = match.replace(/((?:\[.\])+)/g, function(bracketsBlock) {
+                        const letters = bracketsBlock.match(/\[(.)\]/g).map(m => m.replace(/[\[\]]/g, ''));
+                        
+                        const inputsHtml = letters.map(letter => {
+                            return `<input type="text" maxlength="1" data-answer="${letter}" class="letter-input" autocomplete="off">`;
+                        }).join('');
+                        
+                        return `<span class="letters-container">${inputsHtml}</span>`;
+                    });
                     
-                    const inputsHtml = letters.map(letter => {
-                        return `<input type="text" maxlength="1" data-answer="${letter}" class="letter-input" autocomplete="off">`;
-                    }).join('');
-                    
-                    return `<span class="letters-container">${inputsHtml}</span>`;
+                    // Оборачиваем слово целиком, чтобы задать внешние отступы (2 пробела)
+                    return `<span class="puzzle-word">${wordHtml}</span>`;
                 });
 
                 document.getElementById('textContent').innerHTML = htmlWithInputs;
@@ -316,4 +330,3 @@
     </script>
 </body>
 </html>
-
