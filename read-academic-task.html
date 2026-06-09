@@ -36,7 +36,7 @@
 </head>
 <body class="bg-[#f8f9fa] text-slate-800 m-0 p-0" style="height: 100dvh; display: flex; flex-direction: column; overflow: hidden;">
 
-    <header class="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center shrink-0">
+    <header class="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center shrink-0 z-10 shadow-sm relative">
         <div class="flex items-center space-x-4">
             <a href="read-academic.html" class="text-gray-400 hover:text-slate-900 transition flex items-center text-sm font-bold pt-0.5 cursor-pointer">
                 <i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i> Exit Test
@@ -44,10 +44,24 @@
             <div class="h-4 w-px bg-gray-200"></div>
             <h1 id="passageTitle" class="text-sm font-bold text-slate-900">Loading test...</h1>
         </div>
-        <div class="flex items-center space-x-3 text-sm font-bold text-slate-500">
-            <span id="questionCounter">0 / 0</span>
-            <div class="w-24 sm:w-32 bg-gray-100 rounded-full h-2">
-                <div id="progressBar" class="bg-indigo-600 h-2 rounded-full transition-all" style="width: 0%"></div>
+        
+        <div class="flex items-center space-x-6">
+            <div class="flex items-center space-x-3 text-sm font-bold text-slate-500">
+                <span id="questionCounter">0 / 0</span>
+                <div class="w-24 sm:w-32 bg-gray-100 rounded-full h-2">
+                    <div id="progressBar" class="bg-indigo-600 h-2 rounded-full transition-all" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <span class="text-gray-300 block" id="headerSeparator">|</span>
+
+            <div class="flex items-center space-x-3" id="topNavButtons">
+                <button id="btnPrev" class="px-4 py-2 rounded-lg border border-gray-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition flex items-center shadow-xs" disabled>
+                    <i data-lucide="chevron-left" class="w-4 h-4 mr-1"></i> Back
+                </button>
+                <button id="btnNext" class="px-4 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold hover:bg-indigo-600 transition flex items-center shadow-xs cursor-pointer">
+                    Next <i data-lucide="chevron-right" class="w-4 h-4 ml-1"></i>
+                </button>
             </div>
         </div>
     </header>
@@ -66,7 +80,7 @@
 
         <div class="w-full md:w-1/2 bg-[#f8f9fa]" style="display: flex; flex-direction: column; height: 100%; position: relative;">
             
-            <div class="p-6 md:p-8 lg:p-12 w-full" style="flex: 1; overflow-y: auto; min-height: 0;">
+            <div class="p-6 md:p-8 lg:p-12 w-full custom-scrollbar" style="flex: 1; overflow-y: auto; min-height: 0;">
                 
                 <div id="quizContainer" class="w-full space-y-1 hidden">
                     <div class="flex justify-between items-center mb-6">
@@ -124,13 +138,8 @@
 
                 <div class="pb-8"></div>
             </div>
-
-            <div id="navFooter" class="hidden bg-white border-t border-gray-200 px-6 py-4 flex justify-between items-center w-full z-20 shadow-[0_-4px_10px_rgba(0,0,0,0.03)]" style="flex-shrink: 0;">
-                <button id="btnPrev" class="px-6 py-2.5 rounded-xl text-xs font-bold text-gray-500 hover:bg-gray-200 transition disabled:opacity-50 cursor-pointer" disabled>Previous</button>
-                <button id="btnNext" class="px-6 py-2.5 rounded-xl text-xs font-bold text-white transition shadow-sm cursor-pointer" style="background-color: #0f172a;">Next</button>
+            
             </div>
-
-        </div>
     </main>
 
     <script>
@@ -142,7 +151,9 @@
         let startTime = Date.now();
         let currentUser = null;
 
-        // 1. Умная инициализация базы данных
+        const topNavButtons = document.getElementById('topNavButtons');
+        const headerSeparator = document.getElementById('headerSeparator');
+
         function getDatabaseClient() {
             if (typeof supabaseClient !== 'undefined') return supabaseClient;
             if (typeof window !== 'undefined' && window.supabaseClient) return window.supabaseClient;
@@ -154,7 +165,6 @@
 
         const db = getDatabaseClient();
 
-        // 2. Инициализация страницы с защитой
         document.addEventListener('DOMContentLoaded', async () => {
             try {
                 if (typeof requireAuth !== 'function') throw new Error("auth.js не найден.");
@@ -171,7 +181,6 @@
                     return;
                 }
 
-                // Скачиваем текст задания из базы
                 const { data, error } = await db
                     .from('academic_tasks')
                     .select('*')
@@ -188,7 +197,8 @@
                     startTime = Date.now();
                     
                     document.getElementById('quizContainer').classList.remove('hidden');
-                    document.getElementById('navFooter').classList.remove('hidden');
+                    topNavButtons.classList.remove('hidden');
+                    headerSeparator.classList.remove('hidden');
                     
                     initTask();
                 }
@@ -204,7 +214,6 @@
             
             document.getElementById('passageTitle').innerText = currentTask.title;
 
-            // Обработка специальных меток в тексте для интерактивных вопросов
             let parsedText = (currentTask.passage || "")
                 .replace(/\[s(\d+)\](.*?)(?=\[s\d+\]|\[sq\d+\]|$)/gs, '<span class="clickable-sentence" data-id="$1">$2</span>')
                 .replace(/\[sq(\d+)\]/g, '<span class="insert-square" data-sq="$1">■</span>');
@@ -244,7 +253,6 @@
             document.getElementById('progressBar').style.width = `${((idx + 1) / currentTask.questions.length) * 100}%`;
             document.getElementById('qTypeBadge').innerText = q.type || "Detail";
             
-            // Поддержка поля "question" или "text" (в зависимости от базы)
             document.getElementById('questionText').innerText = q.question || q.text;
 
             const optionsContainer = document.getElementById('optionsContainer');
@@ -291,12 +299,12 @@
             btnPrev.disabled = idx === 0;
 
             if (idx === currentTask.questions.length - 1) {
-                btnNext.innerText = "Submit Test";
-                btnNext.style.backgroundColor = '#10b981'; 
+                btnNext.innerHTML = `Submit Test <i data-lucide="check" class="w-4 h-4 ml-1"></i>`;
+                btnNext.className = "px-4 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition flex items-center shadow-xs cursor-pointer";
                 btnNext.onclick = finishTest;
             } else {
-                btnNext.innerText = "Next";
-                btnNext.style.backgroundColor = '#0f172a'; 
+                btnNext.innerHTML = `Next <i data-lucide="chevron-right" class="w-4 h-4 ml-1"></i>`;
+                btnNext.className = "px-4 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold hover:bg-indigo-600 transition flex items-center shadow-xs cursor-pointer";
                 btnNext.onclick = () => { 
                     if (userAnswers[idx] === undefined) {
                         alert("Please select an answer!");
@@ -310,11 +318,12 @@
             btnPrev.onclick = () => {
                 if (currentQuestionIdx > 0) { currentQuestionIdx--; showQuestion(currentQuestionIdx); }
             };
+            
+            lucide.createIcons();
         }
 
         window.saveRadioAnswer = function(qIdx, optIdx) { userAnswers[qIdx] = optIdx; };
 
-        // Сброс и перезапуск без localStorage
         window.resetAndRestartTest = function() {
             if (!currentTask) return;
 
@@ -332,10 +341,11 @@
 
             document.getElementById('resultsContainer').classList.add('hidden');
             document.getElementById('quizContainer').classList.remove('hidden');
-            document.getElementById('navFooter').classList.remove('hidden');
+            
+            topNavButtons.classList.remove('hidden');
+            headerSeparator.classList.remove('hidden');
 
             showQuestion(currentQuestionIdx);
-            lucide.createIcons();
         };
 
         async function finishTest() {
@@ -457,7 +467,6 @@
             document.body.classList.add('insert-text-mode');
             const scorePercent = Math.round((score / currentTask.questions.length) * 100);
 
-            // Сохраняем результаты в базу, жестко привязывая к ID пользователя
             if (currentUser && db) {
                 try {
                     const { error } = await db
@@ -481,8 +490,10 @@
             }
 
             document.getElementById('quizContainer').classList.add('hidden');
-            document.getElementById('navFooter').classList.add('hidden');
             document.getElementById('resultsContainer').classList.remove('hidden');
+            
+            topNavButtons.classList.add('hidden');
+            headerSeparator.classList.add('hidden');
 
             document.getElementById('finalScorePercent').innerText = `${scorePercent}%`;
             document.getElementById('finalScoreRaw').innerText = `${score} / ${currentTask.questions.length}`;
@@ -492,4 +503,3 @@
     </script>
 </body>
 </html>
-
