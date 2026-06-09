@@ -18,7 +18,7 @@
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans antialiased h-screen flex flex-col">
 
-    <header class="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shrink-0">
+    <header class="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shrink-0 z-10 shadow-sm relative">
         <div class="flex items-center space-x-4">
             <a href="read-daily.html" class="text-slate-500 hover:text-slate-800 transition flex items-center text-sm font-medium">
                 <i data-lucide="arrow-left" class="w-4 h-4 mr-1.5"></i> Back to Reading
@@ -27,13 +27,26 @@
             <h1 id="taskTitle" class="text-base font-bold text-slate-800">Loading test...</h1>
         </div>
         
-        <div class="flex items-center space-x-4">
-            <div class="text-right">
-                <span class="text-xs text-slate-400 block font-medium">Progress</span>
-                <span id="progressText" class="text-xs font-bold text-slate-700">0 / 0</span>
+        <div class="flex items-center space-x-6">
+            <div class="flex items-center space-x-4">
+                <div class="text-right">
+                    <span class="text-xs text-slate-400 block font-medium">Progress</span>
+                    <span id="progressText" class="text-xs font-bold text-slate-700">0 / 0</span>
+                </div>
+                <div class="w-32 bg-slate-100 h-2 rounded-full overflow-hidden">
+                    <div id="progressBar" class="bg-indigo-600 h-full transition-all duration-300" style="width: 0%"></div>
+                </div>
             </div>
-            <div class="w-32 bg-slate-100 h-2 rounded-full overflow-hidden">
-                <div id="progressBar" class="bg-indigo-600 h-full transition-all duration-300" style="width: 0%"></div>
+
+            <span class="text-slate-300 block" id="headerSeparator">|</span>
+
+            <div class="flex items-center space-x-3" id="topNavButtons">
+                <button id="prevBtn" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition flex items-center shadow-xs">
+                    <i data-lucide="chevron-left" class="w-4 h-4 mr-1"></i> Back
+                </button>
+                <button id="nextBtn" class="px-4 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold hover:bg-indigo-600 transition flex items-center shadow-xs">
+                    Next <i data-lucide="chevron-right" class="w-4 h-4 ml-1"></i>
+                </button>
             </div>
         </div>
     </header>
@@ -52,7 +65,7 @@
 
         <section class="w-1/2 bg-slate-50/50 p-8 overflow-y-auto custom-scrollbar flex flex-col">
             
-            <div id="quizContainer" class="flex-1 flex flex-col justify-between">
+            <div id="quizContainer" class="flex-1 flex flex-col">
                 <div class="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs">
                     <div class="flex items-center justify-between mb-4">
                         <span id="questionNumber" class="text-xs font-semibold text-indigo-600 tracking-wider uppercase">Question 1</span>
@@ -62,15 +75,6 @@
                     <p id="questionText" class="text-sm font-semibold text-slate-800 mb-6 leading-snug"></p>
 
                     <div id="optionsContainer" class="space-y-2.5"></div>
-                </div>
-
-                <div class="flex items-center justify-between pt-6 border-t border-slate-200 mt-6 shrink-0">
-                    <button id="prevBtn" class="px-5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition flex items-center shadow-xs">
-                        <i data-lucide="chevron-left" class="w-4 h-4 mr-1"></i> Previous
-                    </button>
-                    <button id="nextBtn" class="px-5 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-indigo-600 transition flex items-center shadow-xs">
-                        Next Question <i data-lucide="chevron-right" class="w-4 h-4 ml-1"></i>
-                    </button>
                 </div>
             </div>
 
@@ -123,7 +127,7 @@
         let currentQuestionIdx = 0;
         let userAnswers = {}; 
         let startTime = Date.now(); 
-        let currentUser = null; // Пользователь из Supabase Auth
+        let currentUser = null; 
 
         const taskTitle = document.getElementById('taskTitle');
         const progressText = document.getElementById('progressText');
@@ -135,11 +139,12 @@
         const optionsContainer = document.getElementById('optionsContainer');
         const prevBtn = document.getElementById('prevBtn');
         const nextBtn = document.getElementById('nextBtn');
+        const topNavButtons = document.getElementById('topNavButtons');
+        const headerSeparator = document.getElementById('headerSeparator');
         const quizContainer = document.getElementById('quizContainer');
         const resultsContainer = document.getElementById('resultsContainer');
         const explanationsList = document.getElementById('explanationsList');
 
-        // 1. Безопасная инициализация базы данных
         function getDatabaseClient() {
             if (typeof supabaseClient !== 'undefined') return supabaseClient;
             if (typeof window !== 'undefined' && window.supabaseClient) return window.supabaseClient;
@@ -151,7 +156,6 @@
 
         const db = getDatabaseClient();
 
-        // ФУНКЦИЯ ДЛЯ ОТРИСОВКИ МАКЕТОВ (Email, Chat, Social Media, Notice, Advertisement)
         function renderDailyLifeLayout(passage, layoutType, taskTitle) {
             if (!passage) return "";
             const cleanPassage = passage.replace(/[\[\]]/g, ''); 
@@ -171,7 +175,6 @@
                             </div>
                         </div>
                     `;
-
                 case 'social_media':
                     return `
                         <div class="max-w-md mx-auto bg-white border border-slate-200 rounded-2xl p-5 shadow-xs font-sans">
@@ -193,7 +196,6 @@
                             </div>
                         </div>
                     `;
-
                 case 'notice':
                     return `
                         <div class="max-w-lg mx-auto bg-white border-2 border-slate-800 p-8 shadow-xs font-sans relative">
@@ -204,12 +206,10 @@
                             </div>
                         </div>
                     `;
-
                 case 'chat':
                     const lines = cleanPassage.split('\n');
                     const chatHtml = lines.map(line => {
                         if(!line.trim()) return '';
-                        // Ищем двоеточие только ПОСЛЕ закрывающей круглой скобки времени
                         const match = line.match(/^([^\(]+(?:\([^)]+\))?):\s*(.*)$/);
                         if (match) {
                             return `
@@ -223,7 +223,6 @@
                         }
                         return `<p class="text-xs text-slate-400 italic my-2 text-center">${line}</p>`;
                     }).join('');
-
                     return `
                         <div class="max-w-sm mx-auto bg-slate-50 border border-slate-200 rounded-3xl overflow-hidden shadow-sm flex flex-col h-[500px]">
                             <div class="bg-slate-900 text-white border-b border-slate-800 p-3.5 text-center font-bold text-xs shrink-0 shadow-2xs flex items-center justify-center space-x-2">
@@ -235,7 +234,6 @@
                             </div>
                         </div>
                     `;
-
                 case 'advertisement':
                     return `
                         <div class="max-w-md mx-auto bg-amber-50/40 border border-amber-200/60 rounded-2xl p-6 shadow-sm font-sans relative">
@@ -246,13 +244,11 @@
                             </div>
                         </div>
                     `;
-
                 default:
                     return `<div class="text-slate-700 space-y-4 font-normal leading-relaxed text-base">${cleanPassage.replace(/\n/g, '<br>')}</div>`;
             }
         }
 
-        // 2. Инициализация и проверка авторизации
         async function init() {
             try {
                 if (typeof requireAuth !== 'function') {
@@ -260,7 +256,7 @@
                 }
                 
                 currentUser = await requireAuth();
-                if (!currentUser) return; // Если не авторизован, auth.js сам сделает редирект
+                if (!currentUser) return; 
 
                 const urlParams = new URLSearchParams(window.location.search);
                 const taskId = urlParams.get('id');
@@ -335,11 +331,11 @@
 
             prevBtn.disabled = idx === 0;
             if (idx === currentTask.questions.length - 1) {
-                nextBtn.innerHTML = `Submit Test <i data-lucide="check" class="w-4 h-4 ml-1.5"></i>`;
-                nextBtn.className = "px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition flex items-center shadow-xs cursor-pointer";
+                nextBtn.innerHTML = `Submit Test <i data-lucide="check" class="w-4 h-4 ml-1"></i>`;
+                nextBtn.className = "px-4 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition flex items-center shadow-xs cursor-pointer";
             } else {
-                nextBtn.innerHTML = `Next Question <i data-lucide="chevron-right" class="w-4 h-4 ml-1.5"></i>`;
-                nextBtn.className = "px-5 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-indigo-600 transition flex items-center shadow-xs cursor-pointer";
+                nextBtn.innerHTML = `Next <i data-lucide="chevron-right" class="w-4 h-4 ml-1"></i>`;
+                nextBtn.className = "px-4 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold hover:bg-indigo-600 transition flex items-center shadow-xs cursor-pointer";
             }
             lucide.createIcons();
         }
@@ -361,7 +357,6 @@
             }
         });
 
-        // 3. Сброс теста - удален localStorage
         window.resetAndRestartDailyTest = function() {
             if (!currentTask) return;
             
@@ -371,11 +366,14 @@
 
             resultsContainer.classList.add('hidden');
             quizContainer.classList.remove('hidden');
+            
+            // Снова показываем кнопки навигации в хедере
+            topNavButtons.classList.remove('hidden');
+            headerSeparator.classList.remove('hidden');
 
             showQuestion(currentQuestionIdx);
         };
 
-        // 4. Обработка результатов и сохранение в БД с привязкой к пользователю
         async function processResults() {
             const timeSpentSeconds = Math.round((Date.now() - startTime) / 1000);
             
@@ -440,7 +438,6 @@
 
             const scorePercent = Math.round((correctCount / currentTask.questions.length) * 100);
 
-            // Сохраняем результат в БД с привязкой к currentUser.id
             if (currentUser && db) {
                 try {
                     const { error } = await db
@@ -467,15 +464,17 @@
 
             quizContainer.classList.add('hidden');
             resultsContainer.classList.remove('hidden');
+            
+            // Скрываем кнопки навигации в хедере на экране результатов
+            topNavButtons.classList.add('hidden');
+            headerSeparator.classList.add('hidden');
 
             document.getElementById('finalScorePercent').innerText = `${scorePercent}%`;
             document.getElementById('finalScoreRaw').innerText = `${correctCount} / ${currentTask.questions.length}`;
             lucide.createIcons();
         }
 
-        // Запуск
         init();
     </script>
 </body>
 </html>
-
