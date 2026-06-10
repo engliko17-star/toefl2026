@@ -81,6 +81,21 @@
 
             <div id="view-test" class="hidden max-w-5xl mx-auto fade-in h-full flex flex-col">
                 
+                <div class="bg-slate-900 text-white p-4 px-6 rounded-3xl flex justify-between items-center mb-6 shadow-md shrink-0 select-none">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                        <span class="text-xs font-bold tracking-wider uppercase text-slate-300">TOEFL iBT® Active Simulation</span>
+                    </div>
+                    <div id="toeflTopbarControls" class="invisible flex items-center gap-3">
+                        <button id="toeflPrevBtn" disabled class="bg-slate-800 border border-slate-700 text-slate-500 text-xs font-bold py-2.5 px-4 rounded-xl opacity-40 flex items-center gap-1.5 cursor-not-allowed">
+                            <i data-lucide="chevron-left" class="w-4 h-4"></i> Previous
+                        </button>
+                        <button id="toeflNextBtn" disabled onclick="saveAnswerAndNext()" class="bg-blue-600 hover:bg-blue-700 disabled:opacity-30 disabled:hover:bg-blue-600 text-white text-xs font-bold py-2.5 px-5 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs">
+                            <span id="toeflBtnText">Next</span> <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+
                 <div id="test-audio-phase" class="flex-1 flex flex-col items-center justify-center fade-in">
                     <img id="testImageMain" src="" alt="Context" class="w-full max-w-md rounded-2xl shadow-lg mb-8 object-cover aspect-video">
                     <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 w-full max-w-md text-center">
@@ -159,7 +174,6 @@
     <script>
         lucide.createIcons();
 
-        // --- НАСТРОЙКА SUPABASE ---
         const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
         
@@ -174,16 +188,13 @@
             await loadTestsFromSupabase();
         };
 
-        // Исправлено: универсальная функция динамически настраивает тексты и тянет данные из НОВОЙ общей таблицы
         async function loadTestsFromSupabase() {
             const grid = document.getElementById('testsGrid');
             grid.innerHTML = '<div class="text-gray-400 text-sm col-span-full text-center py-12">Loading exercises from Supabase...</div>';
 
-            // 1. Извлекаем текущий тип из адресной строки (?type=...)
             const urlParams = new URLSearchParams(window.location.search);
             const currentType = urlParams.get('type') || 'conversation';
 
-            // 2. Словарь текстов для кастомизации заголовков страницы под разные типы
             const typeMeta = {
                 'response': { page: 'Choose a Response', list: 'Choose a Response', sub: 'Listen to short statements and pick the best logical answer or continuation.' },
                 'conversation': { page: 'Conversations', list: 'Listen in Daily Life', sub: 'Short conversations from campus situations. Select a test to practice.' },
@@ -193,13 +204,11 @@
 
             const currentMeta = typeMeta[currentType] || typeMeta['conversation'];
             
-            // Динамически обновляем интерфейс
             document.getElementById('pageTitle').innerText = currentMeta.page;
             document.getElementById('listTitle').innerText = currentMeta.list;
             document.getElementById('listSubtitle').innerText = currentMeta.sub;
             document.title = `${currentMeta.page} Practice — TOEFL`;
 
-            // 3. Делаем запрос к НОВОЙ общей таблице с фильтрацией по task_type
             const { data, error } = await _supabase
                 .from('listening_tests')
                 .select('id, title, audio_url, image_url, transcript, questions, task_type')
@@ -221,14 +230,12 @@
             document.getElementById('view-results').classList.add('hidden');
             document.getElementById('testProgress').classList.add('hidden');
             
-            // Восстанавливаем динамический заголовок
             const urlParams = new URLSearchParams(window.location.search);
             const currentType = urlParams.get('type') || 'conversation';
             const pageTitles = { 'response': 'Choose a Response', 'conversation': 'Conversations', 'announcement': 'Announcements', 'academic': 'Academic Talks' };
             document.getElementById('pageTitle').innerText = pageTitles[currentType] || "Listening Practice";
         }
 
-        // VIEW 1: Test List
         function showList() {
             hideAllViews();
             document.getElementById('view-list').classList.remove('hidden');
@@ -300,7 +307,6 @@
             lucide.createIcons();
         }
 
-        // VIEW 2: Start Test & Audio
         function startTest(testId) {
             currentTest = mockTests.find(t => t.id === testId);
             if(!currentTest) return;
@@ -314,6 +320,9 @@
             document.getElementById('test-questions-phase').classList.add('hidden');
             document.getElementById('test-questions-phase').classList.remove('flex');
             
+            // Прячем контролы навигации во время прослушивания аудио трека
+            document.getElementById('toeflTopbarControls').classList.add('invisible');
+
             document.getElementById('testImageMain').src = currentTest.image_url || '';
             const audioPlayer = document.getElementById('activeAudioPlayer');
             audioPlayer.src = currentTest.audio_url;
@@ -329,6 +338,9 @@
             const questionsPhase = document.getElementById('test-questions-phase');
             questionsPhase.classList.remove('hidden');
             questionsPhase.classList.add('flex');
+
+            // Делаем кнопки навигации видимыми сверху
+            document.getElementById('toeflTopbarControls').classList.remove('invisible');
 
             document.getElementById('testImageSide').src = currentTest.image_url || '';
 
@@ -356,6 +368,7 @@
                 `;
             });
 
+            // Кнопки изнутри контейнера полностью убраны — они теперь сверху!
             qContainer.innerHTML = `
                 <div class="flex flex-col h-full fade-in">
                     <div class="flex justify-between items-start mb-8 gap-4">
@@ -368,25 +381,30 @@
                     <div class="space-y-3 flex-1">
                         ${optionsHTML}
                     </div>
-
-                    <div class="mt-8 pt-6 border-t border-gray-100">
-                        <button id="nextBtn" disabled onclick="saveAnswerAndNext()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-2xl disabled:opacity-30 disabled:hover:bg-blue-600 transition shadow-sm">
-                            ${currentQuestionIndex === currentTest.questions.length - 1 ? 'Finish Test' : 'Next Question'}
-                        </button>
-                    </div>
                 </div>
             `;
+
+            // Управляем верхней кнопкой Next/Submit
+            const nextBtn = document.getElementById('toeflNextBtn');
+            const btnText = document.getElementById('toeflBtnText');
+            
+            nextBtn.disabled = true; // Блокируем, пока студент не сделает выбор
+
+            if (currentQuestionIndex === currentTest.questions.length - 1) {
+                btnText.innerText = "Submit Test";
+            } else {
+                btnText.innerText = "Next";
+            }
         }
 
         function enableNextBtn() {
-            document.getElementById('nextBtn').disabled = false;
+            document.getElementById('toeflNextBtn').disabled = false;
         }
 
         function saveAnswerAndNext() {
             const selected = document.querySelector('input[name="currentQ"]:checked').value;
             const currentQ = currentTest.questions[currentQuestionIndex];
             
-            // Подстраховка на случай отсутствия q.id в JSON массиве
             const qKey = currentQ.id !== undefined ? currentQ.id : currentQuestionIndex;
             userAnswers[qKey] = parseInt(selected);
 
@@ -398,15 +416,14 @@
             }
         }
 
-        // Исправлено: функция динамически сохраняет данные под нужным task_type в общую таблицу результатов
         async function finishTestLogic() {
             let scoreEarned = 0;
             let categoryStats = {};
 
-            const nextBtn = document.getElementById('nextBtn');
+            const nextBtn = document.getElementById('toeflNextBtn');
             if(nextBtn) {
                 nextBtn.disabled = true;
-                nextBtn.innerText = "Saving results...";
+                nextBtn.innerText = "Saving...";
             }
 
             currentTest.questions.forEach((q, qIdx) => {
@@ -429,19 +446,15 @@
                 categoryStats: categoryStats
             };
 
-            // 1. Сохраняем локально для мгновенного обновления кругов прогресса
             localStorage.setItem(`toefl_result_${currentTest.id}`, JSON.stringify(resultObj));
 
-            // 2. Получаем текущую сессию пользователя
             const { data: { session } } = await _supabase.auth.getSession();
             const user = session?.user;
 
-            // 3. Вычисляем текущий тип задания из адресной строки для отправки в БД
             const urlParams = new URLSearchParams(window.location.search);
             const currentType = urlParams.get('type') || 'conversation';
 
             if (user) {
-                // 4. Отправляем в ОБЩУЮ таблицу listening_results с динамическим task_type
                 const { error } = await _supabase
                     .from('listening_results')
                     .insert([{
@@ -456,14 +469,9 @@
                 if (error) {
                     console.error("Error saving results to Supabase:", error);
                     alert("Could not save to the database, but your local results are saved.");
-                } else {
-                    console.log("Results successfully saved to listening_results!");
                 }
-            } else {
-                console.warn("User is not authenticated. RLS policies will likely block database save.");
             }
 
-            // 5. Показываем результаты
             showResults(currentTest.id);
         }
 
@@ -548,4 +556,3 @@
     </script>
 </body>
 </html>
-
