@@ -81,18 +81,29 @@
 
             <div id="view-test" class="hidden max-w-5xl mx-auto fade-in h-full flex flex-col">
                 
-                <div class="bg-slate-900 text-white p-4 px-6 rounded-3xl flex justify-between items-center mb-6 shadow-md shrink-0 select-none">
+                <div class="border-b border-gray-200 pb-4 mb-6 flex flex-col md:flex-row md:justify-between md:items-center gap-4 shrink-0 select-none">
                     <div class="flex items-center space-x-3">
                         <div class="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                        <span class="text-xs font-bold tracking-wider uppercase text-slate-300">TOEFL iBT® Active Simulation</span>
+                        <span class="text-xs font-bold tracking-wider uppercase text-slate-500">TOEFL iBT® Active Simulation</span>
                     </div>
-                    <div id="toeflTopbarControls" class="invisible flex items-center gap-3">
-                        <button id="toeflPrevBtn" disabled class="bg-slate-800 border border-slate-700 text-slate-500 text-xs font-bold py-2.5 px-4 rounded-xl opacity-40 flex items-center gap-1.5 cursor-not-allowed">
-                            <i data-lucide="chevron-left" class="w-4 h-4"></i> Previous
-                        </button>
-                        <button id="toeflNextBtn" disabled onclick="saveAnswerAndNext()" class="bg-blue-600 hover:bg-blue-700 disabled:opacity-30 disabled:hover:bg-blue-600 text-white text-xs font-bold py-2.5 px-5 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs">
-                            <span id="toeflBtnText">Next</span> <i data-lucide="chevron-right" class="w-4 h-4"></i>
-                        </button>
+                    
+                    <div id="toeflTopbarControls" class="invisible flex items-center justify-between md:justify-end gap-6 w-full md:w-auto">
+                        <div class="flex items-center gap-3">
+                            <span class="text-xs text-gray-500 font-semibold uppercase tracking-wider">Progress</span>
+                            <span id="progress-text" class="text-sm font-bold text-gray-900">1 / 4</span>
+                            <div class="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden hidden sm:block">
+                                <div id="progress-bar" class="h-full bg-indigo-600 transition-all duration-300 ease-out" style="width: 25%;"></div>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-2 shrink-0">
+                            <button id="toeflPrevBtn" onclick="goPrevQuestion()" disabled class="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                                &lt; Back
+                            </button>
+                            <button id="toeflNextBtn" onclick="saveAnswerAndNext()" disabled class="px-4 py-2 text-sm font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center">
+                                <span id="toeflBtnText">Next &gt;</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -111,7 +122,7 @@
                             <img id="testImageSide" src="" alt="Context" class="w-full rounded-2xl shadow-sm border border-gray-100 object-cover aspect-video mb-4">
                             <div class="bg-blue-50 text-blue-700 text-xs p-4 rounded-xl font-medium border border-blue-100">
                                 <span id="qProgressCounter" class="font-bold block mb-1">Question 1 of 4</span>
-                                Answer based on your notes. You cannot return to previous questions.
+                                Listen carefully and answer based on your notes.
                             </div>
                         </div>
                     </div>
@@ -126,7 +137,6 @@
             </div>
 
             <div id="view-results" class="hidden max-w-6xl mx-auto fade-in">
-                
                 <div class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
                     <div>
                         <h2 class="text-2xl font-extrabold text-slate-900">Test Review</h2>
@@ -353,13 +363,25 @@
             const q = currentTest.questions[currentQuestionIndex];
             const qContainer = document.getElementById('questionsContainer');
             
-            document.getElementById('qProgressCounter').innerText = `Question ${currentQuestionIndex + 1} of ${currentTest.questions.length}`;
+            const totalQ = currentTest.questions.length;
+            const currentQNum = currentQuestionIndex + 1;
+            
+            // Обновляем прогресс-бар вверху
+            document.getElementById('progress-text').innerText = `${currentQNum} / ${totalQ}`;
+            document.getElementById('progress-bar').style.width = `${(currentQNum / totalQ) * 100}%`;
+            
+            // Обновляем боковой индикатор
+            document.getElementById('qProgressCounter').innerText = `Question ${currentQNum} of ${totalQ}`;
 
             let optionsHTML = '';
+            const qKey = q.id !== undefined ? q.id : currentQuestionIndex;
+            const savedAnswer = userAnswers[qKey]; // Проверяем, есть ли уже сохраненный ответ
+
             q.options.forEach((opt, optIndex) => {
+                const isChecked = savedAnswer === optIndex ? 'checked' : '';
                 optionsHTML += `
                     <label class="relative block cursor-pointer group">
-                        <input type="radio" name="currentQ" value="${optIndex}" class="peer radio-peer hidden" onchange="enableNextBtn()">
+                        <input type="radio" name="currentQ" value="${optIndex}" class="peer radio-peer hidden" onchange="enableNextBtn()" ${isChecked}>
                         <div class="flex items-center p-4 rounded-2xl border-2 border-gray-100 group-hover:border-blue-200 transition-colors bg-white">
                             <div class="radio-circle w-5 h-5 rounded-full border-2 border-gray-300 mr-4 shrink-0 transition-colors"></div>
                             <span class="text-slate-700 text-sm md:text-base">${opt}</span>
@@ -368,14 +390,11 @@
                 `;
             });
 
-            // Кнопки изнутри контейнера полностью убраны — они теперь сверху!
+            // Контейнер без внутреннего счетчика (так как он теперь сверху)
             qContainer.innerHTML = `
                 <div class="flex flex-col h-full fade-in">
-                    <div class="flex justify-between items-start mb-8 gap-4">
+                    <div class="mb-8">
                         <h4 class="text-xl md:text-2xl font-bold text-slate-900 leading-snug">${q.text}</h4>
-                        <span class="bg-indigo-50 text-indigo-600 text-sm font-extrabold px-3 py-1.5 rounded-xl shrink-0 border border-indigo-100">
-                            ${currentQuestionIndex + 1} / ${currentTest.questions.length}
-                        </span>
                     </div>
                     
                     <div class="space-y-3 flex-1">
@@ -384,16 +403,21 @@
                 </div>
             `;
 
-            // Управляем верхней кнопкой Next/Submit
+            // Управление кнопками сверху
             const nextBtn = document.getElementById('toeflNextBtn');
+            const prevBtn = document.getElementById('toeflPrevBtn');
             const btnText = document.getElementById('toeflBtnText');
             
-            nextBtn.disabled = true; // Блокируем, пока студент не сделает выбор
+            // Кнопка Next разблокирована, если уже есть сохраненный ответ, иначе заблокирована
+            nextBtn.disabled = savedAnswer === undefined;
+            
+            // Кнопка Back заблокирована на первом вопросе
+            if (prevBtn) prevBtn.disabled = currentQuestionIndex === 0;
 
-            if (currentQuestionIndex === currentTest.questions.length - 1) {
-                btnText.innerText = "Submit Test";
+            if (currentQuestionIndex === totalQ - 1) {
+                btnText.innerHTML = 'Check Answers <svg class="w-4 h-4 inline ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>';
             } else {
-                btnText.innerText = "Next";
+                btnText.innerHTML = 'Next &gt;';
             }
         }
 
@@ -401,8 +425,26 @@
             document.getElementById('toeflNextBtn').disabled = false;
         }
 
+        function goPrevQuestion() {
+            // Перед уходом назад сохраняем текущий ответ (если юзер его выбрал, но не нажал Next)
+            const selectedRadio = document.querySelector('input[name="currentQ"]:checked');
+            if (selectedRadio) {
+                const currentQ = currentTest.questions[currentQuestionIndex];
+                const qKey = currentQ.id !== undefined ? currentQ.id : currentQuestionIndex;
+                userAnswers[qKey] = parseInt(selectedRadio.value);
+            }
+
+            if (currentQuestionIndex > 0) {
+                currentQuestionIndex--;
+                renderSingleQuestion();
+            }
+        }
+
         function saveAnswerAndNext() {
-            const selected = document.querySelector('input[name="currentQ"]:checked').value;
+            const selectedRadio = document.querySelector('input[name="currentQ"]:checked');
+            if (!selectedRadio) return; 
+
+            const selected = selectedRadio.value;
             const currentQ = currentTest.questions[currentQuestionIndex];
             
             const qKey = currentQ.id !== undefined ? currentQ.id : currentQuestionIndex;
@@ -423,7 +465,7 @@
             const nextBtn = document.getElementById('toeflNextBtn');
             if(nextBtn) {
                 nextBtn.disabled = true;
-                nextBtn.innerText = "Saving...";
+                document.getElementById('toeflBtnText').innerText = "Saving...";
             }
 
             currentTest.questions.forEach((q, qIdx) => {
