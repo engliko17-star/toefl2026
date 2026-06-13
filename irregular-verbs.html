@@ -10,11 +10,11 @@
     .table-layout {
       display: grid;
       grid-template-columns: minmax(160px, 1.5fr) 1fr 1fr 1fr;
-      min-width: 700px; /* Предотвращает сжатие на мобильных экранах */
+      min-width: 700px;
     }
   </style>
 </head>
-<body class="bg-slate-50 text-slate-900 font-sans antialiased overflow-y-scroll">
+<body class="bg-slate-50 text-slate-900 font-sans antialiased overflow-y-scroll invisible" id="pageBody">
 
   <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
     
@@ -24,9 +24,8 @@
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
           </svg>
-          Grammar Reference
+          Grammar Reference (Private)
         </div>
-        
         <h1 class="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight mb-2">Three Verb Forms</h1>
         <p class="text-sm text-slate-500">Listen and memorize the most common irregular verbs.</p>
       </div>
@@ -48,131 +47,125 @@
 
     <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-x-auto">
       <div class="min-w-full">
-        
         <div class="table-layout bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-widest text-slate-500">
           <div class="px-6 py-4 border-r border-slate-200">Infinitive (V1)</div>
           <div class="px-6 py-4 border-r border-slate-200">Past Simple (V2)</div>
           <div class="px-6 py-4 border-r border-slate-200">Past Participle (V3)</div>
           <div class="px-6 py-4 text-right">Translation</div>
         </div>
-
         <div id="verbsContainer" class="divide-y divide-slate-100">
           </div>
-
       </div>
     </div>
     
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   
   <script>
-    // Инициализация клиента Supabase
-    // Замени эти значения на фактические параметры из Settings -> API твоего проекта
-    const supabaseUrl = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
-    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
-    const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
-
-    // Глобальное хранилище данных для поиска
-    let irregularVerbs = [];
-
-    // Функция последовательной озвучки всех трех форм с паузами
-    function playAudio(v1, v2, v3) {
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel(); // Остановка текущей речи
-        
-        // Корректная замена слэша на союз "or" для естественного звучания (was/were -> was or were)
-        const cleanV2 = v2.replace('/', ' or ');
-        
-        // Точки обеспечивают паузы между произнесением форм
-        const textToRead = `${v1}. ${cleanV2}. ${v3}.`;
-        
-        const utterance = new SpeechSynthesisUtterance(textToRead);
-        utterance.lang = 'en-US';
-        utterance.rate = 0.85; // Оптимальный темп для восприятия речи на слух
-        window.speechSynthesis.speak(utterance);
-      }
-    }
-
-    // Отрисовка строк таблицы
-    function render(data) {
+    document.addEventListener('DOMContentLoaded', async () => {
       const container = document.getElementById('verbsContainer');
-      container.innerHTML = '';
+      const body = document.getElementById('pageBody');
+
+      // 1. Инициализация клиента Supabase
+      const supabaseUrl = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
+      const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
       
-      if (data.length === 0) {
-        container.innerHTML = `<div class="p-10 text-center text-slate-400 text-sm font-medium">No verbs found matching your search.</div>`;
+      if (!window.supabase) {
+        container.innerHTML = `<div class="p-10 text-center text-red-500 font-bold">Библиотека базы данных не загрузилась. Проверьте сеть или VPN.</div>`;
+        body.classList.remove('invisible');
         return;
       }
-      
-      data.forEach(verb => {
-        const row = document.createElement('div');
-        row.className = 'table-layout bg-white hover:bg-indigo-50/30 transition-colors duration-200 group';
-        row.innerHTML = `
-          <div class="px-6 py-4 border-r border-slate-100 flex items-center gap-3">
-            <button 
-              onclick="playAudio('${verb.v1}', '${verb.v2}', '${verb.v3}')" 
-              class="text-slate-300 group-hover:text-indigo-500 transition-colors focus:outline-none"
-              title="Listen to all forms"
-            >
-              <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path d="M13.5 4.06c0-1.336-1.546-2.076-2.58-1.235L6.152 6.75H4.5A2.25 2.25 0 002.25 9v6a2.25 2.25 0 002.25 2.25h1.652l4.768 3.925c1.034.84 2.58.1 2.58-1.235V4.06zM17.55 7.643a.75.75 0 011.06-.051 7.498 7.498 0 010 8.816.75.75 0 11-1.164-1.014 5.999 5.999 0 000-6.79.75.75 0 01.104-1.061zM20.203 4.99a.75.75 0 011.06-.05 11.248 11.248 0 010 14.12.75.75 0 11-1.164-1.015 9.748 9.748 0 000-12.09.75.75 0 01.104-1.06z" />
-              </svg>
-            </button>
-            <span class="font-bold text-slate-900">${verb.v1}</span>
-          </div>
 
-          <div class="px-6 py-4 border-r border-slate-100 flex items-center text-slate-600 font-medium group-hover:text-slate-900 transition-colors">
-            ${verb.v2}
-          </div>
+      const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+      let irregularVerbs = [];
 
-          <div class="px-6 py-4 border-r border-slate-100 flex items-center text-slate-600 font-medium group-hover:text-slate-900 transition-colors">
-            ${verb.v3}
-          </div>
+      // 2. ПРОВЕРКА АВТОРИЗАЦИИ (Замена старого auth.js)
+      const { data: { session }, error: authError } = await supabase.auth.getSession();
 
-          <div class="px-6 py-4 flex items-center justify-end text-sm text-slate-400 group-hover:text-slate-600 transition-colors">
-            ${verb.tr}
-          </div>
-        `;
-        container.appendChild(row);
-      });
-    }
-
-    // Асинхронное получение данных из Supabase
-    async function loadVerbs() {
-      const container = document.getElementById('verbsContainer');
-      container.innerHTML = `<div class="p-10 text-center text-slate-400 text-sm animate-pulse">Loading verbs from database...</div>`;
-
-      try {
-        const { data, error } = await supabase
-          .from('irregular_verbs')
-          .select('*')
-          .order('v1', { ascending: true }); // Алфавитная сортировка по V1
-
-        if (error) throw error;
-
-        irregularVerbs = data;
-        render(irregularVerbs);
-      } catch (error) {
-        console.error('Error fetching data:', error);
-        container.innerHTML = `<div class="p-10 text-center text-red-400 text-sm font-medium">Failed to load data from Supabase. Check console.</div>`;
+      if (authError || !session) {
+        // Если ученик не авторизован — отправляем на вход
+        window.location.href = 'login.html';
+        return;
       }
-    }
 
-    // Реализация живого поиска по всем колонкам
-    document.getElementById('verbSearch').addEventListener('input', (e) => {
-      const q = e.target.value.toLowerCase().trim();
-      const filtered = irregularVerbs.filter(v => 
-        v.v1.toLowerCase().includes(q) || 
-        v.v2.toLowerCase().includes(q) || 
-        v.v3.toLowerCase().includes(q) || 
-        v.tr.toLowerCase().includes(q)
-      );
-      render(filtered);
+      // Если авторизован — делаем страницу видимой и запускаем загрузку
+      body.classList.remove('invisible');
+
+      // Озвучка
+      window.playAudio = function(v1, v2, v3) {
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          const cleanV2 = v2.replace('/', ' or ');
+          const textToRead = `${v1}. ${cleanV2}. ${v3}.`;
+          const utterance = new SpeechSynthesisUtterance(textToRead);
+          utterance.lang = 'en-US';
+          utterance.rate = 0.85;
+          window.speechSynthesis.speak(utterance);
+        }
+      }
+
+      // Рендеринг таблицы
+      function render(data) {
+        container.innerHTML = '';
+        if (data.length === 0) {
+          container.innerHTML = `<div class="p-10 text-center text-slate-400 text-sm font-medium">No verbs found.</div>`;
+          return;
+        }
+        
+        data.forEach(verb => {
+          const row = document.createElement('div');
+          row.className = 'table-layout bg-white hover:bg-indigo-50/30 transition-colors duration-200 group';
+          row.innerHTML = `
+            <div class="px-6 py-4 border-r border-slate-100 flex items-center gap-3">
+              <button onclick="playAudio('${verb.v1}', '${verb.v2}', '${verb.v3}')" class="text-slate-300 group-hover:text-indigo-500 transition-colors focus:outline-none">
+                <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M13.5 4.06c0-1.336-1.546-2.076-2.58-1.235L6.152 6.75H4.5A2.25 2.25 0 002.25 9v6a2.25 2.25 0 002.25 2.25h1.652l4.768 3.925c1.034.84 2.58.1 2.58-1.235V4.06zM17.55 7.643a.75.75 0 011.06-.051 7.498 7.498 0 010 8.816.75.75 0 11-1.164-1.014 5.999 5.999 0 000-6.79.75.75 0 01.104-1.061zM20.203 4.99a.75.75 0 011.06-.05 11.248 11.248 0 010 14.12.75.75 0 11-1.164-1.015 9.748 9.748 0 000-12.09.75.75 0 01.104-1.06z" />
+                </svg>
+              </button>
+              <span class="font-bold text-slate-900">${verb.v1 || ''}</span>
+            </div>
+            <div class="px-6 py-4 border-r border-slate-100 flex items-center text-slate-600 font-medium group-hover:text-slate-900 transition-colors">${verb.v2 || ''}</div>
+            <div class="px-6 py-4 border-r border-slate-100 flex items-center text-slate-600 font-medium group-hover:text-slate-900 transition-colors">${verb.v3 || ''}</div>
+            <div class="px-6 py-4 flex items-center justify-end text-sm text-slate-400 group-hover:text-slate-600 transition-colors">${verb.tr || ''}</div>
+          `;
+          container.appendChild(row);
+        });
+      }
+
+      // 3. ЗАГРУЗКА ДАННЫХ ИЗ БАЗЫ
+      async function loadVerbs() {
+        container.innerHTML = `<div class="p-10 text-center text-slate-400 text-sm animate-pulse">Loading verbs from secure database...</div>`;
+        try {
+          const { data, error } = await supabase
+            .from('irregular_verbs')
+            .select('*')
+            .order('v1', { ascending: true });
+
+          if (error) throw error;
+
+          irregularVerbs = data.filter(v => v.v1);
+          render(irregularVerbs);
+        } catch (error) {
+          container.innerHTML = `<div class="p-10 text-center text-red-500 text-sm font-medium">Ошибка загрузки данных: ${error.message}</div>`;
+        }
+      }
+
+      // Живой поиск
+      document.getElementById('verbSearch').addEventListener('input', (e) => {
+        const q = e.target.value.toLowerCase().trim();
+        const filtered = irregularVerbs.filter(v => 
+          (v.v1 && v.v1.toLowerCase().includes(q)) || 
+          (v.v2 && v.v2.toLowerCase().includes(q)) || 
+          (v.v3 && v.v3.toLowerCase().includes(q)) || 
+          (v.tr && v.tr.toLowerCase().includes(q))
+        );
+        render(filtered);
+      });
+
+      // Запускаем подгрузку глаголов, так как авторизация успешна
+      loadVerbs();
     });
-
-    // Инициализация загрузки при старте страницы
-    loadVerbs();
   </script>
 </body>
 </html>
-
