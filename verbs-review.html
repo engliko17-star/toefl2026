@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Irregular Verbs Practice — TOEFL</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght=400;500;600;700&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+
+        /* Стили для 3D переворота карточки (режим Flashcards) */
+        .perspective { perspective: 1000px; }
+        .card-inner {
+            transition: transform 0.6s;
+            transform-style: preserve-3d;
+        }
+        .card-flipped { transform: rotateY(180deg); }
+        .card-front, .card-back {
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+        }
+        .card-back { transform: rotateY(180deg); }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.4s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex items-center justify-center p-4 invisible" id="pageBody">
+
+    <a href="irregular-verbs.html" class="absolute top-6 left-6 flex items-center space-x-2 text-sm font-semibold text-slate-400 hover:text-slate-700 transition">
+        <i data-lucide="arrow-left" class="w-4 h-4"></i>
+        <span>Back to List</span>
+    </a>
+
+    <div id="sessionContainer" class="w-full max-w-lg bg-white rounded-3xl border border-slate-200 shadow-xl p-6 md:p-8 space-y-6 relative hidden animate-fade-in">
+        
+        <div class="space-y-2">
+            <div class="flex justify-between items-center text-xs font-bold text-slate-400 uppercase tracking-wider">
+                <span id="sessionModeBadge" class="bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-lg border border-indigo-100">Practice</span>
+                <span id="progressText">Verb 1 of 10</span>
+            </div>
+            <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                <div id="progressBar" class="h-full bg-indigo-600 transition-all duration-300" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <div id="quizArea" class="min-h-[280px] flex items-center justify-center flex-col">
+            </div>
+
+        <p id="bottomHint" class="text-center text-[11px] text-slate-400 font-medium h-4">
+            Введите вторую и третью форму глагола
+        </p>
+    </div>
+
+    <div id="resultsContainer" class="w-full max-w-sm bg-white rounded-3xl border border-slate-200 shadow-xl p-8 text-center space-y-6 hidden animate-fade-in">
+        <div class="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center mx-auto text-indigo-600">
+            <i data-lucide="trophy" class="w-8 h-8"></i>
+        </div>
+        <div>
+            <h2 class="text-2xl font-bold text-slate-900 tracking-tight">Practice Completed!</h2>
+            <p class="text-xs text-slate-400 mt-1">Отличная работа!</p>
+        </div>
+
+        <div class="bg-slate-50 rounded-2xl p-4 grid grid-cols-2 gap-4 border border-slate-100">
+            <div>
+                <span class="block text-2xl font-extrabold text-indigo-600" id="resCorrectCount">0</span>
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Правильно</span>
+            </div>
+            <div class="border-l border-slate-200">
+                <span class="block text-2xl font-extrabold text-slate-700" id="resTotalCount">0</span>
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Всего глаголов</span>
+            </div>
+        </div>
+
+        <div class="space-y-2">
+            <button onclick="location.reload()" class="w-full py-3 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition shadow-md cursor-pointer">
+                Повторить эти же
+            </button>
+            <a href="irregular-verbs.html" class="w-full block py-3 bg-slate-100 text-slate-600 rounded-xl text-sm font-semibold hover:bg-slate-200 transition cursor-pointer border border-slate-200">
+                Выбрать другие
+            </a>
+        </div>
+    </div>
+
+    <div id="loader" class="text-center space-y-3">
+        <div class="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+        <p class="text-xs text-slate-400 font-medium">Preparing your verbs...</p>
+    </div>
+
+    <script>
+        lucide.createIcons();
+        const body = document.getElementById('pageBody');
+
+        // Инициализация Supabase
+        const supabaseUrl = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
+        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+        let reviewVerbs = [];
+        let currentIndex = 0;
+        let correctAnswers = 0;
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Проверка авторизации
+            const { data: { session }, error: authError } = await supabase.auth.getSession();
+            if (authError || !session) {
+                window.location.href = 'login.html';
+                return;
+            }
+            body.classList.remove('invisible');
+
+            // Получаем выбранные глаголы из localStorage (массив строк v1)
+            // Например: ['be', 'do', 'make']
+            const selectedVerbsRaw = localStorage.getItem('selectedReviewVerbs');
+            if (!selectedVerbsRaw) {
+                alert("Вы не выбрали глаголы для тренировки!");
+                window.location.href = 'irregular-verbs.html';
+                return;
+            }
+
+            const selectedVerbs = JSON.parse(selectedVerbsRaw);
+
+            // Загружаем только выбранные глаголы из базы
+            const { data, error } = await supabase
+                .from('irregular_verbs')
+                .select('*')
+                .in('v1', selectedVerbs);
+
+            if (error) {
+                console.error(error);
+                alert("Ошибка загрузки глаголов.");
+                return;
+            }
+
+            reviewVerbs = shuffle(data);
+            document.getElementById('loader').classList.add('hidden');
+            document.getElementById('sessionContainer').classList.remove('hidden');
+            
+            showVerb();
+        });
+
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        function playAudio(v1, v2, v3) {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                const cleanV2 = v2.replace('/', ' or ');
+                const textToRead = `${v1}. ${cleanV2}. ${v3}.`;
+                const utterance = new SpeechSynthesisUtterance(textToRead);
+                utterance.lang = 'en-US';
+                utterance.rate = 0.85;
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        function showVerb() {
+            if (currentIndex >= reviewVerbs.length) {
+                showResults();
+                return;
+            }
+
+            const total = reviewVerbs.length;
+            document.getElementById('progressText').innerText = `Verb ${currentIndex + 1} of ${total}`;
+            document.getElementById('progressBar').style.width = `${(currentIndex / total) * 100}%`;
+
+            const currentVerb = reviewVerbs[currentIndex];
+            const quizArea = document.getElementById('quizArea');
+            
+            // Дизайн ввода форм
+            quizArea.innerHTML = `
+                <div class="w-full bg-slate-50 border border-slate-200 rounded-2xl p-6 space-y-6 animate-fade-in">
+                    
+                    <div class="text-center space-y-1">
+                        <span class="text-3xl font-extrabold text-slate-900 tracking-tight block">${currentVerb.v1}</span>
+                        <span class="text-sm font-bold text-slate-400 block">${currentVerb.tr}</span>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div>
+                            <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">V2 (Past Simple)</label>
+                            <input type="text" id="v2Input" autocomplete="off" class="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 font-bold tracking-wide text-center shadow-sm">
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">V3 (Past Participle)</label>
+                            <input type="text" id="v3Input" autocomplete="off" class="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 font-bold tracking-wide text-center shadow-sm">
+                        </div>
+                        <div id="feedback" class="text-sm font-bold hidden transition-all text-center p-3 rounded-xl border"></div>
+                    </div>
+
+                    <button id="checkBtn" onclick="checkAnswer()" class="w-full py-3 bg-slate-900 text-white rounded-xl text-sm font-bold hover:bg-slate-800 transition shadow-md cursor-pointer">
+                        Check Forms
+                    </button>
+                </div>
+            `;
+
+            document.getElementById('v2Input').focus();
+
+            // Переход по Enter
+            document.getElementById('v2Input').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') document.getElementById('v3Input').focus();
+            });
+            document.getElementById('v3Input').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    const btn = document.getElementById('checkBtn');
+                    if (btn.innerText === 'Check Forms') checkAnswer();
+                    else btn.click();
+                }
+            });
+        }
+
+        function checkAnswer() {
+            const v2Input = document.getElementById('v2Input');
+            const v3Input = document.getElementById('v3Input');
+            const feedback = document.getElementById('feedback');
+            const checkBtn = document.getElementById('checkBtn');
+            const currentVerb = reviewVerbs[currentIndex];
+
+            const ansV2 = v2Input.value.trim().toLowerCase();
+            const ansV3 = v3Input.value.trim().toLowerCase();
+
+            v2Input.disabled = true;
+            v3Input.disabled = true;
+            feedback.classList.remove('hidden');
+
+            // Умная проверка для V2 (например, was/were)
+            const allowedV2 = currentVerb.v2.split('/').map(s => s.trim().toLowerCase());
+            const isV2Correct = allowedV2.includes(ansV2) || ansV2 === currentVerb.v2.toLowerCase();
+            const isV3Correct = ansV3 === currentVerb.v3.toLowerCase();
+
+            if (isV2Correct && isV3Correct) {
+                // Полностью правильно
+                v2Input.className = "w-full px-4 py-3 bg-green-50 border border-green-300 rounded-xl text-sm font-bold text-center text-green-700";
+                v3Input.className = "w-full px-4 py-3 bg-green-50 border border-green-300 rounded-xl text-sm font-bold text-center text-green-700";
+                feedback.className = "text-xs font-bold text-green-700 mt-2 text-center bg-green-50 border border-green-200 p-2 rounded-lg";
+                feedback.innerText = "✨ Perfect!";
+                correctAnswers++;
+            } else {
+                // Ошибка в одной из форм
+                v2Input.className = `w-full px-4 py-3 border rounded-xl text-sm font-bold text-center ${isV2Correct ? 'bg-green-50 border-green-300 text-green-700' : 'bg-red-50 border-red-300 text-red-700'}`;
+                v3Input.className = `w-full px-4 py-3 border rounded-xl text-sm font-bold text-center ${isV3Correct ? 'bg-green-50 border-green-300 text-green-700' : 'bg-red-50 border-red-300 text-red-700'}`;
+                
+                feedback.className = "text-xs font-bold text-red-700 mt-2 text-center bg-red-50 border border-red-200 p-3 rounded-lg flex flex-col space-y-1";
+                feedback.innerHTML = `
+                    <span>Correct forms:</span>
+                    <span class="text-sm font-extrabold text-slate-900">${currentVerb.v2} / ${currentVerb.v3}</span>
+                `;
+            }
+
+            // Озвучиваем правильный ответ
+            playAudio(currentVerb.v1, currentVerb.v2, currentVerb.v3);
+
+            checkBtn.innerText = "Continue";
+            checkBtn.className = "w-full py-3 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition shadow-md cursor-pointer mt-4";
+            checkBtn.onclick = () => {
+                currentIndex++;
+                showVerb();
+            };
+        }
+
+        function showResults() {
+            document.getElementById('sessionContainer').classList.add('hidden');
+            document.getElementById('resCorrectCount').innerText = correctAnswers;
+            document.getElementById('resTotalCount').innerText = reviewVerbs.length;
+            document.getElementById('resultsContainer').classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
+
