@@ -6,7 +6,6 @@
   <title>Three Verb Forms - TOEFL.ai</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    /* Сетка с первой колонкой под иконку закладки */
     .table-layout {
       display: grid;
       grid-template-columns: 80px minmax(160px, 1.5fr) 1fr 1fr 1fr;
@@ -66,7 +65,7 @@
           <div class="px-6 py-4 text-right">Translation</div>
         </div>
         <div id="verbsContainer" class="divide-y divide-slate-100">
-          </div>
+        </div>
       </div>
     </div>
     
@@ -79,7 +78,6 @@
       const container = document.getElementById('verbsContainer');
       const body = document.getElementById('pageBody');
 
-      // 1. Инициализация Supabase
       const supabaseUrl = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
       const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
       
@@ -93,9 +91,8 @@
       
       let currentUser = null;
       let irregularVerbs = [];
-      let savedVerbs = []; // Здесь хранятся закладки текущего ученика
+      let savedVerbs = [];
 
-      // 2. Проверка авторизации
       const { data: { session }, error: authError } = await supabase.auth.getSession();
       if (authError || !session) {
         window.location.href = 'login.html';
@@ -104,7 +101,6 @@
       currentUser = session.user;
       body.classList.remove('invisible');
 
-      // Озвучка
       window.playAudio = function(v1, v2, v3) {
         if ('speechSynthesis' in window) {
           window.speechSynthesis.cancel();
@@ -116,40 +112,34 @@
         }
       }
 
-      // 3. Функция Сохранения / Удаления закладки
       window.toggleBookmark = async function(v1) {
         const isSaved = savedVerbs.includes(v1);
         
         if (isSaved) {
-            // Удаляем из массива и перерисовываем
             savedVerbs = savedVerbs.filter(verb => verb !== v1);
             render(irregularVerbs, true); 
-            // Удаляем из БД
             await supabase.from('user_saved_verbs').delete().eq('user_id', currentUser.id).eq('v1', v1);
         } else {
-            // Добавляем в массив и перерисовываем
             savedVerbs.push(v1);
             render(irregularVerbs, true);
-            // Записываем в БД
             await supabase.from('user_saved_verbs').insert([{ user_id: currentUser.id, v1: v1 }]);
         }
       }
 
-      // Переход в тренажер
+      // ОБНОВЛЕННАЯ ФУНКЦИЯ ПЕРЕХОДА:
       window.startPractice = function() {
         if (savedVerbs.length === 0) {
             alert("Сначала добавьте глаголы в закладки (нажав на иконку флажка)!");
             return;
         }
-        // Передаем список закладок в тренажер
-        localStorage.setItem('selectedReviewVerbs', JSON.stringify(savedVerbs));
+        
+        const fullVerbsData = irregularVerbs.filter(v => savedVerbs.includes(v.v1));
+        
+        localStorage.setItem('selectedReviewVerbs', JSON.stringify(fullVerbsData));
         window.location.href = 'verbs-review.html';
       }
 
-      // Рендеринг таблицы
-      // Параметр keepSearch нужен, чтобы при клике на закладку не сбрасывался поиск
       function render(data, keepSearch = false) {
-        // Если рендер вызван поиском, берем data. Если кликом по закладке - фильтруем по текущему инпуту
         let dataToRender = data;
         if (keepSearch) {
             const q = document.getElementById('verbSearch').value.toLowerCase().trim();
@@ -167,7 +157,6 @@
         dataToRender.forEach(verb => {
           const isSaved = savedVerbs.includes(verb.v1);
           
-          // Выбор иконки (закрашенная фиолетовая ИЛИ серая контурная)
           const bookmarkIcon = isSaved 
             ? `<svg class="w-5 h-5 text-indigo-600 fill-indigo-600 drop-shadow-sm transition-transform hover:scale-110" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>`
             : `<svg class="w-5 h-5 text-slate-300 hover:text-indigo-400 transition-all hover:scale-110" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>`;
@@ -194,18 +183,15 @@
         });
       }
 
-      // 4. Загрузка данных (Слова + Закладки пользователя)
       async function loadVerbs() {
         container.innerHTML = `<div class="p-10 text-center text-slate-400 text-sm animate-pulse">Loading secure database...</div>`;
         try {
-          // Запрашиваем сами глаголы
           const { data: verbsData, error: verbsError } = await supabase
             .from('irregular_verbs')
             .select('*')
             .order('v1', { ascending: true });
           if (verbsError) throw verbsError;
 
-          // Запрашиваем закладки текущего ученика
           const { data: savedData, error: savedError } = await supabase
             .from('user_saved_verbs')
             .select('v1')
@@ -213,7 +199,7 @@
           if (savedError) throw savedError;
 
           irregularVerbs = verbsData.filter(v => v.v1);
-          savedVerbs = savedData.map(row => row.v1); // Превращаем в плоский массив ['be', 'do', ...]
+          savedVerbs = savedData.map(row => row.v1);
 
           render(irregularVerbs);
         } catch (error) {
@@ -221,7 +207,6 @@
         }
       }
 
-      // 5. Живой поиск
       document.getElementById('verbSearch').addEventListener('input', (e) => {
         const q = e.target.value.toLowerCase().trim();
         const filtered = irregularVerbs.filter(v => 
@@ -238,4 +223,3 @@
   </script>
 </body>
 </html>
-
