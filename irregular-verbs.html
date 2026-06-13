@@ -6,11 +6,11 @@
   <title>Three Verb Forms - TOEFL.ai</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    /* Делаем сетку чуть более гибкой, но стабильной */
+    /* Жесткая и стабильная сетка для табличной структуры */
     .table-layout {
       display: grid;
       grid-template-columns: minmax(160px, 1.5fr) 1fr 1fr 1fr;
-      min-width: 700px; /* Чтобы на мобилках появлялся скролл, а не каша */
+      min-width: 700px; /* Предотвращает сжатие на мобильных экранах */
     }
   </style>
 </head>
@@ -28,7 +28,7 @@
         </div>
         
         <h1 class="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight mb-2">Three Verb Forms</h1>
-        <p class="text-sm text-slate-500">Listen and memorize the 100 most common irregular verbs.</p>
+        <p class="text-sm text-slate-500">Listen and memorize the most common irregular verbs.</p>
       </div>
 
       <div class="w-full md:w-80 relative">
@@ -64,36 +64,37 @@
     
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  
   <script>
-    const irregularVerbs = [
-      { v1: 'be', v2: 'was/were', v3: 'been', tr: 'быть' },
-      { v1: 'have', v2: 'had', v3: 'had', tr: 'иметь' },
-      { v1: 'say', v2: 'said', v3: 'said', tr: 'сказать' },
-      { v1: 'do', v2: 'did', v3: 'done', tr: 'делать' },
-      { v1: 'know', v2: 'knew', v3: 'known', tr: 'знать' },
-      { v1: 'get', v2: 'got', v3: 'gotten', tr: 'получать' },
-      { v1: 'write', v2: 'wrote', v3: 'written', tr: 'писать' },
-      { v1: 'think', v2: 'thought', v3: 'thought', tr: 'думать' }
-    ];
+    // Инициализация клиента Supabase
+    // Замени эти значения на фактические параметры из Settings -> API твоего проекта
+    const supabaseUrl = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
+    const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
 
-    // Умная функция озвучки всех трех форм
+    // Глобальное хранилище данных для поиска
+    let irregularVerbs = [];
+
+    // Функция последовательной озвучки всех трех форм с паузами
     function playAudio(v1, v2, v3) {
       if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel(); 
+        window.speechSynthesis.cancel(); // Остановка текущей речи
         
-        // Заменяем слеш на "or", чтобы диктор читал "was or were"
+        // Корректная замена слэша на союз "or" для естественного звучания (was/were -> was or were)
         const cleanV2 = v2.replace('/', ' or ');
         
-        // Точки создают естественные микро-паузы между формами
+        // Точки обеспечивают паузы между произнесением форм
         const textToRead = `${v1}. ${cleanV2}. ${v3}.`;
         
         const utterance = new SpeechSynthesisUtterance(textToRead);
         utterance.lang = 'en-US';
-        utterance.rate = 0.85; // Чуть замедленно для четкости восприятия
+        utterance.rate = 0.85; // Оптимальный темп для восприятия речи на слух
         window.speechSynthesis.speak(utterance);
       }
     }
 
+    // Отрисовка строк таблицы
     function render(data) {
       const container = document.getElementById('verbsContainer');
       container.innerHTML = '';
@@ -105,8 +106,7 @@
       
       data.forEach(verb => {
         const row = document.createElement('div');
-        // Добавили легкий hover-эффект с оттенком индиго для интерактивности
-        row.className = 'table-layout hover:bg-indigo-50/30 transition-colors duration-200 group';
+        row.className = 'table-layout bg-white hover:bg-indigo-50/30 transition-colors duration-200 group';
         row.innerHTML = `
           <div class="px-6 py-4 border-r border-slate-100 flex items-center gap-3">
             <button 
@@ -137,15 +137,41 @@
       });
     }
 
+    // Асинхронное получение данных из Supabase
+    async function loadVerbs() {
+      const container = document.getElementById('verbsContainer');
+      container.innerHTML = `<div class="p-10 text-center text-slate-400 text-sm animate-pulse">Loading verbs from database...</div>`;
+
+      try {
+        const { data, error } = await supabase
+          .from('irregular_verbs')
+          .select('*')
+          .order('v1', { ascending: true }); // Алфавитная сортировка по V1
+
+        if (error) throw error;
+
+        irregularVerbs = data;
+        render(irregularVerbs);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        container.innerHTML = `<div class="p-10 text-center text-red-400 text-sm font-medium">Failed to load data from Supabase. Check console.</div>`;
+      }
+    }
+
+    // Реализация живого поиска по всем колонкам
     document.getElementById('verbSearch').addEventListener('input', (e) => {
       const q = e.target.value.toLowerCase().trim();
       const filtered = irregularVerbs.filter(v => 
-        v.v1.includes(q) || v.v2.includes(q) || v.v3.includes(q) || v.tr.includes(q)
+        v.v1.toLowerCase().includes(q) || 
+        v.v2.toLowerCase().includes(q) || 
+        v.v3.toLowerCase().includes(q) || 
+        v.tr.toLowerCase().includes(q)
       );
       render(filtered);
     });
 
-    render(irregularVerbs);
+    // Инициализация загрузки при старте страницы
+    loadVerbs();
   </script>
 </body>
 </html>
