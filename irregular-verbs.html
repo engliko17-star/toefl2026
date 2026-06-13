@@ -6,16 +6,11 @@
   <title>Three Verb Forms - TOEFL.ai</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    /* Добавлена первая колонка (60px) для чекбоксов */
+    /* Сетка с первой колонкой под иконку закладки */
     .table-layout {
       display: grid;
-      grid-template-columns: 60px minmax(160px, 1.5fr) 1fr 1fr 1fr;
+      grid-template-columns: 80px minmax(160px, 1.5fr) 1fr 1fr 1fr;
       min-width: 750px;
-    }
-    
-    /* Стили для чекбоксов */
-    .verb-checkbox, #selectAll {
-      accent-color: #4f46e5; /* indigo-600 */
     }
   </style>
 </head>
@@ -29,10 +24,10 @@
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
           </svg>
-          Grammar Reference (Private)
+          Grammar Reference
         </div>
         <h1 class="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight mb-2">Three Verb Forms</h1>
-        <p class="text-sm text-slate-500">Listen, select verbs, and practice them.</p>
+        <p class="text-sm text-slate-500">Bookmark verbs to create your personal study list.</p>
       </div>
 
       <div class="w-full md:w-auto flex flex-col sm:flex-row gap-3">
@@ -56,7 +51,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
           </svg>
-          Practice Selected
+          Practice Saved
         </button>
       </div>
     </div>
@@ -64,9 +59,7 @@
     <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-x-auto">
       <div class="min-w-full">
         <div class="table-layout bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-widest text-slate-500">
-          <div class="px-6 py-4 border-r border-slate-200 flex items-center justify-center">
-            <input type="checkbox" id="selectAll" class="w-4 h-4 cursor-pointer rounded border-slate-300">
-          </div>
+          <div class="px-6 py-4 border-r border-slate-200 text-center">SAVE</div>
           <div class="px-6 py-4 border-r border-slate-200">Infinitive (V1)</div>
           <div class="px-6 py-4 border-r border-slate-200">Past Simple (V2)</div>
           <div class="px-6 py-4 border-r border-slate-200">Past Participle (V3)</div>
@@ -91,21 +84,24 @@
       const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
       
       if (!window.supabase) {
-        container.innerHTML = `<div class="p-10 text-center text-red-500 font-bold">Библиотека базы данных не загрузилась.</div>`;
+        container.innerHTML = `<div class="p-10 text-center text-red-500 font-bold">Ошибка сети.</div>`;
         body.classList.remove('invisible');
         return;
       }
 
       const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+      
+      let currentUser = null;
       let irregularVerbs = [];
+      let savedVerbs = []; // Здесь хранятся закладки текущего ученика
 
       // 2. Проверка авторизации
       const { data: { session }, error: authError } = await supabase.auth.getSession();
-
       if (authError || !session) {
         window.location.href = 'login.html';
         return;
       }
+      currentUser = session.user;
       body.classList.remove('invisible');
 
       // Озвучка
@@ -120,89 +116,110 @@
         }
       }
 
+      // 3. Функция Сохранения / Удаления закладки
+      window.toggleBookmark = async function(v1) {
+        const isSaved = savedVerbs.includes(v1);
+        
+        if (isSaved) {
+            // Удаляем из массива и перерисовываем
+            savedVerbs = savedVerbs.filter(verb => verb !== v1);
+            render(irregularVerbs, true); 
+            // Удаляем из БД
+            await supabase.from('user_saved_verbs').delete().eq('user_id', currentUser.id).eq('v1', v1);
+        } else {
+            // Добавляем в массив и перерисовываем
+            savedVerbs.push(v1);
+            render(irregularVerbs, true);
+            // Записываем в БД
+            await supabase.from('user_saved_verbs').insert([{ user_id: currentUser.id, v1: v1 }]);
+        }
+      }
+
       // Переход в тренажер
       window.startPractice = function() {
-        const checkboxes = document.querySelectorAll('.verb-checkbox:checked');
-        const selected = Array.from(checkboxes).map(cb => cb.value);
-        
-        if (selected.length === 0) {
-            alert("Please select at least one verb to practice!");
+        if (savedVerbs.length === 0) {
+            alert("Сначала добавьте глаголы в закладки (нажав на иконку флажка)!");
             return;
         }
-        
-        // Сохраняем массив строк (V1) в память и переходим
-        localStorage.setItem('selectedReviewVerbs', JSON.stringify(selected));
+        // Передаем список закладок в тренажер
+        localStorage.setItem('selectedReviewVerbs', JSON.stringify(savedVerbs));
         window.location.href = 'verbs-review.html';
       }
 
       // Рендеринг таблицы
-      function render(data) {
+      // Параметр keepSearch нужен, чтобы при клике на закладку не сбрасывался поиск
+      function render(data, keepSearch = false) {
+        // Если рендер вызван поиском, берем data. Если кликом по закладке - фильтруем по текущему инпуту
+        let dataToRender = data;
+        if (keepSearch) {
+            const q = document.getElementById('verbSearch').value.toLowerCase().trim();
+            if (q) {
+                dataToRender = irregularVerbs.filter(v => v.v1.includes(q) || v.tr.includes(q));
+            }
+        }
+
         container.innerHTML = '';
-        if (data.length === 0) {
-          container.innerHTML = `<div class="p-10 text-center text-slate-400 text-sm font-medium">No verbs found.</div>`;
+        if (dataToRender.length === 0) {
+          container.innerHTML = `<div class="p-10 text-center text-slate-400 text-sm font-medium">Ничего не найдено.</div>`;
           return;
         }
         
-        data.forEach(verb => {
+        dataToRender.forEach(verb => {
+          const isSaved = savedVerbs.includes(verb.v1);
+          
+          // Выбор иконки (закрашенная фиолетовая ИЛИ серая контурная)
+          const bookmarkIcon = isSaved 
+            ? `<svg class="w-5 h-5 text-indigo-600 fill-indigo-600 drop-shadow-sm transition-transform hover:scale-110" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>`
+            : `<svg class="w-5 h-5 text-slate-300 hover:text-indigo-400 transition-all hover:scale-110" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>`;
+
           const row = document.createElement('div');
-          row.className = 'table-layout bg-white hover:bg-indigo-50/30 transition-colors duration-200 group';
+          row.className = 'table-layout bg-white hover:bg-indigo-50/30 transition-colors duration-200 group items-center';
           row.innerHTML = `
-            <div class="px-6 py-4 border-r border-slate-100 flex items-center justify-center">
-              <input type="checkbox" value="${verb.v1}" class="verb-checkbox w-4 h-4 cursor-pointer rounded border-slate-300">
+            <div class="px-6 py-4 border-r border-slate-100 flex justify-center">
+              <button onclick="toggleBookmark('${verb.v1}')" class="focus:outline-none" title="${isSaved ? 'Remove from saved' : 'Save for practice'}">
+                ${bookmarkIcon}
+              </button>
             </div>
             <div class="px-6 py-4 border-r border-slate-100 flex items-center gap-3">
-              <button onclick="playAudio('${verb.v1}', '${verb.v2}', '${verb.v3}')" class="text-slate-300 group-hover:text-indigo-500 transition-colors focus:outline-none cursor-pointer">
-                <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M13.5 4.06c0-1.336-1.546-2.076-2.58-1.235L6.152 6.75H4.5A2.25 2.25 0 002.25 9v6a2.25 2.25 0 002.25 2.25h1.652l4.768 3.925c1.034.84 2.58.1 2.58-1.235V4.06zM17.55 7.643a.75.75 0 011.06-.051 7.498 7.498 0 010 8.816.75.75 0 11-1.164-1.014 5.999 5.999 0 000-6.79.75.75 0 01.104-1.061zM20.203 4.99a.75.75 0 011.06-.05 11.248 11.248 0 010 14.12.75.75 0 11-1.164-1.015 9.748 9.748 0 000-12.09.75.75 0 01.104-1.06z" />
-                </svg>
+              <button onclick="playAudio('${verb.v1}', '${verb.v2}', '${verb.v3}')" class="text-slate-300 group-hover:text-indigo-500 transition-colors focus:outline-none cursor-pointer" title="Listen">
+                <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M13.5 4.06c0-1.336-1.546-2.076-2.58-1.235L6.152 6.75H4.5A2.25 2.25 0 002.25 9v6a2.25 2.25 0 002.25 2.25h1.652l4.768 3.925c1.034.84 2.58.1 2.58-1.235V4.06zM17.55 7.643a.75.75 0 011.06-.051 7.498 7.498 0 010 8.816.75.75 0 11-1.164-1.014 5.999 5.999 0 000-6.79.75.75 0 01.104-1.061zM20.203 4.99a.75.75 0 011.06-.05 11.248 11.248 0 010 14.12.75.75 0 11-1.164-1.015 9.748 9.748 0 000-12.09.75.75 0 01.104-1.06z" /></svg>
               </button>
               <span class="font-bold text-slate-900">${verb.v1 || ''}</span>
             </div>
-            <div class="px-6 py-4 border-r border-slate-100 flex items-center text-slate-600 font-medium group-hover:text-slate-900 transition-colors">${verb.v2 || ''}</div>
-            <div class="px-6 py-4 border-r border-slate-100 flex items-center text-slate-600 font-medium group-hover:text-slate-900 transition-colors">${verb.v3 || ''}</div>
-            <div class="px-6 py-4 flex items-center justify-end text-sm text-slate-400 group-hover:text-slate-600 transition-colors">${verb.tr || ''}</div>
+            <div class="px-6 py-4 border-r border-slate-100 text-slate-600 font-medium group-hover:text-slate-900 transition-colors">${verb.v2 || ''}</div>
+            <div class="px-6 py-4 border-r border-slate-100 text-slate-600 font-medium group-hover:text-slate-900 transition-colors">${verb.v3 || ''}</div>
+            <div class="px-6 py-4 text-right text-sm text-slate-400 group-hover:text-slate-600 transition-colors">${verb.tr || ''}</div>
           `;
           container.appendChild(row);
         });
-
-        // Сброс чекбокса "Выбрать всё" при перерисовке
-        const selectAllCb = document.getElementById('selectAll');
-        if (selectAllCb) selectAllCb.checked = false;
       }
 
-      // 3. Загрузка данных
+      // 4. Загрузка данных (Слова + Закладки пользователя)
       async function loadVerbs() {
-        container.innerHTML = `<div class="p-10 text-center text-slate-400 text-sm animate-pulse">Loading verbs from database...</div>`;
+        container.innerHTML = `<div class="p-10 text-center text-slate-400 text-sm animate-pulse">Loading secure database...</div>`;
         try {
-          const { data, error } = await supabase
+          // Запрашиваем сами глаголы
+          const { data: verbsData, error: verbsError } = await supabase
             .from('irregular_verbs')
             .select('*')
             .order('v1', { ascending: true });
+          if (verbsError) throw verbsError;
 
-          if (error) throw error;
+          // Запрашиваем закладки текущего ученика
+          const { data: savedData, error: savedError } = await supabase
+            .from('user_saved_verbs')
+            .select('v1')
+            .eq('user_id', currentUser.id);
+          if (savedError) throw savedError;
 
-          irregularVerbs = data.filter(v => v.v1);
+          irregularVerbs = verbsData.filter(v => v.v1);
+          savedVerbs = savedData.map(row => row.v1); // Превращаем в плоский массив ['be', 'do', ...]
+
           render(irregularVerbs);
         } catch (error) {
-          container.innerHTML = `<div class="p-10 text-center text-red-500 text-sm font-medium">Error: ${error.message}</div>`;
+          container.innerHTML = `<div class="p-10 text-center text-red-500 text-sm font-medium">Ошибка: ${error.message}</div>`;
         }
       }
-
-      // 4. Логика чекбоксов
-      document.addEventListener('change', function(e) {
-        // Клик по главному чекбоксу "Выбрать всё"
-        if (e.target.id === 'selectAll') {
-          const checkboxes = document.querySelectorAll('.verb-checkbox');
-          checkboxes.forEach(cb => cb.checked = e.target.checked);
-        } 
-        // Клик по обычному чекбоксу (снимаем галочку с главного, если хоть один снят)
-        else if (e.target.classList.contains('verb-checkbox')) {
-          const selectAll = document.getElementById('selectAll');
-          const checkboxes = document.querySelectorAll('.verb-checkbox');
-          const allChecked = Array.from(checkboxes).every(cb => cb.checked);
-          if (selectAll) selectAll.checked = allChecked;
-        }
-      });
 
       // 5. Живой поиск
       document.getElementById('verbSearch').addEventListener('input', (e) => {
@@ -221,3 +238,4 @@
   </script>
 </body>
 </html>
+
