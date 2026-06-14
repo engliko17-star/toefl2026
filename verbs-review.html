@@ -12,7 +12,6 @@
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght=400;500;600;700&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
 
-        /* Стили для 3D переворота карточки (режим Flashcards) */
         .perspective { perspective: 1000px; }
         .card-inner {
             transition: transform 0.6s;
@@ -100,10 +99,10 @@
         lucide.createIcons();
         const body = document.getElementById('pageBody');
 
-        // Инициализация Supabase
+        // Инициализация Supabase (Переименовали в supabaseClient во избежание конфликта)
         const supabaseUrl = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
         const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
-        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+        const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
 
         let reviewVerbs = [];
         let currentIndex = 0;
@@ -111,7 +110,7 @@
 
         document.addEventListener('DOMContentLoaded', async () => {
             // 1. Проверка авторизации
-            const { data: { session }, error: authError } = await supabase.auth.getSession();
+            const { data: { session }, error: authError } = await supabaseClient.auth.getSession();
             if (authError || !session) {
                 window.location.href = 'login.html';
                 return;
@@ -120,7 +119,7 @@
             body.classList.remove('invisible');
 
             // 2. Получаем сохраненные глаголы из базы данных для текущего пользователя
-            const { data: savedData, error: savedError } = await supabase
+            const { data: savedData, error: savedError } = await supabaseClient
                 .from('user_saved_verbs')
                 .select('v1')
                 .eq('user_id', currentUser.id);
@@ -135,13 +134,13 @@
             const selectedVerbs = savedData.map(row => row.v1);
 
             if (selectedVerbs.length === 0) {
-                alert("У вас нет сохраненных глаголов для тренировки!");
+                alert("У вас нет сохраненных глаголов для тренировки! Добавьте их на странице списка.");
                 window.location.href = 'irregular-verbs.html';
                 return;
             }
 
             // 3. Загружаем полные данные только для выбранных глаголов из базы
-            const { data, error } = await supabase
+            const { data, error } = await supabaseClient
                 .from('irregular_verbs')
                 .select('*')
                 .in('v1', selectedVerbs);
@@ -192,7 +191,6 @@
             const currentVerb = reviewVerbs[currentIndex];
             const quizArea = document.getElementById('quizArea');
             
-            // Дизайн ввода форм
             quizArea.innerHTML = `
                 <div class="w-full bg-slate-50 border border-slate-200 rounded-2xl p-6 space-y-6 animate-fade-in">
                     
@@ -221,7 +219,6 @@
 
             document.getElementById('v2Input').focus();
 
-            // Переход по Enter
             document.getElementById('v2Input').addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') document.getElementById('v3Input').focus();
             });
@@ -248,20 +245,17 @@
             v3Input.disabled = true;
             feedback.classList.remove('hidden');
 
-            // Умная проверка для V2 (например, was/were)
             const allowedV2 = currentVerb.v2.split('/').map(s => s.trim().toLowerCase());
             const isV2Correct = allowedV2.includes(ansV2) || ansV2 === currentVerb.v2.toLowerCase();
             const isV3Correct = ansV3 === currentVerb.v3.toLowerCase();
 
             if (isV2Correct && isV3Correct) {
-                // Полностью правильно
                 v2Input.className = "w-full px-4 py-3 bg-green-50 border border-green-300 rounded-xl text-sm font-bold text-center text-green-700";
                 v3Input.className = "w-full px-4 py-3 bg-green-50 border border-green-300 rounded-xl text-sm font-bold text-center text-green-700";
                 feedback.className = "text-xs font-bold text-green-700 mt-2 text-center bg-green-50 border border-green-200 p-2 rounded-lg";
                 feedback.innerText = "✨ Perfect!";
                 correctAnswers++;
             } else {
-                // Ошибка в одной из форм
                 v2Input.className = `w-full px-4 py-3 border rounded-xl text-sm font-bold text-center ${isV2Correct ? 'bg-green-50 border-green-300 text-green-700' : 'bg-red-50 border-red-300 text-red-700'}`;
                 v3Input.className = `w-full px-4 py-3 border rounded-xl text-sm font-bold text-center ${isV3Correct ? 'bg-green-50 border-green-300 text-green-700' : 'bg-red-50 border-red-300 text-red-700'}`;
                 
@@ -272,7 +266,6 @@
                 `;
             }
 
-            // Озвучиваем правильный ответ
             playAudio(currentVerb.v1, currentVerb.v2, currentVerb.v3);
 
             checkBtn.innerText = "Continue";
@@ -292,4 +285,3 @@
     </script>
 </body>
 </html>
-
