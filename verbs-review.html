@@ -110,26 +110,37 @@
         let correctAnswers = 0;
 
         document.addEventListener('DOMContentLoaded', async () => {
-            // Проверка авторизации
+            // 1. Проверка авторизации
             const { data: { session }, error: authError } = await supabase.auth.getSession();
             if (authError || !session) {
                 window.location.href = 'login.html';
                 return;
             }
+            const currentUser = session.user;
             body.classList.remove('invisible');
 
-            // Получаем выбранные глаголы из localStorage (массив строк v1)
-            // Например: ['be', 'do', 'make']
-            const selectedVerbsRaw = localStorage.getItem('selectedReviewVerbs');
-            if (!selectedVerbsRaw) {
-                alert("Вы не выбрали глаголы для тренировки!");
+            // 2. Получаем сохраненные глаголы из базы данных для текущего пользователя
+            const { data: savedData, error: savedError } = await supabase
+                .from('user_saved_verbs')
+                .select('v1')
+                .eq('user_id', currentUser.id);
+
+            if (savedError) {
+                console.error(savedError);
+                alert("Ошибка загрузки закладок.");
                 window.location.href = 'irregular-verbs.html';
                 return;
             }
 
-            const selectedVerbs = JSON.parse(selectedVerbsRaw);
+            const selectedVerbs = savedData.map(row => row.v1);
 
-            // Загружаем только выбранные глаголы из базы
+            if (selectedVerbs.length === 0) {
+                alert("У вас нет сохраненных глаголов для тренировки!");
+                window.location.href = 'irregular-verbs.html';
+                return;
+            }
+
+            // 3. Загружаем полные данные только для выбранных глаголов из базы
             const { data, error } = await supabase
                 .from('irregular_verbs')
                 .select('*')
@@ -137,7 +148,7 @@
 
             if (error) {
                 console.error(error);
-                alert("Ошибка загрузки глаголов.");
+                alert("Ошибка загрузки данных глаголов.");
                 return;
             }
 
