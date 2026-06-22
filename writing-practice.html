@@ -36,8 +36,16 @@
         </div>
 
         <div id="topNavigation" class="hidden flex items-center space-x-6">
-            <div class="text-sm font-bold text-slate-700">
-                Question <span id="current-q-label">1</span> of <span id="total-q-label">1</span>
+            
+            <div class="flex items-center space-x-4">
+                <div class="text-sm font-bold text-slate-700">
+                    Question <span id="current-q-label">1</span> of <span id="total-q-label">1</span>
+                </div>
+                
+                <div class="flex items-center space-x-1.5 text-sm font-bold text-slate-700 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-lg shadow-sm">
+                    <i data-lucide="clock" class="w-4 h-4 text-indigo-500"></i>
+                    <span id="timerDisplay" class="tabular-nums tracking-wide">00:00</span>
+                </div>
             </div>
 
             <div class="flex items-center space-x-2">
@@ -77,10 +85,33 @@
         let wordCountStates = {}; 
         let currentUserId = null;
 
+        // Переменные для секундомера
+        let timerInterval = null;
+        let elapsedSeconds = 0;
+
         document.addEventListener('DOMContentLoaded', async () => {
             await fetchTestContext();
             lucide.createIcons();
         });
+
+        // ЛОГИКА СЕКУНДОМЕРА
+        function startStopwatch() {
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                elapsedSeconds++;
+                document.getElementById('timerDisplay').innerText = formatTime(elapsedSeconds);
+            }, 1000);
+        }
+
+        function stopStopwatch() {
+            if (timerInterval) clearInterval(timerInterval);
+        }
+
+        function formatTime(seconds) {
+            const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+            const s = (seconds % 60).toString().padStart(2, '0');
+            return `${m}:${s}`;
+        }
 
         function shuffleArray(array) {
             let shuffled = [...array];
@@ -141,6 +172,9 @@
             } else {
                 if (topNav) topNav.classList.remove('hidden'); // Показываем панель навигации
                 
+                // Запускаем секундомер
+                startStopwatch();
+                
                 testQuestions.forEach((q, index) => {
                     wordCountStates[index] = true; 
                     
@@ -148,7 +182,6 @@
                     let slideHTML = `<div id="slide-${index}" class="slide-container ${displayClass} flex-col h-full w-full absolute inset-0 bg-white">`;
                     
                     slideHTML += generatePracticeView(q, index);
-                    // Нижняя навигация удалена отсюда
                     slideHTML += `</div>`;
 
                     container.insertAdjacentHTML('beforeend', slideHTML);
@@ -578,6 +611,9 @@
         async function submitEntireTest() {
             if (!currentUserId) return alert("Please log in first.");
 
+            // Останавливаем секундомер перед отправкой
+            stopStopwatch();
+
             let payloads = [];
 
             for (let i = 0; i < testQuestions.length; i++) {
@@ -587,6 +623,9 @@
                 if (!ans || ans === "." || ans === "?" || ans === "!" || ans.includes("____")) {
                     alert(`Question ${i + 1} is incomplete. Please finish it before submitting the test.`);
                     showSlide(i); 
+                    
+                    // Если пользователь не доделал тест, снова запускаем секундомер
+                    startStopwatch();
                     return;
                 }
 
@@ -607,6 +646,8 @@
                 window.location.reload();
             } catch (err) {
                 alert("Error saving test: " + err.message);
+                // В случае ошибки тоже возвращаем секундомер
+                startStopwatch();
             } finally {
                 document.body.style.cursor = 'default';
             }
