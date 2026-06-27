@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Practice Player</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #ffffff; }
+        
+        /* Пульсация для кнопки записи */
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .recording-active { animation: pulse-red 1.5s infinite; background-color: #ef4444; color: white;}
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
+
+    <div class="fixed top-0 left-0 right-0 p-4 flex justify-between items-center max-w-4xl mx-auto w-full bg-white z-10">
+        <h1 class="text-lg font-bold text-slate-800" id="taskInstruction">Listen and repeat only once.</h1>
+        <div class="text-sm font-semibold text-gray-400">Task <span id="currentTaskNum">1</span> / <span id="totalTasks">8</span></div>
+    </div>
+
+    <div class="w-full max-w-md mx-auto mt-16 mb-24 flex flex-col items-center">
+        <div id="mediaContainer" class="w-full aspect-square border-2 border-gray-200 rounded-xl overflow-hidden bg-gray-50 flex items-center justify-center">
+            <img src="https://placehold.co/600x600/f3f4f6/a1a1aa?text=Image+Loading..." alt="Task Media" class="object-cover w-full h-full" id="taskImage">
+        </div>
+    </div>
+
+    <div class="fixed bottom-10 left-1/2 transform -translate-x-1/2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden flex flex-col">
+        <div class="bg-black text-white text-[10px] font-bold text-center py-1 tracking-widest uppercase">
+            Response Time
+        </div>
+        <div class="flex items-center justify-center p-3 space-x-3">
+            <div id="micIcon" class="w-8 h-8 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center transition-all">
+                <i data-lucide="mic" class="w-4 h-4"></i>
+            </div>
+            <div id="timerDisplay" class="text-xl font-mono font-bold text-slate-800">
+                00:00:08
+            </div>
+        </div>
+    </div>
+
+    <audio id="taskAudio" src=""></audio>
+
+    <script>
+        lucide.createIcons();
+
+        // --- МОДЕЛЬ ДАННЫХ (Позже это будет приходить из Supabase) ---
+        const taskData = {
+            type: 'listen_repeat', // Если будет 'interview', поменяем логику отображения
+            totalTime: 8,
+            items: [
+                { id: 1, image: 'https://placehold.co/600x600/f3f4f6/a1a1aa?text=Zoo+Image', audioUrl: 'placeholder.mp3' },
+                { id: 2, image: 'https://placehold.co/600x600/f3f4f6/a1a1aa?text=Next+Image', audioUrl: 'placeholder.mp3' }
+            ]
+        };
+
+        let currentIndex = 0;
+        let timeRemaining = taskData.totalTime;
+        let timerInterval;
+
+        const ui = {
+            instruction: document.getElementById('taskInstruction'),
+            currentNum: document.getElementById('currentTaskNum'),
+            totalNum: document.getElementById('totalTasks'),
+            image: document.getElementById('taskImage'),
+            mic: document.getElementById('micIcon'),
+            timer: document.getElementById('timerDisplay'),
+            audio: document.getElementById('taskAudio')
+        };
+
+        // Инициализация
+        function initTask() {
+            ui.totalNum.innerText = taskData.items.length;
+            if (taskData.type === 'interview') {
+                ui.instruction.innerText = "Answer the interviewer's question.";
+                taskData.totalTime = 45; 
+                // Тут можно заменить тег <img> на <video>
+            }
+            loadQuestion(currentIndex);
+        }
+
+        function loadQuestion(index) {
+            const item = taskData.items[index];
+            ui.currentNum.innerText = index + 1;
+            ui.image.src = item.image;
+            
+            // Сброс UI
+            ui.mic.classList.remove('recording-active');
+            ui.mic.classList.add('bg-gray-100', 'text-gray-400');
+            formatTime(taskData.totalTime);
+
+            // Симуляция: Ждем 1 секунду, "играем аудио", потом начинаем запись
+            // В реальности тут будет: ui.audio.src = item.audioUrl; ui.audio.play(); ui.audio.onended = startRecording;
+            setTimeout(() => {
+                startRecording();
+            }, 2000); 
+        }
+
+        function startRecording() {
+            // Визуально включаем микрофон
+            ui.mic.classList.remove('bg-gray-100', 'text-gray-400');
+            ui.mic.classList.add('recording-active');
+            
+            // Запуск таймера
+            timeRemaining = taskData.totalTime;
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                formatTime(timeRemaining);
+                
+                if (timeRemaining <= 0) {
+                    stopRecording();
+                }
+            }, 1000);
+
+            // Здесь будет логика MediaRecorder.start()
+        }
+
+        function stopRecording() {
+            clearInterval(timerInterval);
+            ui.mic.classList.remove('recording-active');
+            
+            // Здесь будет логика MediaRecorder.stop() и отправка файла в Supabase Storage
+
+            // Переход к следующему вопросу
+            currentIndex++;
+            if (currentIndex < taskData.items.length) {
+                setTimeout(() => loadQuestion(currentIndex), 1000); // пауза перед след. вопросом
+            } else {
+                finishTest();
+            }
+        }
+
+        function formatTime(seconds) {
+            const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+            const s = (seconds % 60).toString().padStart(2, '0');
+            ui.timer.innerText = `00:${m}:${s}`;
+        }
+
+        function finishTest() {
+            alert("Test completed! Redirecting to results page...");
+            // window.location.href = `results.html?test_id=...`;
+        }
+
+        // Старт
+        initTask();
+    </script>
+</body>
+</html>
