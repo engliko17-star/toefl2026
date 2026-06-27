@@ -6,6 +6,7 @@
     <title>Interview — TOEFL Practice</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8f9fa; }
@@ -34,43 +35,82 @@
             <p class="text-sm text-gray-500 mt-1">Simulate a live interview environment. Watch the video question and respond within 45 seconds.</p>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            
-            <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col">
-                <div class="flex justify-between items-start mb-2">
-                    <div>
-                        <span class="text-[10px] font-bold tracking-wider text-sky-500 uppercase">Set 1</span>
-                        <div class="flex items-center text-teal-500 text-[11px] font-bold mt-1">
-                            <i data-lucide="check" class="w-3 h-3 mr-1"></i> Completed
-                        </div>
-                    </div>
-                    <div class="w-10 h-10 rounded-full border-2 border-amber-400 flex items-center justify-center text-xs font-bold text-slate-800">
-                        72%
-                    </div>
-                </div>
-                <h3 class="font-bold text-slate-800 mb-1 mt-2">Personal Introduction</h3>
-                <p class="text-xs text-gray-400 mb-4">4 Questions • 45s Response</p>
-                <button class="mt-auto w-full py-2.5 bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-bold rounded-xl flex items-center justify-center transition">
-                    Review Results <i data-lucide="eye" class="w-3.5 h-3.5 ml-1.5"></i>
-                </button>
+        <div id="tests-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
             </div>
 
-            <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col">
-                <div class="flex justify-between items-start mb-2">
-                    <span class="text-[10px] font-bold tracking-wider text-sky-500 uppercase">Set 2</span>
-                    <span class="text-[10px] font-bold text-gray-300">New</span>
-                </div>
-                <h3 class="font-bold text-slate-800 mb-1 mt-6">Academic Interests</h3>
-                <p class="text-xs text-gray-400 mb-4">4 Questions • 45s Response</p>
-                <a href="speaking_player.html?type=interview&id=1" class="mt-auto w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl flex items-center justify-center transition">
-                    Start Practice &rarr;
-                </a>
-            </div>
-
-        </div>
     </main>
 
-    <script>lucide.createIcons();</script>
+    <script>
+        // Инициализация иконок
+        lucide.createIcons();
+
+        // Инициализация Supabase
+        const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // Функция для загрузки тестов из базы данных
+        async function loadTests() {
+            const container = document.getElementById('tests-container');
+            container.innerHTML = '<p class="text-sm text-gray-500 col-span-full">Loading tests from database...</p>';
+
+            try {
+                // Запрашиваем тесты, где тип = interview
+                const { data: tests, error } = await supabaseClient
+                    .from('speaking_tests')
+                    .select('*')
+                    .eq('type', 'interview') 
+                    .order('created_at', { ascending: true }); // Сортируем от старых к новым (Set 1, Set 2...)
+
+                if (error) throw error;
+
+                // Очищаем надпись загрузки
+                container.innerHTML = '';
+
+                // Если тестов пока нет
+                if (!tests || tests.length === 0) {
+                    container.innerHTML = `
+                        <div class="col-span-full bg-white p-8 rounded-2xl border border-gray-100 text-center">
+                            <i data-lucide="video" class="w-8 h-8 text-gray-300 mx-auto mb-3"></i>
+                            <p class="text-sm text-gray-500">No interview tests available yet. Add them in Supabase!</p>
+                        </div>
+                    `;
+                    lucide.createIcons();
+                    return;
+                }
+
+                // Перебираем полученные тесты и создаем HTML-карточки
+                tests.forEach((test, index) => {
+                    const setNumber = index + 1;
+                    
+                    const cardHTML = `
+                        <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col hover:border-sky-100 transition">
+                            <div class="flex justify-between items-start mb-2">
+                                <span class="text-[10px] font-bold tracking-wider text-sky-500 uppercase bg-sky-50 px-2 py-1 rounded">Set ${setNumber}</span>
+                                <span class="text-[10px] font-bold text-gray-400 bg-gray-50 px-2 py-1 rounded">Practice</span>
+                            </div>
+                            <h3 class="font-bold text-slate-800 mb-1 mt-4">${test.title}</h3>
+                            <p class="text-xs text-gray-400 mb-5">${test.total_questions} Questions • 45s Response</p>
+                            
+                            <a href="speaking_player.html?type=interview&id=${test.id}" class="mt-auto w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl flex items-center justify-center transition shadow-sm">
+                                Start Practice <i data-lucide="arrow-right" class="w-3.5 h-3.5 ml-1.5"></i>
+                            </a>
+                        </div>
+                    `;
+                    container.innerHTML += cardHTML;
+                });
+
+                // Перерисовываем иконки для новых карточек
+                lucide.createIcons();
+
+            } catch (err) {
+                console.error("Error loading tests:", err.message);
+                container.innerHTML = '<p class="text-sm text-rose-500 col-span-full">Failed to load tests. Please check console.</p>';
+            }
+        }
+
+        // Запускаем загрузку сразу после построения DOM
+        document.addEventListener('DOMContentLoaded', loadTests);
+    </script>
 </body>
 </html>
-
