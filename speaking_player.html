@@ -6,6 +6,8 @@
     <title>Practice Player</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Подключаем Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #ffffff; }
@@ -21,27 +23,39 @@
 </head>
 <body class="min-h-screen flex flex-col items-center justify-center p-4">
 
+    <!-- Стартовый оверлей для разрешения аудио -->
+    <div id="startOverlay" class="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center transition-opacity duration-300">
+        <h2 class="text-2xl font-bold mb-2 text-slate-800" id="overlayTitle">Loading Test...</h2>
+        <p class="text-gray-500 mb-8 text-center max-w-sm text-sm" id="overlayDesc">Please wait while we fetch the questions.</p>
+        <button id="startBtn" class="bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-indigo-700 transition shadow-md flex items-center hidden">
+            Start Practice <i data-lucide="play" class="w-4 h-4 ml-2"></i>
+        </button>
+    </div>
+
+    <!-- Верхняя панель -->
     <div class="fixed top-0 left-0 right-0 p-4 flex justify-between items-center max-w-4xl mx-auto w-full bg-white z-10">
         <h1 class="text-lg font-bold text-slate-800" id="taskInstruction">Listen and repeat only once.</h1>
-        <div class="text-sm font-semibold text-gray-400">Task <span id="currentTaskNum">1</span> / <span id="totalTasks">8</span></div>
+        <div class="text-sm font-semibold text-gray-400">Task <span id="currentTaskNum">1</span> / <span id="totalTasks">...</span></div>
     </div>
 
+    <!-- Контейнер для медиа (Картинка/Видео) -->
     <div class="w-full max-w-md mx-auto mt-16 mb-24 flex flex-col items-center">
-        <div id="mediaContainer" class="w-full aspect-square border-2 border-gray-200 rounded-xl overflow-hidden bg-gray-50 flex items-center justify-center">
-            <img src="https://placehold.co/600x600/f3f4f6/a1a1aa?text=Image+Loading..." alt="Task Media" class="object-cover w-full h-full" id="taskImage">
+        <div id="mediaContainer" class="w-full aspect-square border-2 border-gray-100 rounded-2xl overflow-hidden bg-gray-50 flex items-center justify-center shadow-sm">
+            <img src="https://placehold.co/600x600/f3f4f6/a1a1aa?text=Loading..." alt="Task Media" class="object-cover w-full h-full" id="taskImage">
         </div>
     </div>
 
-    <div class="fixed bottom-10 left-1/2 transform -translate-x-1/2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden flex flex-col">
-        <div class="bg-black text-white text-[10px] font-bold text-center py-1 tracking-widest uppercase">
-            Response Time
+    <!-- Таймер и микрофон -->
+    <div class="fixed bottom-10 left-1/2 transform -translate-x-1/2 w-64 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden flex flex-col">
+        <div id="statusBanner" class="bg-slate-900 text-white text-[10px] font-bold text-center py-1.5 tracking-widest uppercase transition-colors">
+            Listen
         </div>
-        <div class="flex items-center justify-center p-3 space-x-3">
-            <div id="micIcon" class="w-8 h-8 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center transition-all">
-                <i data-lucide="mic" class="w-4 h-4"></i>
+        <div class="flex items-center justify-center p-4 space-x-4">
+            <div id="micIcon" class="w-10 h-10 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center transition-all">
+                <i data-lucide="mic" class="w-5 h-5"></i>
             </div>
-            <div id="timerDisplay" class="text-xl font-mono font-bold text-slate-800">
-                00:00:08
+            <div id="timerDisplay" class="text-2xl font-mono font-bold text-slate-800">
+                00:00
             </div>
         </div>
     </div>
@@ -51,65 +65,135 @@
     <script>
         lucide.createIcons();
 
-        // --- МОДЕЛЬ ДАННЫХ (Позже это будет приходить из Supabase) ---
-        const taskData = {
-            type: 'listen_repeat', // Если будет 'interview', поменяем логику отображения
-            totalTime: 8,
-            items: [
-                { id: 1, image: 'https://placehold.co/600x600/f3f4f6/a1a1aa?text=Zoo+Image', audioUrl: 'placeholder.mp3' },
-                { id: 2, image: 'https://placehold.co/600x600/f3f4f6/a1a1aa?text=Next+Image', audioUrl: 'placeholder.mp3' }
-            ]
-        };
+        // 1. Инициализация Supabase
+        const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+        // 2. Получение параметров из URL (?type=...&id=...)
+        const urlParams = new URLSearchParams(window.location.search);
+        const testId = urlParams.get('id');
+        const testType = urlParams.get('type') || 'listen_repeat';
+
+        // Глобальные переменные
+        let questions = [];
         let currentIndex = 0;
-        let timeRemaining = taskData.totalTime;
+        let timeRemaining = 0;
         let timerInterval;
 
         const ui = {
+            overlay: document.getElementById('startOverlay'),
+            overlayTitle: document.getElementById('overlayTitle'),
+            overlayDesc: document.getElementById('overlayDesc'),
+            startBtn: document.getElementById('startBtn'),
             instruction: document.getElementById('taskInstruction'),
             currentNum: document.getElementById('currentTaskNum'),
             totalNum: document.getElementById('totalTasks'),
             image: document.getElementById('taskImage'),
             mic: document.getElementById('micIcon'),
             timer: document.getElementById('timerDisplay'),
+            statusBanner: document.getElementById('statusBanner'),
             audio: document.getElementById('taskAudio')
         };
 
-        // Инициализация
-        function initTask() {
-            ui.totalNum.innerText = taskData.items.length;
-            if (taskData.type === 'interview') {
-                ui.instruction.innerText = "Answer the interviewer's question.";
-                taskData.totalTime = 45; 
-                // Тут можно заменить тег <img> на <video>
+        // Загрузка вопросов из базы
+        async function fetchQuestions() {
+            if (!testId) {
+                ui.overlayTitle.innerText = "Error";
+                ui.overlayDesc.innerText = "No test ID provided in the URL.";
+                return;
             }
-            loadQuestion(currentIndex);
+
+            try {
+                const { data, error } = await supabaseClient
+                    .from('speaking_questions')
+                    .select('*')
+                    .eq('test_id', testId)
+                    .order('order_num', { ascending: true });
+
+                if (error) throw error;
+                
+                if (data.length === 0) {
+                    ui.overlayTitle.innerText = "Empty Test";
+                    ui.overlayDesc.innerText = "There are no questions in this test yet.";
+                    return;
+                }
+
+                questions = data;
+                
+                // Подготавливаем интерфейс
+                ui.totalNum.innerText = questions.length;
+                if (testType === 'interview') {
+                    ui.instruction.innerText = "Answer the interviewer's question.";
+                }
+
+                // Включаем кнопку старта
+                ui.overlayTitle.innerText = "Ready to Start";
+                ui.overlayDesc.innerText = "Make sure your volume is up. The audio will play automatically.";
+                ui.startBtn.classList.remove('hidden');
+
+            } catch (err) {
+                console.error(err);
+                ui.overlayTitle.innerText = "Error Loading Test";
+                ui.overlayDesc.innerText = "Could not connect to the database.";
+            }
         }
 
+        // Клик по кнопке старта
+        ui.startBtn.addEventListener('click', () => {
+            ui.overlay.classList.add('opacity-0', 'pointer-events-none');
+            setTimeout(() => {
+                loadQuestion(currentIndex);
+            }, 300); // Небольшая задержка для плавности
+        });
+
+        // Загрузка конкретного вопроса
         function loadQuestion(index) {
-            const item = taskData.items[index];
+            const item = questions[index];
             ui.currentNum.innerText = index + 1;
-            ui.image.src = item.image;
             
-            // Сброс UI
+            // Если есть картинка, ставим её. Иначе - плейсхолдер.
+            ui.image.src = item.media_url || `https://placehold.co/600x600/f3f4f6/a1a1aa?text=Question+${index + 1}`;
+            
+            // Сброс UI перед проигрыванием аудио
             ui.mic.classList.remove('recording-active');
             ui.mic.classList.add('bg-gray-100', 'text-gray-400');
-            formatTime(taskData.totalTime);
+            ui.statusBanner.innerText = "Listen";
+            ui.statusBanner.classList.replace('bg-red-500', 'bg-slate-900');
+            
+            // Задаем время (если в базе пусто, ставим 8 сек по умолчанию)
+            const timeLimit = item.time_limit || 8;
+            formatTime(timeLimit);
 
-            // Симуляция: Ждем 1 секунду, "играем аудио", потом начинаем запись
-            // В реальности тут будет: ui.audio.src = item.audioUrl; ui.audio.play(); ui.audio.onended = startRecording;
-            setTimeout(() => {
-                startRecording();
-            }, 2000); 
+            // Работа с аудио
+            if (item.audio_prompt_url) {
+                ui.audio.src = item.audio_prompt_url;
+                ui.audio.play().catch(err => {
+                    console.error("Audio playback failed:", err);
+                    // Если вдруг аудио не сработало, запускаем запись сразу
+                    startRecording(timeLimit);
+                });
+
+                // Когда аудио заканчивается, начинаем запись
+                ui.audio.onended = () => {
+                    startRecording(timeLimit);
+                };
+            } else {
+                // Если аудио нет, сразу начинаем запись
+                setTimeout(() => startRecording(timeLimit), 1000);
+            }
         }
 
-        function startRecording() {
-            // Визуально включаем микрофон
+        // Начало записи и таймера
+        function startRecording(limit) {
+            ui.statusBanner.innerText = "Recording";
+            ui.statusBanner.classList.replace('bg-slate-900', 'bg-red-500');
             ui.mic.classList.remove('bg-gray-100', 'text-gray-400');
             ui.mic.classList.add('recording-active');
             
-            // Запуск таймера
-            timeRemaining = taskData.totalTime;
+            timeRemaining = limit;
+            formatTime(timeRemaining);
+
             timerInterval = setInterval(() => {
                 timeRemaining--;
                 formatTime(timeRemaining);
@@ -118,38 +202,41 @@
                     stopRecording();
                 }
             }, 1000);
-
-            // Здесь будет логика MediaRecorder.start()
         }
 
+        // Остановка записи и переход к следующему
         function stopRecording() {
             clearInterval(timerInterval);
             ui.mic.classList.remove('recording-active');
+            ui.mic.classList.add('bg-gray-100', 'text-gray-400');
+            ui.statusBanner.innerText = "Saving...";
+            ui.statusBanner.classList.replace('bg-red-500', 'bg-slate-500');
             
-            // Здесь будет логика MediaRecorder.stop() и отправка файла в Supabase Storage
+            // Здесь в будущем будет логика сохранения аудио в Supabase Storage
 
-            // Переход к следующему вопросу
             currentIndex++;
-            if (currentIndex < taskData.items.length) {
-                setTimeout(() => loadQuestion(currentIndex), 1000); // пауза перед след. вопросом
+            if (currentIndex < questions.length) {
+                setTimeout(() => loadQuestion(currentIndex), 1500); // пауза перед след. вопросом
             } else {
-                finishTest();
+                setTimeout(finishTest, 1000);
             }
         }
 
+        // Форматирование времени
         function formatTime(seconds) {
             const m = Math.floor(seconds / 60).toString().padStart(2, '0');
             const s = (seconds % 60).toString().padStart(2, '0');
-            ui.timer.innerText = `00:${m}:${s}`;
+            ui.timer.innerText = `${m}:${s}`;
         }
 
+        // Завершение
         function finishTest() {
-            alert("Test completed! Redirecting to results page...");
-            // window.location.href = `results.html?test_id=...`;
+            alert("Test completed! Excellent work.");
+            window.location.href = 'speaking.html'; // Возвращаем в меню
         }
 
-        // Старт
-        initTask();
+        // Запуск при загрузке страницы
+        document.addEventListener('DOMContentLoaded', fetchQuestions);
     </script>
 </body>
 </html>
