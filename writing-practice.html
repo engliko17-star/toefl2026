@@ -44,7 +44,7 @@
                 
                 <div class="flex items-center space-x-1.5 text-sm font-bold text-slate-700 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-lg shadow-sm">
                     <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Travel%20and%20places/Stopwatch.png" class="w-4 h-4" alt="Clock" />
-                    <span id="timerDisplay" class="tabular-nums tracking-wide">00:00</span>
+                    <span id="timerDisplay" class="tabular-nums tracking-wide transition-colors duration-300">00:00</span>
                 </div>
             </div>
 
@@ -70,6 +70,17 @@
         </div>
     </main>
 
+    <div id="timeModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-4 transition-opacity">
+        <div class="bg-white rounded-[2rem] p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center transform scale-100 transition-transform">
+            <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Travel%20and%20places/Alarm%20Clock.png" class="w-24 h-24 mb-5 drop-shadow-md" alt="Time up" />
+            <h3 class="text-2xl font-black text-slate-800 mb-2">Время вышло!</h3>
+            <p class="text-slate-500 text-sm font-medium mb-8 leading-relaxed">Отведенное на это задание время закончилось. Таймер продолжит идти в минус, чтобы вы увидели, сколько дополнительного времени вам потребовалось.</p>
+            <button onclick="continueAfterTimeUp()" class="w-full bg-slate-900 text-white font-bold py-3.5 rounded-xl hover:bg-slate-800 transition shadow-md active:scale-[0.98]">
+                Продолжить
+            </button>
+        </div>
+    </div>
+
     <script>
         const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         const urlParams = new URLSearchParams(window.location.search);
@@ -85,32 +96,73 @@
         let wordCountStates = {}; 
         let currentUserId = null;
 
-        // Переменные для секундомера
+        // --- ЛОГИКА ТАЙМЕРА ---
         let timerInterval = null;
-        let elapsedSeconds = 0;
+        let timeRemaining = 0; 
+        let timeExpiredModalShown = false;
 
-        document.addEventListener('DOMContentLoaded', async () => {
-            await fetchTestContext();
-        });
+        function initTimer() {
+            // Устанавливаем время в зависимости от типа задания (в секундах)
+            if (taskType === 'sentence') {
+                timeRemaining = 6 * 60;
+            } else if (taskType === 'email') {
+                timeRemaining = 7 * 60;
+            } else if (taskType === 'academic') {
+                timeRemaining = 10 * 60;
+            } else {
+                timeRemaining = 6 * 60; // fallback
+            }
+        }
 
-        // ЛОГИКА СЕКУНДОМЕРА
-        function startStopwatch() {
+        function startTimer() {
             if (timerInterval) clearInterval(timerInterval);
+            
+            // Сразу показываем стартовое время
+            const display = document.getElementById('timerDisplay');
+            display.innerText = formatTime(timeRemaining);
+            
             timerInterval = setInterval(() => {
-                elapsedSeconds++;
-                document.getElementById('timerDisplay').innerText = formatTime(elapsedSeconds);
+                timeRemaining--;
+                display.innerText = formatTime(timeRemaining);
+                
+                // Визуальный сигнал, если ушли в минус
+                if (timeRemaining < 0) {
+                    display.classList.remove('text-slate-700');
+                    display.classList.add('text-red-500');
+                }
+
+                // Показываем окно ровно на 00:00 (один раз)
+                if (timeRemaining === 0 && !timeExpiredModalShown) {
+                    showTimeExpiredModal();
+                }
             }, 1000);
         }
 
-        function stopStopwatch() {
+        function stopTimer() {
             if (timerInterval) clearInterval(timerInterval);
         }
 
         function formatTime(seconds) {
-            const m = Math.floor(seconds / 60).toString().padStart(2, '0');
-            const s = (seconds % 60).toString().padStart(2, '0');
-            return `${m}:${s}`;
+            const isNegative = seconds < 0;
+            const absSeconds = Math.abs(seconds);
+            const m = Math.floor(absSeconds / 60).toString().padStart(2, '0');
+            const s = (absSeconds % 60).toString().padStart(2, '0');
+            return isNegative ? `-${m}:${s}` : `${m}:${s}`;
         }
+
+        function showTimeExpiredModal() {
+            timeExpiredModalShown = true;
+            const modal = document.getElementById('timeModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function continueAfterTimeUp() {
+            const modal = document.getElementById('timeModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+        // --- КОНЕЦ ЛОГИКИ ТАЙМЕРА ---
 
         function shuffleArray(array) {
             let shuffled = [...array];
@@ -120,6 +172,10 @@
             }
             return shuffled;
         }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            await fetchTestContext();
+        });
 
         async function fetchTestContext() {
             try {
@@ -171,7 +227,9 @@
             } else {
                 if (topNav) topNav.classList.remove('hidden');
                 
-                startStopwatch();
+                // Инициализация и запуск таймера
+                initTimer();
+                startTimer();
                 
                 testQuestions.forEach((q, index) => {
                     wordCountStates[index] = true; 
@@ -269,21 +327,30 @@
                 }
             }
 
-            // БЕРЕМ ВРЕМЯ ИЗ БАЗЫ ДАННЫХ
+            // ЧТЕНИЕ СОХРАНЕННОГО ВРЕМЕНИ (теперь это time_left_seconds)
             let savedTimeStr = null;
-            if (studentResponses.length > 0 && studentResponses[0].time_spent_seconds !== undefined) {
-                savedTimeStr = studentResponses[0].time_spent_seconds;
+            if (studentResponses.length > 0 && studentResponses[0].time_left_seconds !== undefined) {
+                savedTimeStr = studentResponses[0].time_left_seconds;
             }
 
             let timeCardHtml = '';
             if (savedTimeStr !== null) {
-                const formattedSavedTime = formatTime(parseInt(savedTimeStr, 10));
+                const timeNum = parseInt(savedTimeStr, 10);
+                const isOvertime = timeNum < 0; // Проверяем, не ушел ли ученик в минус
+                const formattedSavedTime = formatTime(timeNum);
+                
+                // Динамические классы для карточки времени
+                const bgColorClass = isOvertime ? 'bg-rose-50 border-rose-100' : 'bg-indigo-50 border-indigo-100';
+                const iconColorClass = isOvertime ? 'text-rose-600' : 'text-indigo-600';
+                const textColorClass = isOvertime ? 'text-rose-700' : 'text-indigo-700';
+                const labelText = isOvertime ? 'Extra Time Used' : 'Time Left';
+
                 timeCardHtml = `
-                    <div class="bg-indigo-50 border border-indigo-100 rounded-3xl p-5 flex flex-col items-center justify-center shadow-sm shrink-0">
-                        <span class="text-[10px] font-bold text-indigo-600 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                            <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Travel%20and%20places/Stopwatch.png" class="w-3 h-3" alt="Clock" /> Time Spent
+                    <div class="${bgColorClass} border rounded-3xl p-5 flex flex-col items-center justify-center shadow-sm shrink-0">
+                        <span class="text-[10px] font-bold ${iconColorClass} uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                            <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Travel%20and%20places/Stopwatch.png" class="w-3 h-3" alt="Clock" /> ${labelText}
                         </span>
-                        <span class="text-2xl font-black text-indigo-700">${formattedSavedTime}</span>
+                        <span class="text-2xl font-black ${textColorClass}">${formattedSavedTime}</span>
                     </div>
                 `;
             }
@@ -627,7 +694,7 @@
         async function submitEntireTest() {
             if (!currentUserId) return alert("Please log in first.");
 
-            stopStopwatch();
+            stopTimer();
 
             let payloads = [];
 
@@ -639,18 +706,17 @@
                     alert(`Question ${i + 1} is incomplete. Please finish it before submitting the test.`);
                     showSlide(i); 
                     
-                    startStopwatch();
+                    startTimer();
                     return;
                 }
 
-                // ДОБАВЛЯЕМ ВРЕМЯ В PAYLOAD ДЛЯ БАЗЫ
                 payloads.push({
                     task_id: q.id,
                     task_type: taskType,
                     response_content: ans,
                     user_id: currentUserId,
                     score: calculateScore(q, ans),
-                    time_spent_seconds: elapsedSeconds 
+                    time_left_seconds: timeRemaining // Теперь мы сохраняем оставшееся время (может быть с минусом)
                 });
             }
 
@@ -662,7 +728,7 @@
                 window.location.reload();
             } catch (err) {
                 alert("Error saving test: " + err.message);
-                startStopwatch();
+                startTimer();
             } finally {
                 document.body.style.cursor = 'default';
             }
