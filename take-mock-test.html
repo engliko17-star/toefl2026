@@ -200,29 +200,256 @@
             // Здесь добавь вызов setupInteractiveClicks() из твоеного академического файла
         }
 
+    <script>
+        lucide.createIcons();
+
+        // 1. Глобальные переменные состояния
+        let testInfo = null;
+        let questions = [];
+        let currentIdx = 0;
+        let userAnswers = {};
+        let timeRemaining = 0;
+        let timerInterval = null;
+        let currentUser = null;
+
+        // Элементы DOM
+        const timerText = document.getElementById('timerText');
+        const timerContainer = document.getElementById('globalTimer');
+        const leftPanel = document.getElementById('leftPanel');
+        const rightPanel = document.getElementById('rightPanel');
+        const leftContent = document.getElementById('leftContent');
+        const rightContent = document.getElementById('rightContent');
+        const btnNext = document.getElementById('btnNext');
+        const globalProgress = document.getElementById('globalProgress');
+
+        // Инициализация базы данных (используем твою надежную функцию)
+        function getDatabaseClient() {
+            if (typeof supabaseClient !== 'undefined') return supabaseClient;
+            if (typeof window !== 'undefined' && window.supabaseClient) return window.supabaseClient;
+            
+            const fallbackUrl = 'ТВОЙ_URL'; // ВСТАВЬ СВОИ ДАННЫЕ ИЛИ УДАЛИ ЭТИ СТРОКИ, ЕСЛИ ОНИ В auth.js
+            const fallbackKey = 'ТВОЙ_KEY';
+            return window.supabase.createClient(fallbackUrl, fallbackKey);
+        }
+        const db = getDatabaseClient();
+
+        // 2. Запуск приложения (с проверкой авторизации)
+        window.addEventListener('DOMContentLoaded', async () => {
+            try {
+                if (typeof requireAuth !== 'function') throw new Error("Функция requireAuth не найдена.");
+                currentUser = await requireAuth();
+                if (currentUser) bootTest();
+            } catch (err) {
+                console.error("Auth error:", err);
+                document.getElementById('testTitle').innerText = "Auth Error";
+            }
+        });
+
+        async function bootTest() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const testId = urlParams.get('id');
+
+            if (!testId) {
+                document.getElementById('testTitle').innerText = "No Test ID";
+                return;
+            }
+
+            try {
+                // Получаем инфу о тесте
+                const { data: testData, error: testError } = await db.from('mock_tests').select('*').eq('id', testId).single();
+                if (testError) throw testError;
+                
+                testInfo = testData;
+                timeRemaining = testInfo.total_time_seconds || 3600;
+                document.getElementById('testTitle').innerText = testInfo.title;
+
+                // Получаем все вопросы
+                const { data: qData, error: qError } = await db.from('mock_questions')
+                                                .select('*')
+                                                .eq('test_id', testId)
+                                                .order('order_index', { ascending: true });
+                if (qError) throw qError;
+                
+                questions = qData;
+                
+                if (questions.length === 0) {
+                    document.getElementById('testTitle').innerText = "Тест пуст";
+                    return;
+                }
+
+                startTimer();
+                renderCurrentQuestion();
+            } catch (err) {
+                console.error("Ошибка загрузки:", err);
+                document.getElementById('testTitle').innerText = "Error loading data";
+            }
+        }
+
+        // 3. Логика Таймера
+        function startTimer() {
+            timerInterval = setInterval(() => {
+                if (timeRemaining <= 0) {
+                    clearInterval(timerInterval);
+                    forceSubmitTest(); 
+                    return;
+                }
+                
+                timeRemaining--;
+                const minutes = Math.floor(timeRemaining / 60);
+                const seconds = timeRemaining % 60;
+                timerText.innerText = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+                if (timeRemaining < 180) {
+                    timerContainer.classList.add('timer-warning', 'border-red-300', 'bg-red-50');
+                    timerText.classList.replace('text-slate-700', 'text-red-600');
+                    timerContainer.querySelector('i').classList.replace('text-slate-500', 'text-red-500');
+                }
+            }, 1000);
+        }
+
+        // 4. Роутер отображения
+        function renderCurrentQuestion() {
+            const q = questions[currentIdx];
+            globalProgress.innerText = `${currentIdx + 1} / ${questions.length}`;
+
+            // Сбрасываем классы колонок
+            leftPanel.className = "w-full md:w-1/2 bg-white border-b md:border-b-0 md:border-r border-gray-200 p-6 md:p-8 lg:p-12 overflow-y-auto h-full custom-scrollbar transition-all duration-300";
+            rightPanel.classList.remove('hidden');
+            rightPanel.className = "w-full md:w-1/2 bg-[#f8f9fa] p-6 md:p-8 lg:p-12 overflow-y-auto h-full custom-scrollbar transition-all duration-300";
+
+            if (q.stage === 'sentence') {
+                renderSentenceLayout(q);
+            } else if (q.stage === 'daily') {
+                renderDailyLayout(q);
+            } else if (q.stage === 'academic') {
+                renderAcademicLayout(q);
+            }
+
+            lucide.createIcons();
+        }
+
+        // --- ФУНКЦИИ ОТРИСОВКИ ---
+
+        function renderSentenceLayout(q) {
+            rightPanel.classList.add('hidden');
+            leftPanel.classList.replace('md:w-1/2', 'w-full');
+            leftPanel.classList.add('flex', 'items-center', 'justify-center', 'bg-[#f8f9fa]');
+
+            // БЕРЕМ ТЕКСТ ИЗ question_text (так как в базе ты сохранила его туда)
+            const sourceText = q.question_text || "";
+
+            // Интегрированный алгоритм парсинга скобок
+            const htmlWithInputs = sourceText.replace(/\S*(?:\[.\])+\S*/g, function(match) {
+                let wordHtml = match.replace(/((?:\[.\])+)/g, function(bracketsBlock) {
+                    const letters = bracketsBlock.match(/\[(.)\]/g).map(m => m.replace(/[\[\]]/g, ''));
+                    const inputsHtml = letters.map(letter => {
+                        return `<input type="text" maxlength="1" data-answer="${letter}" class="letter-input" autocomplete="off">`;
+                    }).join('');
+                    return `<span class="letters-container">${inputsHtml}</span>`;
+                });
+                return `<span class="puzzle-word">${wordHtml}</span>`;
+            });
+
+            leftContent.innerHTML = `
+                <div class="bg-white p-10 rounded-3xl border border-gray-100 shadow-sm max-w-3xl w-full text-[16px] leading-[2.3]">
+                    ${htmlWithInputs}
+                </div>
+            `;
+            
+            // Активируем логику переключения фокуса между буквами
+            setupInputs();
+        }
+
+        function setupInputs() {
+            const inputs = document.querySelectorAll('.letter-input');
+            if(inputs.length > 0) inputs[0].focus(); // Автофокус на первую букву
+
+            inputs.forEach((input, index) => {
+                input.addEventListener('input', function() {
+                    this.value = this.value.replace(/[^a-zA-Z]/g, '').toLowerCase();
+                    if (this.value.length === 1 && index < inputs.length - 1) {
+                        inputs[index + 1].focus();
+                    }
+                });
+                input.addEventListener('keydown', function(e) {
+                    if (e.key === 'Backspace' && this.value === '' && index > 0) {
+                        inputs[index - 1].focus();
+                    }
+                });
+            });
+        }
+
+        function renderDailyLayout(q) {
+            leftContent.innerHTML = `
+                <h2 class="text-xl font-bold mb-4">Reading Passage</h2>
+                <div class="bg-slate-50 p-6 rounded-xl border border-slate-200">
+                    ${q.passage_text || ""} 
+                </div>
+            `;
+            renderStandardQuiz(q);
+        }
+
+        function renderAcademicLayout(q) {
+             leftContent.innerHTML = `
+                <h2 class="text-xl font-bold mb-4">Academic Text</h2>
+                <div class="leading-relaxed space-y-4">
+                    ${q.passage_text || ""} 
+                </div>
+            `;
+            renderStandardQuiz(q);
+        }
+
         function renderStandardQuiz(q) {
-            const options = JSON.parse(q.options);
+            let options = {};
+            try {
+                // Защита от ошибки, если options пустой или кривой JSON
+                options = q.options ? (typeof q.options === 'string' ? JSON.parse(q.options) : q.options) : {};
+            } catch (e) {
+                console.error("Ошибка парсинга options:", e);
+            }
+
             let optionsHtml = '';
             
-            for (const [key, value] of Object.entries(options)) {
-                optionsHtml += `
-                    <label class="flex items-center p-3.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 cursor-pointer text-sm">
-                        <input type="radio" name="mock_option" value="${key}" class="w-4 h-4 text-indigo-600 mr-3">
-                        <span>${value}</span>
-                    </label>
-                `;
+            // Если options это массив (как ты писала ["A", "B"])
+            if (Array.isArray(options)) {
+                options.forEach((val, idx) => {
+                    optionsHtml += `
+                        <label class="flex items-center p-3.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 cursor-pointer text-sm">
+                            <input type="radio" name="mock_option" value="${idx}" class="w-4 h-4 text-indigo-600 mr-3">
+                            <span>${val}</span>
+                        </label>
+                    `;
+                });
+            } else {
+                // Если options это объект
+                for (const [key, value] of Object.entries(options)) {
+                    optionsHtml += `
+                        <label class="flex items-center p-3.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 cursor-pointer text-sm">
+                            <input type="radio" name="mock_option" value="${key}" class="w-4 h-4 text-indigo-600 mr-3">
+                            <span>${value}</span>
+                        </label>
+                    `;
+                }
             }
 
             rightContent.innerHTML = `
-                <span class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md uppercase tracking-wider mb-4 inline-block">${q.category}</span>
-                <h3 class="text-base font-bold text-slate-900 mb-6">${q.question_text}</h3>
+                <span class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md uppercase tracking-wider mb-4 inline-block">${q.category || 'Practice'}</span>
+                <h3 class="text-base font-bold text-slate-900 mb-6">${q.question_text || ""}</h3>
                 <div class="space-y-3">${optionsHtml}</div>
             `;
         }
 
         // 5. Навигация
         btnNext.addEventListener('click', () => {
-            // Здесь нужна логика сохранения ответа в объект userAnswers перед переходом
+            // Сохранение ответа перед переходом
+            if (questions[currentIdx].stage === 'sentence') {
+                const inputs = document.querySelectorAll('.letter-input');
+                let wordAnswer = Array.from(inputs).map(i => i.value).join('');
+                userAnswers[questions[currentIdx].id] = wordAnswer;
+            } else {
+                const selected = document.querySelector('input[name="mock_option"]:checked');
+                if (selected) userAnswers[questions[currentIdx].id] = selected.value;
+            }
             
             if (currentIdx < questions.length - 1) {
                 currentIdx++;
@@ -234,12 +461,10 @@
 
         function forceSubmitTest() {
             clearInterval(timerInterval);
-            alert("Тест завершен! Переходим к подсчету результатов.");
-            // Отправка результатов в базу
+            console.log("Собранные ответы:", userAnswers);
+            alert("Тест завершен! Проверь консоль браузера (F12), чтобы увидеть сохраненные ответы.");
+            // Тут потом напишешь отправку в БД
         }
-
-        // Запускаем
-        // window.onload = bootTest; 
     </script>
 </body>
 </html>
