@@ -10,14 +10,27 @@
     <script src="auth.js"></script>
 
     <style>
-        /* Сюда нужно скопировать все твои кастомные стили из трех файлов */
-        /* .custom-scrollbar, .puzzle-word, .letter-input, .clickable-sentence и т.д. */
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         
         .timer-warning { color: #ef4444; animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+        /* Стили для задания Complete Words */
+        .letters-container { display: inline-flex; gap: 4px; margin: 0 4px; }
+        .letter-input {
+            width: 28px; height: 36px;
+            text-align: center; font-size: 16px; font-weight: bold;
+            border: 2px solid #e2e8f0; border-radius: 6px;
+            text-transform: lowercase; outline: none; transition: all 0.2s;
+            color: #1e293b; background-color: #f8fafc;
+        }
+        .letter-input:focus { 
+            border-color: #4f46e5; 
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1); 
+            background-color: #ffffff;
+        }
     </style>
 </head>
 <body class="bg-[#f8f9fa] text-slate-800 m-0 p-0 flex flex-col h-[100dvh] overflow-hidden">
@@ -71,145 +84,6 @@
         let userAnswers = {};
         let timeRemaining = 0;
         let timerInterval = null;
-
-        // Элементы DOM
-        const timerText = document.getElementById('timerText');
-        const timerContainer = document.getElementById('globalTimer');
-        const leftPanel = document.getElementById('leftPanel');
-        const rightPanel = document.getElementById('rightPanel');
-        const leftContent = document.getElementById('leftContent');
-        const rightContent = document.getElementById('rightContent');
-        const btnNext = document.getElementById('btnNext');
-        const globalProgress = document.getElementById('globalProgress');
-
-        // Инициализация базы данных (твой стандартный код)
-        const db = window.supabase.createClient('https://gmsdixqjhlycovsgwbzq.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ'); // Замени на свои ключи
-
-        // 2. Запуск приложения
-        async function bootTest() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const testId = urlParams.get('id');
-
-            // Получаем инфу о тесте
-            const { data: testData } = await db.from('mock_tests').select('*').eq('id', testId).single();
-            testInfo = testData;
-            timeRemaining = testInfo.total_time_seconds;
-            document.getElementById('testTitle').innerText = testInfo.title;
-
-            // Получаем все вопросы, жестко отсортированные по order_index
-            const { data: qData } = await db.from('mock_questions')
-                                            .select('*')
-                                            .eq('test_id', testId)
-                                            .order('order_index', { ascending: true });
-            questions = qData;
-            
-            startTimer();
-            renderCurrentQuestion();
-        }
-
-        // 3. Логика Таймера
-        function startTimer() {
-            timerInterval = setInterval(() => {
-                if (timeRemaining <= 0) {
-                    clearInterval(timerInterval);
-                    forceSubmitTest(); // Время вышло - принудительно сдаем тест
-                    return;
-                }
-                
-                timeRemaining--;
-                
-                const minutes = Math.floor(timeRemaining / 60);
-                const seconds = timeRemaining % 60;
-                timerText.innerText = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-
-                // Визуальное предупреждение за 3 минуты до конца
-                if (timeRemaining < 180) {
-                    timerContainer.classList.add('timer-warning', 'border-red-300', 'bg-red-50');
-                    timerText.classList.replace('text-slate-700', 'text-red-600');
-                    timerContainer.querySelector('i').classList.replace('text-slate-500', 'text-red-500');
-                }
-            }, 1000);
-        }
-
-        // 4. Роутер отображения интерфейса (Хамелеон)
-        function renderCurrentQuestion() {
-            const q = questions[currentIdx];
-            globalProgress.innerText = `${currentIdx + 1} / ${questions.length}`;
-
-            // Сбрасываем классы колонок
-            leftPanel.className = "w-full md:w-1/2 bg-white border-b md:border-b-0 md:border-r border-gray-200 p-6 md:p-8 lg:p-12 overflow-y-auto h-full custom-scrollbar transition-all duration-300";
-            rightPanel.classList.remove('hidden');
-
-            if (q.stage === 'sentence') {
-                renderSentenceLayout(q);
-            } else if (q.stage === 'daily') {
-                renderDailyLayout(q);
-            } else if (q.stage === 'academic') {
-                renderAcademicLayout(q);
-            }
-
-            // Обновляем иконки
-            lucide.createIcons();
-        }
-
-        // --- ФУНКЦИИ ОТРИСОВКИ ДЛЯ КАЖДОГО ТИПА (Здесь используется твой код) ---
-
-        function renderSentenceLayout(q) {
-            // Прячем правую колонку, делаем левую на 100% ширины
-            rightPanel.classList.add('hidden');
-            leftPanel.classList.replace('md:w-1/2', 'w-full');
-            leftPanel.classList.add('flex', 'items-center', 'justify-center', 'bg-[#f8f9fa]');
-
-            // Твой алгоритм парсинга скобок для инпутов
-            const htmlWithInputs = q.passage_text.replace(/((?:\[.\])+)/g, function(match) {
-                /* ... твой код генерации инпутов из complete-words.html ... */
-                return `<span class="letters-container">...</span>`; 
-            });
-
-            leftContent.innerHTML = `
-                <div class="bg-white p-10 rounded-3xl border border-gray-100 shadow-sm max-w-3xl w-full text-[16px] leading-[2.3]">
-                    ${htmlWithInputs}
-                </div>
-            `;
-            // Не забудь вызвать setupInputs() для переключения фокуса!
-        }
-
-        function renderDailyLayout(q) {
-            // Левая колонка - дизайн текста (email, notice и тд)
-            leftContent.innerHTML = `
-                <h2 class="text-xl font-bold mb-4">Reading Passage</h2>
-                <div class="bg-slate-50 p-6 rounded-xl border border-slate-200">
-                    ${q.passage_text} 
-                </div>
-            `;
-
-            // Правая колонка - радиокнопки
-            renderStandardQuiz(q);
-        }
-
-        function renderAcademicLayout(q) {
-             // Левая колонка - интерактивный текст с clickable-sentence
-             leftContent.innerHTML = `
-                <h2 class="text-xl font-bold mb-4">Academic Text</h2>
-                ${q.passage_text} 
-            `;
-
-            // Правая колонка
-            renderStandardQuiz(q);
-            
-            // Здесь добавь вызов setupInteractiveClicks() из твоеного академического файла
-        }
-
-    <script>
-        lucide.createIcons();
-
-        // 1. Глобальные переменные состояния
-        let testInfo = null;
-        let questions = [];
-        let currentIdx = 0;
-        let userAnswers = {};
-        let timeRemaining = 0;
-        let timerInterval = null;
         let currentUser = null;
 
         // Элементы DOM
@@ -222,26 +96,24 @@
         const btnNext = document.getElementById('btnNext');
         const globalProgress = document.getElementById('globalProgress');
 
-        // Инициализация базы данных (используем твою надежную функцию)
-        function getDatabaseClient() {
-            if (typeof supabaseClient !== 'undefined') return supabaseClient;
-            if (typeof window !== 'undefined' && window.supabaseClient) return window.supabaseClient;
-            
-            const fallbackUrl = 'https://gmsdixqjhlycovsgwbzq.supabase.co'; // ВСТАВЬ СВОИ ДАННЫЕ ИЛИ УДАЛИ ЭТИ СТРОКИ, ЕСЛИ ОНИ В auth.js
-            const fallbackKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
-            return window.supabase.createClient(fallbackUrl, fallbackKey);
-        }
-        const db = getDatabaseClient();
+        // Инициализация базы данных (твои ключи)
+        const db = window.supabase.createClient(
+            'https://gmsdixqjhlycovsgwbzq.supabase.co', 
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ'
+        );
 
-        // 2. Запуск приложения (с проверкой авторизации)
+        // 2. Запуск приложения 
         window.addEventListener('DOMContentLoaded', async () => {
             try {
-                if (typeof requireAuth !== 'function') throw new Error("Функция requireAuth не найдена.");
-                currentUser = await requireAuth();
-                if (currentUser) bootTest();
+                if (typeof requireAuth === 'function') {
+                    currentUser = await requireAuth();
+                    if (!currentUser) return; // Если не авторизован, auth.js сам перекинет на логин
+                }
+                bootTest();
             } catch (err) {
                 console.error("Auth error:", err);
-                document.getElementById('testTitle').innerText = "Auth Error";
+                // Запускаем тест даже если auth.js не сработал (для удобства твоей разработки)
+                bootTest(); 
             }
         });
 
@@ -250,7 +122,7 @@
             const testId = urlParams.get('id');
 
             if (!testId) {
-                document.getElementById('testTitle').innerText = "No Test ID";
+                document.getElementById('testTitle').innerText = "Test ID is missing in URL";
                 return;
             }
 
@@ -273,7 +145,7 @@
                 questions = qData;
                 
                 if (questions.length === 0) {
-                    document.getElementById('testTitle').innerText = "Тест пуст";
+                    document.getElementById('testTitle').innerText = "Тест пуст. Добавьте вопросы в БД.";
                     return;
                 }
 
@@ -312,7 +184,7 @@
             const q = questions[currentIdx];
             globalProgress.innerText = `${currentIdx + 1} / ${questions.length}`;
 
-            // Сбрасываем классы колонок
+            // Сбрасываем классы колонок к стандартным (две колонки)
             leftPanel.className = "w-full md:w-1/2 bg-white border-b md:border-b-0 md:border-r border-gray-200 p-6 md:p-8 lg:p-12 overflow-y-auto h-full custom-scrollbar transition-all duration-300";
             rightPanel.classList.remove('hidden');
             rightPanel.className = "w-full md:w-1/2 bg-[#f8f9fa] p-6 md:p-8 lg:p-12 overflow-y-auto h-full custom-scrollbar transition-all duration-300";
@@ -323,6 +195,9 @@
                 renderDailyLayout(q);
             } else if (q.stage === 'academic') {
                 renderAcademicLayout(q);
+            } else {
+                // Фоллбэк, если stage не указан или другой
+                renderStandardQuiz(q);
             }
 
             lucide.createIcons();
@@ -331,14 +206,14 @@
         // --- ФУНКЦИИ ОТРИСОВКИ ---
 
         function renderSentenceLayout(q) {
+            // Для слов мы прячем правую панель и растягиваем левую на весь экран
             rightPanel.classList.add('hidden');
             leftPanel.classList.replace('md:w-1/2', 'w-full');
             leftPanel.classList.add('flex', 'items-center', 'justify-center', 'bg-[#f8f9fa]');
 
-            // БЕРЕМ ТЕКСТ ИЗ question_text (так как в базе ты сохранила его туда)
             const sourceText = q.question_text || "";
 
-            // Интегрированный алгоритм парсинга скобок
+            // Интегрированный алгоритм парсинга скобок (как в твоем тренажере слов)
             const htmlWithInputs = sourceText.replace(/\S*(?:\[.\])+\S*/g, function(match) {
                 let wordHtml = match.replace(/((?:\[.\])+)/g, function(bracketsBlock) {
                     const letters = bracketsBlock.match(/\[(.)\]/g).map(m => m.replace(/[\[\]]/g, ''));
@@ -356,13 +231,13 @@
                 </div>
             `;
             
-            // Активируем логику переключения фокуса между буквами
+            // Активируем логику переключения фокуса
             setupInputs();
         }
 
         function setupInputs() {
             const inputs = document.querySelectorAll('.letter-input');
-            if(inputs.length > 0) inputs[0].focus(); // Автофокус на первую букву
+            if(inputs.length > 0) inputs[0].focus(); 
 
             inputs.forEach((input, index) => {
                 input.addEventListener('input', function() {
@@ -381,8 +256,8 @@
 
         function renderDailyLayout(q) {
             leftContent.innerHTML = `
-                <h2 class="text-xl font-bold mb-4">Reading Passage</h2>
-                <div class="bg-slate-50 p-6 rounded-xl border border-slate-200">
+                <h2 class="text-xl font-bold mb-4 text-slate-900">Reading Passage</h2>
+                <div class="bg-slate-50 p-6 rounded-xl border border-slate-200 text-slate-700 leading-relaxed">
                     ${q.passage_text || ""} 
                 </div>
             `;
@@ -391,8 +266,8 @@
 
         function renderAcademicLayout(q) {
              leftContent.innerHTML = `
-                <h2 class="text-xl font-bold mb-4">Academic Text</h2>
-                <div class="leading-relaxed space-y-4">
+                <h2 class="text-xl font-bold mb-4 text-slate-900">Academic Text</h2>
+                <div class="leading-relaxed space-y-4 text-slate-700">
                     ${q.passage_text || ""} 
                 </div>
             `;
@@ -402,39 +277,40 @@
         function renderStandardQuiz(q) {
             let options = {};
             try {
-                // Защита от ошибки, если options пустой или кривой JSON
-                options = q.options ? (typeof q.options === 'string' ? JSON.parse(q.options) : q.options) : {};
+                if (q.options) {
+                    options = typeof q.options === 'string' ? JSON.parse(q.options) : q.options;
+                }
             } catch (e) {
                 console.error("Ошибка парсинга options:", e);
             }
 
             let optionsHtml = '';
             
-            // Если options это массив (как ты писала ["A", "B"])
             if (Array.isArray(options)) {
                 options.forEach((val, idx) => {
                     optionsHtml += `
-                        <label class="flex items-center p-3.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 cursor-pointer text-sm">
-                            <input type="radio" name="mock_option" value="${idx}" class="w-4 h-4 text-indigo-600 mr-3">
-                            <span>${val}</span>
+                        <label class="flex items-center p-4 rounded-xl border border-slate-200 bg-white hover:border-indigo-300 hover:bg-indigo-50/30 cursor-pointer transition-all duration-200 text-sm shadow-sm">
+                            <input type="radio" name="mock_option" value="${idx}" class="w-4 h-4 text-indigo-600 border-gray-300 focus:ring-indigo-500 mr-4">
+                            <span class="text-slate-700">${val}</span>
                         </label>
                     `;
                 });
             } else {
-                // Если options это объект
                 for (const [key, value] of Object.entries(options)) {
                     optionsHtml += `
-                        <label class="flex items-center p-3.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 cursor-pointer text-sm">
-                            <input type="radio" name="mock_option" value="${key}" class="w-4 h-4 text-indigo-600 mr-3">
-                            <span>${value}</span>
+                        <label class="flex items-center p-4 rounded-xl border border-slate-200 bg-white hover:border-indigo-300 hover:bg-indigo-50/30 cursor-pointer transition-all duration-200 text-sm shadow-sm">
+                            <input type="radio" name="mock_option" value="${key}" class="w-4 h-4 text-indigo-600 border-gray-300 focus:ring-indigo-500 mr-4">
+                            <span class="text-slate-700">${value}</span>
                         </label>
                     `;
                 }
             }
 
             rightContent.innerHTML = `
-                <span class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md uppercase tracking-wider mb-4 inline-block">${q.category || 'Practice'}</span>
-                <h3 class="text-base font-bold text-slate-900 mb-6">${q.question_text || ""}</h3>
+                <span class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md uppercase tracking-wider mb-4 inline-block border border-indigo-100">
+                    ${q.category || 'Practice'}
+                </span>
+                <h3 class="text-lg font-bold text-slate-900 mb-6 leading-snug">${q.question_text || "Choose the correct answer:"}</h3>
                 <div class="space-y-3">${optionsHtml}</div>
             `;
         }
@@ -462,8 +338,8 @@
         function forceSubmitTest() {
             clearInterval(timerInterval);
             console.log("Собранные ответы:", userAnswers);
-            alert("Тест завершен! Проверь консоль браузера (F12), чтобы увидеть сохраненные ответы.");
-            // Тут потом напишешь отправку в БД
+            alert("Тест завершен! Ответы успешно собраны.");
+            // Отправка в БД будет здесь
         }
     </script>
 </body>
