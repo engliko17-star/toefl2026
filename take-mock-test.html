@@ -82,8 +82,12 @@
 </head>
 <body class="bg-[#f8f9fa] text-slate-800 m-0 p-0 flex flex-col h-[100dvh] overflow-hidden">
 
-    <header class="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center shrink-0 z-10 shadow-sm">
+    <header id="mainHeader" class="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center shrink-0 z-10 shadow-sm relative">
         <div class="flex items-center space-x-4">
+            <button onclick="window.history.back()" class="text-slate-400 hover:text-slate-900 transition-colors flex items-center text-sm font-bold pt-0.5 cursor-pointer">
+                <i data-lucide="x" class="w-5 h-5 mr-1.5"></i> Exit
+            </button>
+            <div class="h-4 w-px bg-gray-200"></div>
             <h1 id="testTitle" class="text-sm font-bold text-slate-900">Loading Test...</h1>
         </div>
         
@@ -101,12 +105,18 @@
                 <span id="globalProgress">0 / 0</span>
             </div>
 
-            <div class="flex items-center space-x-3">
+            <div class="flex items-center space-x-2.5">
+                <button id="btnReview" class="px-3 py-2.5 rounded-xl bg-indigo-50 text-indigo-600 text-xs font-bold hover:bg-indigo-100 transition-all flex items-center cursor-pointer border border-indigo-100">
+                    <i data-lucide="layout-grid" class="w-4 h-4 mr-1.5"></i> Review
+                </button>
+                
+                <button id="btnBack" class="hidden px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 transition-all items-center shadow-xs cursor-pointer">
+                    <i data-lucide="chevron-left" class="w-4 h-4 mr-1"></i> Back
+                </button>
+
                 <button id="btnNext" class="px-5 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-indigo-600 hover:shadow-md transition-all flex items-center cursor-pointer">
                     Next 
-                    <svg class="w-4 h-4 ml-1 drop-shadow-sm" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"></path>
-                    </svg>
+                    <i data-lucide="chevron-right" class="w-4 h-4 ml-1 drop-shadow-sm"></i>
                 </button>
             </div>
         </div>
@@ -116,15 +126,33 @@
         
         <section id="leftPanel" class="w-full md:w-1/2 bg-white border-b md:border-b-0 md:border-r border-gray-200 p-6 md:p-8 overflow-y-auto h-full custom-scrollbar transition-all duration-300">
             <div id="leftContent" class="text-slate-700 leading-relaxed text-sm">
-                </div>
+            </div>
         </section>
 
         <section id="rightPanel" class="w-full md:w-1/2 bg-[#f8f9fa] p-6 md:p-8 lg:p-12 overflow-y-auto h-full custom-scrollbar transition-all duration-300">
             <div id="rightContent" class="w-full space-y-4">
-                </div>
+            </div>
         </section>
         
     </main>
+
+    <div id="reviewModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl p-6 w-full max-w-lg shadow-2xl">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-lg font-bold text-slate-900">Review Questions</h2>
+                <button onclick="toggleReviewModal()" class="text-slate-400 hover:text-slate-900"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div id="reviewGrid" class="grid grid-cols-5 gap-3 mb-6">
+                </div>
+            <div class="pt-4 border-t border-slate-100 flex justify-between items-center">
+                <div class="text-xs text-slate-500 flex space-x-4">
+                    <span class="flex items-center"><span class="w-3 h-3 bg-indigo-50 border border-indigo-200 rounded-sm mr-1.5"></span> Answered</span>
+                    <span class="flex items-center"><span class="w-3 h-3 bg-white border border-slate-200 rounded-sm mr-1.5"></span> Unanswered</span>
+                </div>
+                <button onclick="forceSubmitTest()" class="px-5 py-2 bg-red-50 text-red-600 text-xs font-bold rounded-xl hover:bg-red-100 transition-all cursor-pointer">Submit Test</button>
+            </div>
+        </div>
+    </div>
 
     <script>
         lucide.createIcons();
@@ -146,7 +174,11 @@
         const leftContent = document.getElementById('leftContent');
         const rightContent = document.getElementById('rightContent');
         const btnNext = document.getElementById('btnNext');
+        const btnBack = document.getElementById('btnBack');
+        const btnReview = document.getElementById('btnReview');
         const globalProgress = document.getElementById('globalProgress');
+        const reviewModal = document.getElementById('reviewModal');
+        const reviewGrid = document.getElementById('reviewGrid');
 
         // Инициализация базы данных
         function getDatabaseClient() {
@@ -232,6 +264,25 @@
                     if(svgIcon) svgIcon.classList.replace('text-slate-500', 'text-red-500');
                 }
             }, 1000);
+        }
+
+        // --- Функция для сохранения текущего ответа ---
+        function saveCurrentAnswer() {
+            const currentQuestion = questions[currentIdx];
+            if (!currentQuestion) return;
+
+            if (currentQuestion.stage === 'sentence') {
+                const inputs = document.querySelectorAll('.letter-input');
+                if (inputs.length > 0) {
+                    let wordAnswer = Array.from(inputs).map(i => i.value).join('');
+                    if (wordAnswer.length > 0) userAnswers[currentQuestion.id] = wordAnswer;
+                }
+            } else if (currentQuestion.stage === 'academic' && (currentQuestion.layout_type === 'select_sentence' || currentQuestion.layout_type === 'insert_text')) {
+                // Ответ уже сохранен при клике (в setupAcademicClickListeners)
+            } else {
+                const selected = document.querySelector('input[name="mock_option"]:checked');
+                if (selected) userAnswers[currentQuestion.id] = selected.value;
+            }
         }
 
         // 4. Генератор оригинальных стилей Daily Life
@@ -340,7 +391,6 @@
             }
         }
 
-        // Парсер для Академических текстов
         function parseAcademicPassage(text) {
             if (!text) return "";
             let parsed = text
@@ -349,7 +399,6 @@
             return parsed.split('\n\n').map(p => `<p class="mb-4">${p}</p>`).join('');
         }
 
-        // Слушатели кликов для Академических интерактивов
         function setupAcademicClickListeners(q, container) {
             container.querySelectorAll('.clickable-sentence').forEach(el => {
                 el.onclick = function() {
@@ -374,6 +423,23 @@
         function renderCurrentQuestion() {
             const q = questions[currentIdx];
             globalProgress.innerText = `${currentIdx + 1} / ${questions.length}`;
+
+            // Управление кнопками навигации
+            if (currentIdx === 0) {
+                btnBack.classList.add('hidden');
+                btnBack.classList.remove('flex');
+            } else {
+                btnBack.classList.remove('hidden');
+                btnBack.classList.add('flex');
+            }
+
+            if (currentIdx === questions.length - 1) {
+                btnNext.innerHTML = `Submit Test <i data-lucide="check" class="w-4 h-4 ml-1"></i>`;
+                btnNext.className = "px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 hover:shadow-md transition-all flex items-center cursor-pointer";
+            } else {
+                btnNext.innerHTML = `Next <i data-lucide="chevron-right" class="w-4 h-4 ml-1 drop-shadow-sm"></i>`;
+                btnNext.className = "px-5 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-indigo-600 hover:shadow-md transition-all flex items-center cursor-pointer";
+            }
 
             // Сброс структуры панелей
             leftPanel.className = "w-full md:w-1/2 bg-white border-b md:border-b-0 md:border-r border-gray-200 p-6 md:p-8 overflow-y-auto h-full custom-scrollbar transition-all duration-300";
@@ -404,8 +470,13 @@
             const htmlWithInputs = sourceText.replace(/\S*(?:\[.\])+\S*/g, function(match) {
                 let wordHtml = match.replace(/((?:\[.\])+)/g, function(bracketsBlock) {
                     const letters = bracketsBlock.match(/\[(.)\]/g).map(m => m.replace(/[\[\]]/g, ''));
-                    const inputsHtml = letters.map(letter => {
-                        return `<input type="text" maxlength="1" data-answer="${letter}" class="letter-input" autocomplete="off">`;
+                    const inputsHtml = letters.map((letter, index) => {
+                        // Восстановление буквы если ответ уже был
+                        let existingValue = '';
+                        if (userAnswers[q.id] && userAnswers[q.id][index]) {
+                            existingValue = userAnswers[q.id][index];
+                        }
+                        return `<input type="text" maxlength="1" data-answer="${letter}" value="${existingValue}" class="letter-input" autocomplete="off">`;
                     }).join('');
                     return `<span class="letters-container">${inputsHtml}</span>`;
                 });
@@ -418,12 +489,12 @@
                 </div>
             `;
             
-            setupInputs();
+            setupInputs(q.id);
         }
 
-        function setupInputs() {
+        function setupInputs(qId) {
             const inputs = document.querySelectorAll('.letter-input');
-            if(inputs.length > 0) inputs[0].focus(); 
+            if(inputs.length > 0 && !userAnswers[qId]) inputs[0].focus(); 
 
             inputs.forEach((input, index) => {
                 input.addEventListener('input', function() {
@@ -431,6 +502,7 @@
                     if (this.value.length === 1 && index < inputs.length - 1) {
                         inputs[index + 1].focus();
                     }
+                    saveCurrentAnswer(); // Авто-сохранение
                 });
                 input.addEventListener('keydown', function(e) {
                     if (e.key === 'Backspace' && this.value === '' && index > 0) {
@@ -468,7 +540,6 @@
 
             const passageContainer = document.getElementById('academicPassageContainer');
 
-            // Интерактивные режимы Академического чтения
             if (cleanLayoutType === 'select_sentence' || cleanLayoutType === 'insert_text') {
                 
                 let instructionTxt = cleanLayoutType === 'select_sentence' ? 
@@ -487,7 +558,6 @@
 
                 passageContainer.classList.add(cleanLayoutType === 'select_sentence' ? 'select-sentence-mode' : 'insert-text-mode');
 
-                // Восстановление выбранного ответа
                 const savedAns = userAnswers[q.id];
                 if (savedAns !== undefined) {
                     const selector = cleanLayoutType === 'select_sentence' ? `.clickable-sentence[data-id="${savedAns}"]` : `.insert-square[data-sq="${savedAns}"]`;
@@ -498,7 +568,6 @@
                 setupAcademicClickListeners(q, passageContainer);
 
             } else {
-                // Обычный множественный выбор
                 renderStandardQuiz(q);
             }
         }
@@ -550,22 +619,10 @@
             });
         }
 
-        // 6. Навигация
+        // --- Навигация и События ---
+
         btnNext.addEventListener('click', () => {
-            const currentQuestion = questions[currentIdx];
-            
-            // Сохранение ответов
-            if (currentQuestion.stage === 'sentence') {
-                const inputs = document.querySelectorAll('.letter-input');
-                let wordAnswer = Array.from(inputs).map(i => i.value).join('');
-                userAnswers[currentQuestion.id] = wordAnswer;
-            } else if (currentQuestion.stage === 'academic' && (currentQuestion.layout_type === 'select_sentence' || currentQuestion.layout_type === 'insert_text')) {
-                // Ответы уже сохраняются в userAnswers[q.id] при клике на элементы в setupAcademicClickListeners
-            } else {
-                const selected = document.querySelector('input[name="mock_option"]:checked');
-                if (selected) userAnswers[currentQuestion.id] = selected.value;
-            }
-            
+            saveCurrentAnswer();
             if (currentIdx < questions.length - 1) {
                 currentIdx++;
                 renderCurrentQuestion();
@@ -574,11 +631,166 @@
             }
         });
 
+        btnBack.addEventListener('click', () => {
+            saveCurrentAnswer();
+            if (currentIdx > 0) {
+                currentIdx--;
+                renderCurrentQuestion();
+            }
+        });
+
+        btnReview.addEventListener('click', () => {
+            saveCurrentAnswer();
+            toggleReviewModal();
+        });
+
+        function toggleReviewModal() {
+            const isHidden = reviewModal.classList.contains('hidden');
+            if (isHidden) {
+                buildReviewGrid();
+                reviewModal.classList.remove('hidden');
+            } else {
+                reviewModal.classList.add('hidden');
+            }
+        }
+
+        function buildReviewGrid() {
+            reviewGrid.innerHTML = '';
+            questions.forEach((q, idx) => {
+                const isAnswered = userAnswers[q.id] !== undefined && userAnswers[q.id] !== "";
+                const isCurrent = idx === currentIdx;
+                
+                let baseClasses = "flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all cursor-pointer font-bold text-sm ";
+                
+                if (isCurrent) {
+                    baseClasses += "border-slate-900 bg-slate-900 text-white";
+                } else if (isAnswered) {
+                    baseClasses += "border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100";
+                } else {
+                    baseClasses += "border-slate-200 bg-white text-slate-400 hover:border-slate-400";
+                }
+
+                reviewGrid.innerHTML += `
+                    <button onclick="jumpToQuestion(${idx})" class="${baseClasses}">
+                        ${idx + 1}
+                    </button>
+                `;
+            });
+        }
+
+        function jumpToQuestion(idx) {
+            currentIdx = idx;
+            toggleReviewModal();
+            renderCurrentQuestion();
+        }
+
+        // --- Страница Результатов ---
+
         function forceSubmitTest() {
             clearInterval(timerInterval);
-            console.log("Собранные ответы теста:", userAnswers);
-            alert("Тест успешно завершен! Результаты отправлены в консоль разработчика.");
+            saveCurrentAnswer(); // Убедимся, что последний ответ сохранен
+            document.getElementById('reviewModal').classList.add('hidden');
+            
+            // Скрываем хедер и очищаем контейнер
+            document.getElementById('mainHeader').classList.add('hidden');
+            
+            let rawScore = 0;
+            let resultsHTML = '';
+
+            questions.forEach((q, idx) => {
+                const uAns = userAnswers[q.id];
+                let isCorrect = false;
+
+                // Логика сверки ответа
+                if (q.stage === 'sentence') {
+                    if (uAns && typeof uAns === 'string' && uAns.toLowerCase() === (q.correct_answer || '').toLowerCase()) {
+                        isCorrect = true;
+                    }
+                } else {
+                    if (uAns == q.correct_answer) {
+                        isCorrect = true;
+                    }
+                }
+
+                if (isCorrect) rawScore++;
+
+                const statusColor = isCorrect ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-rose-600 bg-rose-50 border-rose-100';
+                const statusIcon = isCorrect ? 'check' : 'x';
+
+                resultsHTML += `
+                    <div class="bg-white border ${isCorrect ? 'border-emerald-200 shadow-emerald-50/20' : 'border-rose-200 shadow-rose-50/20'} rounded-2xl p-5 shadow-sm mb-4">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-[10px] font-bold ${isCorrect ? 'text-emerald-600' : 'text-rose-600'} uppercase tracking-wider">Question ${idx + 1}</span>
+                            <div class="flex items-center px-2 py-1 rounded-md border ${statusColor}">
+                                <i data-lucide="${statusIcon}" class="w-3.5 h-3.5 mr-1.5"></i>
+                                <span class="text-[10px] font-bold">${isCorrect ? 'CORRECT' : 'INCORRECT'}</span>
+                            </div>
+                        </div>
+                        <p class="font-bold text-slate-800 text-sm mb-4 leading-snug">${q.question_text || 'Interactive question'}</p>
+                        
+                        <div class="bg-slate-50 p-3.5 rounded-xl text-xs text-slate-600">
+                            <span class="font-bold uppercase tracking-wider text-[10px] text-slate-400 block mb-1">Your Answer</span>
+                            <div class="mb-3 font-medium text-slate-800">${uAns || '<span class="italic text-slate-400">Skipped</span>'}</div>
+                            
+                            <span class="font-bold uppercase tracking-wider text-[10px] text-slate-400 block mb-1">Correct Answer</span>
+                            <div class="font-medium text-emerald-700">${q.correct_answer || 'N/A'}</div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            // Расчет примерного Band Score (шкала 1.0 - 6.0)
+            const bandScore = ((rawScore / questions.length) * 6).toFixed(1);
+
+            document.body.className = "bg-[#f8f9fa] text-slate-800 min-h-screen overflow-y-auto";
+
+            mainContainer.className = "flex-col w-full max-w-4xl mx-auto p-6 md:p-12";
+            mainContainer.innerHTML = `
+                <div class="w-full">
+                    <div class="bg-white rounded-[2rem] p-10 shadow-sm border border-slate-200 text-center mb-10 relative overflow-hidden">
+                        <div class="w-16 h-16 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i data-lucide="trophy" class="w-8 h-8"></i>
+                        </div>
+                        <h2 class="text-2xl font-bold text-slate-900 mb-8">Test Completed!</h2>
+                        
+                        <div class="flex justify-center gap-12 items-center mb-8">
+                            <div class="text-center">
+                                <div class="text-5xl font-black text-slate-900 mb-2">${bandScore}</div>
+                                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Est. Band Score</div>
+                            </div>
+                            <div class="h-16 w-px bg-slate-200"></div>
+                            <div class="text-center">
+                                <div class="text-3xl font-bold text-slate-700 mb-2">${rawScore} / ${questions.length}</div>
+                                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Raw Score</div>
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-center gap-4">
+                            <button onclick="location.reload()" class="px-6 py-3 bg-slate-900 hover:bg-indigo-600 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center">
+                                <i data-lucide="rotate-ccw" class="w-4 h-4 mr-2"></i> Try Again
+                            </button>
+                            <a href="dashboard.html" class="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center">
+                                Dashboard
+                            </a>
+                        </div>
+                    </div>
+
+                    <h3 class="text-base font-bold text-slate-900 mb-6 flex items-center px-2">
+                        <i data-lucide="list-checks" class="w-5 h-5 mr-2 text-indigo-500"></i>
+                        Review Answers & Explanations
+                    </h3>
+                    
+                    <div class="space-y-2">
+                        ${resultsHTML}
+                    </div>
+                </div>
+            `;
+            
+            lucide.createIcons();
+            
+            // Если есть currentUser, здесь можно добавить код сохранения результатов в Supabase.
         }
     </script>
 </body>
 </html>
+
