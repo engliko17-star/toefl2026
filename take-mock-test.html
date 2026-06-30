@@ -19,7 +19,7 @@
         .timer-warning { color: #ef4444; animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 
-        /* ИДЕАЛЬНЫЙ СТИЛЬ ДЛЯ СЛОВ */
+        /* ИДЕАЛЬНЫЙ СТИЛЬ ДЛЯ СЛОВ (Задания stage: 'sentence') */
         .puzzle-word {
             display: inline-flex;
             align-items: baseline;
@@ -64,6 +64,10 @@
         .letter-input:focus {
             border-bottom-color: #4f46e5; 
         }
+
+        /* Убираем стандартный скролл в чате */
+        .scrollbar-none::-webkit-scrollbar { display: none; }
+        .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
 <body class="bg-[#f8f9fa] text-slate-800 m-0 p-0 flex flex-col h-[100dvh] overflow-hidden">
@@ -100,7 +104,7 @@
 
     <main id="mainContainer" class="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden w-full transition-all duration-300">
         
-        <section id="leftPanel" class="w-full md:w-1/2 bg-white border-b md:border-b-0 md:border-r border-gray-200 p-6 md:p-8 lg:p-12 overflow-y-auto h-full custom-scrollbar transition-all duration-300">
+        <section id="leftPanel" class="w-full md:w-1/2 bg-white border-b md:border-b-0 md:border-r border-gray-200 p-6 md:p-8 overflow-y-auto h-full custom-scrollbar transition-all duration-300">
             <div id="leftContent" class="text-slate-700 leading-relaxed text-sm">
                 </div>
         </section>
@@ -155,7 +159,6 @@
                 bootTest();
             } catch (err) {
                 console.error("Auth error:", err);
-                // Для удобства разработки запускаем даже при ошибке авторизации
                 bootTest();
             }
         });
@@ -170,7 +173,6 @@
             }
 
             try {
-                // Получаем инфу о тесте
                 const { data: testData, error: testError } = await db.from('mock_tests').select('*').eq('id', testId).single();
                 if (testError) throw testError;
                 
@@ -178,7 +180,6 @@
                 timeRemaining = testInfo.total_time_seconds || 3600;
                 document.getElementById('testTitle').innerText = testInfo.title;
 
-                // Получаем все вопросы
                 const { data: qData, error: qError } = await db.from('mock_questions')
                                                 .select('*')
                                                 .eq('test_id', testId)
@@ -223,13 +224,119 @@
             }, 1000);
         }
 
-        // 4. Роутер отображения
+        // 4. Генератор оригинальных стилей Daily Life
+        function renderDailyLifeLayout(passage, layoutType, taskTitle) {
+            if (!passage) return "";
+            const cleanPassage = passage.replace(/[\[\]]/g, ''); 
+
+            switch(layoutType) {
+                case 'email':
+                    return `
+                        <div class="max-w-xl mx-auto bg-white border border-slate-200 rounded-lg overflow-hidden shadow-xs font-sans text-sm text-left">
+                            <div class="bg-slate-50 p-4 border-b border-slate-200 space-y-1.5 text-slate-700">
+                                <div><span class="inline-block w-14 font-semibold text-slate-400">To:</span> <span class="bg-white px-2 py-0.5 border border-slate-200 rounded text-xs">student@toeflprep.com</span></div>
+                                <div><span class="inline-block w-14 font-semibold text-slate-400">From:</span> <span class="text-slate-600">newsletter@companyname.com</span></div>
+                                <div><span class="inline-block w-14 font-semibold text-slate-400">Subject:</span> <span class="font-medium text-slate-900">${taskTitle}</span></div>
+                            </div>
+                            <div class="p-6 text-slate-800 space-y-4 leading-relaxed font-normal bg-white">
+                                ${cleanPassage.replace(/\n/g, '<br>')}
+                            </div>
+                        </div>
+                    `;
+                case 'social_media':
+                    return `
+                        <div class="max-w-md mx-auto bg-white border border-slate-200 rounded-2xl p-5 shadow-xs font-sans text-left">
+                            <div class="flex items-center space-x-3 mb-4">
+                                <div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-sm">
+                                    <i data-lucide="user" class="w-5 h-5"></i>
+                                </div>
+                                <div>
+                                    <div class="font-bold text-sm text-slate-900">Community Board</div>
+                                    <div class="text-[11px] text-slate-400 font-normal">Sponsored • Just now</div>
+                                </div>
+                            </div>
+                            <div class="text-slate-700 space-y-3 font-normal text-sm leading-relaxed mb-4">
+                                ${cleanPassage.replace(/\n/g, '<br>')}
+                            </div>
+                            <div class="pt-3 border-t border-slate-100 flex justify-around text-xs font-medium text-slate-500">
+                                <span class="flex items-center space-x-1.5 cursor-pointer hover:text-slate-900"><i data-lucide="thumbs-up" class="w-4 h-4"></i> <span>Like</span></span>
+                                <span class="flex items-center space-x-1.5 cursor-pointer hover:text-slate-900"><i data-lucide="message-square" class="w-4 h-4"></i> <span>Comment</span></span>
+                            </div>
+                        </div>
+                    `;
+                case 'notice':
+                    return `
+                        <div class="max-w-lg mx-auto bg-white border-2 border-slate-800 p-8 shadow-xs font-sans relative text-left">
+                            <div class="absolute inset-1 border border-slate-200 pointer-events-none"></div>
+                            <h3 class="text-lg font-bold text-slate-900 text-center tracking-tight mb-6 uppercase">${taskTitle}</h3>
+                            <div class="text-slate-700 space-y-4 font-normal text-sm leading-relaxed relative z-10">
+                                ${cleanPassage.replace(/\n/g, '<br>')}
+                            </div>
+                        </div>
+                    `;
+                case 'chat':
+                    const lines = cleanPassage.split('\n');
+                    const chatHtml = lines.map(line => {
+                        if(!line.trim()) return '';
+                        const match = line.match(/^([^\(]+(:\([^)]+\))?):\s*(.*)$/);
+                        if (!match) {
+                            const simpleMatch = line.match(/^([^:]+):\s*(.*)$/);
+                            if (simpleMatch) {
+                                return `
+                                    <div class="mb-4 font-sans text-left">
+                                        <div class="text-[11px] font-bold text-slate-500 mb-0.5 px-1">${simpleMatch[1].trim()}</div>
+                                        <div class="inline-block bg-white border border-slate-200 text-slate-800 rounded-2xl rounded-tl-none px-4 py-2.5 max-w-[90%] text-sm font-normal shadow-2xs">
+                                            ${simpleMatch[2]}
+                                        </div>
+                                    </div>
+                                `;
+                            }
+                        }
+                        if (match) {
+                            return `
+                                <div class="mb-4 font-sans text-left">
+                                    <div class="text-[11px] font-bold text-slate-500 mb-0.5 px-1">${match[1].trim()}</div>
+                                    <div class="inline-block bg-white border border-slate-200 text-slate-800 rounded-2xl rounded-tl-none px-4 py-2.5 max-w-[90%] text-sm font-normal shadow-2xs">
+                                        ${match[3]}
+                                    </div>
+                                </div>
+                            `;
+                        }
+                        return `<p class="text-xs text-slate-400 italic my-2 text-center">${line}</p>`;
+                    }).join('');
+                    return `
+                        <div class="max-w-sm mx-auto bg-slate-50 border border-slate-200 rounded-3xl overflow-hidden shadow-sm flex flex-col h-[420px]">
+                            <div class="bg-slate-900 text-white border-b border-slate-800 p-3.5 text-center font-bold text-xs shrink-0 shadow-2xs flex items-center justify-center space-x-2">
+                                <div class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+                                <span>Group Chat</span>
+                            </div>
+                            <div class="flex-1 p-5 overflow-y-auto bg-slate-50 scrollbar-none">
+                                ${chatHtml}
+                            </div>
+                        </div>
+                    `;
+                case 'advertisement':
+                    return `
+                        <div class="max-w-md mx-auto bg-amber-50/40 border border-amber-200/60 rounded-2xl p-6 shadow-sm font-sans relative text-left">
+                            <div class="absolute top-4 right-4 text-[9px] font-bold text-amber-500 uppercase tracking-widest bg-white px-2 py-1 rounded-md shadow-xs border border-amber-100">Sponsored</div>
+                            <h3 class="text-lg font-bold text-slate-900 text-center mb-5 pr-16 leading-tight">${taskTitle}</h3>
+                            <div class="text-slate-700 space-y-4 font-normal text-sm leading-relaxed">
+                                ${cleanPassage.replace(/\n/g, '<br>')}
+                            </div>
+                        </div>
+                    `;
+                default:
+                    return `<div class="text-slate-700 space-y-4 font-normal leading-relaxed text-sm text-left">${cleanPassage.replace(/\n/g, '<br>')}</div>`;
+            }
+        }
+
+        // 5. Роутер отображения текущего вопроса
         function renderCurrentQuestion() {
             const q = questions[currentIdx];
             globalProgress.innerText = `${currentIdx + 1} / ${questions.length}`;
 
-            // Сбрасываем классы колонок
-            leftPanel.className = "w-full md:w-1/2 bg-white border-b md:border-b-0 md:border-r border-gray-200 p-6 md:p-8 lg:p-12 overflow-y-auto h-full custom-scrollbar transition-all duration-300";
+            // Полный сброс структуры панелей к дефолтному состоянию (50/50)
+            leftPanel.className = "w-full md:w-1/2 bg-white border-b md:border-b-0 md:border-r border-gray-200 p-6 md:p-8 overflow-y-auto h-full custom-scrollbar transition-all duration-300";
             rightPanel.classList.remove('hidden');
             rightPanel.className = "w-full md:w-1/2 bg-[#f8f9fa] p-6 md:p-8 lg:p-12 overflow-y-auto h-full custom-scrollbar transition-all duration-300";
 
@@ -246,16 +353,14 @@
             lucide.createIcons();
         }
 
-        // --- ФУНКЦИИ ОТРИСОВКИ ---
+        // --- ФУНКЦИИ ОТРИСОВКИ СТАДИЙ ---
 
         function renderSentenceLayout(q) {
             rightPanel.classList.add('hidden');
-            leftPanel.classList.replace('md:w-1/2', 'w-full');
-            leftPanel.classList.add('flex', 'items-center', 'justify-center', 'bg-[#f8f9fa]');
+            leftPanel.className = "w-full bg-[#f8f9fa] p-6 md:p-12 overflow-y-auto h-full flex items-center justify-center transition-all duration-300";
 
             const sourceText = q.question_text || "";
 
-            // Интегрированный алгоритм парсинга скобок
             const htmlWithInputs = sourceText.replace(/\S*(?:\[.\])+\S*/g, function(match) {
                 let wordHtml = match.replace(/((?:\[.\])+)/g, function(bracketsBlock) {
                     const letters = bracketsBlock.match(/\[(.)\]/g).map(m => m.replace(/[\[\]]/g, ''));
@@ -296,10 +401,16 @@
         }
 
         function renderDailyLayout(q) {
+            const cleanLayoutType = (q.layout_type || '').toString().toLowerCase().trim();
+            const currentTitle = testInfo ? testInfo.title : 'Reading Practice';
+            
+            // Получаем сгенерированный красивый макет по типу (email, chat, etc.)
+            const styledLayout = renderDailyLifeLayout(q.passage_text, cleanLayoutType, currentTitle);
+
             leftContent.innerHTML = `
-                <h2 class="text-xl font-bold mb-4">Reading Passage</h2>
-                <div class="bg-slate-50 p-6 rounded-xl border border-slate-200">
-                    ${q.passage_text || ""} 
+                <h2 class="text-xl font-bold text-slate-800 mb-6 border-b pb-2">Reading Passage</h2>
+                <div class="w-full space-y-4">
+                    ${styledLayout}
                 </div>
             `;
             renderStandardQuiz(q);
@@ -307,8 +418,8 @@
 
         function renderAcademicLayout(q) {
              leftContent.innerHTML = `
-                <h2 class="text-xl font-bold mb-4">Academic Text</h2>
-                <div class="leading-relaxed space-y-4">
+                <h2 class="text-xl font-bold text-slate-800 mb-4 border-b pb-2">Academic Text</h2>
+                <div class="leading-relaxed space-y-4 text-sm text-slate-600">
                     ${q.passage_text || ""} 
                 </div>
             `;
@@ -324,21 +435,24 @@
             }
 
             let optionsHtml = '';
+            const previousAnswer = userAnswers[q.id];
             
             if (Array.isArray(options)) {
                 options.forEach((val, idx) => {
+                    const isChecked = previousAnswer == idx;
                     optionsHtml += `
-                        <label class="flex items-center p-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-indigo-200 cursor-pointer text-sm shadow-sm transition-all duration-200">
-                            <input type="radio" name="mock_option" value="${idx}" class="w-4 h-4 text-indigo-600 mr-3">
+                        <label class="flex items-center p-4 rounded-xl border ${isChecked ? 'border-indigo-600 bg-indigo-50/40 font-semibold text-indigo-950' : 'border-slate-200 bg-white hover:bg-slate-50'} cursor-pointer text-xs shadow-sm transition-all duration-200">
+                            <input type="radio" name="mock_option" value="${idx}" ${isChecked ? 'checked' : ''} class="w-4 h-4 text-indigo-600 mr-3">
                             <span>${val}</span>
                         </label>
                     `;
                 });
             } else {
                 for (const [key, value] of Object.entries(options)) {
+                    const isChecked = previousAnswer == key;
                     optionsHtml += `
-                        <label class="flex items-center p-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-indigo-200 cursor-pointer text-sm shadow-sm transition-all duration-200">
-                            <input type="radio" name="mock_option" value="${key}" class="w-4 h-4 text-indigo-600 mr-3">
+                        <label class="flex items-center p-4 rounded-xl border ${isChecked ? 'border-indigo-600 bg-indigo-50/40 font-semibold text-indigo-950' : 'border-slate-200 bg-white hover:bg-slate-50'} cursor-pointer text-xs shadow-sm transition-all duration-200">
+                            <input type="radio" name="mock_option" value="${key}" ${isChecked ? 'checked' : ''} class="w-4 h-4 text-indigo-600 mr-3">
                             <span>${value}</span>
                         </label>
                     `;
@@ -347,21 +461,30 @@
 
             rightContent.innerHTML = `
                 <span class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md uppercase tracking-wider mb-4 inline-block">${q.category || 'Practice'}</span>
-                <h3 class="text-base font-bold text-slate-900 mb-6">${q.question_text || ""}</h3>
+                <h3 class="text-sm font-bold text-slate-800 mb-6 leading-snug">${q.question_text || ""}</h3>
                 <div class="space-y-3">${optionsHtml}</div>
             `;
+
+            // Навешиваем динамический рендер стилей при клике
+            rightContent.querySelectorAll('input[name="mock_option"]').forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    userAnswers[q.id] = e.target.value;
+                    renderStandardQuiz(q);
+                });
+            });
         }
 
-        // 5. Навигация
+        // 6. Навигация
         btnNext.addEventListener('click', () => {
-            // Сохранение ответа перед переходом
-            if (questions[currentIdx].stage === 'sentence') {
+            const currentQuestion = questions[currentIdx];
+            
+            if (currentQuestion.stage === 'sentence') {
                 const inputs = document.querySelectorAll('.letter-input');
                 let wordAnswer = Array.from(inputs).map(i => i.value).join('');
-                userAnswers[questions[currentIdx].id] = wordAnswer;
+                userAnswers[currentQuestion.id] = wordAnswer;
             } else {
                 const selected = document.querySelector('input[name="mock_option"]:checked');
-                if (selected) userAnswers[questions[currentIdx].id] = selected.value;
+                if (selected) userAnswers[currentQuestion.id] = selected.value;
             }
             
             if (currentIdx < questions.length - 1) {
@@ -374,10 +497,10 @@
 
         function forceSubmitTest() {
             clearInterval(timerInterval);
-            console.log("Собранные ответы:", userAnswers);
-            alert("Тест завершен! Проверь консоль браузера (F12), чтобы увидеть сохраненные ответы.");
-            // Тут потом напишешь отправку в БД
+            console.log("Собранные ответы теста:", userAnswers);
+            alert("Тест успешно завершен! Результаты отправлены в консоль разработчика.");
         }
     </script>
 </body>
 </html>
+
