@@ -68,6 +68,16 @@
         /* Убираем стандартный скролл в чате */
         .scrollbar-none::-webkit-scrollbar { display: none; }
         .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* СТИЛИ ДЛЯ АКАДЕМИЧЕСКИХ ЗАДАНИЙ */
+        .select-sentence-mode .clickable-sentence { cursor: pointer; border-radius: 4px; transition: background-color 0.2s; }
+        .select-sentence-mode .clickable-sentence:hover { background-color: #fee2e2; }
+        .select-sentence-mode .clickable-sentence.selected { background-color: #4f46e5; color: white; }
+
+        .insert-square { display: none; margin: 0 4px; cursor: pointer; font-size: 1.2em; color: #94a3b8; transition: all 0.2s; vertical-align: middle; line-height: 1; }
+        .insert-text-mode .insert-square { display: inline-block; }
+        .insert-text-mode .insert-square:hover { color: #4f46e5; transform: scale(1.3); }
+        .insert-text-mode .insert-square.selected { color: #312e81; transform: scale(1.2); }
     </style>
 </head>
 <body class="bg-[#f8f9fa] text-slate-800 m-0 p-0 flex flex-col h-[100dvh] overflow-hidden">
@@ -149,7 +159,7 @@
         }
         const db = getDatabaseClient();
 
-        // 2. Запуск приложения (с проверкой авторизации)
+        // 2. Запуск приложения
         window.addEventListener('DOMContentLoaded', async () => {
             try {
                 if (typeof requireAuth === 'function') {
@@ -330,12 +340,42 @@
             }
         }
 
+        // Парсер для Академических текстов
+        function parseAcademicPassage(text) {
+            if (!text) return "";
+            let parsed = text
+                .replace(/\[s(\d+)\](.*?)(?=\[s\d+\]|\[sq\d+\]|$)/gs, '<span class="clickable-sentence" data-id="$1">$2</span>')
+                .replace(/\[sq(\d+)\]/g, '<span class="insert-square" data-sq="$1">■</span>');
+            return parsed.split('\n\n').map(p => `<p class="mb-4">${p}</p>`).join('');
+        }
+
+        // Слушатели кликов для Академических интерактивов
+        function setupAcademicClickListeners(q, container) {
+            container.querySelectorAll('.clickable-sentence').forEach(el => {
+                el.onclick = function() {
+                    if (q.layout_type !== "select_sentence") return;
+                    container.querySelectorAll('.clickable-sentence').forEach(s => s.classList.remove('selected'));
+                    this.classList.add('selected');
+                    userAnswers[q.id] = parseInt(this.getAttribute('data-id'));
+                };
+            });
+
+            container.querySelectorAll('.insert-square').forEach(el => {
+                el.onclick = function() {
+                    if (q.layout_type !== "insert_text") return;
+                    container.querySelectorAll('.insert-square').forEach(s => s.classList.remove('selected'));
+                    this.classList.add('selected');
+                    userAnswers[q.id] = parseInt(this.getAttribute('data-sq'));
+                };
+            });
+        }
+
         // 5. Роутер отображения текущего вопроса
         function renderCurrentQuestion() {
             const q = questions[currentIdx];
             globalProgress.innerText = `${currentIdx + 1} / ${questions.length}`;
 
-            // Полный сброс структуры панелей к дефолтному состоянию (50/50)
+            // Сброс структуры панелей
             leftPanel.className = "w-full md:w-1/2 bg-white border-b md:border-b-0 md:border-r border-gray-200 p-6 md:p-8 overflow-y-auto h-full custom-scrollbar transition-all duration-300";
             rightPanel.classList.remove('hidden');
             rightPanel.className = "w-full md:w-1/2 bg-[#f8f9fa] p-6 md:p-8 lg:p-12 overflow-y-auto h-full custom-scrollbar transition-all duration-300";
@@ -404,7 +444,6 @@
             const cleanLayoutType = (q.layout_type || '').toString().toLowerCase().trim();
             const currentTitle = testInfo ? testInfo.title : 'Reading Practice';
             
-            // Получаем сгенерированный красивый макет по типу (email, chat, etc.)
             const styledLayout = renderDailyLifeLayout(q.passage_text, cleanLayoutType, currentTitle);
 
             leftContent.innerHTML = `
@@ -417,13 +456,51 @@
         }
 
         function renderAcademicLayout(q) {
-             leftContent.innerHTML = `
+            const cleanLayoutType = (q.layout_type || '').toString().toLowerCase().trim();
+            const passageHtml = parseAcademicPassage(q.passage_text);
+
+            leftContent.innerHTML = `
                 <h2 class="text-xl font-bold text-slate-800 mb-4 border-b pb-2">Academic Text</h2>
-                <div class="leading-relaxed space-y-4 text-sm text-slate-600">
-                    ${q.passage_text || ""} 
+                <div id="academicPassageContainer" class="leading-relaxed space-y-4 text-sm text-slate-600">
+                    ${passageHtml}
                 </div>
             `;
-            renderStandardQuiz(q);
+
+            const passageContainer = document.getElementById('academicPassageContainer');
+
+            // Интерактивные режимы Академического чтения
+            if (cleanLayoutType === 'select_sentence' || cleanLayoutType === 'insert_text') {
+                
+                let instructionTxt = cleanLayoutType === 'select_sentence' ? 
+                    "Click directly on the sentence inside the left passage text to select your answer." :
+                    "Click on one of the squares [■] in the left passage to insert the sentence.";
+
+                rightContent.innerHTML = `
+                    <span class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md uppercase tracking-wider mb-4 inline-block">${q.category || 'Practice'}</span>
+                    <h3 class="text-sm font-bold text-slate-800 mb-6 leading-snug">${q.question_text || ""}</h3>
+                    
+                    <div class="mb-6 bg-amber-50 border border-amber-100 p-4 rounded-xl text-xs font-medium text-amber-800 flex items-start">
+                        <i data-lucide="mouse-pointer-click" class="w-4 h-4 mr-3 mt-0.5 shrink-0"></i>
+                        <span>${instructionTxt}</span>
+                    </div>
+                `;
+
+                passageContainer.classList.add(cleanLayoutType === 'select_sentence' ? 'select-sentence-mode' : 'insert-text-mode');
+
+                // Восстановление выбранного ответа
+                const savedAns = userAnswers[q.id];
+                if (savedAns !== undefined) {
+                    const selector = cleanLayoutType === 'select_sentence' ? `.clickable-sentence[data-id="${savedAns}"]` : `.insert-square[data-sq="${savedAns}"]`;
+                    const el = passageContainer.querySelector(selector);
+                    if (el) el.classList.add('selected');
+                }
+
+                setupAcademicClickListeners(q, passageContainer);
+
+            } else {
+                // Обычный множественный выбор
+                renderStandardQuiz(q);
+            }
         }
 
         function renderStandardQuiz(q) {
@@ -465,7 +542,6 @@
                 <div class="space-y-3">${optionsHtml}</div>
             `;
 
-            // Навешиваем динамический рендер стилей при клике
             rightContent.querySelectorAll('input[name="mock_option"]').forEach(radio => {
                 radio.addEventListener('change', (e) => {
                     userAnswers[q.id] = e.target.value;
@@ -478,10 +554,13 @@
         btnNext.addEventListener('click', () => {
             const currentQuestion = questions[currentIdx];
             
+            // Сохранение ответов
             if (currentQuestion.stage === 'sentence') {
                 const inputs = document.querySelectorAll('.letter-input');
                 let wordAnswer = Array.from(inputs).map(i => i.value).join('');
                 userAnswers[currentQuestion.id] = wordAnswer;
+            } else if (currentQuestion.stage === 'academic' && (currentQuestion.layout_type === 'select_sentence' || currentQuestion.layout_type === 'insert_text')) {
+                // Ответы уже сохраняются в userAnswers[q.id] при клике на элементы в setupAcademicClickListeners
             } else {
                 const selected = document.querySelector('input[name="mock_option"]:checked');
                 if (selected) userAnswers[currentQuestion.id] = selected.value;
@@ -503,4 +582,3 @@
     </script>
 </body>
 </html>
-
