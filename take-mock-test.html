@@ -138,19 +138,19 @@
         
     </main>
 
+    <!-- НАСТОЯЩЕЕ МЕНЮ ОБЗОРА TOEFL (УВЕЛИЧЕНА ШИРИНА И СТИЛИЗАЦИЯ ТАБЛИЦЫ) -->
     <div id="reviewModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div class="bg-white rounded-3xl p-6 w-full max-w-lg shadow-2xl">
-            <div class="flex justify-between items-center mb-6">
+        <div class="bg-white rounded-3xl p-6 w-full max-w-2xl shadow-2xl">
+            <div class="flex justify-between items-center mb-5">
                 <h2 class="text-lg font-bold text-slate-900">Review Questions</h2>
                 <button onclick="toggleReviewModal()" class="text-slate-400 hover:text-slate-900"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
-            <div id="reviewGrid" class="grid grid-cols-5 gap-3 mb-6 max-h-[60vh] overflow-y-auto custom-scrollbar p-1">
-                </div>
-            <div class="pt-4 border-t border-slate-100 flex justify-between items-center">
-                <div class="text-xs text-slate-500 flex space-x-4">
-                    <span class="flex items-center"><span class="w-3 h-3 bg-indigo-50 border border-indigo-200 rounded-sm mr-1.5"></span> Answered</span>
-                    <span class="flex items-center"><span class="w-3 h-3 bg-white border border-slate-200 rounded-sm mr-1.5"></span> Unanswered</span>
-                </div>
+            
+            <!-- Контейнер для таблицы TOEFL -->
+            <div id="reviewGrid" class="block w-full mb-6 max-h-[60vh] overflow-y-auto custom-scrollbar border border-slate-100 rounded-xl overflow-hidden">
+            </div>
+
+            <div class="pt-4 border-t border-slate-100 flex justify-end items-center">
                 <button onclick="forceSubmitTest()" class="px-5 py-2 bg-red-50 text-red-600 text-xs font-bold rounded-xl hover:bg-red-100 transition-all cursor-pointer">Submit Test</button>
             </div>
         </div>
@@ -475,7 +475,7 @@
 
         function renderDailyLayout(q) {
             const cleanLayoutType = (q.layout_type || '').toString().toLowerCase().trim();
-            const currentTitle = testInfo ? testInfo.title : 'Reading Practice';
+            const currentTitle = testInfo ? testInfo.title : 'Reading Passage';
             const styledLayout = renderDailyLifeLayout(q.passage_text, cleanLayoutType, currentTitle);
 
             textContent.innerHTML = `
@@ -505,7 +505,6 @@
                     "Click directly on the sentence inside the passage text to select your answer." :
                     "Click on one of the squares [■] in the passage to insert the sentence.";
 
-                // Убрано отображение q.category из теста по запросу
                 questionsContent.innerHTML = `
                     <h3 class="text-sm font-bold text-slate-800 mb-6 leading-snug">${q.question_text || ""}</h3>
                     
@@ -557,7 +556,6 @@
                 for (const [key, value] of Object.entries(options)) renderOptions(key, value);
             }
 
-            // Убрано отображение q.category из теста по запросу
             questionsContent.innerHTML = `
                 <h3 class="text-sm font-bold text-slate-800 mb-6 leading-snug">${q.question_text || ""}</h3>
                 <div class="space-y-3">${optionsHtml}</div>
@@ -604,49 +602,115 @@
             }
         }
 
+        // ОБНОВЛЕННАЯ ФУНКЦИЯ ПОСТРОЕНИЯ ИНТЕРФЕЙСА ТАБЛИЦЫ REVIEW (ПОД НАСТОЯЩИЙ TOEFL)
         function buildReviewGrid() {
             reviewGrid.innerHTML = '';
             
-            gridItemsMap.forEach((item, displayIdx) => {
-                const isCurrent = item.qIndex === currentIdx;
-                let isAnswered = false;
+            let reviewRows = [];
+            let sentenceItems = gridItemsMap.filter(i => i.isWord);
+            let nonSentenceItems = gridItemsMap.filter(i => !i.isWord);
 
-                if (item.isWord) {
+            let currentDisplayNo = 1;
+
+            // Группируем первые 1-10 заданий в одну строчку (Словный пазл)
+            if (sentenceItems.length > 0) {
+                let startNo = currentDisplayNo;
+                let endNo = currentDisplayNo + sentenceItems.length - 1;
+                currentDisplayNo += sentenceItems.length;
+
+                let allAnswered = true;
+                sentenceItems.forEach(item => {
                     const ansArr = userAnswers[item.q.id];
                     const targetWordData = item.q.question_text.match(/\S*(?:\[.\])+\S*/g)[item.wIndex];
-                    const targetLen = (targetWordData.match(/\[(.)\]/g) || []).length;
-                    if (ansArr && ansArr[item.wIndex] && ansArr[item.wIndex].length === targetLen) {
-                        isAnswered = true;
+                    if (!targetWordData) {
+                        allAnswered = false;
+                        return;
                     }
-                } else {
-                    isAnswered = userAnswers[item.q.id] !== undefined && userAnswers[item.q.id] !== "";
-                }
+                    const targetLen = (targetWordData.match(/\[(.)\]/g) || []).length;
+                    if (!(ansArr && ansArr[item.wIndex] && ansArr[item.wIndex].length === targetLen)) {
+                        allAnswered = false;
+                    }
+                });
+
+                reviewRows.push({
+                    noStr: `${startNo} - ${endNo}`,
+                    questionStr: "Fill in the missing letters in the paragraph.",
+                    answerStr: allAnswered ? "Answered" : "Not Answered",
+                    isAnswered: allAnswered,
+                    qIndex: sentenceItems[0].qIndex
+                });
+            }
+
+            // Добавляем все остальные вопросы индивидуально
+            nonSentenceItems.forEach(item => {
+                let noStr = `${currentDisplayNo++}`;
+                let questionStr = "Read a passage.";
                 
-                let baseClasses = "flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all cursor-pointer font-bold text-sm ";
-                
-                if (isCurrent) {
-                    baseClasses += "border-slate-900 bg-slate-900 text-white";
-                } else if (isAnswered) {
-                    baseClasses += "border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100";
-                } else {
-                    baseClasses += "border-slate-200 bg-white text-slate-400 hover:border-slate-400";
+                if (item.q.stage === 'daily') {
+                    const lt = (item.q.layout_type || '').toLowerCase().trim();
+                    if (lt === 'email') questionStr = "Read an email.";
+                    else if (lt === 'chat') questionStr = "Read a text chain.";
+                    else if (lt === 'social_media') questionStr = "Read a social media post.";
+                    else if (lt === 'notice') questionStr = "Read a notice.";
+                    else if (lt === 'advertisement') questionStr = "Read an advertisement.";
+                } else if (item.q.stage === 'academic') {
+                    questionStr = item.q.category || "Academic Reading";
                 }
 
-                reviewGrid.innerHTML += `
-                    <button onclick="jumpToQuestion(${item.qIndex})" class="${baseClasses}">
-                        ${displayIdx + 1}
-                    </button>
+                let isAnswered = userAnswers[item.q.id] !== undefined && userAnswers[item.q.id] !== "";
+                let answerStr = isAnswered ? "Answered" : "Not Answered";
+
+                reviewRows.push({
+                    noStr,
+                    questionStr,
+                    answerStr,
+                    isAnswered,
+                    qIndex: item.qIndex
+                });
+            });
+
+            // Формируем чистую таблицу в стиле настоящего TOEFL
+            let tableHtml = `
+                <table class="w-full text-left border-collapse font-sans text-sm">
+                    <thead>
+                        <tr class="bg-[#1a1a1a] text-white select-none">
+                            <th class="py-3 px-4 font-bold text-xs uppercase tracking-wider w-[20%] text-center">No.</th>
+                            <th class="py-3 px-4 font-bold text-xs uppercase tracking-wider w-[55%]">Question</th>
+                            <th class="py-3 px-4 font-bold text-xs uppercase tracking-wider w-[25%] text-right pr-6">Answer</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+            `;
+
+            reviewRows.forEach((row, rIdx) => {
+                const isCurrent = row.qIndex === currentIdx;
+                const answerColorClass = row.isAnswered ? "text-slate-800 font-semibold" : "text-slate-300 font-normal";
+                const rowBgClass = isCurrent ? "bg-indigo-50 font-semibold" : (rIdx % 2 === 0 ? "bg-white" : "bg-slate-50/50");
+                
+                tableHtml += `
+                    <tr onclick="jumpToQuestion(${row.qIndex})" class="${rowBgClass} hover:bg-slate-100/80 transition-all cursor-pointer group">
+                        <td class="py-3 px-4 text-slate-500 text-center font-medium">${row.noStr}</td>
+                        <td class="py-3 px-4 text-slate-900 group-hover:text-indigo-600 transition-colors font-bold">${row.questionStr}</td>
+                        <td class="py-3 px-4 ${answerColorClass} text-right pr-6">${row.answerStr}</td>
+                    </tr>
                 `;
             });
+
+            tableHtml += `
+                    </tbody>
+                </table>
+            `;
+            
+            reviewGrid.innerHTML = tableHtml;
         }
 
         function jumpToQuestion(qIndex) {
             currentIdx = qIndex;
-            toggleReviewModal();
+            reviewModal.classList.add('hidden');
             renderCurrentQuestion();
         }
 
-        // --- ОБНОВЛЕННАЯ СТРАНИЦА РЕЗУЛЬТАТОВ (СЛЕВА ТЕКСТ, СПРАВА РЕЗУЛЬТАТЫ) ---
+        // --- ОБНОВЛЕННАЯ СТРАНИЦА РЕЗУЛЬТАТОВ (БЕЗ ДУБЛИРОВАНИЯ ТЕКСТОВ) ---
         function forceSubmitTest() {
             clearInterval(timerInterval);
             saveCurrentAnswer(); 
@@ -706,7 +770,6 @@
                     const statusColor = isCorrect ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-rose-600 bg-rose-50 border-rose-100';
                     const statusIcon = isCorrect ? 'check' : 'x';
 
-                    // ВОТ ЗДЕСЬ ДОБАВЛЕНА КАТЕГОРИЯ ВОПРОСА ДЛЯ СТРАНИЦЫ ОТВЕТОВ
                     resultsHTML += `
                         <div class="bg-white border ${isCorrect ? 'border-emerald-200 shadow-emerald-50/20' : 'border-rose-200 shadow-rose-50/20'} rounded-2xl p-5 shadow-sm mb-4">
                             <div class="flex items-center justify-between mb-3">
@@ -735,12 +798,18 @@
 
             const bandScore = totalQuestionsCount > 0 ? ((rawScore / totalQuestionsCount) * 6).toFixed(1) : "0.0";
 
-            // Собираем тексты (пассажи) для левой панели
+            // Собираем тексты (пассажи) для левой панели СТРОГО БЕЗ ДУБЛИРОВАНИЯ
             let passagesHTML = '';
             const renderedPassages = new Set();
+            
             questions.forEach(q => {
-                if (q.passage_text && !renderedPassages.has(q.passage_text)) {
-                    renderedPassages.add(q.passage_text);
+                if (!q.passage_text) return;
+                
+                // Исправление дублирования: нормализуем текст (очищаем от меток предложений и квадратов вставок) для сверки
+                const normalizedText = q.passage_text.replace(/\[s\d+\]|\[sq\d+\]/g, '').replace(/\s+/g, ' ').trim();
+                
+                if (!renderedPassages.has(normalizedText)) {
+                    renderedPassages.add(normalizedText);
                     const cleanLayoutType = (q.layout_type || '').toString().toLowerCase().trim();
                     const currentTitle = testInfo ? testInfo.title : 'Reading Passage';
                     
@@ -759,7 +828,7 @@
             // ДВЕ ПАНЕЛИ НА ЭКРАНЕ РЕЗУЛЬТАТОВ
             mainContainer.className = "flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden w-full transition-all duration-300";
             mainContainer.innerHTML = `
-                <!-- Левая панель с текстом, чтобы искать ошибки -->
+                <!-- Левая панель с текстом (Рендерится без дублей) -->
                 <section class="w-full md:w-1/2 bg-white border-b md:border-b-0 md:border-r border-gray-200 p-6 md:p-10 overflow-y-auto h-full custom-scrollbar">
                     ${passagesHTML || '<div class="text-slate-400 italic flex items-center justify-center h-full">No reading passage for this test.</div>'}
                 </section>
