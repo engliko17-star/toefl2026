@@ -124,13 +124,13 @@
 
     <main id="mainContainer" class="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden w-full transition-all duration-300">
         
-        <section id="leftPanel" class="w-full md:w-1/2 bg-white border-b md:border-b-0 md:border-r border-gray-200 p-6 md:p-8 overflow-y-auto h-full custom-scrollbar transition-all duration-300">
-            <div id="leftContent" class="text-slate-700 leading-relaxed text-sm">
+        <section id="textPanel" class="w-full md:w-1/2 order-1 md:order-2 bg-white border-b md:border-b-0 md:border-l border-gray-200 p-6 md:p-8 overflow-y-auto h-full custom-scrollbar transition-all duration-300">
+            <div id="textContent" class="text-slate-700 leading-relaxed text-sm">
             </div>
         </section>
 
-        <section id="rightPanel" class="w-full md:w-1/2 bg-[#f8f9fa] p-6 md:p-8 lg:p-12 overflow-y-auto h-full custom-scrollbar transition-all duration-300">
-            <div id="rightContent" class="w-full space-y-4">
+        <section id="questionsPanel" class="w-full md:w-1/2 order-2 md:order-1 bg-[#f8f9fa] p-6 md:p-8 lg:p-12 overflow-y-auto h-full custom-scrollbar transition-all duration-300">
+            <div id="questionsContent" class="w-full space-y-4">
             </div>
         </section>
         
@@ -142,7 +142,7 @@
                 <h2 class="text-lg font-bold text-slate-900">Review Questions</h2>
                 <button onclick="toggleReviewModal()" class="text-slate-400 hover:text-slate-900"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
-            <div id="reviewGrid" class="grid grid-cols-5 gap-3 mb-6">
+            <div id="reviewGrid" class="grid grid-cols-5 gap-3 mb-6 max-h-[60vh] overflow-y-auto custom-scrollbar p-1">
                 </div>
             <div class="pt-4 border-t border-slate-100 flex justify-between items-center">
                 <div class="text-xs text-slate-500 flex space-x-4">
@@ -165,14 +165,15 @@
         let timeRemaining = 0;
         let timerInterval = null;
         let currentUser = null;
+        let gridItemsMap = []; // Для маппинга квадратиков Review на вопросы
 
         // Элементы DOM
         const timerText = document.getElementById('timerText');
         const timerContainer = document.getElementById('globalTimer');
-        const leftPanel = document.getElementById('leftPanel');
-        const rightPanel = document.getElementById('rightPanel');
-        const leftContent = document.getElementById('leftContent');
-        const rightContent = document.getElementById('rightContent');
+        const textPanel = document.getElementById('textPanel');
+        const questionsPanel = document.getElementById('questionsPanel');
+        const textContent = document.getElementById('textContent');
+        const questionsContent = document.getElementById('questionsContent');
         const btnNext = document.getElementById('btnNext');
         const btnBack = document.getElementById('btnBack');
         const btnReview = document.getElementById('btnReview');
@@ -235,12 +236,29 @@
                     return;
                 }
 
+                // Предварительный расчет элементов для Review (учитываем слова как вопросы)
+                calculateGridItems();
+
                 startTimer();
                 renderCurrentQuestion();
             } catch (err) {
                 console.error("Ошибка загрузки:", err);
                 document.getElementById('testTitle').innerText = "Error loading data";
             }
+        }
+
+        function calculateGridItems() {
+            gridItemsMap = [];
+            questions.forEach((q, qIndex) => {
+                if (q.stage === 'sentence') {
+                    const wordsCount = (q.question_text.match(/\S*(?:\[.\])+\S*/g) || []).length;
+                    for (let wIndex = 0; wIndex < wordsCount; wIndex++) {
+                        gridItemsMap.push({ qIndex, isWord: true, wIndex, q });
+                    }
+                } else {
+                    gridItemsMap.push({ qIndex, isWord: false, q });
+                }
+            });
         }
 
         // 3. Логика Таймера
@@ -272,122 +290,48 @@
             if (!currentQuestion) return;
 
             if (currentQuestion.stage === 'sentence') {
-                const inputs = document.querySelectorAll('.letter-input');
-                if (inputs.length > 0) {
-                    let wordAnswer = Array.from(inputs).map(i => i.value).join('');
-                    if (wordAnswer.length > 0) userAnswers[currentQuestion.id] = wordAnswer;
+                const wordsContainers = document.querySelectorAll('.puzzle-word');
+                if (wordsContainers.length > 0) {
+                    let answerArray = [];
+                    wordsContainers.forEach(wc => {
+                        const inputs = wc.querySelectorAll('.letter-input');
+                        const wordVal = Array.from(inputs).map(i => i.value).join('');
+                        answerArray.push(wordVal);
+                    });
+                    userAnswers[currentQuestion.id] = answerArray; // Сохраняем массив слов!
                 }
             } else if (currentQuestion.stage === 'academic' && (currentQuestion.layout_type === 'select_sentence' || currentQuestion.layout_type === 'insert_text')) {
-                // Ответ уже сохранен при клике (в setupAcademicClickListeners)
+                // Ответ уже сохранен при клике
             } else {
                 const selected = document.querySelector('input[name="mock_option"]:checked');
                 if (selected) userAnswers[currentQuestion.id] = selected.value;
             }
         }
 
-        // 4. Генератор оригинальных стилей Daily Life
+        // 4. Генератор оригинальных стилей Daily Life (без изменений)
         function renderDailyLifeLayout(passage, layoutType, taskTitle) {
             if (!passage) return "";
             const cleanPassage = passage.replace(/[\[\]]/g, ''); 
 
             switch(layoutType) {
-                case 'email':
-                    return `
-                        <div class="max-w-xl mx-auto bg-white border border-slate-200 rounded-lg overflow-hidden shadow-xs font-sans text-sm text-left">
-                            <div class="bg-slate-50 p-4 border-b border-slate-200 space-y-1.5 text-slate-700">
-                                <div><span class="inline-block w-14 font-semibold text-slate-400">To:</span> <span class="bg-white px-2 py-0.5 border border-slate-200 rounded text-xs">student@toeflprep.com</span></div>
-                                <div><span class="inline-block w-14 font-semibold text-slate-400">From:</span> <span class="text-slate-600">newsletter@companyname.com</span></div>
-                                <div><span class="inline-block w-14 font-semibold text-slate-400">Subject:</span> <span class="font-medium text-slate-900">${taskTitle}</span></div>
-                            </div>
-                            <div class="p-6 text-slate-800 space-y-4 leading-relaxed font-normal bg-white">
-                                ${cleanPassage.replace(/\n/g, '<br>')}
-                            </div>
-                        </div>
-                    `;
-                case 'social_media':
-                    return `
-                        <div class="max-w-md mx-auto bg-white border border-slate-200 rounded-2xl p-5 shadow-xs font-sans text-left">
-                            <div class="flex items-center space-x-3 mb-4">
-                                <div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-sm">
-                                    <i data-lucide="user" class="w-5 h-5"></i>
-                                </div>
-                                <div>
-                                    <div class="font-bold text-sm text-slate-900">Community Board</div>
-                                    <div class="text-[11px] text-slate-400 font-normal">Sponsored • Just now</div>
-                                </div>
-                            </div>
-                            <div class="text-slate-700 space-y-3 font-normal text-sm leading-relaxed mb-4">
-                                ${cleanPassage.replace(/\n/g, '<br>')}
-                            </div>
-                            <div class="pt-3 border-t border-slate-100 flex justify-around text-xs font-medium text-slate-500">
-                                <span class="flex items-center space-x-1.5 cursor-pointer hover:text-slate-900"><i data-lucide="thumbs-up" class="w-4 h-4"></i> <span>Like</span></span>
-                                <span class="flex items-center space-x-1.5 cursor-pointer hover:text-slate-900"><i data-lucide="message-square" class="w-4 h-4"></i> <span>Comment</span></span>
-                            </div>
-                        </div>
-                    `;
-                case 'notice':
-                    return `
-                        <div class="max-w-lg mx-auto bg-white border-2 border-slate-800 p-8 shadow-xs font-sans relative text-left">
-                            <div class="absolute inset-1 border border-slate-200 pointer-events-none"></div>
-                            <h3 class="text-lg font-bold text-slate-900 text-center tracking-tight mb-6 uppercase">${taskTitle}</h3>
-                            <div class="text-slate-700 space-y-4 font-normal text-sm leading-relaxed relative z-10">
-                                ${cleanPassage.replace(/\n/g, '<br>')}
-                            </div>
-                        </div>
-                    `;
-                case 'chat':
+                case 'email': return `<div class="max-w-xl mx-auto bg-white border border-slate-200 rounded-lg overflow-hidden shadow-xs font-sans text-sm text-left"><div class="bg-slate-50 p-4 border-b border-slate-200 space-y-1.5 text-slate-700"><div><span class="inline-block w-14 font-semibold text-slate-400">To:</span> <span class="bg-white px-2 py-0.5 border border-slate-200 rounded text-xs">student@toeflprep.com</span></div><div><span class="inline-block w-14 font-semibold text-slate-400">From:</span> <span class="text-slate-600">newsletter@companyname.com</span></div><div><span class="inline-block w-14 font-semibold text-slate-400">Subject:</span> <span class="font-medium text-slate-900">${taskTitle}</span></div></div><div class="p-6 text-slate-800 space-y-4 leading-relaxed font-normal bg-white">${cleanPassage.replace(/\n/g, '<br>')}</div></div>`;
+                case 'social_media': return `<div class="max-w-md mx-auto bg-white border border-slate-200 rounded-2xl p-5 shadow-xs font-sans text-left"><div class="flex items-center space-x-3 mb-4"><div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-sm"><i data-lucide="user" class="w-5 h-5"></i></div><div><div class="font-bold text-sm text-slate-900">Community Board</div><div class="text-[11px] text-slate-400 font-normal">Sponsored • Just now</div></div></div><div class="text-slate-700 space-y-3 font-normal text-sm leading-relaxed mb-4">${cleanPassage.replace(/\n/g, '<br>')}</div><div class="pt-3 border-t border-slate-100 flex justify-around text-xs font-medium text-slate-500"><span class="flex items-center space-x-1.5 cursor-pointer hover:text-slate-900"><i data-lucide="thumbs-up" class="w-4 h-4"></i> <span>Like</span></span><span class="flex items-center space-x-1.5 cursor-pointer hover:text-slate-900"><i data-lucide="message-square" class="w-4 h-4"></i> <span>Comment</span></span></div></div>`;
+                case 'notice': return `<div class="max-w-lg mx-auto bg-white border-2 border-slate-800 p-8 shadow-xs font-sans relative text-left"><div class="absolute inset-1 border border-slate-200 pointer-events-none"></div><h3 class="text-lg font-bold text-slate-900 text-center tracking-tight mb-6 uppercase">${taskTitle}</h3><div class="text-slate-700 space-y-4 font-normal text-sm leading-relaxed relative z-10">${cleanPassage.replace(/\n/g, '<br>')}</div></div>`;
+                case 'chat': 
                     const lines = cleanPassage.split('\n');
                     const chatHtml = lines.map(line => {
                         if(!line.trim()) return '';
                         const match = line.match(/^([^\(]+(:\([^)]+\))?):\s*(.*)$/);
                         if (!match) {
                             const simpleMatch = line.match(/^([^:]+):\s*(.*)$/);
-                            if (simpleMatch) {
-                                return `
-                                    <div class="mb-4 font-sans text-left">
-                                        <div class="text-[11px] font-bold text-slate-500 mb-0.5 px-1">${simpleMatch[1].trim()}</div>
-                                        <div class="inline-block bg-white border border-slate-200 text-slate-800 rounded-2xl rounded-tl-none px-4 py-2.5 max-w-[90%] text-sm font-normal shadow-2xs">
-                                            ${simpleMatch[2]}
-                                        </div>
-                                    </div>
-                                `;
-                            }
+                            if (simpleMatch) return `<div class="mb-4 font-sans text-left"><div class="text-[11px] font-bold text-slate-500 mb-0.5 px-1">${simpleMatch[1].trim()}</div><div class="inline-block bg-white border border-slate-200 text-slate-800 rounded-2xl rounded-tl-none px-4 py-2.5 max-w-[90%] text-sm font-normal shadow-2xs">${simpleMatch[2]}</div></div>`;
                         }
-                        if (match) {
-                            return `
-                                <div class="mb-4 font-sans text-left">
-                                    <div class="text-[11px] font-bold text-slate-500 mb-0.5 px-1">${match[1].trim()}</div>
-                                    <div class="inline-block bg-white border border-slate-200 text-slate-800 rounded-2xl rounded-tl-none px-4 py-2.5 max-w-[90%] text-sm font-normal shadow-2xs">
-                                        ${match[3]}
-                                    </div>
-                                </div>
-                            `;
-                        }
+                        if (match) return `<div class="mb-4 font-sans text-left"><div class="text-[11px] font-bold text-slate-500 mb-0.5 px-1">${match[1].trim()}</div><div class="inline-block bg-white border border-slate-200 text-slate-800 rounded-2xl rounded-tl-none px-4 py-2.5 max-w-[90%] text-sm font-normal shadow-2xs">${match[3]}</div></div>`;
                         return `<p class="text-xs text-slate-400 italic my-2 text-center">${line}</p>`;
                     }).join('');
-                    return `
-                        <div class="max-w-sm mx-auto bg-slate-50 border border-slate-200 rounded-3xl overflow-hidden shadow-sm flex flex-col h-[420px]">
-                            <div class="bg-slate-900 text-white border-b border-slate-800 p-3.5 text-center font-bold text-xs shrink-0 shadow-2xs flex items-center justify-center space-x-2">
-                                <div class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
-                                <span>Group Chat</span>
-                            </div>
-                            <div class="flex-1 p-5 overflow-y-auto bg-slate-50 scrollbar-none">
-                                ${chatHtml}
-                            </div>
-                        </div>
-                    `;
-                case 'advertisement':
-                    return `
-                        <div class="max-w-md mx-auto bg-amber-50/40 border border-amber-200/60 rounded-2xl p-6 shadow-sm font-sans relative text-left">
-                            <div class="absolute top-4 right-4 text-[9px] font-bold text-amber-500 uppercase tracking-widest bg-white px-2 py-1 rounded-md shadow-xs border border-amber-100">Sponsored</div>
-                            <h3 class="text-lg font-bold text-slate-900 text-center mb-5 pr-16 leading-tight">${taskTitle}</h3>
-                            <div class="text-slate-700 space-y-4 font-normal text-sm leading-relaxed">
-                                ${cleanPassage.replace(/\n/g, '<br>')}
-                            </div>
-                        </div>
-                    `;
-                default:
-                    return `<div class="text-slate-700 space-y-4 font-normal leading-relaxed text-sm text-left">${cleanPassage.replace(/\n/g, '<br>')}</div>`;
+                    return `<div class="max-w-sm mx-auto bg-slate-50 border border-slate-200 rounded-3xl overflow-hidden shadow-sm flex flex-col h-[420px]"><div class="bg-slate-900 text-white border-b border-slate-800 p-3.5 text-center font-bold text-xs shrink-0 shadow-2xs flex items-center justify-center space-x-2"><div class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div><span>Group Chat</span></div><div class="flex-1 p-5 overflow-y-auto bg-slate-50 scrollbar-none">${chatHtml}</div></div>`;
+                case 'advertisement': return `<div class="max-w-md mx-auto bg-amber-50/40 border border-amber-200/60 rounded-2xl p-6 shadow-sm font-sans relative text-left"><div class="absolute top-4 right-4 text-[9px] font-bold text-amber-500 uppercase tracking-widest bg-white px-2 py-1 rounded-md shadow-xs border border-amber-100">Sponsored</div><h3 class="text-lg font-bold text-slate-900 text-center mb-5 pr-16 leading-tight">${taskTitle}</h3><div class="text-slate-700 space-y-4 font-normal text-sm leading-relaxed">${cleanPassage.replace(/\n/g, '<br>')}</div></div>`;
+                default: return `<div class="text-slate-700 space-y-4 font-normal leading-relaxed text-sm text-left">${cleanPassage.replace(/\n/g, '<br>')}</div>`;
             }
         }
 
@@ -422,7 +366,11 @@
         // 5. Роутер отображения текущего вопроса
         function renderCurrentQuestion() {
             const q = questions[currentIdx];
-            globalProgress.innerText = `${currentIdx + 1} / ${questions.length}`;
+            // Вычисляем текущий прогресс с учетом слов
+            let totalVisualQuestions = gridItemsMap.length;
+            let currentVisualIndex = gridItemsMap.findIndex(item => item.qIndex === currentIdx) + 1;
+
+            globalProgress.innerText = `${currentVisualIndex} / ${totalVisualQuestions}`;
 
             // Управление кнопками навигации
             if (currentIdx === 0) {
@@ -442,9 +390,9 @@
             }
 
             // Сброс структуры панелей
-            leftPanel.className = "w-full md:w-1/2 bg-white border-b md:border-b-0 md:border-r border-gray-200 p-6 md:p-8 overflow-y-auto h-full custom-scrollbar transition-all duration-300";
-            rightPanel.classList.remove('hidden');
-            rightPanel.className = "w-full md:w-1/2 bg-[#f8f9fa] p-6 md:p-8 lg:p-12 overflow-y-auto h-full custom-scrollbar transition-all duration-300";
+            textPanel.className = "w-full md:w-1/2 order-1 md:order-2 bg-white border-b md:border-b-0 md:border-l border-gray-200 p-6 md:p-8 overflow-y-auto h-full custom-scrollbar transition-all duration-300";
+            questionsPanel.classList.remove('hidden');
+            questionsPanel.className = "w-full md:w-1/2 order-2 md:order-1 bg-[#f8f9fa] p-6 md:p-8 lg:p-12 overflow-y-auto h-full custom-scrollbar transition-all duration-300";
 
             if (q.stage === 'sentence') {
                 renderSentenceLayout(q);
@@ -462,19 +410,22 @@
         // --- ФУНКЦИИ ОТРИСОВКИ СТАДИЙ ---
 
         function renderSentenceLayout(q) {
-            rightPanel.classList.add('hidden');
-            leftPanel.className = "w-full bg-[#f8f9fa] p-6 md:p-12 overflow-y-auto h-full flex items-center justify-center transition-all duration-300";
+            // Для задания со словами скрываем левую панель вопросов, а текст растягиваем на весь экран
+            questionsPanel.classList.add('hidden');
+            textPanel.className = "w-full order-1 bg-[#f8f9fa] p-6 md:p-12 overflow-y-auto h-full flex items-center justify-center transition-all duration-300";
 
             const sourceText = q.question_text || "";
+            let wordCounter = 0;
 
             const htmlWithInputs = sourceText.replace(/\S*(?:\[.\])+\S*/g, function(match) {
+                let currentWordIndex = wordCounter++;
                 let wordHtml = match.replace(/((?:\[.\])+)/g, function(bracketsBlock) {
                     const letters = bracketsBlock.match(/\[(.)\]/g).map(m => m.replace(/[\[\]]/g, ''));
                     const inputsHtml = letters.map((letter, index) => {
-                        // Восстановление буквы если ответ уже был
                         let existingValue = '';
-                        if (userAnswers[q.id] && userAnswers[q.id][index]) {
-                            existingValue = userAnswers[q.id][index];
+                        // Берем значение из массива слов, если оно уже сохранено
+                        if (userAnswers[q.id] && userAnswers[q.id][currentWordIndex] && userAnswers[q.id][currentWordIndex][index]) {
+                            existingValue = userAnswers[q.id][currentWordIndex][index];
                         }
                         return `<input type="text" maxlength="1" data-answer="${letter}" value="${existingValue}" class="letter-input" autocomplete="off">`;
                     }).join('');
@@ -483,8 +434,9 @@
                 return `<span class="puzzle-word">${wordHtml}</span>`;
             });
 
-            leftContent.innerHTML = `
+            textContent.innerHTML = `
                 <div class="bg-white p-10 rounded-3xl border border-gray-100 shadow-sm max-w-3xl w-full text-[16px] leading-[2.3]">
+                    <h3 class="text-sm font-bold text-slate-800 mb-6 border-b pb-3">Complete the words</h3>
                     ${htmlWithInputs}
                 </div>
             `;
@@ -493,21 +445,38 @@
         }
 
         function setupInputs(qId) {
-            const inputs = document.querySelectorAll('.letter-input');
-            if(inputs.length > 0 && !userAnswers[qId]) inputs[0].focus(); 
+            const words = document.querySelectorAll('.puzzle-word');
+            if(words.length > 0 && !userAnswers[qId]) {
+                const firstInput = words[0].querySelector('.letter-input');
+                if (firstInput) firstInput.focus();
+            }
 
-            inputs.forEach((input, index) => {
-                input.addEventListener('input', function() {
-                    this.value = this.value.replace(/[^a-zA-Z]/g, '').toLowerCase();
-                    if (this.value.length === 1 && index < inputs.length - 1) {
-                        inputs[index + 1].focus();
-                    }
-                    saveCurrentAnswer(); // Авто-сохранение
-                });
-                input.addEventListener('keydown', function(e) {
-                    if (e.key === 'Backspace' && this.value === '' && index > 0) {
-                        inputs[index - 1].focus();
-                    }
+            words.forEach((wordElement, wIndex) => {
+                const inputs = wordElement.querySelectorAll('.letter-input');
+                inputs.forEach((input, iIndex) => {
+                    input.addEventListener('input', function() {
+                        this.value = this.value.replace(/[^a-zA-Z]/g, '').toLowerCase();
+                        // Фокус на следующую букву или следующее слово
+                        if (this.value.length === 1) {
+                            if (iIndex < inputs.length - 1) {
+                                inputs[iIndex + 1].focus();
+                            } else if (wIndex < words.length - 1) {
+                                const nextWordInput = words[wIndex + 1].querySelector('.letter-input');
+                                if (nextWordInput) nextWordInput.focus();
+                            }
+                        }
+                        saveCurrentAnswer(); // Авто-сохранение массива
+                    });
+                    input.addEventListener('keydown', function(e) {
+                        if (e.key === 'Backspace' && this.value === '') {
+                            if (iIndex > 0) {
+                                inputs[iIndex - 1].focus();
+                            } else if (wIndex > 0) {
+                                const prevInputs = words[wIndex - 1].querySelectorAll('.letter-input');
+                                if (prevInputs.length > 0) prevInputs[prevInputs.length - 1].focus();
+                            }
+                        }
+                    });
                 });
             });
         }
@@ -515,15 +484,16 @@
         function renderDailyLayout(q) {
             const cleanLayoutType = (q.layout_type || '').toString().toLowerCase().trim();
             const currentTitle = testInfo ? testInfo.title : 'Reading Practice';
-            
             const styledLayout = renderDailyLifeLayout(q.passage_text, cleanLayoutType, currentTitle);
 
-            leftContent.innerHTML = `
+            // Текст идет в textContent (Правая панель на ПК)
+            textContent.innerHTML = `
                 <h2 class="text-xl font-bold text-slate-800 mb-6 border-b pb-2">Reading Passage</h2>
                 <div class="w-full space-y-4">
                     ${styledLayout}
                 </div>
             `;
+            // Вопросы идут в левую панель
             renderStandardQuiz(q);
         }
 
@@ -531,7 +501,7 @@
             const cleanLayoutType = (q.layout_type || '').toString().toLowerCase().trim();
             const passageHtml = parseAcademicPassage(q.passage_text);
 
-            leftContent.innerHTML = `
+            textContent.innerHTML = `
                 <h2 class="text-xl font-bold text-slate-800 mb-4 border-b pb-2">Academic Text</h2>
                 <div id="academicPassageContainer" class="leading-relaxed space-y-4 text-sm text-slate-600">
                     ${passageHtml}
@@ -541,12 +511,11 @@
             const passageContainer = document.getElementById('academicPassageContainer');
 
             if (cleanLayoutType === 'select_sentence' || cleanLayoutType === 'insert_text') {
-                
                 let instructionTxt = cleanLayoutType === 'select_sentence' ? 
-                    "Click directly on the sentence inside the left passage text to select your answer." :
-                    "Click on one of the squares [■] in the left passage to insert the sentence.";
+                    "Click directly on the sentence inside the passage text to select your answer." :
+                    "Click on one of the squares [■] in the passage to insert the sentence.";
 
-                rightContent.innerHTML = `
+                questionsContent.innerHTML = `
                     <span class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md uppercase tracking-wider mb-4 inline-block">${q.category || 'Practice'}</span>
                     <h3 class="text-sm font-bold text-slate-800 mb-6 leading-snug">${q.question_text || ""}</h3>
                     
@@ -564,7 +533,6 @@
                     const el = passageContainer.querySelector(selector);
                     if (el) el.classList.add('selected');
                 }
-
                 setupAcademicClickListeners(q, passageContainer);
 
             } else {
@@ -583,38 +551,32 @@
             let optionsHtml = '';
             const previousAnswer = userAnswers[q.id];
             
+            const renderOptions = (key, value) => {
+                const isChecked = previousAnswer == key;
+                optionsHtml += `
+                    <label class="flex items-center p-4 rounded-xl border ${isChecked ? 'border-indigo-600 bg-indigo-50/40 font-semibold text-indigo-950' : 'border-slate-200 bg-white hover:bg-slate-50'} cursor-pointer text-xs shadow-sm transition-all duration-200">
+                        <input type="radio" name="mock_option" value="${key}" ${isChecked ? 'checked' : ''} class="w-4 h-4 text-indigo-600 mr-3">
+                        <span>${value}</span>
+                    </label>
+                `;
+            };
+
             if (Array.isArray(options)) {
-                options.forEach((val, idx) => {
-                    const isChecked = previousAnswer == idx;
-                    optionsHtml += `
-                        <label class="flex items-center p-4 rounded-xl border ${isChecked ? 'border-indigo-600 bg-indigo-50/40 font-semibold text-indigo-950' : 'border-slate-200 bg-white hover:bg-slate-50'} cursor-pointer text-xs shadow-sm transition-all duration-200">
-                            <input type="radio" name="mock_option" value="${idx}" ${isChecked ? 'checked' : ''} class="w-4 h-4 text-indigo-600 mr-3">
-                            <span>${val}</span>
-                        </label>
-                    `;
-                });
+                options.forEach((val, idx) => renderOptions(idx, val));
             } else {
-                for (const [key, value] of Object.entries(options)) {
-                    const isChecked = previousAnswer == key;
-                    optionsHtml += `
-                        <label class="flex items-center p-4 rounded-xl border ${isChecked ? 'border-indigo-600 bg-indigo-50/40 font-semibold text-indigo-950' : 'border-slate-200 bg-white hover:bg-slate-50'} cursor-pointer text-xs shadow-sm transition-all duration-200">
-                            <input type="radio" name="mock_option" value="${key}" ${isChecked ? 'checked' : ''} class="w-4 h-4 text-indigo-600 mr-3">
-                            <span>${value}</span>
-                        </label>
-                    `;
-                }
+                for (const [key, value] of Object.entries(options)) renderOptions(key, value);
             }
 
-            rightContent.innerHTML = `
+            questionsContent.innerHTML = `
                 <span class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md uppercase tracking-wider mb-4 inline-block">${q.category || 'Practice'}</span>
                 <h3 class="text-sm font-bold text-slate-800 mb-6 leading-snug">${q.question_text || ""}</h3>
                 <div class="space-y-3">${optionsHtml}</div>
             `;
 
-            rightContent.querySelectorAll('input[name="mock_option"]').forEach(radio => {
+            questionsContent.querySelectorAll('input[name="mock_option"]').forEach(radio => {
                 radio.addEventListener('change', (e) => {
                     userAnswers[q.id] = e.target.value;
-                    renderStandardQuiz(q);
+                    renderStandardQuiz(q); // Обновляем стили выбранной опции
                 });
             });
         }
@@ -656,9 +618,22 @@
 
         function buildReviewGrid() {
             reviewGrid.innerHTML = '';
-            questions.forEach((q, idx) => {
-                const isAnswered = userAnswers[q.id] !== undefined && userAnswers[q.id] !== "";
-                const isCurrent = idx === currentIdx;
+            
+            gridItemsMap.forEach((item, displayIdx) => {
+                const isCurrent = item.qIndex === currentIdx;
+                let isAnswered = false;
+
+                if (item.isWord) {
+                    // Проверяем, заполнено ли конкретное слово
+                    const ansArr = userAnswers[item.q.id];
+                    const targetWordData = item.q.question_text.match(/\S*(?:\[.\])+\S*/g)[item.wIndex];
+                    const targetLen = (targetWordData.match(/\[(.)\]/g) || []).length;
+                    if (ansArr && ansArr[item.wIndex] && ansArr[item.wIndex].length === targetLen) {
+                        isAnswered = true;
+                    }
+                } else {
+                    isAnswered = userAnswers[item.q.id] !== undefined && userAnswers[item.q.id] !== "";
+                }
                 
                 let baseClasses = "flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all cursor-pointer font-bold text-sm ";
                 
@@ -671,15 +646,15 @@
                 }
 
                 reviewGrid.innerHTML += `
-                    <button onclick="jumpToQuestion(${idx})" class="${baseClasses}">
-                        ${idx + 1}
+                    <button onclick="jumpToQuestion(${item.qIndex})" class="${baseClasses}">
+                        ${displayIdx + 1}
                     </button>
                 `;
             });
         }
 
-        function jumpToQuestion(idx) {
-            currentIdx = idx;
+        function jumpToQuestion(qIndex) {
+            currentIdx = qIndex;
             toggleReviewModal();
             renderCurrentQuestion();
         }
@@ -688,59 +663,87 @@
 
         function forceSubmitTest() {
             clearInterval(timerInterval);
-            saveCurrentAnswer(); // Убедимся, что последний ответ сохранен
+            saveCurrentAnswer(); 
             document.getElementById('reviewModal').classList.add('hidden');
             
-            // Скрываем хедер и очищаем контейнер
             document.getElementById('mainHeader').classList.add('hidden');
             
             let rawScore = 0;
+            let totalQuestionsCount = 0;
             let resultsHTML = '';
 
             questions.forEach((q, idx) => {
                 const uAns = userAnswers[q.id];
-                let isCorrect = false;
 
-                // Логика сверки ответа
                 if (q.stage === 'sentence') {
-                    if (uAns && typeof uAns === 'string' && uAns.toLowerCase() === (q.correct_answer || '').toLowerCase()) {
-                        isCorrect = true;
-                    }
+                    const correctWords = [];
+                    (q.question_text.match(/\S*(?:\[.\])+\S*/g) || []).forEach(match => {
+                        correctWords.push(match.match(/\[(.)\]/g).map(m => m.replace(/[\[\]]/g, '')).join('').toLowerCase());
+                    });
+                    
+                    totalQuestionsCount += correctWords.length; // Прибавляем каждое слово в общий зачет вопросов
+
+                    let qHtml = `<div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm mb-4">
+                                    <h4 class="font-bold text-slate-800 mb-4 border-b pb-2">Complete the Words</h4>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">`;
+                    
+                    correctWords.forEach((cWord, wIdx) => {
+                        const userWord = (uAns && uAns[wIdx]) ? uAns[wIdx] : '';
+                        const isCorrect = userWord.toLowerCase() === cWord;
+                        if (isCorrect) rawScore++;
+
+                        const statusColor = isCorrect ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-rose-600 bg-rose-50 border-rose-100';
+                        const statusIcon = isCorrect ? 'check' : 'x';
+
+                        qHtml += `
+                            <div class="p-3 border rounded-xl flex justify-between items-center ${isCorrect ? 'border-emerald-200 bg-emerald-50/30' : 'border-rose-200 bg-rose-50/30'}">
+                                <div>
+                                    <span class="text-[10px] font-bold text-slate-400 block mb-0.5">Word ${wIdx + 1}</span>
+                                    <div class="text-sm">
+                                        <span class="font-medium text-slate-800">${userWord || '<i class="text-slate-400">-</i>'}</span>
+                                        ${!isCorrect ? `<span class="text-emerald-600 font-bold ml-2">(${cWord})</span>` : ''}
+                                    </div>
+                                </div>
+                                <i data-lucide="${statusIcon}" class="w-4 h-4 ${isCorrect ? 'text-emerald-500' : 'text-rose-500'}"></i>
+                            </div>
+                        `;
+                    });
+                    qHtml += `</div></div>`;
+                    resultsHTML += qHtml;
+
                 } else {
-                    if (uAns == q.correct_answer) {
-                        isCorrect = true;
-                    }
-                }
+                    totalQuestionsCount++;
+                    let isCorrect = (uAns == q.correct_answer);
+                    if (isCorrect) rawScore++;
 
-                if (isCorrect) rawScore++;
+                    const statusColor = isCorrect ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-rose-600 bg-rose-50 border-rose-100';
+                    const statusIcon = isCorrect ? 'check' : 'x';
 
-                const statusColor = isCorrect ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-rose-600 bg-rose-50 border-rose-100';
-                const statusIcon = isCorrect ? 'check' : 'x';
-
-                resultsHTML += `
-                    <div class="bg-white border ${isCorrect ? 'border-emerald-200 shadow-emerald-50/20' : 'border-rose-200 shadow-rose-50/20'} rounded-2xl p-5 shadow-sm mb-4">
-                        <div class="flex items-center justify-between mb-3">
-                            <span class="text-[10px] font-bold ${isCorrect ? 'text-emerald-600' : 'text-rose-600'} uppercase tracking-wider">Question ${idx + 1}</span>
-                            <div class="flex items-center px-2 py-1 rounded-md border ${statusColor}">
-                                <i data-lucide="${statusIcon}" class="w-3.5 h-3.5 mr-1.5"></i>
-                                <span class="text-[10px] font-bold">${isCorrect ? 'CORRECT' : 'INCORRECT'}</span>
+                    resultsHTML += `
+                        <div class="bg-white border ${isCorrect ? 'border-emerald-200 shadow-emerald-50/20' : 'border-rose-200 shadow-rose-50/20'} rounded-2xl p-5 shadow-sm mb-4">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-[10px] font-bold ${isCorrect ? 'text-emerald-600' : 'text-rose-600'} uppercase tracking-wider">Question</span>
+                                <div class="flex items-center px-2 py-1 rounded-md border ${statusColor}">
+                                    <i data-lucide="${statusIcon}" class="w-3.5 h-3.5 mr-1.5"></i>
+                                    <span class="text-[10px] font-bold">${isCorrect ? 'CORRECT' : 'INCORRECT'}</span>
+                                </div>
+                            </div>
+                            <p class="font-bold text-slate-800 text-sm mb-4 leading-snug">${q.question_text || 'Interactive question'}</p>
+                            
+                            <div class="bg-slate-50 p-3.5 rounded-xl text-xs text-slate-600">
+                                <span class="font-bold uppercase tracking-wider text-[10px] text-slate-400 block mb-1">Your Answer</span>
+                                <div class="mb-3 font-medium text-slate-800">${uAns || '<span class="italic text-slate-400">Skipped</span>'}</div>
+                                
+                                <span class="font-bold uppercase tracking-wider text-[10px] text-slate-400 block mb-1">Correct Answer</span>
+                                <div class="font-medium text-emerald-700">${q.correct_answer || 'N/A'}</div>
                             </div>
                         </div>
-                        <p class="font-bold text-slate-800 text-sm mb-4 leading-snug">${q.question_text || 'Interactive question'}</p>
-                        
-                        <div class="bg-slate-50 p-3.5 rounded-xl text-xs text-slate-600">
-                            <span class="font-bold uppercase tracking-wider text-[10px] text-slate-400 block mb-1">Your Answer</span>
-                            <div class="mb-3 font-medium text-slate-800">${uAns || '<span class="italic text-slate-400">Skipped</span>'}</div>
-                            
-                            <span class="font-bold uppercase tracking-wider text-[10px] text-slate-400 block mb-1">Correct Answer</span>
-                            <div class="font-medium text-emerald-700">${q.correct_answer || 'N/A'}</div>
-                        </div>
-                    </div>
-                `;
+                    `;
+                }
             });
 
-            // Расчет примерного Band Score (шкала 1.0 - 6.0)
-            const bandScore = ((rawScore / questions.length) * 6).toFixed(1);
+            // Расчет Band Score по общему количеству "микро-вопросов"
+            const bandScore = ((rawScore / totalQuestionsCount) * 6).toFixed(1);
 
             document.body.className = "bg-[#f8f9fa] text-slate-800 min-h-screen overflow-y-auto";
 
@@ -760,7 +763,7 @@
                             </div>
                             <div class="h-16 w-px bg-slate-200"></div>
                             <div class="text-center">
-                                <div class="text-3xl font-bold text-slate-700 mb-2">${rawScore} / ${questions.length}</div>
+                                <div class="text-3xl font-bold text-slate-700 mb-2">${rawScore} / ${totalQuestionsCount}</div>
                                 <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Raw Score</div>
                             </div>
                         </div>
@@ -769,7 +772,7 @@
                             <button onclick="location.reload()" class="px-6 py-3 bg-slate-900 hover:bg-indigo-600 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center">
                                 <i data-lucide="rotate-ccw" class="w-4 h-4 mr-2"></i> Try Again
                             </button>
-                            <a href="dashboard.html" class="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center">
+                            <a href="mini-mock-test.html" class="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center">
                                 Dashboard
                             </a>
                         </div>
@@ -787,8 +790,6 @@
             `;
             
             lucide.createIcons();
-            
-            // Если есть currentUser, здесь можно добавить код сохранения результатов в Supabase.
         }
     </script>
 </body>
