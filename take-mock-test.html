@@ -82,7 +82,6 @@
 </head>
 <body class="bg-[#f8f9fa] text-slate-800 m-0 p-0 flex flex-col h-[100dvh] overflow-hidden">
 
-    <!-- ОБНОВЛЕННЫЙ HEADER КАК НА СКРИНШОТЕ -->
     <header id="mainHeader" class="bg-white border-b border-gray-200 px-6 py-3.5 flex justify-between items-center shrink-0 z-10 shadow-sm relative">
         <div class="flex items-center space-x-4">
             <button onclick="window.history.back()" class="text-slate-400 hover:text-slate-900 transition-colors flex items-center text-sm font-medium cursor-pointer">
@@ -124,13 +123,11 @@
 
     <main id="mainContainer" class="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden w-full transition-all duration-300">
         
-        <!-- ТЕКСТ СЛЕВА ВЕРНУЛСЯ (order-1) -->
         <section id="textPanel" class="w-full md:w-1/2 order-1 bg-white border-b md:border-b-0 md:border-r border-gray-200 p-6 md:p-8 overflow-y-auto h-full custom-scrollbar transition-all duration-300">
             <div id="textContent" class="text-slate-700 leading-relaxed text-sm">
             </div>
         </section>
 
-        <!-- ВОПРОСЫ СПРАВА ВЕРНУЛИСЬ (order-2) -->
         <section id="questionsPanel" class="w-full md:w-1/2 order-2 bg-[#f8f9fa] p-6 md:p-8 lg:p-12 overflow-y-auto h-full custom-scrollbar transition-all duration-300">
             <div id="questionsContent" class="w-full space-y-4">
             </div>
@@ -138,7 +135,6 @@
         
     </main>
 
-    <!-- НАСТОЯЩЕЕ МЕНЮ ОБЗОРА TOEFL (УВЕЛИЧЕНА ШИРИНА И СТИЛИЗАЦИЯ ТАБЛИЦЫ) -->
     <div id="reviewModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
         <div class="bg-white rounded-3xl p-6 w-full max-w-2xl shadow-2xl">
             <div class="flex justify-between items-center mb-5">
@@ -146,7 +142,6 @@
                 <button onclick="toggleReviewModal()" class="text-slate-400 hover:text-slate-900"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
             
-            <!-- Контейнер для таблицы TOEFL -->
             <div id="reviewGrid" class="block w-full mb-6 max-h-[60vh] overflow-y-auto custom-scrollbar border border-slate-100 rounded-xl overflow-hidden">
             </div>
 
@@ -159,7 +154,6 @@
     <script>
         lucide.createIcons();
 
-        // 1. Глобальные переменные состояния
         let testInfo = null;
         let questions = [];
         let currentIdx = 0;
@@ -169,7 +163,6 @@
         let currentUser = null;
         let gridItemsMap = [];
 
-        // Элементы DOM
         const timerText = document.getElementById('timerText');
         const timerContainer = document.getElementById('globalTimer');
         const textPanel = document.getElementById('textPanel');
@@ -183,7 +176,6 @@
         const reviewModal = document.getElementById('reviewModal');
         const reviewGrid = document.getElementById('reviewGrid');
 
-        // Инициализация базы данных
         function getDatabaseClient() {
             if (typeof supabaseClient !== 'undefined') return supabaseClient;
             if (typeof window !== 'undefined' && window.supabaseClient) return window.supabaseClient;
@@ -386,7 +378,6 @@
                 btnNext.className = "px-4 py-1.5 rounded-md bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition-colors shadow-sm flex items-center cursor-pointer";
             }
 
-            // ТЕКСТ СЛЕВА (order-1), ВОПРОСЫ СПРАВА (order-2)
             textPanel.className = "w-full md:w-1/2 order-1 bg-white border-b md:border-b-0 md:border-r border-gray-200 p-6 md:p-8 overflow-y-auto h-full custom-scrollbar transition-all duration-300";
             questionsPanel.classList.remove('hidden');
             questionsPanel.className = "w-full md:w-1/2 order-2 bg-[#f8f9fa] p-6 md:p-8 lg:p-12 overflow-y-auto h-full custom-scrollbar transition-all duration-300";
@@ -602,7 +593,6 @@
             }
         }
 
-        // ОБНОВЛЕННАЯ ФУНКЦИЯ ПОСТРОЕНИЯ ИНТЕРФЕЙСА ТАБЛИЦЫ REVIEW (ПОД НАСТОЯЩИЙ TOEFL)
         function buildReviewGrid() {
             reviewGrid.innerHTML = '';
             
@@ -612,7 +602,6 @@
 
             let currentDisplayNo = 1;
 
-            // Группируем первые 1-10 заданий в одну строчку (Словный пазл)
             if (sentenceItems.length > 0) {
                 let startNo = currentDisplayNo;
                 let endNo = currentDisplayNo + sentenceItems.length - 1;
@@ -641,7 +630,6 @@
                 });
             }
 
-            // Добавляем все остальные вопросы индивидуально
             nonSentenceItems.forEach(item => {
                 let noStr = `${currentDisplayNo++}`;
                 let questionStr = "Read a passage.";
@@ -669,7 +657,6 @@
                 });
             });
 
-            // Формируем чистую таблицу в стиле настоящего TOEFL
             let tableHtml = `
                 <table class="w-full text-left border-collapse font-sans text-sm">
                     <thead>
@@ -710,7 +697,7 @@
             renderCurrentQuestion();
         }
 
-        // --- ОБНОВЛЕННАЯ СТРАНИЦА РЕЗУЛЬТАТОВ (БЕЗ ДУБЛИРОВАНИЯ ТЕКСТОВ) ---
+        // --- ОБНОВЛЕННАЯ СТРАНИЦА РЕЗУЛЬТАТОВ ---
         function forceSubmitTest() {
             clearInterval(timerInterval);
             saveCurrentAnswer(); 
@@ -721,8 +708,45 @@
             let totalQuestionsCount = 0;
             let resultsHTML = '';
 
+            // Собираем тексты для левой панели (с учетом Sentence)
+            let passagesHTML = '';
+            const renderedPassages = new Set();
+            
+            questions.forEach(q => {
+                let rawText = q.passage_text;
+                if (q.stage === 'sentence') {
+                    rawText = q.question_text ? q.question_text.replace(/\[(.)\]/g, '$1') : '';
+                }
+                
+                if (!rawText) return;
+                
+                const normalizedText = rawText.replace(/\[s\d+\]|\[sq\d+\]/g, '').replace(/\s+/g, ' ').trim();
+                
+                if (!renderedPassages.has(normalizedText)) {
+                    renderedPassages.add(normalizedText);
+                    const cleanLayoutType = (q.layout_type || '').toString().toLowerCase().trim();
+                    const currentTitle = testInfo ? testInfo.title : 'Reading Passage';
+                    
+                    if (q.stage === 'sentence') {
+                        passagesHTML += `<div class="mb-10"><h2 class="text-xl font-bold text-slate-800 mb-4 border-b pb-2">Word Puzzle Text</h2><div class="leading-relaxed space-y-4 text-[15px] text-slate-700 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">${rawText}</div></div>`;
+                    } else if (q.stage === 'academic') {
+                        passagesHTML += `<div class="mb-10"><h2 class="text-xl font-bold text-slate-800 mb-4 border-b pb-2">Academic Text</h2><div class="leading-relaxed space-y-4 text-sm text-slate-600">${parseAcademicPassage(rawText)}</div></div>`;
+                    } else if (q.stage === 'daily') {
+                        passagesHTML += `<div class="mb-10"><h2 class="text-xl font-bold text-slate-800 mb-4 border-b pb-2">Reading Passage</h2>${renderDailyLifeLayout(rawText, cleanLayoutType, currentTitle)}</div></div>`;
+                    } else {
+                        passagesHTML += `<div class="mb-10"><div class="leading-relaxed space-y-4 text-sm text-slate-600">${rawText.replace(/\n/g, '<br>')}</div></div>`;
+                    }
+                }
+            });
+
+            // Формируем правые карточки с результатами
             questions.forEach((q, idx) => {
                 const uAns = userAnswers[q.id];
+
+                const questionType = q.category || q.layout_type || "General Task";
+                const typeBadgeHtml = `<div class="inline-flex items-center px-3 py-1 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-600 text-white text-[10px] font-bold uppercase tracking-widest shadow-[0_3px_6px_rgba(79,70,229,0.3)] mb-4 border border-indigo-400/50 drop-shadow-sm">
+                    🎯 Type: ${questionType}
+                </div>`;
 
                 if (q.stage === 'sentence') {
                     const correctWords = [];
@@ -732,11 +756,9 @@
                     
                     totalQuestionsCount += correctWords.length;
 
-                    let qHtml = `<div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm mb-4">
-                                    <div class="flex items-center justify-between mb-3">
-                                        <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Word Puzzle</span>
-                                    </div>
-                                    <h4 class="font-bold text-slate-800 mb-4 border-b pb-2">Complete the Words</h4>
+                    let qHtml = `<div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm mb-5 relative overflow-hidden">
+                                    ${typeBadgeHtml}
+                                    <h4 class="font-bold text-slate-800 mb-4 pb-2 border-b">Complete the Words</h4>
                                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">`;
                     
                     correctWords.forEach((cWord, wIdx) => {
@@ -744,18 +766,16 @@
                         const isCorrect = userWord.toLowerCase() === cWord;
                         if (isCorrect) rawScore++;
 
-                        const statusIcon = isCorrect ? 'check' : 'x';
-
                         qHtml += `
-                            <div class="p-3 border rounded-xl flex justify-between items-center ${isCorrect ? 'border-emerald-200 bg-emerald-50/30' : 'border-rose-200 bg-rose-50/30'}">
+                            <div class="p-3 border rounded-xl flex justify-between items-center ${isCorrect ? 'border-emerald-300 bg-emerald-50 shadow-sm' : 'border-rose-300 bg-rose-50 shadow-sm'}">
                                 <div>
                                     <span class="text-[10px] font-bold text-slate-400 block mb-0.5">Word ${wIdx + 1}</span>
                                     <div class="text-sm">
-                                        <span class="font-medium text-slate-800">${userWord || '<i class="text-slate-400">-</i>'}</span>
-                                        ${!isCorrect ? `<span class="text-emerald-600 font-bold ml-2">(${cWord})</span>` : ''}
+                                        <span class="font-bold ${isCorrect ? 'text-emerald-900' : 'text-rose-900'}">${userWord || '-'}</span>
+                                        ${!isCorrect ? `<span class="text-emerald-600 font-bold ml-2 text-xs">(${cWord})</span>` : ''}
                                     </div>
                                 </div>
-                                <i data-lucide="${statusIcon}" class="w-4 h-4 ${isCorrect ? 'text-emerald-500' : 'text-rose-500'}"></i>
+                                <span class="text-xl drop-shadow-sm">${isCorrect ? '✅' : '❌'}</span>
                             </div>
                         `;
                     });
@@ -767,30 +787,62 @@
                     let isCorrect = (uAns == q.correct_answer);
                     if (isCorrect) rawScore++;
 
-                    const statusColor = isCorrect ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-rose-600 bg-rose-50 border-rose-100';
-                    const statusIcon = isCorrect ? 'check' : 'x';
+                    let optionsObj = {};
+                    try {
+                        optionsObj = typeof q.options === 'string' ? JSON.parse(q.options) : (q.options || {});
+                    } catch (e) {
+                        console.error("Ошибка парсинга options:", e);
+                    }
 
-                    resultsHTML += `
-                        <div class="bg-white border ${isCorrect ? 'border-emerald-200 shadow-emerald-50/20' : 'border-rose-200 shadow-rose-50/20'} rounded-2xl p-5 shadow-sm mb-4">
-                            <div class="flex items-center justify-between mb-3">
-                                <div class="flex items-center space-x-2">
-                                    ${q.category ? `<span class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded uppercase tracking-wider">${q.category}</span>` : ''}
-                                    <span class="text-[10px] font-bold ${isCorrect ? 'text-emerald-600' : 'text-rose-600'} uppercase tracking-wider">Q${totalQuestionsCount}</span>
-                                </div>
-                                <div class="flex items-center px-2 py-1 rounded-md border ${statusColor}">
-                                    <i data-lucide="${statusIcon}" class="w-3.5 h-3.5 mr-1.5"></i>
-                                    <span class="text-[10px] font-bold">${isCorrect ? 'CORRECT' : 'INCORRECT'}</span>
-                                </div>
-                            </div>
-                            <p class="font-bold text-slate-800 text-sm mb-4 leading-snug">${q.question_text || 'Interactive question'}</p>
+                    let optionsListHtml = '<div class="space-y-2 mt-4">';
+                    
+                    if (Object.keys(optionsObj).length > 0) {
+                        for (const [key, val] of Object.entries(optionsObj)) {
+                            let isUserChoice = (uAns == key);
+                            let isCorrectChoice = (q.correct_answer == key);
                             
-                            <div class="bg-slate-50 p-3.5 rounded-xl text-xs text-slate-600">
+                            let boxClass = "bg-white border-slate-200 text-slate-600";
+                            let iconEmoji = "⚪️";
+                            
+                            if (isCorrectChoice) {
+                                boxClass = "bg-emerald-50 border-emerald-400 text-emerald-900 shadow-sm font-bold";
+                                iconEmoji = "✅"; 
+                            } else if (isUserChoice && !isCorrectChoice) {
+                                boxClass = "bg-rose-50 border-rose-400 text-rose-900 shadow-sm font-bold";
+                                iconEmoji = "❌";
+                            }
+                            
+                            optionsListHtml += `
+                                <div class="p-3 border rounded-xl flex items-center text-xs sm:text-sm transition-all duration-200 ${boxClass}">
+                                    <span class="mr-3 text-lg drop-shadow-sm">${iconEmoji}</span>
+                                    <span>${val}</span>
+                                </div>
+                            `;
+                        }
+                    } else {
+                        optionsListHtml += `
+                            <div class="bg-slate-50 p-4 rounded-xl text-xs text-slate-600 border border-slate-200">
                                 <span class="font-bold uppercase tracking-wider text-[10px] text-slate-400 block mb-1">Your Answer</span>
                                 <div class="mb-3 font-medium text-slate-800">${uAns || '<span class="italic text-slate-400">Skipped</span>'}</div>
-                                
                                 <span class="font-bold uppercase tracking-wider text-[10px] text-slate-400 block mb-1">Correct Answer</span>
                                 <div class="font-medium text-emerald-700">${q.correct_answer || 'N/A'}</div>
                             </div>
+                        `;
+                    }
+                    optionsListHtml += '</div>';
+
+                    resultsHTML += `
+                        <div class="bg-white border ${isCorrect ? 'border-emerald-200 shadow-emerald-50/20' : 'border-rose-200 shadow-rose-50/20'} rounded-2xl p-6 shadow-sm mb-5 relative">
+                            ${typeBadgeHtml}
+                            <div class="absolute top-6 right-6">
+                                <span class="text-[10px] font-black ${isCorrect ? 'text-emerald-500' : 'text-rose-500'} uppercase tracking-widest bg-slate-50 px-2 py-1 rounded-md border border-slate-100 shadow-sm">
+                                    Q${totalQuestionsCount}
+                                </span>
+                            </div>
+                            
+                            <p class="font-bold text-slate-800 text-[15px] mb-2 leading-snug pr-12">${q.question_text || 'Interactive question'}</p>
+                            
+                            ${optionsListHtml}
                         </div>
                     `;
                 }
@@ -798,7 +850,6 @@
 
             const bandScore = totalQuestionsCount > 0 ? ((rawScore / totalQuestionsCount) * 6).toFixed(1) : "0.0";
 
-            // [НОВОЕ] ОПТИМИЗИРОВАННОЕ СОХРАНЕНИЕ РЕЗУЛЬТАТОВ В SUPABASE
             if (currentUser && db && testInfo) {
                 db.from('mock_test_results').insert([{
                     user_id: currentUser.id,
@@ -811,53 +862,25 @@
                 });
             }
 
-            // Собираем тексты (пассажи) для левой панели СТРОГО БЕЗ ДУБЛИРОВАНИЯ
-            let passagesHTML = '';
-            const renderedPassages = new Set();
-            
-            questions.forEach(q => {
-                if (!q.passage_text) return;
-                
-                // Исправление дублирования: нормализуем текст (очищаем от меток предложений и квадратов вставок) для сверки
-                const normalizedText = q.passage_text.replace(/\[s\d+\]|\[sq\d+\]/g, '').replace(/\s+/g, ' ').trim();
-                
-                if (!renderedPassages.has(normalizedText)) {
-                    renderedPassages.add(normalizedText);
-                    const cleanLayoutType = (q.layout_type || '').toString().toLowerCase().trim();
-                    const currentTitle = testInfo ? testInfo.title : 'Reading Passage';
-                    
-                    if (q.stage === 'academic') {
-                        passagesHTML += `<div class="mb-10"><h2 class="text-xl font-bold text-slate-800 mb-4 border-b pb-2">Academic Text</h2><div class="leading-relaxed space-y-4 text-sm text-slate-600">${parseAcademicPassage(q.passage_text)}</div></div>`;
-                    } else if (q.stage === 'daily') {
-                        passagesHTML += `<div class="mb-10"><h2 class="text-xl font-bold text-slate-800 mb-4 border-b pb-2">Reading Passage</h2>${renderDailyLifeLayout(q.passage_text, cleanLayoutType, currentTitle)}</div>`;
-                    } else {
-                        passagesHTML += `<div class="mb-10"><div class="leading-relaxed space-y-4 text-sm text-slate-600">${q.passage_text.replace(/\n/g, '<br>')}</div></div>`;
-                    }
-                }
-            });
-
             document.body.className = "bg-[#f8f9fa] text-slate-800 h-[100dvh] overflow-hidden m-0 p-0 flex flex-col";
 
-            // ДВЕ ПАНЕЛИ НА ЭКРАНЕ РЕЗУЛЬТАТОВ
             mainContainer.className = "flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden w-full transition-all duration-300";
             mainContainer.innerHTML = `
-                <!-- Левая панель с текстом (Рендерится без дублей) -->
-                <section class="w-full md:w-1/2 bg-white border-b md:border-b-0 md:border-r border-gray-200 p-6 md:p-10 overflow-y-auto h-full custom-scrollbar">
+                <section class="w-full md:w-1/2 bg-slate-50 border-b md:border-b-0 md:border-r border-gray-200 p-6 md:p-10 overflow-y-auto h-full custom-scrollbar">
                     ${passagesHTML || '<div class="text-slate-400 italic flex items-center justify-center h-full">No reading passage for this test.</div>'}
                 </section>
 
-                <!-- Правая панель с результатами -->
-                <section class="w-full md:w-1/2 bg-[#f8f9fa] p-6 md:p-8 lg:p-12 overflow-y-auto h-full custom-scrollbar">
+                <section class="w-full md:w-1/2 bg-white p-6 md:p-8 lg:p-12 overflow-y-auto h-full custom-scrollbar">
                     <div class="w-full max-w-2xl mx-auto">
-                        <div class="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-200 text-center mb-10 relative overflow-hidden">
-                            <div class="w-16 h-16 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <i data-lucide="trophy" class="w-8 h-8"></i>
+                        <div class="bg-gradient-to-b from-white to-slate-50 rounded-[2rem] p-8 shadow-sm border border-slate-200 text-center mb-10 relative overflow-hidden">
+                            <div class="text-6xl drop-shadow-md mb-4 flex justify-center">
+                                🏆
                             </div>
-                            <h2 class="text-2xl font-bold text-slate-900 mb-8">Test Completed!</h2>
+                            <h2 class="text-2xl font-black text-slate-900 mb-8 tracking-tight">Test Completed!</h2>
                             
                             <div class="flex justify-center gap-12 items-center mb-8">
                                 <div class="text-center">
-                                    <div class="text-5xl font-black text-slate-900 mb-2">${bandScore}</div>
+                                    <div class="text-5xl font-black text-indigo-600 mb-2 drop-shadow-sm">${bandScore}</div>
                                     <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Est. Band Score</div>
                                 </div>
                                 <div class="h-16 w-px bg-slate-200"></div>
@@ -869,20 +892,20 @@
                             
                             <div class="flex justify-center gap-4">
                                 <button onclick="location.reload()" class="px-6 py-2.5 bg-slate-900 hover:bg-indigo-600 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center cursor-pointer">
-                                    <i data-lucide="rotate-ccw" class="w-4 h-4 mr-2"></i> Try Again
+                                    <span class="mr-2 text-sm">🔄</span> Try Again
                                 </button>
-                                <a href="mini-mock-test.html" class="px-6 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center">
+                                <a href="mini-mock-test.html" class="px-6 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center shadow-sm">
                                     Dashboard
                                 </a>
                             </div>
                         </div>
 
-                        <h3 class="text-base font-bold text-slate-900 mb-6 flex items-center px-2">
-                            <i data-lucide="list-checks" class="w-5 h-5 mr-2 text-indigo-500"></i>
+                        <h3 class="text-lg font-black text-slate-900 mb-6 flex items-center px-2">
+                            <span class="mr-2 text-xl drop-shadow-sm">💡</span>
                             Review Answers & Explanations
                         </h3>
                         
-                        <div class="space-y-4">
+                        <div class="space-y-2">
                             ${resultsHTML}
                         </div>
                     </div>
