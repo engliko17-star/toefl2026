@@ -202,6 +202,7 @@
         async function bootTest() {
             const urlParams = new URLSearchParams(window.location.search);
             const testId = urlParams.get('id');
+            const mode = urlParams.get('mode');
 
             if (!testId) {
                 document.getElementById('testTitle').innerText = "NO TEST ID";
@@ -213,7 +214,6 @@
                 if (testError) throw testError;
                 
                 testInfo = testData;
-                timeRemaining = testInfo.total_time_seconds || 3600;
                 document.getElementById('testTitle').innerText = testInfo.title;
 
                 const { data: qData, error: qError } = await db.from('mock_questions')
@@ -230,6 +230,25 @@
                 }
 
                 calculateGridItems();
+
+                if (mode === 'review') {
+                    if (currentUser) {
+                        const { data: resData, error: resError } = await db.from('mock_test_results')
+                            .select('user_answers')
+                            .eq('test_id', testId)
+                            .eq('user_id', currentUser.id)
+                            .order('created_at', { ascending: false })
+                            .limit(1);
+                        
+                        if (!resError && resData && resData.length > 0) {
+                            userAnswers = resData[0].user_answers || {};
+                        }
+                    }
+                    forceSubmitTest();
+                    return;
+                }
+
+                timeRemaining = testInfo.total_time_seconds || 3600;
                 startTimer();
                 renderCurrentQuestion();
             } catch (err) {
@@ -699,8 +718,14 @@
 
         // --- ОБНОВЛЕННАЯ СТРАНИЦА РЕЗУЛЬТАТОВ ---
         function forceSubmitTest() {
-            clearInterval(timerInterval);
-            saveCurrentAnswer(); 
+            if (timerInterval) clearInterval(timerInterval);
+            const urlParams = new URLSearchParams(window.location.search);
+            const isReviewMode = urlParams.get('mode') === 'review';
+
+            if (!isReviewMode) {
+                saveCurrentAnswer(); 
+            }
+            
             document.getElementById('reviewModal').classList.add('hidden');
             document.getElementById('mainHeader').classList.add('hidden');
             
@@ -708,7 +733,6 @@
             let totalQuestionsCount = 0;
             let resultsHTML = '';
 
-            // Собираем тексты для левой панели (с учетом Sentence)
             let passagesHTML = '';
             const renderedPassages = new Set();
             
@@ -739,7 +763,6 @@
                 }
             });
 
-            // Формируем правые карточки с результатами
             questions.forEach((q, idx) => {
                 const uAns = userAnswers[q.id];
 
@@ -850,13 +873,14 @@
 
             const bandScore = totalQuestionsCount > 0 ? ((rawScore / totalQuestionsCount) * 6).toFixed(1) : "0.0";
 
-            if (currentUser && db && testInfo) {
+            if (currentUser && db && testInfo && !isReviewMode) {
                 db.from('mock_test_results').insert([{
                     user_id: currentUser.id,
                     test_id: testInfo.id,
                     raw_score: parseInt(rawScore),
                     total_questions: parseInt(totalQuestionsCount),
-                    band_score: parseFloat(bandScore)
+                    band_score: parseFloat(bandScore),
+                    user_answers: userAnswers
                 }]).then(({ error }) => {
                     if (error) console.error("Ошибка сохранения результатов в Supabase:", error.message);
                 });
@@ -876,7 +900,9 @@
                             <div class="text-6xl drop-shadow-md mb-4 flex justify-center">
                                 🏆
                             </div>
-                            <h2 class="text-2xl font-black text-slate-900 mb-8 tracking-tight">Test Completed!</h2>
+                            <h2 class="text-2xl font-black text-slate-900 mb-8 tracking-tight">
+                                ${isReviewMode ? 'Review Mode' : 'Test Completed!'}
+                            </h2>
                             
                             <div class="flex justify-center gap-12 items-center mb-8">
                                 <div class="text-center">
@@ -891,7 +917,7 @@
                             </div>
                             
                             <div class="flex justify-center gap-4">
-                                <button onclick="location.reload()" class="px-6 py-2.5 bg-slate-900 hover:bg-indigo-600 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center cursor-pointer">
+                                <button onclick="window.location.href='take-mock-test.html?id=' + testInfo.id" class="px-6 py-2.5 bg-slate-900 hover:bg-indigo-600 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center cursor-pointer">
                                     <span class="mr-2 text-sm">🔄</span> Try Again
                                 </button>
                                 <a href="mini-mock-test.html" class="px-6 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center shadow-sm">
