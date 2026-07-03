@@ -81,9 +81,9 @@
                 
                 <div class="bg-white rounded-2xl border border-slate-200 p-6 text-center shadow-xs">
                     <div class="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <i data-lucide="trophy" class="w-6 h-6"></i>
+                        <i id="resultsIcon" data-lucide="trophy" class="w-6 h-6"></i>
                     </div>
-                    <h3 class="text-base font-bold text-slate-800 mb-4">Test Completed!</h3>
+                    <h3 id="resultsTitle" class="text-base font-bold text-slate-800 mb-4">Test Completed!</h3>
                     
                     <div class="bg-slate-50 rounded-xl p-4 flex justify-around mb-4 max-w-sm mx-auto">
                         <div>
@@ -98,7 +98,7 @@
                     </div>
 
                     <div class="flex items-center justify-center gap-3 max-w-sm mx-auto">
-                        <button onclick="resetAndRestartDailyTest()" class="flex-1 px-4 py-2 bg-slate-900 hover:bg-indigo-600 text-white font-bold text-xs rounded-xl transition shadow-xs flex items-center justify-center cursor-pointer">
+                        <button onclick="restartTest()" class="flex-1 px-4 py-2 bg-slate-900 hover:bg-indigo-600 text-white font-bold text-xs rounded-xl transition shadow-xs flex items-center justify-center cursor-pointer">
                             <i data-lucide="rotate-ccw" class="w-3.5 h-3.5 mr-1.5"></i> Try Again
                         </button>
                         <a href="read-daily.html" class="flex-1 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-gray-700 font-bold text-xs rounded-xl transition flex items-center justify-center">
@@ -127,6 +127,7 @@
         let userAnswers = {}; 
         let startTime = Date.now(); 
         let currentUser = null; 
+        let isReviewMode = false;
 
         const taskTitle = document.getElementById('taskTitle');
         const progressText = document.getElementById('progressText');
@@ -258,6 +259,7 @@
 
                 const urlParams = new URLSearchParams(window.location.search);
                 const taskId = urlParams.get('id');
+                isReviewMode = urlParams.get('mode') === 'review';
 
                 if (!taskId) {
                     taskTitle.innerText = "Error: No Test ID";
@@ -277,8 +279,28 @@
                     if (typeof currentTask.questions === 'string') {
                         currentTask.questions = JSON.parse(currentTask.questions);
                     }
-                    startTime = Date.now(); 
-                    renderTask();
+
+                    if (isReviewMode) {
+                        const { data: resData, error: resError } = await db
+                            .from('reading_results')
+                            .select('user_answers')
+                            .eq('task_id', taskId)
+                            .eq('task_type', 'daily')
+                            .eq('user_id', currentUser.id)
+                            .order('created_at', { ascending: false })
+                            .limit(1);
+
+                        if (!resError && resData && resData.length > 0) {
+                            userAnswers = resData[0].user_answers || {};
+                        }
+                        
+                        renderTask();
+                        processResults(true); // Запускаем процессинг результатов без записи в БД
+                    } else {
+                        startTime = Date.now(); 
+                        renderTask();
+                        showQuestion(0);
+                    }
                 }
             } catch (error) {
                 console.error("Initialization error:", error);
@@ -297,7 +319,6 @@
             passageContent.innerHTML = styledLayout;
             
             setTimeout(() => lucide.createIcons(), 0);
-            showQuestion(0);
         }
 
         function showQuestion(idx) {
@@ -350,28 +371,17 @@
                 currentQuestionIdx++;
                 showQuestion(currentQuestionIdx);
             } else {
-                processResults();
+                processResults(false);
             }
         });
 
-        window.resetAndRestartDailyTest = function() {
+        window.restartTest = function() {
             if (!currentTask) return;
-            
-            currentQuestionIdx = 0;
-            userAnswers = {};
-            startTime = Date.now(); 
-
-            resultsContainer.classList.add('hidden');
-            quizContainer.classList.remove('hidden');
-            
-            // Снова показываем кнопки навигации в хедере
-            topNavButtons.classList.remove('hidden');
-            headerSeparator.classList.remove('hidden');
-
-            showQuestion(currentQuestionIdx);
+            // Перенаправляем на этот же таск, но без параметра mode=review
+            window.location.href = `read-daily-task.html?id=${currentTask.id}`;
         };
 
-        async function processResults() {
+        async function processResults(isReviewOnly = false) {
             const timeSpentSeconds = Math.round((Date.now() - startTime) / 1000);
             
             let correctCount = 0;
@@ -409,10 +419,10 @@
                 });
 
                 const qCard = `
-                    <div class="bg-white rounded-2xl border ${isCorrect ? 'border-emerald-100 shadow-emerald-50/10' : 'border-rose-100 shadow-rose-50/10'} p-5 shadow-xs">
+                    <div class="bg-white rounded-2xl border ${isReviewOnly ? 'border-slate-200 shadow-sm' : (isCorrect ? 'border-emerald-100 shadow-emerald-50/10' : 'border-rose-100 shadow-rose-50/10')} p-5 shadow-xs">
                         <div class="flex items-center justify-between mb-3">
-                            <span class="text-[10px] font-bold ${isCorrect ? 'text-emerald-600' : 'text-rose-600'} uppercase tracking-wider">
-                                Question ${idx + 1} — ${isCorrect ? 'Correct' : 'Incorrect'}
+                            <span class="text-[10px] font-bold ${isReviewOnly ? 'text-slate-600' : (isCorrect ? 'text-emerald-600' : 'text-rose-600')} uppercase tracking-wider">
+                                Question ${idx + 1} — ${isReviewOnly ? 'Review' : (isCorrect ? 'Correct' : 'Incorrect')}
                             </span>
                             <span class="text-[9px] px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md font-medium uppercase">${q.type}</span>
                         </div>
@@ -435,7 +445,8 @@
 
             const scorePercent = Math.round((correctCount / currentTask.questions.length) * 100);
 
-            if (currentUser && db) {
+            // Сохраняем в базу только если это реальное прохождение (НЕ режим ревью)
+            if (!isReviewOnly && currentUser && db) {
                 try {
                     const { error } = await db
                         .from('reading_results')
@@ -446,25 +457,31 @@
                             score_earned: correctCount,
                             score_total: currentTask.questions.length,
                             time_spent_seconds: timeSpentSeconds, 
-                            category_stats: categoryStats
+                            category_stats: categoryStats,
+                            user_answers: userAnswers
                         }]);
                     
                     if (error) {
                         console.error("Ошибка сохранения в базу:", error);
-                    } else {
-                        console.log("Результат Daily успешно сохранен для текущего пользователя!");
                     }
                 } catch (err) {
                     console.error("Сбой сети/базы:", err);
                 }
             }
 
+            // Настройка UI для результатов
             quizContainer.classList.add('hidden');
             resultsContainer.classList.remove('hidden');
-            
-            // Скрываем кнопки навигации в хедере на экране результатов
             topNavButtons.classList.add('hidden');
             headerSeparator.classList.add('hidden');
+            
+            if (isReviewOnly) {
+                document.getElementById('resultsTitle').innerText = 'Answer Key & Explanations';
+                const resultsIcon = document.getElementById('resultsIcon');
+                resultsIcon.setAttribute('data-lucide', 'book-open');
+                resultsIcon.parentElement.classList.replace('bg-emerald-50', 'bg-slate-100');
+                resultsIcon.parentElement.classList.replace('text-emerald-600', 'text-slate-600');
+            }
 
             document.getElementById('finalScorePercent').innerText = `${scorePercent}%`;
             document.getElementById('finalScoreRaw').innerText = `${correctCount} / ${currentTask.questions.length}`;
