@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mini Mock Test Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="auth.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+    </style>
+</head>
+<body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex flex-col">
+
+    <header class="bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between sticky top-0 z-50">
+        <div class="flex items-center gap-4">
+            <a href="listening-mini-mock.html" class="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-50 transition">
+                <i data-lucide="x" class="w-4 h-4"></i>
+            </a>
+            <div>
+                <h1 id="testTitle" class="text-sm font-bold text-slate-900 tracking-tight">Loading Test...</h1>
+                <p id="stepIndicator" class="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">Step 0 of 0</p>
+            </div>
+        </div>
+        
+        <div class="flex items-center gap-3">
+            <div class="bg-indigo-50 border border-indigo-100 px-4 py-1.5 rounded-lg flex items-center gap-2 text-indigo-700">
+                <i data-lucide="timer" class="w-4 h-4"></i>
+                <span id="timerDisplay" class="font-bold font-mono text-sm">00:00</span>
+            </div>
+            <button id="nextBtn" onclick="goToNextStep()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-5 py-2.5 rounded-lg transition-colors shadow-sm flex items-center">
+                Next Section <i data-lucide="arrow-right" class="w-3.5 h-3.5 ml-1"></i>
+            </button>
+        </div>
+    </header>
+
+    <main id="taskContainer" class="flex-1 w-full max-w-5xl mx-auto px-4 py-8">
+        <div class="flex items-center justify-center h-full">
+            <p class="text-slate-400 text-sm font-medium flex items-center gap-2">
+                <i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i> Initializing simulation...
+            </p>
+        </div>
+    </main>
+
+    <script>
+        lucide.createIcons();
+        
+        // Глобальное состояние симулятора
+        let mockData = null; // Данные теста
+        let currentStepIndex = 0; // Текущий шаг
+        let timeRemaining = 0; // Время в секундах
+        let timerInterval;
+        let userAnswers = {}; // Сохранение ответов пользователя по шагам
+
+        // Инициализация при загрузке
+        document.addEventListener('DOMContentLoaded', async () => {
+            // В реальном коде здесь будет проверка auth.js
+            // const user = await window.requireAuth();
+            
+            // Получаем ID теста из URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const testId = urlParams.get('id') || 'test-1'; 
+            
+            await loadMockTest(testId);
+        });
+
+        async function loadMockTest(testId) {
+            // Эмуляция ответа от Supabase (пока база пустая)
+            // В будущем заменим на: const { data } = await db.from('listening_mock_tests').select('*').eq('id', testId).single();
+            mockData = {
+                title: "Full Listening Simulation #1",
+                duration_minutes: 36,
+                structure: [
+                    { block_type: "response", source_id: "resp-123" },
+                    { block_type: "conversation", source_id: "conv-456" },
+                    { block_type: "announcement", source_id: "ann-789" },
+                    { block_type: "academic", source_id: "acad-012" }
+                ]
+            };
+
+            document.getElementById('testTitle').innerText = mockData.title;
+            timeRemaining = mockData.duration_minutes * 60;
+            
+            startTimer();
+            renderCurrentStep();
+        }
+
+        function startTimer() {
+            const display = document.getElementById('timerDisplay');
+            timerInterval = setInterval(() => {
+                if (timeRemaining <= 0) {
+                    clearInterval(timerInterval);
+                    forceSubmitTest();
+                    return;
+                }
+                
+                timeRemaining--;
+                const minutes = Math.floor(timeRemaining / 60);
+                const seconds = timeRemaining % 60;
+                display.innerText = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                
+                if(timeRemaining < 300) { // Меньше 5 минут - краснеет
+                    display.parentElement.classList.replace('text-indigo-700', 'text-rose-600');
+                    display.parentElement.classList.replace('bg-indigo-50', 'bg-rose-50');
+                    display.parentElement.classList.replace('border-indigo-100', 'border-rose-100');
+                }
+            }, 1000);
+        }
+
+        async function renderCurrentStep() {
+            const container = document.getElementById('taskContainer');
+            const step = mockData.structure[currentStepIndex];
+            
+            document.getElementById('stepIndicator').innerText = `Section ${currentStepIndex + 1} of ${mockData.structure.length}`;
+            
+            if (currentStepIndex === mockData.structure.length - 1) {
+                const btn = document.getElementById('nextBtn');
+                btn.innerHTML = 'Submit Test <i data-lucide="check-circle" class="w-3.5 h-3.5 ml-1"></i>';
+                btn.classList.replace('bg-indigo-600', 'bg-emerald-600');
+                btn.classList.replace('hover:bg-indigo-700', 'hover:bg-emerald-700');
+            }
+
+            container.innerHTML = '<div class="flex items-center justify-center h-full"><i data-lucide="loader-2" class="w-6 h-6 animate-spin text-indigo-600"></i></div>';
+            lucide.createIcons();
+
+            // В реальности здесь мы делаем запрос к нужной таблице:
+            // Если step.block_type === 'response', запрашиваем из response_sets
+            // Иначе запрашиваем из listening_tasks
+
+            // Заглушка рендера (здесь будет ваш код из practice-view или choose-response-test)
+            setTimeout(() => {
+                let blockTitle = step.block_type.charAt(0).toUpperCase() + step.block_type.slice(1);
+                container.innerHTML = `
+                    <div class="bg-white rounded-2xl border border-gray-200 p-8 shadow-sm">
+                        <span class="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider mb-4 inline-block">${blockTitle} Module</span>
+                        <h2 class="text-xl font-bold mb-6">Simulation Interface: ${blockTitle}</h2>
+                        <div class="bg-slate-50 border border-slate-200 rounded-xl p-10 flex items-center justify-center text-slate-400 text-sm">
+                            Audio Player & Questions for ${step.source_id} will be injected here.
+                        </div>
+                    </div>
+                `;
+            }, 500);
+        }
+
+        function goToNextStep() {
+            // Здесь логика сбора ответов с текущего экрана перед переходом
+            // userAnswers[currentStepIndex] = getSelectedOptions();
+
+            if (currentStepIndex < mockData.structure.length - 1) {
+                currentStepIndex++;
+                renderCurrentStep();
+            } else {
+                submitTest();
+            }
+        }
+
+        function forceSubmitTest() {
+            alert("Time is up! Submitting your answers.");
+            submitTest();
+        }
+
+        async function submitTest() {
+            clearInterval(timerInterval);
+            
+            // 1. Подсчет правильных ответов (заглушка)
+            let rawScoreEarned = 23; 
+            let totalPossibleScore = 28;
+
+            // 2. Расчет оценки (макс 6.0, округление вверх до 0.5 в пользу ученика)
+            let proportionalScore = (rawScoreEarned / totalPossibleScore) * 6.0;
+            let finalCalculatedScore = Math.min(Math.ceil(proportionalScore * 2) / 2, 6.0);
+
+            // 3. Отправка в Supabase
+            console.log("Saving to mock_test_results:", {
+                score_earned: rawScoreEarned,
+                score_total: totalPossibleScore,
+                final_calculated_score: finalCalculatedScore,
+                detailed_answers: userAnswers
+            });
+
+            document.getElementById('taskContainer').innerHTML = `
+                <div class="bg-white rounded-2xl border border-emerald-200 p-10 text-center max-w-lg mx-auto mt-10">
+                    <div class="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i data-lucide="check-check" class="w-8 h-8"></i>
+                    </div>
+                    <h2 class="text-2xl font-bold text-slate-900 mb-2">Test Completed!</h2>
+                    <p class="text-slate-500 text-sm mb-6">Your answers have been submitted securely.</p>
+                    <div class="bg-slate-50 border border-slate-100 rounded-xl p-4 mb-6">
+                        <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Estimated Band</p>
+                        <p class="text-3xl font-extrabold text-emerald-600">${finalCalculatedScore.toFixed(1)} <span class="text-sm text-slate-400 font-medium">/ 6.0</span></p>
+                    </div>
+                    <a href="listening-mini-mock.html" class="block w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-xl transition">Return to Library</a>
+                </div>
+            `;
+            lucide.createIcons();
+            document.querySelector('header').style.display = 'none';
+        }
+    </script>
+</body>
+</html>
+
