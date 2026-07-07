@@ -3,115 +3,291 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Practice Player</title>
+    <title>Speaking Practice Player</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <script src="auth.js"></script>
+    
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8f9fa; }
-        .recording-active { animation: pulse-red 1.5s infinite; background-color: #ef4444; color: white;}
+        .recording-active { animation: pulse-red 1.5s infinite; background-color: #ef4444; color: white; border-color: #ef4444;}
         @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
     </style>
 </head>
 <body class="min-h-screen flex flex-col items-center justify-center p-4">
 
-    <div id="startOverlay" class="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center">
-        <h2 class="text-2xl font-bold mb-2 text-slate-800" id="overlayTitle">Loading...</h2>
-        <p class="text-gray-500 mb-8 text-center max-w-sm text-sm" id="overlayDesc">Checking auth and fetching questions.</p>
-        <button id="startBtn" class="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold hidden">Start Practice</button>
+    <div id="startOverlay" class="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center p-6 text-center">
+        <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <i data-lucide="mic" class="w-8 h-8"></i>
+        </div>
+        <h2 class="text-2xl font-bold mb-2 text-slate-800" id="overlayTitle">Loading Task...</h2>
+        <p class="text-gray-500 mb-8 max-w-sm text-sm" id="overlayDesc">Checking authorization and fetching your practice materials.</p>
+        <button id="startBtn" class="bg-slate-900 hover:bg-indigo-600 transition text-white px-8 py-3.5 rounded-xl font-bold hidden flex items-center justify-center shadow-md cursor-pointer">
+            Allow Mic & Start Practice <i data-lucide="play" class="w-4 h-4 ml-2 fill-current"></i>
+        </button>
     </div>
 
-    <div id="playerUI" class="w-full flex flex-col items-center">
-        <div class="fixed top-0 p-4 w-full bg-[#f8f9fa] z-10 flex justify-between max-w-4xl">
-            <h1 class="font-bold text-slate-800" id="taskInstruction">Listen and repeat.</h1>
-            <div class="text-sm font-semibold text-gray-400">Task <span id="currentTaskNum">1</span> / <span id="totalTasks">...</span></div>
+    <div id="playerUI" class="w-full flex-col items-center hidden h-screen max-h-[800px]">
+        <div class="w-full bg-[#f8f9fa] p-4 flex justify-between items-center max-w-4xl mx-auto shrink-0">
+            <button onclick="window.history.back()" class="text-slate-400 hover:text-slate-900 transition p-2 cursor-pointer bg-white rounded-full shadow-sm">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+            <h1 class="font-bold text-slate-800 flex-1 text-center" id="taskInstruction">Practice Task</h1>
+            <div class="text-sm font-semibold text-gray-400 w-16 text-right"><span id="currentTaskNum">1</span> / <span id="totalTasks">...</span></div>
         </div>
 
-        <div class="w-full max-w-md mt-16 mb-24 aspect-square bg-white border border-gray-200 rounded-3xl overflow-hidden shadow-sm">
-            <img src="https://placehold.co/600x600/f3f4f6/a1a1aa?text=Image" id="taskImage" class="w-full h-full object-cover">
-        </div>
+        <div class="w-full max-w-md mt-6 mb-auto aspect-video sm:aspect-square bg-black border border-gray-200 rounded-[2rem] overflow-hidden shadow-lg flex items-center justify-center relative" id="mediaContainer">
+            </div>
 
-        <div class="fixed bottom-10 w-64 bg-white border border-gray-200 rounded-3xl shadow-lg flex flex-col items-center p-4">
-            <div id="statusBanner" class="text-[10px] font-bold uppercase mb-2">Listen</div>
-            <div class="flex items-center space-x-4">
-                <div id="micIcon" class="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center"><i data-lucide="mic"></i></div>
-                <div id="timerDisplay" class="text-3xl font-mono font-bold">00:00</div>
+        <div class="w-full max-w-md bg-white border border-gray-200 rounded-[2rem] shadow-md flex flex-col items-center p-6 shrink-0 mt-8 mb-6">
+            <div id="statusBanner" class="text-[10px] font-bold uppercase mb-4 tracking-widest text-slate-400 px-4 py-1.5 rounded-full bg-slate-50 border border-slate-100 transition-colors">Ready</div>
+            <div class="flex items-center justify-center space-x-6 w-full">
+                <div id="micIcon" class="w-16 h-16 rounded-full bg-gray-100 text-slate-400 flex items-center justify-center transition-colors shadow-inner shrink-0">
+                    <i data-lucide="mic" class="w-6 h-6"></i>
+                </div>
+                <div id="timerDisplay" class="text-5xl font-mono font-black text-slate-800 tabular-nums">00:00</div>
+            </div>
+            
+            <div class="w-full bg-gray-100 h-2 rounded-full mt-6 overflow-hidden">
+                <div id="timeProgressBar" class="h-full bg-indigo-600 w-0 transition-all duration-1000 ease-linear"></div>
             </div>
         </div>
     </div>
 
-    <div id="completionUI" class="hidden w-full max-w-lg p-10 bg-white rounded-3xl text-center">
-        <h2 class="text-2xl font-bold mb-4">Test Completed!</h2>
-        <a href="speaking.html" class="block py-4 bg-slate-900 text-white rounded-2xl font-bold">Dashboard</a>
+    <div id="completionUI" class="hidden w-full max-w-md p-10 bg-white rounded-3xl text-center border border-gray-100 shadow-sm">
+        <div class="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <i data-lucide="check-check" class="w-8 h-8"></i>
+        </div>
+        <h2 class="text-2xl font-bold mb-2 text-slate-800">Awesome Job!</h2>
+        <p class="text-sm text-slate-500 mb-8">Your speaking responses have been successfully recorded and saved to your profile.</p>
+        <div class="flex space-x-3">
+            <button onclick="window.location.reload()" class="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-slate-700 font-bold rounded-xl transition cursor-pointer">
+                Retry Set
+            </button>
+            <a href="speaking.html" class="flex-1 py-3 bg-slate-900 hover:bg-indigo-600 text-white font-bold rounded-xl transition flex items-center justify-center shadow-md">
+                Done
+            </a>
+        </div>
     </div>
 
-    <audio id="taskAudio"></audio>
+    <audio id="taskAudio" class="hidden"></audio>
 
     <script>
         lucide.createIcons();
-        const supabaseClient = window.supabase.createClient('URL', 'KEY');
-        let currentUser = null, questions = [], currentIndex = 0, mediaStream, mediaRecorder, audioChunks = [];
+        
+        let currentUser = null;
+        let questions = [];
+        let currentIndex = 0;
+        let mediaStream = null;
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let timerInterval = null;
+        let taskType = '';
 
         async function init() {
-            const { data: { user } } = await supabaseClient.auth.getUser();
-            if (!user) { alert("Вы не авторизованы!"); return; }
-            currentUser = user;
-            
-            const { data } = await supabaseClient.from('speaking_questions').select('*').eq('test_id', new URLSearchParams(window.location.search).get('id'));
-            questions = data;
-            document.getElementById('overlayTitle').innerText = "Ready";
-            document.getElementById('startBtn').classList.remove('hidden');
+            try {
+                if (typeof requireAuth !== 'function') throw new Error("auth.js script not loaded properly.");
+                
+                // Получаем юзера через auth.js (теперь загрузка файлов не будет падать)
+                currentUser = await requireAuth();
+                if (!currentUser) return;
+
+                const urlParams = new URLSearchParams(window.location.search);
+                const testId = urlParams.get('id');
+                taskType = urlParams.get('type') || 'listen_repeat'; // Определяем тип задания: interview или listen_repeat
+
+                if (!testId) throw new Error("No test ID provided in the URL.");
+
+                // Загружаем вопросы для конкретного теста
+                const { data, error } = await _supabase
+                    .from('speaking_questions')
+                    .select('*')
+                    .eq('test_id', testId)
+                    .order('order_num', { ascending: true }); 
+
+                if (error) throw error;
+                if (!data || data.length === 0) throw new Error("No questions found for this test in the database.");
+
+                questions = data;
+                
+                document.getElementById('totalTasks').innerText = questions.length;
+                document.getElementById('taskInstruction').innerText = taskType === 'interview' ? 'Interview Practice' : 'Listen and repeat';
+
+                document.getElementById('overlayTitle').innerText = "Ready to start";
+                document.getElementById('overlayDesc').innerText = "Make sure you are in a quiet place and your microphone is working.";
+                document.getElementById('startBtn').classList.remove('hidden');
+                
+            } catch (err) {
+                console.error("Initialization error:", err);
+                document.getElementById('overlayTitle').innerText = "Oops!";
+                document.getElementById('overlayDesc').innerText = err.message;
+            }
         }
 
+        // Запуск сессии по кнопке
         document.getElementById('startBtn').onclick = async () => {
-            mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            document.getElementById('startOverlay').classList.add('hidden');
-            loadQuestion(0);
+            try {
+                // Запрашиваем микрофон (обязательно ДО скрытия оверлея для обхода политик браузера)
+                mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                document.getElementById('startOverlay').classList.add('hidden');
+                document.getElementById('playerUI').classList.remove('hidden');
+                document.getElementById('playerUI').classList.add('flex');
+                
+                loadQuestion(0);
+            } catch (err) {
+                alert("We need microphone access to record your answers. Please allow it in your browser settings.");
+                console.error(err);
+            }
         };
 
         function loadQuestion(i) {
             currentIndex = i;
-            document.getElementById('taskImage').src = questions[i].media_url;
-            const audio = document.getElementById('taskAudio');
-            audio.src = questions[i].audio_prompt_url;
-            audio.play().catch(() => startRecording(8));
-            audio.onended = () => startRecording(8);
+            const q = questions[i];
+            
+            document.getElementById('currentTaskNum').innerText = i + 1;
+            resetUI();
+
+            const mediaContainer = document.getElementById('mediaContainer');
+            
+            // В зависимости от типа таска рендерим Видео или Картинку+Аудио
+            if (taskType === 'interview') {
+                // ИСПРАВЛЕНИЕ 1: Рендерим тег video (playsinline решает проблему с iOS)
+                mediaContainer.innerHTML = `<video id="taskMedia" src="${q.media_url}" class="w-full h-full object-cover" playsinline></video>`;
+                const video = document.getElementById('taskMedia');
+                
+                setStatus('Listening to Question...', 'bg-sky-100 text-sky-700 border-sky-200');
+                
+                video.onended = () => {
+                    // Запускаем таймер записи из колонки time_limit (или 45с по умолчанию)
+                    startRecording(q.time_limit || 45);
+                };
+                
+                video.play().catch(e => {
+                    console.error("Video play error:", e);
+                    setStatus('Click video to play', 'bg-rose-100 text-rose-700');
+                    video.onclick = () => video.play();
+                });
+
+            } else {
+                // ИСПРАВЛЕНИЕ 2: Логика для Listen & Repeat остается аудио + картинка
+                mediaContainer.innerHTML = `<img src="${q.media_url}" class="w-full h-full object-cover">`;
+                const audio = document.getElementById('taskAudio');
+                audio.src = q.audio_prompt_url;
+                
+                setStatus('Listening to Phrase...', 'bg-sky-100 text-sky-700 border-sky-200');
+                
+                audio.onended = () => {
+                    startRecording(q.time_limit || 8);
+                };
+
+                audio.play().catch(e => {
+                    console.error("Audio play error:", e);
+                    setStatus('Click to play audio', 'bg-rose-100 text-rose-700');
+                    mediaContainer.onclick = () => audio.play();
+                });
+            }
+        }
+
+        function setStatus(text, classes) {
+            const banner = document.getElementById('statusBanner');
+            banner.className = `text-[10px] font-bold uppercase mb-4 tracking-widest px-4 py-1.5 rounded-full border transition-colors shadow-sm ${classes}`;
+            banner.innerText = text;
+        }
+
+        function resetUI() {
+            clearInterval(timerInterval);
+            document.getElementById('timerDisplay').innerText = "00:00";
+            document.getElementById('timeProgressBar').style.width = "0%";
+            document.getElementById('micIcon').className = "w-16 h-16 rounded-full bg-gray-100 text-slate-400 flex items-center justify-center transition-colors shadow-inner shrink-0";
         }
 
         function startRecording(limit) {
-            document.getElementById('statusBanner').innerText = "Recording";
+            setStatus('Recording...', 'recording-active');
+            
+            document.getElementById('micIcon').classList.remove('bg-gray-100', 'text-slate-400');
+            document.getElementById('micIcon').classList.add('bg-transparent', 'text-white'); // Текст (иконка) белый, фон берем от анимации
+            
             audioChunks = [];
             mediaRecorder = new MediaRecorder(mediaStream);
-            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+            mediaRecorder.ondataavailable = e => {
+                if (e.data.size > 0) audioChunks.push(e.data);
+            };
             mediaRecorder.start();
             
             let time = limit;
-            const interval = setInterval(() => {
-                document.getElementById('timerDisplay').innerText = `00:${--time < 10 ? '0'+time : time}`;
-                if (time <= 0) { clearInterval(interval); stopRecording(); }
+            const progress = document.getElementById('timeProgressBar');
+            const display = document.getElementById('timerDisplay');
+            
+            progress.style.transitionDuration = '1s';
+            
+            const updateDisplay = () => {
+                display.innerText = `00:${time < 10 ? '0'+time : time}`;
+                progress.style.width = `${((limit - time) / limit) * 100}%`;
+            };
+            
+            updateDisplay();
+
+            timerInterval = setInterval(() => {
+                time--;
+                updateDisplay();
+                if (time <= 0) { 
+                    clearInterval(timerInterval); 
+                    stopRecording(); 
+                }
             }, 1000);
         }
 
         async function stopRecording() {
-            mediaRecorder.stop();
-            mediaRecorder.onstop = async () => {
-                const blob = new Blob(audioChunks, { type: 'audio/webm' });
-                const { error } = await supabaseClient.storage.from('student_recordings')
-                    .upload(`${currentUser.id}/q_${questions[currentIndex].id}_${Date.now()}.webm`, blob);
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+                setStatus('Saving to Cloud...', 'bg-amber-100 text-amber-700 border-amber-200');
                 
-                if (error) alert("Ошибка загрузки: " + error.message);
-                
-                currentIndex++;
-                currentIndex < questions.length ? loadQuestion(currentIndex) : finish();
-            };
+                // Возвращаем иконку в спокойное состояние
+                document.getElementById('micIcon').classList.remove('bg-transparent', 'text-white');
+                document.getElementById('micIcon').classList.add('bg-amber-100', 'text-amber-500');
+
+                mediaRecorder.onstop = async () => {
+                    try {
+                        const blob = new Blob(audioChunks, { type: 'audio/webm' });
+                        // ИСПРАВЛЕНИЕ 3: Формируем правильный путь для Supabase с ID юзера
+                        const fileName = `${currentUser.id}/${taskType}_q${questions[currentIndex].id}_${Date.now()}.webm`;
+                        
+                        // Загрузка файла в твой бакет student_recordings
+                        const { error } = await _supabase.storage
+                            .from('student_recordings')
+                            .upload(fileName, blob);
+                        
+                        if (error) {
+                            console.error("Upload error:", error);
+                            alert("Failed to save recording: " + error.message);
+                        }
+                    } catch (err) {
+                        console.error("Save process error:", err);
+                    }
+
+                    // Переход к следующему вопросу или завершение
+                    currentIndex++;
+                    if (currentIndex < questions.length) {
+                        loadQuestion(currentIndex);
+                    } else {
+                        finish();
+                    }
+                };
+            }
         }
 
         function finish() {
+            if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
             document.getElementById('playerUI').classList.add('hidden');
+            document.getElementById('playerUI').classList.remove('flex');
             document.getElementById('completionUI').classList.remove('hidden');
         }
 
+        // Запускаем скрипт сразу после построения DOM
         init();
     </script>
 </body>
