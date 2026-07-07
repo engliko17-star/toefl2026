@@ -83,52 +83,69 @@
 
         document.addEventListener('DOMContentLoaded', async () => {
             const urlParams = new URLSearchParams(window.location.search);
-            const testId = urlParams.get('id') || 'mock-fallback-1'; 
+            const testId = urlParams.get('id') || '1'; // По умолчанию ID мок-теста = 1
             await buildTestQueue(testId);
         });
 
-        // 1. Сборка очереди заданий
+        // 1. Сборка очереди заданий из Supabase
         async function buildTestQueue(testId) {
             try {
-                // Временно используем mock-данные, пока у вас не заполнятся таблицы
-                // В рабочей версии здесь будет запрос: const { data: mockData } = await supabaseClient.from('listening_mock_tests').select('*').eq('id', testId).single();
-                const mockData = {
-                    id: testId,
-                    title: "Mini Mock Test #1",
-                    duration_minutes: 36,
-                    structure: [
-                        { block_type: "response", source_id: "res-1" },
-                        { block_type: "conversation", source_id: "conv-1" },
-                        { block_type: "academic", source_id: "acad-1" }
-                    ]
-                };
+                // Загружаем общую структуру мок-теста по его ID
+                const { data: mockData, error: mockErr } = await supabaseClient
+                    .from('listening_mock_tests')
+                    .select('*')
+                    .eq('id', testId)
+                    .single();
+
+                if (mockErr || !mockData) throw new Error("Mock test not found in database.");
                 
                 testMetadata = mockData;
                 document.getElementById('testTitle').innerText = mockData.title;
 
-                // Эмуляция подтягивания данных из БД на основе массива structure
+                // Проходим по структуре из JSON (block_type + source_id)
                 for (let block of mockData.structure) {
                     if (block.block_type === 'response') {
-                        testQueue.push({
-                            block_type: 'response',
-                            id: block.source_id,
-                            questions: [
-                                { id: "rq1", audio_url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3", speaker_image: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=600", options: ["I will do it.", "No, thanks.", "She is coming."], correct_index: 0 },
-                                { id: "rq2", audio_url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3", speaker_image: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=600", options: ["At 5 PM.", "Yes, it is.", "In the library."], correct_index: 2 }
-                            ]
-                        });
+                        // Для Choose a Response тянем вопросы из таблицы response_questions (по set_number или id)
+                        const { data: qData, error: qErr } = await supabaseClient
+                            .from('response_questions')
+                            .select('*')
+                            .eq('set_number', block.source_id)
+                            .order('id', { ascending: true });
+
+                        if (qErr) console.error("Error fetching response questions:", qErr);
+
+                        if (qData && qData.length > 0) {
+                            testQueue.push({
+                                block_type: 'response',
+                                id: block.source_id,
+                                questions: qData
+                            });
+                        }
                     } else {
-                        testQueue.push({
-                            block_type: block.block_type,
-                            id: block.source_id,
-                            image_url: "https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=800",
-                            audio_url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
-                            questions: [
-                                { id: `sq1-${block.source_id}`, text: "What is the main topic of the lecture?", options: ["Biology", "History", "Math"], correct_index: 1 },
-                                { id: `sq2-${block.source_id}`, text: "Why does the professor mention the book?", options: ["To give an example", "To assign homework", "To disagree"], correct_index: 0 }
-                            ]
-                        });
+                        // Для длинных текстов (conversation, announcement, academic) тянем из listening_tests
+                        const { data: taskData, error: taskErr } = await supabaseClient
+                            .from('listening_tests')
+                            .select('*')
+                            .eq('id', block.source_id)
+                            .single();
+
+                        if (taskErr) console.error("Error fetching listening test:", taskErr);
+
+                        if (taskData) {
+                            testQueue.push({
+                                block_type: block.block_type,
+                                id: block.source_id,
+                                image_url: taskData.image_url,
+                                audio_url: taskData.audio_url,
+                                transcript: taskData.transcript,
+                                questions: taskData.questions // Предполагается, что вопросы хранятся в поле JSON/Array
+                            });
+                        }
                     }
+                }
+
+                if (testQueue.length === 0) {
+                    throw new Error("No valid test blocks found for this mock configuration.");
                 }
 
                 timeRemaining = mockData.duration_minutes * 60;
@@ -143,7 +160,12 @@
 
             } catch (err) {
                 console.error(err);
-                document.getElementById('taskContainer').innerHTML = `<p class="text-red-500">Error loading test data.</p>`;
+                document.getElementById('taskContainer').innerHTML = `
+                    <div class="bg-white rounded-2xl border border-rose-200 p-8 text-center max-w-md mx-auto mt-10">
+                        <p class="text-rose-600 font-bold mb-2">Error loading test data</p>
+                        <p class="text-slate-500 text-xs">${err.message}</p>
+                    </div>
+                `;
             }
         }
 
@@ -235,8 +257,7 @@
                     </div>
                     <div class="w-full md:w-1/2 flex flex-col justify-center">
                         <h2 class="text-xl font-bold text-slate-800 mb-6">Select the best response:</h2>
-                        <div id="optionsList" class="space-y-3 opacity-25 pointer-events-none transition-all duration-500 ease-in-out">
-                            </div>
+                        <div id="optionsList" class="space-y-3 opacity-25 pointer-events-none transition-all duration-500 ease-in-out"></div>
                     </div>
                 </div>
             `;
@@ -251,7 +272,6 @@
             audioEl.src = question.audio_url;
             audioEl.load();
 
-            // Генерация кнопок вариантов
             optionsList.innerHTML = '';
             question.options.forEach((optText, i) => {
                 const btn = document.createElement('button');
@@ -279,12 +299,11 @@
                 optionsList.appendChild(btn);
             });
 
-            // Логика плеера
             const setPlayIcon = (icon) => document.getElementById('playIconContainer').innerHTML = `<i data-lucide="${icon}" class="w-5 h-5 ${icon==='play'?'ml-1':''}"></i>`;
             
             playBtn.onclick = () => {
                 if (audioEl.paused) {
-                    audioEl.play().then(() => setPlayIcon('pause').catch(() => setPlayIcon('play')));
+                    audioEl.play().then(() => setPlayIcon('pause')).catch(() => setPlayIcon('play'));
                 } else {
                     audioEl.pause();
                     setPlayIcon('play');
@@ -306,7 +325,6 @@
                 lucide.createIcons();
             };
             
-            // Автозапуск после загрузки
             setTimeout(() => { audioEl.play().then(() => {setPlayIcon('pause'); lucide.createIcons();}).catch(e=>console.log(e)); }, 500);
         }
 
@@ -329,7 +347,6 @@
             player.src = block.audio_url;
             player.play().catch(e => console.log("Autoplay blocked"));
             
-            // Как только аудио закончится, автоматически переходим к фазе вопросов
             player.onended = () => {
                 currentPhase = 'questions';
                 renderCurrentState();
@@ -379,7 +396,6 @@
             btn.disabled = false;
             btn.className = 'bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-5 py-2.5 rounded-lg transition-all shadow-sm flex items-center cursor-pointer';
             
-            // Проверка, является ли этот клик последним в тесте
             const block = testQueue[currentBlockIdx];
             const isLastQuestionInBlock = currentSubQIdx === block.questions.length - 1;
             const isLastBlock = currentBlockIdx === testQueue.length - 1;
@@ -394,7 +410,6 @@
         function handleNextStep() {
             const block = testQueue[currentBlockIdx];
             
-            // 1. Сохраняем ответ
             if (block.block_type === 'response') {
                 userAnswers[block.questions[currentSubQIdx].id] = selectedOptionIndex;
             } else {
@@ -402,17 +417,14 @@
                 if (radio) userAnswers[block.questions[currentSubQIdx].id] = parseInt(radio.value);
             }
 
-            // 2. Двигаем индексы
             if (currentSubQIdx < block.questions.length - 1) {
-                currentSubQIdx++; // Следующий вопрос внутри блока
+                currentSubQIdx++; 
             } else {
-                // Блок закончился, переходим к следующему
                 if (currentBlockIdx < testQueue.length - 1) {
                     currentBlockIdx++;
                     currentSubQIdx = 0;
                     currentPhase = testQueue[currentBlockIdx].block_type === 'response' ? 'questions' : 'audio';
                 } else {
-                    // Конец теста
                     submitTest();
                     return;
                 }
@@ -434,7 +446,6 @@
             let totalQuestions = 0;
             let correctAnswers = 0;
 
-            // Проверка ответов
             testQueue.forEach(block => {
                 block.questions.forEach(q => {
                     totalQuestions++;
@@ -444,11 +455,10 @@
                 });
             });
 
-            // Кастомная логика платформы: шкала до 6.0, округление вверх до 0.5
+            // Шкала до 6.0, округление вверх до 0.5
             let proportionalScore = (correctAnswers / totalQuestions) * 6.0;
             let finalCalculatedScore = Math.min(Math.ceil(proportionalScore * 2) / 2, 6.0);
 
-            // Попытка сохранения в БД (если пользователь авторизован)
             try {
                 const { data: { session } } = await supabaseClient.auth.getSession();
                 if (session?.user) {
@@ -462,10 +472,9 @@
                     }]);
                 }
             } catch (err) {
-                console.error("Database save skipped or failed:", err);
+                console.error("Database save failed:", err);
             }
 
-            // Рендер финального экрана
             setTimeout(() => {
                 document.getElementById('taskContainer').innerHTML = `
                     <div class="bg-white rounded-2xl border border-emerald-200 p-10 text-center max-w-lg mx-auto mt-10 shadow-sm fade-in w-full">
@@ -495,4 +504,3 @@
     </script>
 </body>
 </html>
-
