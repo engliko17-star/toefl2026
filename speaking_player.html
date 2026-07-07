@@ -86,22 +86,37 @@
         let audioChunks = [];
         let timerInterval = null;
         let taskType = '';
+        
+        // НОВАЯ ПЕРЕМЕННАЯ: Хранит ID текущей попытки
+        let currentAttemptId = null;
 
         async function init() {
             try {
                 if (typeof requireAuth !== 'function') throw new Error("auth.js script not loaded properly.");
                 
-                // Получаем юзера через auth.js (теперь загрузка файлов не будет падать)
                 currentUser = await requireAuth();
                 if (!currentUser) return;
 
                 const urlParams = new URLSearchParams(window.location.search);
                 const testId = urlParams.get('id');
-                taskType = urlParams.get('type') || 'listen_repeat'; // Определяем тип задания: interview или listen_repeat
+                taskType = urlParams.get('type') || 'listen_repeat';
 
                 if (!testId) throw new Error("No test ID provided in the URL.");
 
-                // Загружаем вопросы для конкретного теста
+                // --- НОВЫЙ БЛОК: Создаем попытку (attempt) в базе данных ---
+                const { data: attemptData, error: attemptError } = await _supabase
+                    .from('speaking_attempts') // Используем название из твоей БД
+                    .insert([{ user_id: currentUser.id, test_id: testId }])
+                    .select()
+                    .single();
+                
+                if (attemptError) {
+                    console.error("Ошибка создания попытки:", attemptError);
+                } else {
+                    currentAttemptId = attemptData.id;
+                }
+                // -------------------------------------------------------------
+
                 const { data, error } = await _supabase
                     .from('speaking_questions')
                     .select('*')
@@ -127,10 +142,8 @@
             }
         }
 
-        // Запуск сессии по кнопке
         document.getElementById('startBtn').onclick = async () => {
             try {
-                // Запрашиваем микрофон (обязательно ДО скрытия оверлея для обхода политик браузера)
                 mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 
                 document.getElementById('startOverlay').classList.add('hidden');
@@ -153,16 +166,13 @@
 
             const mediaContainer = document.getElementById('mediaContainer');
             
-            // В зависимости от типа таска рендерим Видео или Картинку+Аудио
             if (taskType === 'interview') {
-                // ИСПРАВЛЕНИЕ 1: Рендерим тег video (playsinline решает проблему с iOS)
                 mediaContainer.innerHTML = `<video id="taskMedia" src="${q.media_url}" class="w-full h-full object-cover" playsinline></video>`;
                 const video = document.getElementById('taskMedia');
                 
                 setStatus('Listening to Question...', 'bg-sky-100 text-sky-700 border-sky-200');
                 
                 video.onended = () => {
-                    // Запускаем таймер записи из колонки time_limit (или 45с по умолчанию)
                     startRecording(q.time_limit || 45);
                 };
                 
@@ -173,7 +183,6 @@
                 });
 
             } else {
-                // ИСПРАВЛЕНИЕ 2: Логика для Listen & Repeat остается аудио + картинка
                 mediaContainer.innerHTML = `<img src="${q.media_url}" class="w-full h-full object-cover">`;
                 const audio = document.getElementById('taskAudio');
                 audio.src = q.audio_prompt_url;
@@ -209,7 +218,7 @@
             setStatus('Recording...', 'recording-active');
             
             document.getElementById('micIcon').classList.remove('bg-gray-100', 'text-slate-400');
-            document.getElementById('micIcon').classList.add('bg-transparent', 'text-white'); // Текст (иконка) белый, фон берем от анимации
+            document.getElementById('micIcon').classList.add('bg-transparent', 'text-white'); 
             
             audioChunks = [];
             mediaRecorder = new MediaRecorder(mediaStream);
@@ -246,30 +255,39 @@
                 mediaRecorder.stop();
                 setStatus('Saving to Cloud...', 'bg-amber-100 text-amber-700 border-amber-200');
                 
-                // Возвращаем иконку в спокойное состояние
                 document.getElementById('micIcon').classList.remove('bg-transparent', 'text-white');
                 document.getElementById('micIcon').classList.add('bg-amber-100', 'text-amber-500');
 
                 mediaRecorder.onstop = async () => {
                     try {
                         const blob = new Blob(audioChunks, { type: 'audio/webm' });
-                        // ИСПРАВЛЕНИЕ 3: Формируем правильный путь для Supabase с ID юзера
                         const fileName = `${currentUser.id}/${taskType}_q${questions[currentIndex].id}_${Date.now()}.webm`;
                         
-                        // Загрузка файла в твой бакет student_recordings
-                        const { error } = await _supabase.storage
+                        // Сохраняем в Storage
+                        const { error: uploadError } = await _supabase.storage
                             .from('student_recordings')
                             .upload(fileName, blob);
                         
-                        if (error) {
-                            console.error("Upload error:", error);
-                            alert("Failed to save recording: " + error.message);
+                        if (uploadError) {
+                            console.error("Upload error:", uploadError);
+                            alert("Failed to save recording: " + uploadError.message);
+                        } else if (currentAttemptId) {
+                            // --- НОВЫЙ БЛОК: Связываем файл с таблицей ответов ---
+                            const { error: dbError } = await _supabase
+                                .from('speaking_responses') // Используем название из твоей БД
+                                .insert([{
+                                    attempt_id: currentAttemptId,
+                                    question_id: questions[currentIndex].id,
+                                    audio_url: fileName
+                                }]);
+                            
+                            if (dbError) console.error("Database save error:", dbError);
+                            // --------------------------------------------------------
                         }
                     } catch (err) {
                         console.error("Save process error:", err);
                     }
 
-                    // Переход к следующему вопросу или завершение
                     currentIndex++;
                     if (currentIndex < questions.length) {
                         loadQuestion(currentIndex);
@@ -287,7 +305,6 @@
             document.getElementById('completionUI').classList.remove('hidden');
         }
 
-        // Запускаем скрипт сразу после построения DOM
         init();
     </script>
 </body>
