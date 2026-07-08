@@ -7,6 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
     <script src="auth.js"></script>
     
     <style>
@@ -19,7 +20,7 @@
         ::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
     </style>
 </head>
-<body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex flex-col md:flex-row opacity-0 transition-opacity duration-200" id="mainBody">
+<body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex flex-col md:flex-row" id="mainBody">
 
     <aside class="hidden md:flex flex-col w-64 bg-white border-r border-gray-100 px-4 py-6 h-screen sticky top-0 shrink-0">
         <div class="font-bold text-2xl tracking-tighter mb-8 px-2 flex items-center space-x-2">
@@ -89,24 +90,40 @@
 
         async function initPage() {
             try {
+                // Пробуем получить пользователя, но не блокируем загрузку тестов, если его нет
+                // (чтобы страница загрузилась в любом случае)
                 if (typeof window.requireAuth === 'function') {
-                    currentUser = await window.requireAuth();
-                    if (!currentUser) return; 
+                    try {
+                        currentUser = await window.requireAuth();
+                    } catch (e) {
+                        console.warn("Auth check failed, but continuing load:", e);
+                    }
                 } else {
                     const { data: { session } } = await db.auth.getSession();
-                    if (!session) {
-                        window.location.replace('index.html');
-                        return;
+                    if (session) {
+                        currentUser = session.user;
                     }
-                    currentUser = session.user;
                 }
                 
-                document.getElementById('mainBody').classList.remove('opacity-0');
                 await loadMockTests();
                 
             } catch (err) {
                 console.error("Initialization error:", err);
+                showError("Initialization error: " + err.message);
             }
+        }
+
+        function showError(message) {
+            const loader = document.getElementById('loadingState');
+            if(loader) loader.style.display = 'none';
+            
+            const grid = document.getElementById('testsGrid');
+            grid.innerHTML = `
+                <div class="col-span-full py-6 px-4 bg-red-50 border border-red-200 rounded-xl text-center">
+                    <p class="text-sm font-bold text-red-600 mb-1">Oops, something went wrong</p>
+                    <p class="text-xs text-red-500">${message}</p>
+                </div>
+            `;
         }
 
         async function loadMockTests() {
@@ -114,7 +131,7 @@
             const loader = document.getElementById('loadingState');
 
             try {
-                // Изменено на правильное название таблицы из твоего скриншота
+                // Обращаемся к правильной таблице
                 const { data: tests, error } = await db
                     .from('mock_tests_listening') 
                     .select('*')
@@ -122,7 +139,7 @@
 
                 if (error) throw error;
 
-                loader.style.display = 'none';
+                if (loader) loader.style.display = 'none';
 
                 if (!tests || tests.length === 0) {
                     grid.innerHTML = `
@@ -137,6 +154,7 @@
                 grid.innerHTML = '';
 
                 tests.forEach((test, index) => {
+                    // Используем поля title и description (с фоллбэком, если их нет в БД)
                     const testTitle = test.title || `Listening Mock #${index + 1}`;
                     const testDesc = test.description || 'Full-length listening simulation.';
                     
@@ -167,11 +185,15 @@
 
             } catch (err) {
                 console.error("Error loading tests from Supabase:", err);
-                loader.innerHTML = `<p class="text-xs font-bold text-red-500">Failed to load tests. Please check console for errors.</p>`;
+                showError("Failed to fetch data from database: " + err.message);
             }
         }
 
-        document.addEventListener('DOMContentLoaded', initPage);
+        // Запускаем скрипт после того, как DOM полностью построен
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons(); // Рисуем иконки бокового меню сразу
+            initPage();
+        });
     </script>
 </body>
 </html>
