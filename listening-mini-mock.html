@@ -83,31 +83,31 @@
             const grid = document.getElementById('testsGrid');
 
             try {
-                // 1. Умное подключение к БД (избегаем конфликта переменных с auth.js)
                 let db;
                 if (typeof supabaseClient !== 'undefined') {
                     db = supabaseClient;
                 } else if (window.supabaseClient) {
                     db = window.supabaseClient;
                 } else {
-                    // Если auth.js нет, создаем подключение вручную
                     const fallbackUrl = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
                     const fallbackKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
                     db = window.supabase.createClient(fallbackUrl, fallbackKey);
                 }
 
-                // 2. Делаем запрос к правильной таблице
-                const { data: tests, error } = await db
-                    .from('mock_tests_listening') 
-                    .select('*')
-                    .order('created_at', { ascending: true });
+                // Умная загрузка: пробуем сначала mock_tests_listening, если ошибка схемы — пробуем listening_mock_tests
+                let response = await db.from('mock_tests_listening').select('*').order('created_at', { ascending: true });
+                
+                if (response.error && response.error.message.includes("Could not find the table")) {
+                    console.warn("Table mock_tests_listening not found, trying listening_mock_tests...");
+                    response = await db.from('listening_mock_tests').select('*').order('created_at', { ascending: true });
+                }
 
-                if (error) throw error;
+                if (response.error) throw response.error;
 
-                // 3. Скрываем лоадер сразу после ответа базы
+                const tests = response.data;
+
                 if (loader) loader.style.display = 'none';
 
-                // 4. Если в базе пусто
                 if (!tests || tests.length === 0) {
                     grid.innerHTML = `
                         <div class="col-span-full py-12 text-center text-gray-400 bg-white rounded-2xl border border-dashed border-gray-200">
@@ -118,7 +118,6 @@
                     return;
                 }
 
-                // 5. Очищаем сетку и рисуем тесты
                 grid.innerHTML = '';
 
                 tests.forEach((test, index) => {
@@ -152,7 +151,6 @@
 
             } catch (err) {
                 console.error("Fetch Error:", err);
-                // Показываем саму ошибку прямо на странице, если что-то пойдет не так
                 if (loader) loader.style.display = 'none';
                 grid.innerHTML = `
                     <div class="col-span-full py-6 px-4 bg-red-50 border border-red-200 rounded-xl text-center">
@@ -164,4 +162,3 @@
     </script>
 </body>
 </html>
-
