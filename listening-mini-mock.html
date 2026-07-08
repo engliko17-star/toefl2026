@@ -76,62 +76,27 @@
     </nav>
 
     <script>
-        const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
-        
-        function getDatabaseClient() {
-            if (typeof supabaseClient !== 'undefined') return supabaseClient;
-            if (typeof window !== 'undefined' && window.supabaseClient) return window.supabaseClient;
-            return window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        }
-
-        const db = getDatabaseClient();
-        let currentUser = null;
-
-        async function initPage() {
-            try {
-                // Пробуем получить пользователя, но не блокируем загрузку тестов, если его нет
-                // (чтобы страница загрузилась в любом случае)
-                if (typeof window.requireAuth === 'function') {
-                    try {
-                        currentUser = await window.requireAuth();
-                    } catch (e) {
-                        console.warn("Auth check failed, but continuing load:", e);
-                    }
-                } else {
-                    const { data: { session } } = await db.auth.getSession();
-                    if (session) {
-                        currentUser = session.user;
-                    }
-                }
-                
-                await loadMockTests();
-                
-            } catch (err) {
-                console.error("Initialization error:", err);
-                showError("Initialization error: " + err.message);
-            }
-        }
-
-        function showError(message) {
-            const loader = document.getElementById('loadingState');
-            if(loader) loader.style.display = 'none';
+        document.addEventListener('DOMContentLoaded', async () => {
+            lucide.createIcons();
             
-            const grid = document.getElementById('testsGrid');
-            grid.innerHTML = `
-                <div class="col-span-full py-6 px-4 bg-red-50 border border-red-200 rounded-xl text-center">
-                    <p class="text-sm font-bold text-red-600 mb-1">Oops, something went wrong</p>
-                    <p class="text-xs text-red-500">${message}</p>
-                </div>
-            `;
-        }
-
-        async function loadMockTests() {
-            const grid = document.getElementById('testsGrid');
             const loader = document.getElementById('loadingState');
+            const grid = document.getElementById('testsGrid');
 
             try {
-                // Обращаемся к правильной таблице
+                // 1. Умное подключение к БД (избегаем конфликта переменных с auth.js)
+                let db;
+                if (typeof supabaseClient !== 'undefined') {
+                    db = supabaseClient;
+                } else if (window.supabaseClient) {
+                    db = window.supabaseClient;
+                } else {
+                    // Если auth.js нет, создаем подключение вручную
+                    const fallbackUrl = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
+                    const fallbackKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
+                    db = window.supabase.createClient(fallbackUrl, fallbackKey);
+                }
+
+                // 2. Делаем запрос к правильной таблице
                 const { data: tests, error } = await db
                     .from('mock_tests_listening') 
                     .select('*')
@@ -139,8 +104,10 @@
 
                 if (error) throw error;
 
+                // 3. Скрываем лоадер сразу после ответа базы
                 if (loader) loader.style.display = 'none';
 
+                // 4. Если в базе пусто
                 if (!tests || tests.length === 0) {
                     grid.innerHTML = `
                         <div class="col-span-full py-12 text-center text-gray-400 bg-white rounded-2xl border border-dashed border-gray-200">
@@ -151,11 +118,11 @@
                     return;
                 }
 
+                // 5. Очищаем сетку и рисуем тесты
                 grid.innerHTML = '';
 
                 tests.forEach((test, index) => {
-                    // Используем поля title и description (с фоллбэком, если их нет в БД)
-                    const testTitle = test.title || `Listening Mock #${index + 1}`;
+                    const testTitle = test.title || test.name || `Listening Mock #${index + 1}`;
                     const testDesc = test.description || 'Full-length listening simulation.';
                     
                     const card = `
@@ -184,15 +151,15 @@
                 lucide.createIcons();
 
             } catch (err) {
-                console.error("Error loading tests from Supabase:", err);
-                showError("Failed to fetch data from database: " + err.message);
+                console.error("Fetch Error:", err);
+                // Показываем саму ошибку прямо на странице, если что-то пойдет не так
+                if (loader) loader.style.display = 'none';
+                grid.innerHTML = `
+                    <div class="col-span-full py-6 px-4 bg-red-50 border border-red-200 rounded-xl text-center">
+                        <p class="text-sm font-bold text-red-600 mb-1">Oops, an error occurred</p>
+                        <p class="text-xs text-red-500">${err.message}</p>
+                    </div>`;
             }
-        }
-
-        // Запускаем скрипт после того, как DOM полностью построен
-        document.addEventListener('DOMContentLoaded', () => {
-            lucide.createIcons(); // Рисуем иконки бокового меню сразу
-            initPage();
         });
     </script>
 </body>
