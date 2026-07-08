@@ -62,10 +62,17 @@
     </main>
 
     <script>
-        // Инициализация базы данных
-        const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Безопасная инициализация клиента Supabase без конфликтов переопределения
+        let db;
+        if (typeof supabaseClient !== 'undefined') {
+            db = supabaseClient;
+        } else if (window.supabaseClient) {
+            db = window.supabaseClient;
+        } else {
+            const fallbackUrl = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
+            const fallbackKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
+            db = window.supabase.createClient(fallbackUrl, fallbackKey);
+        }
 
         lucide.createIcons();
         
@@ -90,23 +97,25 @@
         // 1. Сборка очереди заданий из Supabase
         async function buildTestQueue(testId) {
             try {
-                // Загружаем общую структуру мок-теста по его ID
-                const { data: mockData, error: mockErr } = await supabaseClient
-                    .from('listening_mock_tests')
-                    .select('*')
-                    .eq('id', testId)
-                    .single();
-
-                if (mockErr || !mockData) throw new Error("Mock test not found in database.");
+                // Умная загрузка структуры теста: пробуем первую таблицу, при ошибке переключаемся на вторую
+                let response = await db.from('listening_mock_tests').select('*').eq('id', testId).single();
                 
+                if (response.error && response.error.message.includes("Could not find the table")) {
+                    console.warn("Table listening_mock_tests not found, trying mock_tests_listening...");
+                    response = await db.from('mock_tests_listening').select('*').eq('id', testId).single();
+                }
+
+                if (response.error || !response.data) throw new Error("Mock test not found in database.");
+                
+                const mockData = response.data;
                 testMetadata = mockData;
-                document.getElementById('testTitle').innerText = mockData.title;
+                document.getElementById('testTitle').innerText = mockData.title || mockData.name || "Listening Mock Test";
 
                 // Проходим по структуре из JSON (block_type + source_id)
                 for (let block of mockData.structure) {
                     if (block.block_type === 'response') {
-                        // Для Choose a Response тянем вопросы из таблицы response_questions (по set_number или id)
-                        const { data: qData, error: qErr } = await supabaseClient
+                        // Для Choose a Response тянем вопросы из таблицы response_questions
+                        const { data: qData, error: qErr } = await db
                             .from('listening_questions')
                             .select('*')
                             .eq('set_number', block.source_id)
@@ -123,7 +132,7 @@
                         }
                     } else {
                         // Для длинных текстов (conversation, announcement, academic) тянем из listening_tests
-                        const { data: taskData, error: taskErr } = await supabaseClient
+                        const { data: taskData, error: taskErr } = await db
                             .from('listening_tests')
                             .select('*')
                             .eq('id', block.source_id)
@@ -138,7 +147,7 @@
                                 image_url: taskData.image_url,
                                 audio_url: taskData.audio_url,
                                 transcript: taskData.transcript,
-                                questions: taskData.questions // Предполагается, что вопросы хранятся в поле JSON/Array
+                                questions: taskData.questions
                             });
                         }
                     }
@@ -148,7 +157,7 @@
                     throw new Error("No valid test blocks found for this mock configuration.");
                 }
 
-                timeRemaining = mockData.duration_minutes * 60;
+                timeRemaining = (mockData.duration_minutes || 20) * 60;
                 startTimer();
                 
                 // Старт первого задания
@@ -460,9 +469,9 @@
             let finalCalculatedScore = Math.min(Math.ceil(proportionalScore * 2) / 2, 6.0);
 
             try {
-                const { data: { session } } = await supabaseClient.auth.getSession();
+                const { data: { session } } = await db.auth.getSession();
                 if (session?.user) {
-                    await supabaseClient.from('listening_mini_mock_results').insert([{
+                    await db.from('listening_mini_mock_results').insert([{
                         user_id: session.user.id,
                         mock_test_id: testMetadata.id,
                         score_earned: correctAnswers,
