@@ -97,7 +97,6 @@
         // 1. Сборка очереди заданий из Supabase
         async function buildTestQueue(testId) {
             try {
-                // Умная загрузка структуры теста: пробуем первую таблицу, при ошибке переключаемся на вторую
                 let response = await db.from('listening_mock_tests').select('*').eq('id', testId).single();
                 
                 if (response.error && response.error.message.includes("Could not find the table")) {
@@ -114,7 +113,6 @@
                 // Проходим по структуре из JSON (block_type + source_id)
                 for (let block of mockData.structure) {
                     if (block.block_type === 'response') {
-                        // Для Choose a Response тянем вопросы из таблицы response_questions
                         const { data: qData, error: qErr } = await db
                             .from('listening_questions')
                             .select('*')
@@ -131,7 +129,6 @@
                             });
                         }
                     } else {
-                        // Для длинных текстов (conversation, announcement, academic) тянем из listening_tests
                         const { data: taskData, error: taskErr } = await db
                             .from('listening_tests')
                             .select('*')
@@ -156,9 +153,6 @@
                 if (testQueue.length === 0) {
                     throw new Error("No valid test blocks found for this mock configuration.");
                 }
-
-                timeRemaining = (mockData.duration_minutes || 20) * 60;
-                startTimer();
                 
                 // Старт первого задания
                 currentBlockIdx = 0;
@@ -178,26 +172,37 @@
             }
         }
 
-        function startTimer() {
+        // Логика индивидуального таймера на каждый вопрос
+        function startQuestionTimer(seconds) {
+            clearInterval(timerInterval);
+            timeRemaining = seconds;
+            
             const display = document.getElementById('timerDisplay');
             const container = document.getElementById('timerContainer');
             
-            timerInterval = setInterval(() => {
-                if (timeRemaining <= 0) {
-                    clearInterval(timerInterval);
-                    submitTest();
-                    return;
-                }
-                
-                timeRemaining--;
+            // Сброс цвета плашки на стандартный indigo
+            container.className = "bg-indigo-50 border border-indigo-100 px-4 py-1.5 rounded-lg flex items-center gap-2 text-indigo-700 transition-colors";
+            
+            const updateDisplay = () => {
                 const min = Math.floor(timeRemaining / 60).toString().padStart(2, '0');
                 const sec = (timeRemaining % 60).toString().padStart(2, '0');
                 display.innerText = `${min}:${sec}`;
+            };
+            
+            updateDisplay();
+            
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                updateDisplay();
                 
-                if (timeRemaining < 300 && !container.classList.contains('bg-rose-50')) { 
-                    container.classList.replace('text-indigo-700', 'text-rose-600');
-                    container.classList.replace('bg-indigo-50', 'bg-rose-50');
-                    container.classList.replace('border-indigo-100', 'border-rose-100');
+                // Если осталось меньше 5 секунд, красим в красный
+                if (timeRemaining < 5 && timeRemaining > 0) {
+                    container.className = "bg-rose-50 border border-rose-100 px-4 py-1.5 rounded-lg flex items-center gap-2 text-rose-600 transition-colors";
+                }
+                
+                if (timeRemaining <= 0) {
+                    clearInterval(timerInterval);
+                    handleNextStep(); // Время вышло — автоматический переход дальше
                 }
             }, 1000);
         }
@@ -208,6 +213,11 @@
             const block = testQueue[currentBlockIdx];
             selectedOptionIndex = null;
             
+            // Сброс активности таймера на время переключения/загрузки экрана
+            clearInterval(timerInterval);
+            document.getElementById('timerDisplay').innerText = "--:--";
+            document.getElementById('timerContainer').className = "bg-indigo-50 border border-indigo-100 px-4 py-1.5 rounded-lg flex items-center gap-2 text-indigo-700 transition-colors";
+
             // Сброс кнопки Next
             const nextBtn = document.getElementById('nextBtn');
             nextBtn.disabled = true;
@@ -230,6 +240,9 @@
                     initStandardAudioLogic(block);
                 } else {
                     container.innerHTML = getStandardQuestionsHTML(block, currentSubQIdx);
+                    // Назначение лимитов: academic — 30 сек, остальные — 20 сек
+                    let seconds = (block.block_type === 'academic') ? 30 : 20;
+                    startQuestionTimer(seconds);
                 }
             }
             lucide.createIcons();
@@ -332,6 +345,9 @@
                 optionsList.classList.remove('opacity-25', 'pointer-events-none');
                 optionsList.classList.add('opacity-100');
                 lucide.createIcons();
+                
+                // Таймер для Response запускается СТРОГО после окончания воспроизведения реплики
+                startQuestionTimer(20); 
             };
             
             setTimeout(() => { audioEl.play().then(() => {setPlayIcon('pause'); lucide.createIcons();}).catch(e=>console.log(e)); }, 500);
@@ -417,13 +433,19 @@
         }
 
         function handleNextStep() {
+            // Перед переходом сбрасываем старый интервал таймера текущего вопроса
+            clearInterval(timerInterval);
             const block = testQueue[currentBlockIdx];
             
             if (block.block_type === 'response') {
                 userAnswers[block.questions[currentSubQIdx].id] = selectedOptionIndex;
             } else {
                 const radio = document.querySelector('input[name="stdOption"]:checked');
-                if (radio) userAnswers[block.questions[currentSubQIdx].id] = parseInt(radio.value);
+                if (radio) {
+                    userAnswers[block.questions[currentSubQIdx].id] = parseInt(radio.value);
+                } else {
+                    userAnswers[block.questions[currentSubQIdx].id] = null; // Если время истекло и ничего не выбрано
+                }
             }
 
             if (currentSubQIdx < block.questions.length - 1) {
@@ -513,3 +535,4 @@
     </script>
 </body>
 </html>
+
