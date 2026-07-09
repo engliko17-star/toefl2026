@@ -108,7 +108,6 @@
 
         let currentUser = null; 
 
-        // Главная функция инициализации страницы с защитой
         async function checkAuthAndLoad() {
             try {
                 const { data: { session }, error } = await supabaseClient.auth.getSession();
@@ -121,7 +120,6 @@
                 currentUser = session.user;
                 document.getElementById('mainBody').classList.remove('opacity-0');
 
-                // Загружаем динамический список паков
                 await loadSetsList();
 
             } catch (err) {
@@ -132,10 +130,11 @@
 
         async function loadSetsList() {
             try {
-                // 1. Динамически вытягиваем из базы данных существующие сеты и считаем вопросы в них
+                // ИСКЛЮЧАЕМ вопросы для мок-тестов из подсчета практики
                 const { data: questionsData, error: qError } = await supabaseClient
                     .from('listening_questions')
-                    .select('set_number');
+                    .select('set_number')
+                    .or('is_mock_only.eq.false,is_mock_only.is.null');
 
                 if (qError) throw qError;
 
@@ -149,10 +148,8 @@
                     });
                 }
 
-                // Получаем отсортированный массив уникальных номеров сетов из базы (например: [1, 2, 3, 4, 5, 6, 7])
                 const availableSets = Object.keys(setCounts).map(Number).sort((a, b) => a - b);
 
-                // 2. Получаем результаты текущего пользователя
                 const { data: results, error } = await supabaseClient
                     .from('response_results')
                     .select('*')
@@ -182,13 +179,11 @@
                 const grid = document.getElementById('setsGrid');
                 grid.innerHTML = ''; 
 
-                // Если в базе вообще пусто
                 if (availableSets.length === 0) {
                     document.getElementById('loadingState').innerHTML = `<p class="text-xs text-gray-400 font-medium">No practice sets found in the database.</p>`;
                     return;
                 }
 
-                // 3. Генерируем карточки только для тех сетов, которые реально существуют в базе вопросов
                 availableSets.forEach(i => {
                     const userResult = resultMap[i];
                     const qCount = setCounts[i] || 0;
@@ -277,3 +272,4 @@
     </script>
 </body>
 </html>
+
