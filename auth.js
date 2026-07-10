@@ -20,20 +20,24 @@ async function requireAuth() {
     // Делаем быстрый запрос к нашей таблице profiles, забирая общий статус и доступы к разделам
     const { data: profile } = await _supabase
         .from('profiles')
-        .select('is_approved, access_reading, access_listening, access_speaking, access_writing')
+        .select('is_approved, access_reading, access_listening, access_speaking, access_writing, access_tests')
         .eq('id', session.user.id)
         .maybeSingle();
 
     // 1. Сначала проверяем глобальный доступ к платформе
     if (!profile || !profile.is_approved) {
-        // Мгновенно перерисовываем экран под стильную минималистичную мобильную заглушку
         document.body.innerHTML = `
             <div style="
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                z-index: 99999;
                 display: flex; 
                 flex-direction: column; 
                 align-items: center; 
                 justify-content: center; 
-                height: 100vh; 
                 margin: 0; 
                 padding: 20px; 
                 box-sizing: border-box; 
@@ -61,7 +65,7 @@ async function requireAuth() {
                 ">Выйти из аккаунта</button>
             </div>
         `;
-        return null; // Прерываем функцию, код страницы дальше не пойдет
+        return null;
     }
 
     // 2. Проверяем точечный доступ к конкретным разделам по имени файла в URL
@@ -81,18 +85,25 @@ async function requireAuth() {
     } else if (currentPath.includes('writing.html')) {
         hasSectionAccess = profile.access_writing;
         sectionName = 'Writing';
+    } else if (currentPath.includes('tests.html')) {
+        hasSectionAccess = profile.access_tests;
+        sectionName = 'Mock Tests';
     }
 
     // Если у ученика нет прав конкретно на этот раздел
     if (!hasSectionAccess) {
-        // Отрисовываем заглушку блокировки раздела
         document.body.innerHTML = `
             <div style="
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                z-index: 99999;
                 display: flex; 
                 flex-direction: column; 
                 align-items: center; 
                 justify-content: center; 
-                height: 100vh; 
                 margin: 0; 
                 padding: 20px; 
                 box-sizing: border-box; 
@@ -124,11 +135,11 @@ async function requireAuth() {
                 ">На главную</a>
             </div>
         `;
-        return null; // Прерываем выполнение, тесты и задания не загрузятся
+        return null;
     }
     // --- КОНЕЦ ПРОВЕРКИ СТАТУСА ДОСТУПА ---
     
-    // Если все ок (галочки стоят) — возвращаем данные пользователя
+    // Если все ок — возвращаем данные пользователя
     return session.user;
 }
 
