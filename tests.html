@@ -6,26 +6,24 @@
     <title>Mock Tests — TOEFL Prep</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght=400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
         
-        /* Скроллбары */
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
 
-        /* --- Стили для Complete the Words --- */
-        .puzzle-word { display: inline-flex; align-items: baseline; vertical-align: baseline; margin: 0 4px; }
-        .letters-container { display: inline-flex; align-items: baseline; vertical-align: baseline; background-color: #f1f5f9; border-radius: 4px; padding: 0 2px; margin: 0; transition: all 0.2s ease; }
-        .puzzle-word:focus-within .letters-container { background-color: #e2e8f0; }
+        .puzzle-word { display: inline-flex; align-items: baseline; vertical-align: baseline; margin: 0 2px; }
+        .letters-container { display: inline-flex; align-items: baseline; vertical-align: baseline; background-color: #f1f5f9; border-radius: 4px; padding: 0 4px; margin: 0 2px; transition: all 0.2s ease; border-bottom: 2px solid #cbd5e1; }
+        .letters-container:focus-within { background-color: #e2e8f0; border-bottom-color: #7e22ce; }
         .letter-input { width: 14px; text-align: center; border: none; border-bottom: 2px solid #94a3b8; outline: none; font-weight: 700; color: #1e293b; background: transparent; margin: 0 1px; padding: 0; font-family: inherit; font-size: inherit; vertical-align: baseline; transition: all 0.2s; }
         .letter-input:focus { border-bottom-color: #7e22ce; }
 
-        /* --- Стили для Academic --- */
-        .clickable-sentence { cursor: pointer; border-radius: 4px; transition: background-color 0.2s; }
-        .clickable-sentence:hover { background-color: #fee2e2; }
+        .clickable-sentence { cursor: pointer; border-radius: 4px; transition: background-color 0.2s; padding: 0 2px; }
+        .clickable-sentence:hover { background-color: #fee2e2; color: #991b1b; }
         .clickable-sentence.selected { background-color: #4f46e5; color: white; }
         
         .insert-square { 
@@ -34,14 +32,15 @@
             justify-content: center; 
             margin: 0 4px; 
             cursor: pointer; 
-            font-size: 1rem; 
+            font-size: 0.9rem; 
             color: #94a3b8; 
             background: #f1f5f9; 
-            width: 24px; 
-            height: 24px; 
+            width: 22px; 
+            height: 22px; 
             border-radius: 4px; 
             transition: all 0.2s; 
             user-select: none;
+            font-weight: bold;
         }
         .insert-square:hover { background: #4f46e5; color: white; transform: scale(1.1); }
         .insert-square.selected { background: #312e81; color: white; transform: scale(1.1); box-shadow: 0 0 0 4px #e0e7ff; }
@@ -62,22 +61,14 @@
     </aside>
 
     <main id="main-interface" class="flex-1 p-6 overflow-y-auto bg-[#f8f9fa] h-screen custom-scrollbar relative">
-        
         <div id="view-tests-grid" class="max-w-6xl mx-auto transition-all duration-300">
             <div class="mb-8">
                 <h1 class="text-3xl font-bold text-slate-900 tracking-tight">Mock Tests</h1>
-                <p class="text-sm text-gray-500 mt-2">Choose an animal spirit to guide you through your next simulation.</p>
+                <p class="text-sm text-gray-500 mt-2">Select a full test to begin your simulation.</p>
             </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                <div onclick="openTestView('Fox Test', '🦊', 'bg-orange-50', 'text-orange-600')" class="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm hover:shadow-md hover:-translate-y-1 hover:border-orange-200 transition-all cursor-pointer group">
-                    <div class="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center text-3xl mb-5 group-hover:scale-110 transition-transform">🦊</div>
-                    <h3 class="text-xl font-bold text-slate-900 mb-1">Fox Test</h3>
-                    <p class="text-xs text-gray-400 mb-6">Agile and sharp. New format standard.</p>
-                    <div class="flex items-center justify-between border-t border-gray-50 pt-4">
-                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">120 mins</span>
-                        <span class="px-2.5 py-1 bg-green-50 text-green-600 font-bold text-[10px] rounded-lg uppercase tracking-wider">New</span>
-                    </div>
-                </div>
+            <!-- Сюда динамически подгрузятся тесты из базы -->
+            <div id="tests-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                 <div class="text-slate-400 text-sm flex items-center"><i data-lucide="loader-2" class="w-4 h-4 mr-2 animate-spin"></i> Loading tests...</div>
             </div>
         </div>
 
@@ -88,10 +79,10 @@
 
             <div class="bg-white rounded-3xl border border-gray-100 shadow-sm p-8 mb-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div class="flex items-center space-x-5">
-                    <div id="dynamic-emoji-container" class="w-20 h-20 rounded-3xl flex items-center justify-center text-4xl shadow-inner">🦊</div>
+                    <div id="dynamic-emoji-container" class="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-3xl flex items-center justify-center text-4xl shadow-inner">📝</div>
                     <div>
-                        <h2 id="dynamic-test-title" class="text-3xl font-bold text-slate-900 tracking-tight">Fox Test</h2>
-                        <p class="text-sm text-gray-500 mt-1">Full 4-section simulation • 120 minutes</p>
+                        <h2 id="dynamic-test-title" class="text-3xl font-bold text-slate-900 tracking-tight">Loading...</h2>
+                        <p class="text-sm text-gray-500 mt-1">Full Section Simulation</p>
                     </div>
                 </div>
             </div>
@@ -104,9 +95,9 @@
                             <span class="text-[10px] font-bold text-slate-500 bg-gray-50 px-2.5 py-1 rounded-md border border-gray-100">35 MINS</span>
                         </div>
                         <h4 class="font-bold text-slate-900 text-lg mb-1">Reading</h4>
-                        <p class="text-sm text-gray-500 mb-6">Adaptive MST (Router + Upper/Lower)</p>
+                        <p class="text-sm text-gray-500 mb-6">Structured test loaded from DB.</p>
                     </div>
-                    <button onclick="startExamEngine()" class="w-full text-left text-sm font-semibold text-blue-600 flex items-center group-hover:translate-x-1 transition-transform">
+                    <button id="start-btn" class="w-full text-left text-sm font-semibold text-blue-600 flex items-center group-hover:translate-x-1 transition-transform">
                         Start Section <i data-lucide="arrow-right" class="w-4 h-4 ml-1"></i>
                     </button>
                 </div>
@@ -114,6 +105,7 @@
         </div>
     </main>
 
+    <!-- EXAM ENGINE -->
     <div id="exam-engine-view" class="fixed inset-0 z-50 bg-[#f8f9fa] flex-col hidden h-screen w-screen">
         <header class="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center shrink-0 shadow-sm relative z-20">
             <div class="flex items-center space-x-4">
@@ -121,16 +113,16 @@
                     <i data-lucide="x-circle" class="w-4 h-4 mr-2 group-hover:scale-110 transition-transform"></i> Abort
                 </button>
                 <div class="h-4 w-px bg-gray-200"></div>
-                <h1 id="engine-title" class="text-sm font-bold text-slate-900">Reading - Stage 1</h1>
+                <h1 id="engine-title" class="text-sm font-bold text-slate-900">Reading Section</h1>
             </div>
             
             <div class="flex items-center space-x-6">
                 <div class="flex items-center space-x-1.5 text-sm font-bold text-red-500 bg-red-50 px-3 py-1.5 rounded-lg">
                     <i data-lucide="timer" class="w-4 h-4"></i>
-                    <span id="engine-timer">18:00</span>
+                    <span id="engine-timer">35:00</span>
                 </div>
                 <div class="flex items-center space-x-3 text-sm font-bold text-slate-500">
-                    <span id="engine-progress">1 / 5</span>
+                    <span id="engine-progress">0 / 0</span>
                 </div>
                 <span class="text-gray-300 block">|</span>
                 <div class="flex items-center space-x-3">
@@ -143,56 +135,90 @@
                 </div>
             </div>
         </header>
-
         <main id="engine-content" class="flex-1 flex overflow-hidden w-full h-full relative"></main>
     </div>
 
     <script>
+        const supabaseUrl = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
+        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
         lucide.createIcons();
 
-        // UI Навигация
-        function openTestView(title, emoji, bgColorClass, textColorClass) {
+        // 1. ЗАГРУЗКА СПИСКА ТЕСТОВ ПРИ СТАРТЕ
+        async function loadTestsGrid() {
+            const container = document.getElementById('tests-container');
+            
+            try {
+                const { data: tests, error } = await supabase.from('full_tests').select('*').order('created_at', { ascending: false });
+                
+                if (error) throw error;
+
+                if (!tests || tests.length === 0) {
+                    container.innerHTML = `<div class="col-span-full text-center text-slate-500 py-10">No tests found in 'full_tests' table.</div>`;
+                    return;
+                }
+
+                container.innerHTML = tests.map(test => `
+                    <div onclick="openTestView(${test.id}, '${test.title}', '${test.emoji}')" class="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm hover:shadow-md hover:-translate-y-1 hover:border-indigo-200 transition-all cursor-pointer group">
+                        <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center text-3xl mb-5 group-hover:scale-110 transition-transform">${test.emoji || '📝'}</div>
+                        <h3 class="text-xl font-bold text-slate-900 mb-1">${test.title}</h3>
+                        <p class="text-xs text-gray-400 mb-6">Full Section Simulation</p>
+                        <div class="flex items-center justify-between border-t border-gray-50 pt-4">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">35 mins</span>
+                            <span class="px-2.5 py-1 bg-green-50 text-green-600 font-bold text-[10px] rounded-lg uppercase tracking-wider">Ready</span>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (err) {
+                console.error("Error loading tests:", err);
+                container.innerHTML = `<div class="col-span-full text-red-500">Error loading tests. Check console.</div>`;
+            }
+        }
+        
+        // Запускаем при загрузке страницы
+        loadTestsGrid();
+
+        let currentActiveTestId = null;
+
+        function openTestView(testId, title, emoji) {
+            currentActiveTestId = testId;
             document.getElementById('view-tests-grid').classList.add('hidden');
             document.getElementById('view-test-detail').classList.remove('hidden');
+            
             document.getElementById('dynamic-test-title').innerText = title;
-            const emojiContainer = document.getElementById('dynamic-emoji-container');
-            emojiContainer.innerText = emoji;
-            emojiContainer.className = `w-20 h-20 rounded-3xl flex items-center justify-center text-4xl shadow-inner ${bgColorClass} ${textColorClass}`;
+            document.getElementById('dynamic-emoji-container').innerText = emoji || '📝';
+            
+            const startBtn = document.getElementById('start-btn');
+            startBtn.onclick = () => startExamEngine(testId, title);
         }
 
         function closeTestView() {
             document.getElementById('view-test-detail').classList.add('hidden');
             document.getElementById('view-tests-grid').classList.remove('hidden');
+            currentActiveTestId = null;
         }
 
-        // Рендер Daily Life
+        // ==========================================
+        // ЛОГИКА ДВИЖКА
+        // ==========================================
+        let currentTasks = [];
+        let currentIndex = 0;
+        let timerInterval;
+        let timeRemaining = 35 * 60; 
+
+        // Парсеры и рендеры (оставил без изменений, они работают идеально)
         function renderDailyLifeLayout(passage, layoutType, taskTitle) {
             if (!passage) return "";
             const cleanPassage = passage.replace(/[\[\]]/g, ''); 
-            switch(layoutType) {
-                case 'email':
-                    return `<div class="max-w-xl mx-auto bg-white border border-slate-200 rounded-lg overflow-hidden shadow-xs font-sans text-sm"><div class="bg-slate-50 p-4 border-b border-slate-200 space-y-1.5 text-slate-700"><div><span class="inline-block w-14 font-semibold text-slate-400">To:</span> <span class="bg-white px-2 py-0.5 border border-slate-200 rounded text-xs">student@toeflprep.com</span></div><div><span class="inline-block w-14 font-semibold text-slate-400">From:</span> <span class="text-slate-600">newsletter@companyname.com</span></div><div><span class="inline-block w-14 font-semibold text-slate-400">Date:</span> 09/26/2026</div><div><span class="inline-block w-14 font-semibold text-slate-400">Subject:</span> <span class="font-medium text-slate-900">${taskTitle}</span></div></div><div class="p-6 text-slate-800 space-y-4 leading-relaxed font-normal bg-white">${cleanPassage.replace(/\n/g, '<br>')}</div></div>`;
-                case 'social_media':
-                    return `<div class="max-w-md mx-auto bg-white border border-slate-200 rounded-2xl p-5 shadow-xs font-sans"><div class="flex items-center space-x-3 mb-4"><div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-sm"><i data-lucide="user" class="w-5 h-5"></i></div><div><div class="font-bold text-sm text-slate-900">Community Board</div><div class="text-[11px] text-slate-400 font-normal">Sponsored • Just now</div></div></div><div class="text-slate-700 space-y-3 font-normal text-sm leading-relaxed mb-4">${cleanPassage.replace(/\n/g, '<br>')}</div><div class="pt-3 border-t border-slate-100 flex justify-around text-xs font-medium text-slate-500"><span class="flex items-center space-x-1.5 cursor-pointer hover:text-slate-900"><i data-lucide="thumbs-up" class="w-4 h-4"></i> <span>Like</span></span><span class="flex items-center space-x-1.5 cursor-pointer hover:text-slate-900"><i data-lucide="message-square" class="w-4 h-4"></i> <span>Comment</span></span></div></div>`;
-                case 'notice':
-                    return `<div class="max-w-lg mx-auto bg-white border-2 border-slate-800 p-8 shadow-xs font-sans relative"><div class="absolute inset-1 border border-slate-200 pointer-events-none"></div><h3 class="text-lg font-bold text-slate-900 text-center tracking-tight mb-6 uppercase">${taskTitle}</h3><div class="text-slate-700 space-y-4 font-normal text-sm leading-relaxed relative z-10">${cleanPassage.replace(/\n/g, '<br>')}</div></div>`;
-                case 'chat':
-                    const lines = cleanPassage.split('\n');
-                    const chatHtml = lines.map(line => {
-                        if(!line.trim()) return '';
-                        const match = line.match(/^([^\(]+(?:\([^)]+\))?):\s*(.*)$/);
-                        if (match) return `<div class="mb-4 font-sans"><div class="text-[11px] font-bold text-slate-500 mb-0.5 px-1">${match[1].trim()}</div><div class="inline-block bg-white border border-slate-200 text-slate-800 rounded-2xl rounded-tl-none px-4 py-2.5 max-w-[90%] text-sm font-normal shadow-2xs">${match[2]}</div></div>`;
-                        return `<p class="text-xs text-slate-400 italic my-2 text-center">${line}</p>`;
-                    }).join('');
-                    return `<div class="max-w-sm mx-auto bg-slate-50 border border-slate-200 rounded-3xl overflow-hidden shadow-sm flex flex-col h-[400px]"><div class="bg-slate-900 text-white border-b border-slate-800 p-3.5 text-center font-bold text-xs shrink-0 shadow-2xs flex items-center justify-center space-x-2"><div class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div><span>Group Chat</span></div><div class="flex-1 p-5 overflow-y-auto bg-slate-50 custom-scrollbar">${chatHtml}</div></div>`;
-                case 'advertisement':
-                    return `<div class="max-w-md mx-auto bg-amber-50/40 border border-amber-200/60 rounded-2xl p-6 shadow-sm font-sans relative"><div class="absolute top-4 right-4 text-[9px] font-bold text-amber-500 uppercase tracking-widest bg-white px-2 py-1 rounded-md shadow-xs border border-amber-100">Sponsored</div><h3 class="text-lg font-bold text-slate-900 text-center mb-5 pr-16 leading-tight">${taskTitle}</h3><div class="text-slate-700 space-y-4 font-normal text-sm leading-relaxed">${cleanPassage.replace(/\n/g, '<br>')}</div></div>`;
-                default:
-                    return `<div class="text-slate-700 space-y-4 font-normal leading-relaxed text-base">${cleanPassage.replace(/\n/g, '<br>')}</div>`;
+            switch(layoutType.toLowerCase().trim()) {
+                case 'email': return `<div class="max-w-xl mx-auto bg-white border border-slate-200 rounded-lg overflow-hidden shadow-xs font-sans text-sm"><div class="bg-slate-50 p-4 border-b border-slate-200 space-y-1.5 text-slate-700"><div><span class="inline-block w-14 font-semibold text-slate-400">To:</span> <span class="bg-white px-2 py-0.5 border border-slate-200 rounded text-xs">student@toeflprep.com</span></div><div><span class="inline-block w-14 font-semibold text-slate-400">From:</span> <span class="text-slate-600">admin</span></div><div><span class="inline-block w-14 font-semibold text-slate-400">Subject:</span> <span class="font-medium text-slate-900">${taskTitle}</span></div></div><div class="p-6 text-slate-800 space-y-4 leading-relaxed font-normal bg-white">${cleanPassage}</div></div>`;
+                case 'social_media': return `<div class="max-w-md mx-auto bg-white border border-slate-200 rounded-2xl p-5 shadow-xs font-sans"><div class="flex items-center space-x-3 mb-4"><div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-sm"><i data-lucide="user" class="w-5 h-5"></i></div><div><div class="font-bold text-sm text-slate-900">Community Board</div><div class="text-[11px] text-slate-400 font-normal">Posted recently</div></div></div><div class="text-slate-700 space-y-3 font-normal text-sm leading-relaxed mb-4">${cleanPassage}</div></div>`;
+                case 'notice': return `<div class="max-w-lg mx-auto bg-white border-2 border-slate-800 p-8 shadow-xs font-sans relative"><h3 class="text-lg font-bold text-slate-900 text-center tracking-tight mb-6 uppercase">${taskTitle}</h3><div class="text-slate-700 space-y-4 font-normal text-sm leading-relaxed relative z-10">${cleanPassage}</div></div>`;
+                default: return `<div class="text-slate-700 space-y-4 font-normal leading-relaxed text-base">${cleanPassage}</div>`;
             }
         }
 
-        // Complete the Words Logic
         function setupInputs() {
             const inputs = document.querySelectorAll('.letter-input');
             inputs.forEach((input, index) => {
@@ -207,48 +233,112 @@
             });
         }
 
-        // Stage 1 Data
-        const mockStage1Tasks = [
-            {
-                type: 'complete_words',
-                title: 'Complete the Words',
-                passage: 'Early humans performed <span class="puzzle-word">d<span class="letters-container"><input type="text" class="letter-input" data-answer="a"><input type="text" class="letter-input" data-answer="n"><input type="text" class="letter-input" data-answer="c"><input type="text" class="letter-input" data-answer="e"><input type="text" class="letter-input" data-answer="s"></span></span> in groups for survival.'
-            },
-            {
-                type: 'daily_life',
-                layout: 'notice',
-                title: 'Library Notice',
-                passage: 'The main library will be closed this Friday for renovations. Please use the campus center branch.',
-                question: 'Why is the main library closing?',
-                options: ['Staff shortage', 'Renovations', 'National holiday', 'Inventory check']
-            },
-            {
-                type: 'academic',
-                title: 'The Mirror Test',
-                passage: '<p class="mb-4"><span class="clickable-sentence">Elephants and dolphins have shown signs of self-recognition.</span> <span class="clickable-sentence">These mammals are highly intelligent.</span></p>',
-                question: 'Click on the sentence that states dolphins are intelligent.',
-                qType: 'Select a Sentence'
-            }
-        ];
-
-        let currentTasks = [];
-        let currentIndex = 0;
-        let isStage1 = true;
-        let timerInterval;
-        let timeRemaining = 18 * 60; 
-
-        function startExamEngine() {
+        async function startExamEngine(testId, testTitle) {
             document.getElementById('main-interface').classList.add('hidden');
             document.getElementById('exam-engine-view').classList.remove('hidden');
             document.getElementById('exam-engine-view').classList.add('flex');
             
-            isStage1 = true;
-            currentTasks = mockStage1Tasks;
-            currentIndex = 0;
-            document.getElementById('engine-title').innerText = "Reading - Stage 1 (Router)";
+            document.getElementById('engine-title').innerText = `Loading ${testTitle}...`;
+            document.getElementById('engine-content').innerHTML = `
+                <div class="m-auto text-center">
+                    <div class="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                    <p class="text-slate-600 font-bold text-sm animate-pulse">Building test layout...</p>
+                </div>
+            `;
             
-            startTimer();
-            renderEngine();
+            currentTasks = [];
+            
+            try {
+                // 1. Получаем план теста (какие задания включены)
+                const { data: plan, error: planErr } = await supabase
+                    .from('full_test_tasks')
+                    .select('*')
+                    .eq('test_id', testId)
+                    .order('order_num', { ascending: true });
+
+                if (planErr) throw planErr;
+                
+                if (!plan || plan.length === 0) {
+                    alert("This test is empty! Please add tasks in Supabase 'full_test_tasks' table.");
+                    exitExamEngine();
+                    return;
+                }
+
+                // 2. Загружаем сами задания согласно плану
+                for (let step of plan) {
+                    let tableName = step.task_type + '_tasks'; // e.g. complete_words_tasks
+                    
+                    const { data: taskData, error: taskErr } = await supabase
+                        .from(tableName)
+                        .select('*')
+                        .eq('id', step.task_id)
+                        .single();
+
+                    if (taskErr) {
+                        console.warn(`Could not load task ${step.task_id} from ${tableName}`);
+                        continue; 
+                    }
+
+                    // Парсинг в зависимости от типа задания
+                    if (step.task_type === 'complete_words') {
+                        let parsedPassage = taskData.passage.replace(/(?:\[[a-zA-Z]\])+/g, (match) => {
+                            let letters = match.replace(/[\[\]]/g, '').split('');
+                            let inputsHtml = letters.map(l => `<input type="text" class="letter-input" data-answer="${l}">`).join('');
+                            return `<span class="letters-container">${inputsHtml}</span>`;
+                        });
+                        currentTasks.push({ type: 'complete_words', title: taskData.title, passage: parsedPassage });
+                    
+                    } else if (step.task_type === 'daily_life' || step.task_type === 'academic') {
+                        let questions = [];
+                        try { questions = JSON.parse(taskData.questions); } catch(e) { questions = []; }
+                        
+                        // Если в задании несколько вопросов (JSON массив), создаем отдельный экран на каждый вопрос!
+                        questions.forEach(q => {
+                            let parsedPassage = taskData.passage;
+                            let qType = q.type || 'Standard';
+
+                            if (step.task_type === 'academic') {
+                                if (qType === 'Select a Sentence') {
+                                    parsedPassage = parsedPassage.replace(/\[s\d+\]\s*([^\[\n]+)/g, '<span class="clickable-sentence">$1</span>');
+                                } else if (qType === 'Insert Text') {
+                                    parsedPassage = parsedPassage.replace(/\[s\d+\]/g, '<span class="insert-square">■</span>').replace(/\[■\]/g, '<span class="insert-square">■</span>');
+                                } else {
+                                    parsedPassage = parsedPassage.replace(/\[s\d+\]\s*/g, '').replace(/\[■\]\s*/g, '');
+                                }
+                            }
+
+                            currentTasks.push({
+                                type: step.task_type,
+                                title: taskData.title,
+                                layout: taskData.layout_type || 'notice',
+                                passage: parsedPassage,
+                                question: q.text,
+                                options: q.options || [],
+                                qType: qType,
+                                insertSentence: q.insertSentence || ""
+                            });
+                        });
+                    }
+                }
+
+                if (currentTasks.length === 0) {
+                    alert("Could not load content for this test.");
+                    exitExamEngine();
+                    return;
+                }
+
+                currentIndex = 0;
+                document.getElementById('engine-title').innerText = testTitle;
+                
+                timeRemaining = 35 * 60;
+                startTimer();
+                renderEngine();
+
+            } catch (err) {
+                console.error("Engine crash:", err);
+                alert("Error loading test structure.");
+                exitExamEngine();
+            }
         }
 
         function exitExamEngine() {
@@ -264,7 +354,8 @@
                 timeRemaining--;
                 if (timeRemaining <= 0) {
                     clearInterval(timerInterval);
-                    alert("Time is up for this section!");
+                    alert("Time is up!");
+                    exitExamEngine();
                 }
                 let m = Math.floor(timeRemaining / 60);
                 let s = timeRemaining % 60;
@@ -279,30 +370,33 @@
             document.getElementById('engine-progress').innerText = `${currentIndex + 1} / ${currentTasks.length}`;
             document.getElementById('engine-prev').disabled = (currentIndex === 0);
             document.getElementById('engine-next').innerHTML = (currentIndex === currentTasks.length - 1) 
-                ? (isStage1 ? 'Finish Stage 1 <i data-lucide="flag" class="w-4 h-4 ml-1"></i>' : 'Submit Test <i data-lucide="check" class="w-4 h-4 ml-1"></i>')
+                ? 'Submit Test <i data-lucide="check" class="w-4 h-4 ml-1"></i>'
                 : 'Next <i data-lucide="chevron-right" class="w-4 h-4 ml-1"></i>';
 
             contentDiv.innerHTML = '';
 
-            // 1. COMPLETE THE WORDS
             if (task.type === 'complete_words') {
-                contentDiv.innerHTML = `<div class="w-full p-10 overflow-y-auto custom-scrollbar flex items-center justify-center bg-[#f8f9fa]"><div class="max-w-3xl w-full bg-white p-10 rounded-3xl border border-gray-100 shadow-sm"><h2 class="text-xl font-bold mb-6 text-center">${task.title}</h2><div class="text-lg leading-loose text-slate-700 text-center">${task.passage}</div></div></div>`;
+                contentDiv.innerHTML = `
+                    <div class="w-full p-10 overflow-y-auto custom-scrollbar flex items-center justify-center bg-[#f8f9fa]">
+                        <div class="max-w-3xl w-full bg-white p-10 rounded-3xl border border-gray-100 shadow-sm">
+                            <h2 class="text-xl font-bold mb-6 text-center text-slate-900">${task.title}</h2>
+                            <div class="text-lg leading-loose text-slate-700 text-center">${task.passage}</div>
+                        </div>
+                    </div>
+                `;
                 setTimeout(() => setupInputs(), 50);
             } 
-            // 2. DAILY LIFE
             else if (task.type === 'daily_life') {
-                const layoutType = (task.layout || 'notice').toLowerCase().trim();
-                const renderedLayout = renderDailyLifeLayout(task.passage, layoutType, task.title);
-
+                const renderedLayout = renderDailyLifeLayout(task.passage, task.layout, task.title);
                 contentDiv.innerHTML = `
-                    <section class="w-1/2 bg-white p-10 overflow-y-auto custom-scrollbar border-r border-slate-200">
-                        <div class="mt-10">${renderedLayout}</div>
+                    <section class="w-1/2 bg-white p-10 overflow-y-auto custom-scrollbar border-r border-slate-200 flex flex-col justify-center">
+                        <div>${renderedLayout}</div>
                     </section>
                     <section class="w-1/2 bg-slate-50 p-10 overflow-y-auto custom-scrollbar">
                         <div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-xs max-w-xl mx-auto mt-10">
                             <h3 class="font-bold text-slate-900 mb-6">${task.question}</h3>
                             <div class="space-y-3">
-                                ${task.options.map((opt, i) => `
+                                ${task.options.map((opt) => `
                                     <label class="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer hover:bg-slate-50 transition">
                                         <input type="radio" name="q" class="w-4 h-4 text-indigo-600 mr-3">
                                         <span class="text-sm text-slate-700">${opt}</span>
@@ -313,7 +407,6 @@
                     </section>
                 `;
             }
-            // 3. ACADEMIC
             else if (task.type === 'academic') {
                 let rightPanelContent = '';
 
@@ -335,11 +428,10 @@
                         </div>
                     `;
                 } else {
-                    // Стандартный Multiple Choice
                     rightPanelContent = `
                         <h3 class="font-bold text-slate-900 mb-6">${task.question}</h3>
                         <div class="space-y-3">
-                            ${(task.options || []).map((opt, i) => `
+                            ${task.options.map((opt) => `
                                 <label class="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer hover:bg-slate-50 transition">
                                     <input type="radio" name="q" class="w-4 h-4 text-indigo-600 mr-3">
                                     <span class="text-sm text-slate-700">${opt}</span>
@@ -352,7 +444,7 @@
                 contentDiv.innerHTML = `
                     <section class="w-1/2 bg-white p-10 overflow-y-auto custom-scrollbar border-r border-slate-200">
                         <h2 class="text-xl font-bold text-slate-900 mb-6">${task.title}</h2>
-                        <div class="text-sm text-slate-700 leading-relaxed">${task.passage}</div>
+                        <div class="text-sm text-slate-700 leading-relaxed space-y-4 whitespace-pre-wrap">${task.passage}</div>
                     </section>
                     <section class="w-1/2 bg-slate-50 p-10 overflow-y-auto custom-scrollbar">
                          <div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-xs max-w-xl mx-auto">
@@ -362,7 +454,6 @@
                 `;
 
                 setTimeout(() => {
-                    // Обработчик для Select a Sentence
                     document.querySelectorAll('.clickable-sentence').forEach(el => {
                         el.onclick = function() {
                             if (task.qType !== 'Select a Sentence') return;
@@ -371,7 +462,6 @@
                         };
                     });
 
-                    // Обработчик для Insert Text
                     document.querySelectorAll('.insert-square').forEach(el => {
                         el.onclick = function() {
                             if (task.qType !== 'Insert Text') return;
@@ -390,12 +480,8 @@
                 currentIndex++;
                 renderEngine();
             } else {
-                if (isStage1) {
-                    evaluateStage1AndRoute();
-                } else {
-                    alert("Reading Section Completed!");
-                    exitExamEngine();
-                }
+                alert("Test submitted!");
+                exitExamEngine();
             }
         }
 
@@ -405,43 +491,7 @@
                 renderEngine();
             }
         }
-
-        function evaluateStage1AndRoute() {
-            alert("Stage 1 Finished. Routing to Stage 2: Upper Module...");
-            
-            isStage1 = false;
-            document.getElementById('engine-title').innerText = "Reading - Stage 2 (Upper)";
-            
-            // Загружаем 3 разных типа заданий, чтобы ты проверил весь функционал!
-            currentTasks = [
-                {
-                    type: 'academic',
-                    title: 'Advanced History',
-                    passage: '<p class="text-sm leading-relaxed">The industrial revolution changed everything. Specialized machinery streamlined manufacturing operations across Europe.</p>',
-                    question: 'What optimized industrial operations across Europe?',
-                    options: ['Manual crafting techniques', 'Specialized machinery', 'New trade routes']
-                },
-                {
-                    type: 'academic',
-                    title: 'The Mirror Test (Part 2)',
-                    passage: '<p class="text-sm leading-relaxed mb-4"><span class="clickable-sentence">Elephants and dolphins have shown signs of self-recognition.</span> <span class="clickable-sentence">These mammals are highly intelligent and possess complex social structures.</span> <span class="clickable-sentence">Self-awareness is often linked to the size of the neocortex.</span></p>',
-                    question: 'Click on the sentence that mentions social structures.',
-                    qType: 'Select a Sentence'
-                },
-                {
-                    type: 'academic',
-                    title: 'Evolution of Flight',
-                    passage: '<p class="text-sm leading-relaxed mb-4">Birds evolved from small feathered dinosaurs. <span class="insert-square">■</span> Over time, these early birds adapted to various environments. <span class="insert-square">■</span> Feathers initially served for insulation before being used for flight. <span class="insert-square">■</span> Eventually, they mastered the skies.</p>',
-                    question: 'Look at the squares [■] that indicate where the following sentence could be added. Click on a square to add the sentence.',
-                    qType: 'Insert Text',
-                    insertSentence: 'This evolutionary process took millions of years.'
-                }
-            ];
-            currentIndex = 0;
-            timeRemaining = 17 * 60; 
-            
-            renderEngine();
-        }
     </script>
 </body>
 </html>
+
