@@ -149,10 +149,8 @@
         // 1. ЗАГРУЗКА СПИСКА ТЕСТОВ ПРИ СТАРТЕ
         async function loadTestsGrid() {
             const container = document.getElementById('tests-container');
-            
             try {
                 const { data: tests, error } = await supabaseClient.from('full_tests').select('*').order('created_at', { ascending: false });
-                
                 if (error) throw error;
 
                 if (!tests || tests.length === 0) {
@@ -200,7 +198,7 @@
         }
 
         // ==========================================
-        // ЛОГИКА ДВИЖКА
+        // ЛОГИКА ДВИЖКА И МОДУЛЕЙ
         // ==========================================
         let currentTasks = [];
         let currentIndex = 0;
@@ -220,12 +218,8 @@
                     return `<div class="max-w-lg mx-auto bg-white border-2 border-slate-800 p-8 shadow-xs font-sans relative"><h3 class="text-lg font-bold text-slate-900 text-center tracking-tight mb-6 uppercase">${taskTitle}</h3><div class="text-slate-700 space-y-4 font-normal text-sm leading-relaxed relative z-10">${cleanPassage}</div></div>`;
                 case 'chat': {
                     let chatHtml = '';
-                    // Разбиваем текст по шаблону "Имя (Время):" 
-                    // Например: "Sarah (09:15 AM):"
                     const chatParts = cleanPassage.split(/([A-Za-z0-9 ]+ \(\d{2}:\d{2}\s*[AP]M\)):/);
-                    
                     if (chatParts.length > 1) {
-                        // Если удалось разбить, собираем сообщения
                         for (let i = 1; i < chatParts.length; i += 2) {
                             let sender = chatParts[i].trim();
                             let msg = (chatParts[i+1] || '').trim();
@@ -241,11 +235,8 @@
                             }
                         }
                     } else {
-                        // Запасной вариант, если текст не содержит нужного формата времени
                         chatHtml = `<div class="bg-white border border-slate-100 text-slate-700 p-4 rounded-2xl rounded-tl-sm shadow-sm text-sm leading-relaxed">${cleanPassage}</div>`;
                     }
-
-                    // Оборачиваем сообщения в интерфейс телефона
                     return `
                         <div class="max-w-sm mx-auto bg-slate-50 border border-slate-200 rounded-[24px] overflow-hidden shadow-xs font-sans flex flex-col h-[550px]">
                             <div class="bg-[#111827] p-4 text-white text-center font-bold text-[13px] flex items-center justify-center gap-2 shadow-sm shrink-0">
@@ -278,6 +269,88 @@
             });
         }
 
+        async function fetchAndParseTasks(testId, stageName) {
+            let parsedTasks = [];
+            const { data: plan, error: planErr } = await supabaseClient
+                .from('full_test_tasks')
+                .select('*')
+                .eq('test_id', testId)
+                .eq('stage', stageName)
+                .order('order_num', { ascending: true });
+
+            if (planErr) throw planErr;
+            if (!plan || plan.length === 0) return parsedTasks;
+
+            for (let step of plan) {
+                let tableName = step.task_type + '_tasks'; 
+                
+                const { data: taskData, error: taskErr } = await supabaseClient
+                    .from(tableName)
+                    .select('*')
+                    .eq('id', step.task_id)
+                    .single();
+
+                if (taskErr) {
+                    console.warn(`Could not load task ${step.task_id} from ${tableName}`);
+                    continue; 
+                }
+
+                if (step.task_type === 'complete_words') {
+                    let parsedPassage = taskData.passage.replace(/(?:\[[a-zA-Z]\])+/g, (match) => {
+                        let letters = match.replace(/[\[\]]/g, '').split('');
+                        let inputsHtml = letters.map(l => `<input type="text" class="letter-input" data-answer="${l}">`).join('');
+                        return `<span class="letters-container">${inputsHtml}</span>`;
+                    });
+                    parsedTasks.push({ 
+                        type: 'complete_words', 
+                        title: taskData.title, 
+                        passage: parsedPassage,
+                        stage: stageName,
+                        correctAnswer: null, // Игнорируем для адаптивной логики баллов, если не предусмотрено иное
+                        userAnswer: null
+                    });
+                
+                } else if (step.task_type === 'daily_life' || step.task_type === 'academic') {
+                    let questions = [];
+                    if (typeof taskData.questions === 'string') {
+                        try { questions = JSON.parse(taskData.questions); } catch(e) { questions = []; }
+                    } else if (Array.isArray(taskData.questions)) {
+                        questions = taskData.questions;
+                    }
+                    
+                    questions.forEach(q => {
+                        let parsedPassage = taskData.passage;
+                        let qType = q.type || 'Standard';
+
+                        if (step.task_type === 'academic') {
+                            if (qType === 'Select a Sentence') {
+                                parsedPassage = parsedPassage.replace(/\[s\d+\]\s*([^\[\n]+)/g, '<span class="clickable-sentence">$1</span>');
+                            } else if (qType === 'Insert Text') {
+                                parsedPassage = parsedPassage.replace(/\[s\d+\]/g, '<span class="insert-square">■</span>').replace(/\[■\]/g, '<span class="insert-square">■</span>');
+                            } else {
+                                parsedPassage = parsedPassage.replace(/\[s\d+\]\s*/g, '').replace(/\[■\]\s*/g, '');
+                            }
+                        }
+
+                        parsedTasks.push({
+                            type: step.task_type,
+                            title: taskData.title,
+                            layout: taskData.layout_type || 'notice',
+                            passage: parsedPassage,
+                            question: q.text,
+                            options: q.options || [],
+                            qType: qType,
+                            insertSentence: q.insertSentence || "",
+                            stage: stageName,
+                            correctAnswer: q.correctAnswer || "", // Ожидаем поле правильного ответа из JSON
+                            userAnswer: null
+                        });
+                    });
+                }
+            }
+            return parsedTasks;
+        }
+
         async function startExamEngine(testId, testTitle) {
             document.getElementById('main-interface').classList.add('hidden');
             document.getElementById('exam-engine-view').classList.remove('hidden');
@@ -294,81 +367,11 @@
             currentTasks = [];
             
             try {
-                const { data: plan, error: planErr } = await supabaseClient
-                    .from('full_test_tasks')
-                    .select('*')
-                    .eq('test_id', testId)
-                    .order('order_num', { ascending: true });
-
-                if (planErr) throw planErr;
-                
-                if (!plan || plan.length === 0) {
-                    alert("This test is empty! Please add tasks in Supabase 'full_test_tasks' table.");
-                    exitExamEngine();
-                    return;
-                }
-
-                for (let step of plan) {
-                    let tableName = step.task_type + '_tasks'; 
-                    
-                    const { data: taskData, error: taskErr } = await supabaseClient
-                        .from(tableName)
-                        .select('*')
-                        .eq('id', step.task_id)
-                        .single();
-
-                    if (taskErr) {
-                        console.warn(`Could not load task ${step.task_id} from ${tableName}`);
-                        continue; 
-                    }
-
-                    if (step.task_type === 'complete_words') {
-                        let parsedPassage = taskData.passage.replace(/(?:\[[a-zA-Z]\])+/g, (match) => {
-                            let letters = match.replace(/[\[\]]/g, '').split('');
-                            let inputsHtml = letters.map(l => `<input type="text" class="letter-input" data-answer="${l}">`).join('');
-                            return `<span class="letters-container">${inputsHtml}</span>`;
-                        });
-                        currentTasks.push({ type: 'complete_words', title: taskData.title, passage: parsedPassage });
-                    
-                    } else if (step.task_type === 'daily_life' || step.task_type === 'academic') {
-                        let questions = [];
-                        
-                        if (typeof taskData.questions === 'string') {
-                            try { questions = JSON.parse(taskData.questions); } catch(e) { questions = []; }
-                        } else if (Array.isArray(taskData.questions)) {
-                            questions = taskData.questions;
-                        }
-                        
-                        questions.forEach(q => {
-                            let parsedPassage = taskData.passage;
-                            let qType = q.type || 'Standard';
-
-                            if (step.task_type === 'academic') {
-                                if (qType === 'Select a Sentence') {
-                                    parsedPassage = parsedPassage.replace(/\[s\d+\]\s*([^\[\n]+)/g, '<span class="clickable-sentence">$1</span>');
-                                } else if (qType === 'Insert Text') {
-                                    parsedPassage = parsedPassage.replace(/\[s\d+\]/g, '<span class="insert-square">■</span>').replace(/\[■\]/g, '<span class="insert-square">■</span>');
-                                } else {
-                                    parsedPassage = parsedPassage.replace(/\[s\d+\]\s*/g, '').replace(/\[■\]\s*/g, '');
-                                }
-                            }
-
-                            currentTasks.push({
-                                type: step.task_type,
-                                title: taskData.title,
-                                layout: taskData.layout_type || 'notice',
-                                passage: parsedPassage,
-                                question: q.text,
-                                options: q.options || [],
-                                qType: qType,
-                                insertSentence: q.insertSentence || ""
-                            });
-                        });
-                    }
-                }
+                // Загружаем только задания 1-го этапа
+                currentTasks = await fetchAndParseTasks(testId, '1');
 
                 if (currentTasks.length === 0) {
-                    alert("Could not load content for this test.");
+                    alert("This test is empty (No module 1 tasks)! Please add tasks in Supabase 'full_test_tasks' table with stage '1'.");
                     exitExamEngine();
                     return;
                 }
@@ -416,7 +419,7 @@
             document.getElementById('engine-progress').innerText = `${currentIndex + 1} / ${currentTasks.length}`;
             document.getElementById('engine-prev').disabled = (currentIndex === 0);
             document.getElementById('engine-next').innerHTML = (currentIndex === currentTasks.length - 1) 
-                ? 'Submit Test <i data-lucide="check" class="w-4 h-4 ml-1"></i>'
+                ? 'Continue <i data-lucide="check" class="w-4 h-4 ml-1"></i>' // Текст кнопки изменится на последнем вопросе
                 : 'Next <i data-lucide="chevron-right" class="w-4 h-4 ml-1"></i>';
 
             contentDiv.innerHTML = '';
@@ -444,7 +447,10 @@
                             <div class="space-y-3">
                                 ${task.options.map((opt) => `
                                     <label class="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer hover:bg-slate-50 transition">
-                                        <input type="radio" name="q" class="w-4 h-4 text-indigo-600 mr-3">
+                                        <input type="radio" name="q" value="${opt}"
+                                            ${task.userAnswer === opt ? 'checked' : ''}
+                                            onchange="currentTasks[${currentIndex}].userAnswer = this.value"
+                                            class="w-4 h-4 text-indigo-600 mr-3">
                                         <span class="text-sm text-slate-700">${opt}</span>
                                     </label>
                                 `).join('')}
@@ -479,7 +485,10 @@
                         <div class="space-y-3">
                             ${task.options.map((opt) => `
                                 <label class="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer hover:bg-slate-50 transition">
-                                    <input type="radio" name="q" class="w-4 h-4 text-indigo-600 mr-3">
+                                    <input type="radio" name="q" value="${opt}"
+                                        ${task.userAnswer === opt ? 'checked' : ''}
+                                        onchange="currentTasks[${currentIndex}].userAnswer = this.value"
+                                        class="w-4 h-4 text-indigo-600 mr-3">
                                     <span class="text-sm text-slate-700">${opt}</span>
                                 </label>
                             `).join('')}
@@ -500,19 +509,28 @@
                 `;
 
                 setTimeout(() => {
+                    // Восстанавливаем состояние и настраиваем слушатели
                     document.querySelectorAll('.clickable-sentence').forEach(el => {
+                        const sentenceText = el.textContent.trim();
+                        if (task.userAnswer === sentenceText) el.classList.add('selected');
+                        
                         el.onclick = function() {
                             if (task.qType !== 'Select a Sentence') return;
                             document.querySelectorAll('.clickable-sentence').forEach(s => s.classList.remove('selected'));
                             this.classList.add('selected');
+                            currentTasks[currentIndex].userAnswer = this.textContent.trim();
                         };
                     });
 
-                    document.querySelectorAll('.insert-square').forEach(el => {
+                    document.querySelectorAll('.insert-square').forEach((el, index) => {
+                        const squareIndexStr = index.toString();
+                        if (task.userAnswer === squareIndexStr) el.classList.add('selected');
+
                         el.onclick = function() {
                             if (task.qType !== 'Insert Text') return;
                             document.querySelectorAll('.insert-square').forEach(s => s.classList.remove('selected'));
                             this.classList.add('selected');
+                            currentTasks[currentIndex].userAnswer = squareIndexStr;
                         };
                     });
                 }, 50);
@@ -521,12 +539,61 @@
             lucide.createIcons();
         }
 
-        function nextTask() {
+        async function loadModule2Tasks() {
+            document.getElementById('engine-next').innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin mr-1"></i> Loading Module 2...';
+            
+            // Подсчет баллов за первый модуль
+            let correctCount = 0;
+            let module1Total = 0;
+
+            for (let task of currentTasks) {
+                if (task.stage === '1' && task.correctAnswer !== null) {
+                    module1Total++;
+                    if (task.userAnswer && task.userAnswer === task.correctAnswer) {
+                        correctCount++;
+                    }
+                }
+            }
+
+            // Логика порога (например, нужно ответить правильно больше чем на 50% вопросов)
+            const thresholdPercentage = 0.5; 
+            const isHardModule = (module1Total > 0) && (correctCount / module1Total >= thresholdPercentage);
+            const nextStage = isHardModule ? '2_hard' : '2_easy';
+            
+            console.log(`Module 1 score: ${correctCount}/${module1Total}. Loading stage: ${nextStage}`);
+
+            try {
+                const module2Tasks = await fetchAndParseTasks(currentActiveTestId, nextStage);
+                if (module2Tasks.length > 0) {
+                    currentTasks = currentTasks.concat(module2Tasks);
+                    return true; // Успешно загружен второй модуль
+                }
+            } catch(e) {
+                console.error("Error loading module 2:", e);
+            }
+            return false; // Если нет заданий второго модуля, завершаем тест
+        }
+
+        async function nextTask() {
             if (currentIndex < currentTasks.length - 1) {
                 currentIndex++;
                 renderEngine();
             } else {
-                alert("Test submitted!");
+                // Если мы дошли до конца текущего пула заданий
+                const isModule1Finished = !currentTasks.some(t => t.stage.startsWith('2'));
+                
+                if (isModule1Finished) {
+                    // Загружаем второй модуль
+                    const loaded = await loadModule2Tasks();
+                    if (loaded) {
+                        currentIndex++;
+                        renderEngine();
+                        return;
+                    }
+                }
+
+                // Если это конец теста (второй модуль пройден, или его не существует)
+                alert("Test completed! Submitting answers...");
                 exitExamEngine();
             }
         }
@@ -540,3 +607,4 @@
     </script>
 </body>
 </html>
+
