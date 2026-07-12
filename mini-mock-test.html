@@ -12,92 +12,93 @@
 <body class="bg-[#f8f9fa] text-slate-800 font-sans">
     
     <div class="flex min-h-screen">
-        <main class="flex-1 p-4 md:p-8">
+        <main class="flex-1 p-4 md:p-8 max-w-7xl mx-auto">
             <header class="mb-8 md:mb-10">
                 <h1 class="text-2xl font-bold text-slate-900">Mini Mock Tests</h1>
                 <p class="text-slate-500 text-sm mt-1">Select a test to simulate the real exam experience.</p>
             </header>
 
-            <div id="testGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                </div>
+            <div id="testGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
         </main>
     </div>
 
     <script>
-        // Функция расчета баллов
-        function calculateBandScore(correct, total) {
-            if (!total || total === 0) return "1.0";
-            const score = 1.0 + ((correct / total) * 5.0);
-            return (Math.round(score * 2) / 2).toFixed(1);
+        function getAnimalInitial(title) {
+            if (!title) return 'T';
+            const parts = title.toUpperCase().trim().split(' ');
+            if (parts.length > 1) return parts[1].charAt(0);
+            return parts[0].charAt(0);
         }
 
         async function loadTests() {
             try {
-                // 1. Сначала проверяем авторизацию (функция из auth.js)
                 const user = await requireAuth();
-                if (!user) return; // Если не авторизован или ждет аппрува — останавливаем скрипт
+                if (!user) return; 
 
-                // 2. Используем _supabase, который уже создан в auth.js
-                const { data: tests, error } = await _supabase
+                const { data: tests, error: testsError } = await _supabase
                     .from('mock_tests')
                     .select('*')
-                    .order('id', { ascending: true }); // Сортируем по ID, чтобы шли по порядку
+                    .order('created_at', { ascending: true }); 
                 
-                if (error) throw error;
+                if (testsError) throw testsError;
+
+                const { data: results, error: resultsError } = await _supabase
+                    .from('mock_test_results')
+                    .select('*')
+                    .eq('user_id', user.id);
+
+                if (resultsError) throw resultsError;
+
+                const resultsMap = {};
+                if (results) {
+                    results.forEach(res => {
+                        if (!resultsMap[res.test_id] || new Date(res.created_at) > new Date(resultsMap[res.test_id].created_at)) {
+                            resultsMap[res.test_id] = res;
+                        }
+                    });
+                }
 
                 const grid = document.getElementById('testGrid');
-                
-                // Если база данных пустая
                 if (!tests || tests.length === 0) {
-                    grid.innerHTML = '<div class="col-span-full text-center text-slate-500 py-10 bg-white rounded-2xl border border-gray-100">Тесты пока не добавлены.</div>';
+                    grid.innerHTML = '<div class="col-span-full text-center text-slate-500 py-10 bg-white rounded-2xl border border-gray-100 shadow-sm">Tests have not been added yet.</div>';
                     return;
                 }
 
                 grid.innerHTML = '';
-                
-                // 3. Рендерим карточки
                 tests.forEach(test => {
-                    // Защита: проверяем, завершен ли тест (если полей пока нет в БД, они будут undefined/false)
-                    const isCompleted = test.completed === true; 
-                    const score = isCompleted ? calculateBandScore(test.correct || 0, test.total || 0) : null;
+                    const result = resultsMap[test.id];
+                    const isCompleted = !!result; 
+                    const bandScore = isCompleted ? parseFloat(result.band_score).toFixed(1) : null;
+                    const initial = getAnimalInitial(test.title);
                     
                     grid.innerHTML += `
-                        <div class="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex flex-col transition hover:shadow-md">
+                        <div class="relative bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex flex-col transition hover:shadow-md">
                             ${isCompleted ? '<div class="absolute top-5 right-5 bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wider">Completed</div>' : ''}
-                            
-                            <div class="w-12 h-12 rounded-xl bg-indigo-500 text-white flex items-center justify-center font-black text-lg mb-5 shadow-sm">
-                                #${test.id}
+                            <div class="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-black text-2xl mb-5 shadow-sm border border-indigo-100">
+                                ${initial}
                             </div>
-                            
-                            <h3 class="text-lg font-bold text-slate-900 mb-2">${test.title || 'Test'}</h3>
-                            
+                            <h3 class="text-lg font-bold text-slate-900 mb-2">${test.title || 'Practice Test'}</h3>
                             <div class="flex items-center text-xs text-slate-500 font-medium space-x-4 mb-8">
-                                <span class="flex items-center"><i data-lucide="file-text" class="w-4 h-4 mr-1.5 opacity-70"></i> ${test.passages || 0} Passages</span>
-                                <span class="flex items-center"><i data-lucide="clock" class="w-4 h-4 mr-1.5 opacity-70"></i> ${test.minutes || 0} mins</span>
+                                <span class="flex items-center"><i data-lucide="paw-print" class="w-4 h-4 mr-1.5 opacity-70"></i> ${test.passages || 3} Passages</span>
+                                <span class="flex items-center"><i data-lucide="clock" class="w-4 h-4 mr-1.5 opacity-70"></i> ${test.minutes || 36} mins</span>
                             </div>
-                            
                             <div class="mt-auto flex items-end justify-between pt-4 border-t border-gray-50">
-                                ${score ? `<div><span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Band Score</span><div class="text-emerald-500 font-black text-xl tracking-tight">${score} <span class="text-slate-300 text-sm font-semibold">/ 6.0</span></div></div>` : '<span class="text-xs font-medium text-slate-400">Not started</span>'}
-                                
-                                <a href="take-mock-test.html?id=${test.id}" class="text-xs font-bold ${isCompleted ? 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100' : 'text-white bg-blue-600 hover:bg-blue-700'} px-5 py-2.5 rounded-lg transition flex items-center shadow-xs cursor-pointer">
+                                ${isCompleted 
+                                    ? `<div><span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Band Score</span><div class="text-emerald-500 font-black text-xl tracking-tight">${bandScore} <span class="text-slate-300 text-sm font-semibold">/ 6.0</span></div></div>` 
+                                    : '<span class="text-xs font-medium text-slate-400">Not started</span>'}
+                                <a href="take-mock-test.html?id=${test.id}${isCompleted ? '&mode=review' : ''}" class="text-xs font-bold ${isCompleted ? 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100' : 'text-white bg-slate-900 hover:bg-indigo-600'} px-5 py-2.5 rounded-lg transition flex items-center shadow-xs cursor-pointer">
                                     ${isCompleted ? 'Review' : 'Start Test'} <i data-lucide="${isCompleted ? 'arrow-right' : 'play'}" class="w-3.5 h-3.5 ml-1.5 ${!isCompleted ? 'fill-current' : ''}"></i>
                                 </a>
                             </div>
                         </div>
                     `;
                 });
-                
-                // Активируем иконки Lucide
                 lucide.createIcons();
-                
             } catch (err) {
                 console.error("Ошибка при загрузке тестов:", err);
             }
         }
-
-        // Ждем загрузки всей страницы перед запуском логики
         document.addEventListener('DOMContentLoaded', loadTests);
     </script>
 </body>
 </html>
-
