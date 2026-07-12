@@ -66,7 +66,6 @@
                 <h1 class="text-3xl font-bold text-slate-900 tracking-tight">Mock Tests</h1>
                 <p class="text-sm text-gray-500 mt-2">Select a full test to begin your simulation.</p>
             </div>
-            <!-- Сюда динамически подгрузятся тесты из базы -->
             <div id="tests-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                  <div class="text-slate-400 text-sm flex items-center"><i data-lucide="loader-2" class="w-4 h-4 mr-2 animate-spin"></i> Loading tests...</div>
             </div>
@@ -138,7 +137,7 @@
         <main id="engine-content" class="flex-1 flex overflow-hidden w-full h-full relative"></main>
     </div>
 
-    <!-- RESULTS SCREEN (ОБНОВЛЕННЫЙ SPLIT-SCREEN) -->
+    <!-- RESULTS SCREEN -->
     <div id="results-view" class="fixed inset-0 z-50 bg-[#f8f9fa] hidden flex-col w-screen h-screen overflow-hidden">
         <!-- Динамический рендер split-screen -->
     </div>
@@ -246,16 +245,46 @@
 
         function setupInputs() {
             const inputs = document.querySelectorAll('.letter-input');
+            const task = currentTasks[currentIndex];
+            
+            // Заполнение инпутов, если юзер возвращается кнопкой Back
+            if (task && task.type === 'complete_words' && task.userWords) {
+                let charIndex = 0;
+                task.userWords.forEach(word => {
+                    for(let i=0; i < word.length; i++) {
+                        if(inputs[charIndex] && word[i] !== '_') {
+                            inputs[charIndex].value = word[i];
+                        }
+                        charIndex++;
+                    }
+                });
+            }
+
             inputs.forEach((input, index) => {
                 input.setAttribute('maxlength', '1');
                 input.addEventListener('input', function() {
                     this.value = this.value.replace(/[^a-zA-Z]/g, '').toLowerCase();
+                    updateCompleteWordsState(); // Сохраняем состояние при каждом вводе
                     if (this.value.length === 1 && index < inputs.length - 1) inputs[index + 1].focus();
                 });
                 input.addEventListener('keydown', function(e) {
                     if (e.key === 'Backspace' && this.value === '' && index > 0) inputs[index - 1].focus();
                 });
             });
+        }
+
+        function updateCompleteWordsState() {
+            const task = currentTasks[currentIndex];
+            if (!task || task.type !== 'complete_words') return;
+            
+            const containers = document.querySelectorAll('.letters-container');
+            let userWords = [];
+            containers.forEach(container => {
+                let word = '';
+                container.querySelectorAll('input').forEach(inp => word += (inp.value || '_'));
+                userWords.push(word);
+            });
+            task.userWords = userWords;
         }
 
         async function fetchAndParseTasks(testId, stageName) {
@@ -285,16 +314,22 @@
                 }
 
                 if (step.task_type === 'complete_words') {
+                    let correctWords = [];
                     let parsedPassage = taskData.passage.replace(/(?:\[[a-zA-Z]\])+/g, (match) => {
                         let letters = match.replace(/[\[\]]/g, '').split('');
+                        correctWords.push(letters.join(''));
                         let inputsHtml = letters.map(l => `<input type="text" class="letter-input" data-answer="${l}">`).join('');
                         return `<span class="letters-container">${inputsHtml}</span>`;
                     });
+                    
                     parsedTasks.push({ 
                         type: 'complete_words', 
                         title: taskData.title, 
                         passage: parsedPassage,
+                        originalPassage: taskData.passage, // Сохраняем оригинал для экрана Review
                         stage: stageName,
+                        correctWords: correctWords, // Массив правильных слов
+                        userWords: new Array(correctWords.length).fill(""), // Массив ответов юзера
                         correctAnswer: null, 
                         userAnswer: null
                     });
@@ -567,7 +602,6 @@
             return (Math.round(score * 2) / 2).toFixed(1);
         }
 
-        // ОБНОВЛЕННАЯ ФУНКЦИЯ ДЛЯ ВЫВОДА SPLIT-SCREEN РЕЗУЛЬТАТОВ ПО МОДУЛЯМ
         function showResults() {
             clearInterval(timerInterval);
             
@@ -577,17 +611,14 @@
             const modules = {};
 
             currentTasks.forEach((task, index) => {
-                // Подсчет общих баллов
                 if (task.correctAnswer !== null && task.correctAnswer !== undefined) { 
                     totalQuestions++;
                     if (task.userAnswer === task.correctAnswer) correctAnswers++;
                 }
 
-                // Группировка по модулям
                 let stageName = task.stage.startsWith('2') ? 'Module 2' : 'Module 1';
                 if (!modules[stageName]) modules[stageName] = [];
 
-                // Группировка по текстам внутри модуля
                 let pObj = modules[stageName].find(p => p.title === task.title && p.type === task.type);
                 if (!pObj) {
                     pObj = {
@@ -604,7 +635,6 @@
 
             const finalScore = calculateTOEFLScore(correctAnswers, totalQuestions);
 
-            // Переключаем интерфейс
             document.getElementById('exam-engine-view').classList.add('hidden');
             document.getElementById('exam-engine-view').classList.remove('flex');
             document.getElementById('main-interface').classList.add('hidden');
@@ -616,21 +646,33 @@
             let leftColHtml = '';
             let rightColHtml = '';
 
-            // Генерация контента
             Object.keys(modules).forEach(modName => {
                 rightColHtml += `<div class="mt-8 mb-6 font-extrabold text-2xl text-slate-800 border-b pb-3 border-gray-200">${modName}</div>`;
                 leftColHtml += `<div class="mt-8 mb-6 font-extrabold text-2xl text-slate-800 border-b pb-3 border-gray-200">${modName}</div>`;
 
                 modules[modName].forEach(pObj => {
-                    // Рендер левой части (Тексты заданий)
+                    // Рендер левой части
                     let renderedPassage = '';
                     if (pObj.type === 'daily_life') {
                         renderedPassage = renderDailyLifeLayout(pObj.passage, pObj.layout, pObj.title);
                     } else if (pObj.type === 'complete_words') {
-                        // ТЕПЕРЬ ТЕКСТ ПОЛНОЦЕННО ОТОБРАЖАЕТСЯ ДЛЯ WORD PUZZLE
+                        let taskData = pObj.questions[0]; 
+                        let reviewPassage = pObj.passage; 
+                        
+                        // Вставляем правильные ответы прямо в текст для удобного чтения
+                        if (taskData && taskData.originalPassage && taskData.correctWords) {
+                            let gapIdx = 0;
+                            reviewPassage = taskData.originalPassage.replace(/(?:\[[a-zA-Z]\])+/g, (match) => {
+                                let correctWord = taskData.correctWords[gapIdx];
+                                let simpleHtml = `<span class="inline-flex mx-1 px-1.5 py-0.5 rounded text-sm font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 shadow-sm">${correctWord}</span>`;
+                                gapIdx++;
+                                return simpleHtml;
+                            });
+                        }
+
                         renderedPassage = `
                             <div class="bg-white p-8 rounded-2xl border border-gray-200 shadow-sm">
-                                <div class="text-slate-800 leading-relaxed text-sm">${pObj.passage}</div>
+                                <div class="text-slate-800 leading-loose text-sm">${reviewPassage}</div>
                             </div>
                         `;
                     } else {
@@ -644,17 +686,42 @@
                         </div>
                     `;
 
-                    // Рендер правой части (Ответы и Разбор)
+                    // Рендер правой части (ответы)
                     pObj.questions.forEach(q => {
                         if (q.type === 'complete_words') {
+                            let wordsListHtml = '';
+                            if (q.correctWords && q.userWords) {
+                                q.correctWords.forEach((correctWord, i) => {
+                                    let userW = q.userWords[i] || '_'.repeat(correctWord.length);
+                                    let displayUserW = userW.replace(/_/g, '-');
+                                    let isCorrect = userW.toLowerCase() === correctWord.toLowerCase();
+                                    
+                                    wordsListHtml += `
+                                        <div class="p-4 rounded-xl border mb-3 ${isCorrect ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}">
+                                            <div class="flex justify-between items-center mb-3">
+                                                <span class="text-[11px] font-bold opacity-70 uppercase tracking-wider ${isCorrect ? 'text-green-800' : 'text-red-800'}">GAP ${i + 1}</span>
+                                                ${isCorrect 
+                                                    ? '<div class="w-5 h-5 bg-green-500 text-white rounded-md flex items-center justify-center"><i data-lucide="check" class="w-3.5 h-3.5"></i></div>'
+                                                    : '<div class="w-5 h-5 bg-red-500 text-white rounded-md flex items-center justify-center"><i data-lucide="x" class="w-3.5 h-3.5"></i></div>'
+                                                }
+                                            </div>
+                                            <div class="space-y-2">
+                                                <div class="text-sm flex items-center"><span class="w-16 font-bold text-slate-400 text-[10px] uppercase tracking-wider">You:</span> <span class="font-mono ${isCorrect ? 'text-green-900 font-bold' : 'text-red-900 font-bold'} tracking-widest text-[15px]">${displayUserW}</span></div>
+                                                ${!isCorrect ? `<div class="text-sm flex items-center"><span class="w-16 font-bold text-slate-400 text-[10px] uppercase tracking-wider">Correct:</span> <span class="font-mono text-slate-900 font-bold tracking-widest text-[15px]">${correctWord}</span></div>` : ''}
+                                            </div>
+                                        </div>
+                                    `;
+                                });
+                            }
+
                             rightColHtml += `
-                                <div class="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm mb-4">
-                                    <div class="flex justify-between items-center mb-4">
-                                        <span class="bg-indigo-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">TYPE: COMPLETE WORDS</span>
+                                <div class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm mb-4">
+                                    <div class="flex justify-between items-center mb-5">
+                                        <span class="bg-indigo-500 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider flex items-center shadow-sm"><i data-lucide="puzzle" class="w-3 h-3 mr-1"></i> COMPLETE WORDS</span>
                                     </div>
-                                    <div class="p-3 bg-green-50 border border-green-200 rounded-lg flex justify-between items-center text-sm">
-                                        <span class="text-green-800 font-medium">Text successfully completed</span>
-                                        <div class="w-5 h-5 bg-green-500 text-white rounded flex items-center justify-center"><i data-lucide="check" class="w-3.5 h-3.5"></i></div>
+                                    <h4 class="font-bold text-slate-900 mb-5 text-[15px]">Word Puzzle Breakdown</h4>
+                                    <div class="space-y-1">
+                                        ${wordsListHtml || '<div class="text-sm text-slate-500">No data available</div>'}
                                     </div>
                                 </div>
                             `;
@@ -666,10 +733,10 @@
                             let isCorrect = q.userAnswer === q.correctAnswer;
                             optionsHtml = `
                                 <div class="p-4 rounded-xl border ${isCorrect ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}">
-                                    <div class="text-xs font-bold mb-1 opacity-70">Your Answer:</div>
+                                    <div class="text-[10px] uppercase tracking-wider font-bold mb-1 opacity-70">Your Answer:</div>
                                     <div class="text-sm mb-3 font-medium">${q.userAnswer || 'No answer'}</div>
                                     ${!isCorrect ? `
-                                        <div class="text-xs font-bold mb-1 mt-2 opacity-70">Correct Answer:</div>
+                                        <div class="text-[10px] uppercase tracking-wider font-bold mb-1 mt-3 opacity-70">Correct Answer:</div>
                                         <div class="text-sm font-medium">${q.correctAnswer}</div>
                                     ` : ''}
                                 </div>
@@ -721,7 +788,6 @@
                 });
             });
 
-            // Сборка итогового интерфейса
             resultsView.innerHTML = `
                 <div class="w-1/2 h-full overflow-y-auto custom-scrollbar p-10 border-r border-slate-200 bg-white">
                     ${leftColHtml}
@@ -801,4 +867,3 @@
     </script>
 </body>
 </html>
-
