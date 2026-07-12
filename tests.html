@@ -138,6 +138,11 @@
         <main id="engine-content" class="flex-1 flex overflow-hidden w-full h-full relative"></main>
     </div>
 
+    <!-- RESULTS SCREEN -->
+    <div id="results-view" class="fixed inset-0 z-50 bg-[#f8f9fa] hidden flex-col w-screen h-screen overflow-y-auto">
+        <!-- Сюда динамически отрендерится результат -->
+    </div>
+
     <script>
         const supabaseUrl = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
         const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
@@ -576,6 +581,77 @@
             return false; // Если нет заданий второго модуля, завершаем тест
         }
 
+        function calculateTOEFLScore(correct, total) {
+            if (total === 0) return "1.0";
+            const ratio = correct / total;
+            // Линейная шкала: 0 правильных = 1.0, 100% правильных = 6.0
+            let score = 1.0 + (ratio * 5.0);
+            // Округляем до ближайшего 0.5
+            return (Math.round(score * 2) / 2).toFixed(1);
+        }
+
+        function showResults() {
+            clearInterval(timerInterval); // Останавливаем таймер
+            
+            let correctAnswers = 0;
+            let totalQuestions = 0;
+
+            // Подсчитываем результаты по всем пройденным заданиям (Модуль 1 + Модуль 2)
+            currentTasks.forEach(task => {
+                // Считаем только те вопросы, где предусмотрен правильный ответ
+                if (task.correctAnswer !== null && task.correctAnswer !== undefined) { 
+                    totalQuestions++;
+                    if (task.userAnswer === task.correctAnswer) {
+                        correctAnswers++;
+                    }
+                }
+            });
+
+            const finalScore = calculateTOEFLScore(correctAnswers, totalQuestions);
+
+            // Прячем движок экзамена и главное меню
+            document.getElementById('exam-engine-view').classList.add('hidden');
+            document.getElementById('exam-engine-view').classList.remove('flex');
+            document.getElementById('main-interface').classList.add('hidden');
+            
+            // Показываем экран результатов
+            const resultsView = document.getElementById('results-view');
+            resultsView.classList.remove('hidden');
+            resultsView.classList.add('flex');
+
+            // Рендерим красивую карточку с результатами
+            resultsView.innerHTML = `
+                <div class="max-w-2xl mx-auto w-full mt-20 p-8 bg-white rounded-3xl shadow-sm border border-gray-100 text-center relative">
+                    <div class="w-20 h-20 bg-green-50 text-green-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+                        <i data-lucide="check-circle" class="w-10 h-10"></i>
+                    </div>
+                    <h1 class="text-3xl font-bold text-slate-900 mb-2">Section Completed!</h1>
+                    <p class="text-slate-500 mb-8">Your adaptive test simulation is finished.</p>
+                    
+                    <div class="bg-slate-50 p-8 rounded-2xl mb-8 border border-slate-100">
+                        <div class="text-6xl font-extrabold text-indigo-600 mb-3">${finalScore}</div>
+                        <div class="text-sm font-bold text-slate-400 uppercase tracking-wider">Estimated Score (1.0 - 6.0)</div>
+                        <div class="mt-4 text-xs text-slate-400">Raw correct answers: ${correctAnswers} / ${totalQuestions}</div>
+                    </div>
+
+                    <button onclick="closeResults()" class="px-8 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition shadow-md hover:shadow-lg hover:-translate-y-0.5">
+                        Return to Dashboard
+                    </button>
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        function closeResults() {
+            // Прячем результаты, возвращаем главное меню
+            document.getElementById('results-view').classList.add('hidden');
+            document.getElementById('results-view').classList.remove('flex');
+            document.getElementById('main-interface').classList.remove('hidden');
+            
+            // Перезагружаем сетку тестов
+            loadTestsGrid();
+        }
+
         async function nextTask() {
             if (currentIndex < currentTasks.length - 1) {
                 currentIndex++;
@@ -594,9 +670,8 @@
                     }
                 }
 
-                // Если это конец теста (второй модуль пройден, или его не существует)
-                alert("Test completed! Submitting answers...");
-                exitExamEngine();
+                // ВМЕСТО АЛЕРТА ВЫЗЫВАЕМ ЭКРАН РЕЗУЛЬТАТОВ:
+                showResults();
             }
         }
 
