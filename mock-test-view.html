@@ -100,7 +100,7 @@
             await buildTestQueue(testId);
         });
 
-        // 1. Сборка очереди заданий
+        // 1. Сборка очереди заданий с защитой от коллизий ID
         async function buildTestQueue(testId) {
             try {
                 let response = await db.from('listening_mock_tests').select('*').eq('id', testId).single();
@@ -127,6 +127,11 @@
                         if (qErr) console.error("Error fetching response questions:", qErr);
 
                         if (qData && qData.length > 0) {
+                            // НАДЕЖНЫЙ ФИКС: Уникализируем ID для секции Response
+                            qData.forEach((q, idx) => {
+                                q.id = `resp_${block.source_id}_${q.id || idx}`;
+                            });
+
                             testQueue.push({
                                 block_type: 'response',
                                 id: block.source_id,
@@ -143,6 +148,13 @@
                         if (taskErr) console.error("Error fetching listening test:", taskErr);
 
                         if (taskData) {
+                            // НАДЕЖНЫЙ ФИКС: Уникализируем ID для JSON-вопросов стандартных блоков
+                            if (taskData.questions && Array.isArray(taskData.questions)) {
+                                taskData.questions.forEach((q, idx) => {
+                                    q.id = `std_${block.source_id}_${idx}`;
+                                });
+                            }
+
                             testQueue.push({
                                 block_type: block.block_type,
                                 id: block.source_id,
@@ -176,7 +188,7 @@
             }
         }
 
-        // Таймер
+        // Таймер задания
         function startQuestionTimer(seconds) {
             clearInterval(timerInterval);
             timeRemaining = seconds;
@@ -209,7 +221,7 @@
             }, 1000);
         }
 
-        // 2. Рендеринг экранов
+        // 2. Управление рендерингом состояний
         function renderCurrentState() {
             const container = document.getElementById('taskContainer');
             const block = testQueue[currentBlockIdx];
@@ -246,7 +258,7 @@
             lucide.createIcons();
         }
 
-        // --- ШАБЛОНЫ ---
+        // --- HTML ШАБЛОНЫ И ИНИЦИАЛИЗАЦИЯ ИНТЕРФЕЙСА ---
         function getResponseHTML(block, qIdx) {
             return `
                 <div class="flex flex-col md:flex-row gap-8 md:gap-12 w-full fade-in h-full">
@@ -429,15 +441,16 @@
         function handleNextStep() {
             clearInterval(timerInterval);
             const block = testQueue[currentBlockIdx];
+            const currentQuestionId = block.questions[currentSubQIdx].id;
             
             if (block.block_type === 'response') {
-                userAnswers[block.questions[currentSubQIdx].id] = selectedOptionIndex;
+                userAnswers[currentQuestionId] = selectedOptionIndex;
             } else {
                 const radio = document.querySelector('input[name="stdOption"]:checked');
                 if (radio) {
-                    userAnswers[block.questions[currentSubQIdx].id] = parseInt(radio.value);
+                    userAnswers[currentQuestionId] = parseInt(radio.value);
                 } else {
-                    userAnswers[block.questions[currentSubQIdx].id] = null; 
+                    userAnswers[currentQuestionId] = null; 
                 }
             }
 
@@ -456,7 +469,7 @@
             renderCurrentState();
         }
 
-        // 4. Финальный подсчет, сохранение и детальное ревью
+        // 4. Подсчёт результатов (шкала от 1.0 до 6.0 с шагом 0.5) и рендеринг подробного ревью
         async function submitTest() {
             clearInterval(timerInterval);
             document.querySelector('header').style.display = 'none';
@@ -480,7 +493,7 @@
                 });
             });
 
-            // Шкала от 1.0 до 6.0, шаг 0.5 (округление в пользу ученика)
+            // Расчёт шкалы с гарантированным шагом 0.5 (округление в пользу ученика)
             let proportionalScore = totalQuestions > 0 ? (1.0 + (correctAnswers / totalQuestions) * 5.0) : 1.0;
             let finalCalculatedScore = Math.min(Math.ceil(proportionalScore * 2) / 2, 6.0);
 
@@ -501,12 +514,10 @@
             }
 
             setTimeout(() => {
-                // Генерируем HTML для каждого блока теста
                 let reviewHTML = '';
                 
                 testQueue.forEach((block, bIdx) => {
                     if (block.block_type === 'response') {
-                        // Для Response каждое задание выводим отдельно
                         block.questions.forEach((q, qIdx) => {
                             reviewHTML += buildReviewRow(
                                 q.audio_url, 
@@ -517,7 +528,6 @@
                             );
                         });
                     } else {
-                        // Для длинных текстов выводим один плеер и список вопросов справа
                         reviewHTML += buildReviewRow(
                             block.audio_url, 
                             block.transcript, 
@@ -563,7 +573,7 @@
             }, 800);
         }
 
-        // Функция генерации HTML-блока для ревью (плеер слева, вопросы справа)
+        // Генерация строки ревью (Аудио и Транскрипт слева, Вопросы справа)
         function buildReviewRow(audio_url, transcript, image_url, questions, title) {
             let qsHTML = '';
             
