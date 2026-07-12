@@ -23,6 +23,12 @@
             box-shadow: inset 0 0 0 2.5px white;
         }
         
+        /* Скроллбары для транскриптов */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+
         .fade-in { animation: fadeIn 0.3s ease-in-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
     </style>
@@ -62,7 +68,7 @@
     </main>
 
     <script>
-        // Безопасная инициализация клиента Supabase без конфликтов переопределения
+        // Безопасная инициализация клиента Supabase
         let db;
         if (typeof supabaseClient !== 'undefined') {
             db = supabaseClient;
@@ -76,11 +82,11 @@
 
         lucide.createIcons();
         
-        // --- Архитектура Автомата Состояний (State Machine) ---
+        // --- Архитектура Автомата Состояний ---
         let testQueue = []; 
         let currentBlockIdx = 0; 
         let currentSubQIdx = 0; 
-        let currentPhase = 'audio'; // 'audio' или 'questions' (для длинных заданий)
+        let currentPhase = 'audio'; 
         
         let timeRemaining = 0; 
         let timerInterval;
@@ -90,11 +96,11 @@
 
         document.addEventListener('DOMContentLoaded', async () => {
             const urlParams = new URLSearchParams(window.location.search);
-            const testId = urlParams.get('id') || '1'; // По умолчанию ID мок-теста = 1
+            const testId = urlParams.get('id') || '1'; 
             await buildTestQueue(testId);
         });
 
-        // 1. Сборка очереди заданий из Supabase
+        // 1. Сборка очереди заданий
         async function buildTestQueue(testId) {
             try {
                 let response = await db.from('listening_mock_tests').select('*').eq('id', testId).single();
@@ -110,7 +116,6 @@
                 testMetadata = mockData;
                 document.getElementById('testTitle').innerText = mockData.title || mockData.name || "Listening Mock Test";
 
-                // Проходим по структуре из JSON (block_type + source_id)
                 for (let block of mockData.structure) {
                     if (block.block_type === 'response') {
                         const { data: qData, error: qErr } = await db
@@ -154,7 +159,6 @@
                     throw new Error("No valid test blocks found for this mock configuration.");
                 }
                 
-                // Старт первого задания
                 currentBlockIdx = 0;
                 currentSubQIdx = 0;
                 currentPhase = testQueue[0].block_type === 'response' ? 'questions' : 'audio';
@@ -172,7 +176,7 @@
             }
         }
 
-        // Логика индивидуального таймера на каждый вопрос
+        // Таймер
         function startQuestionTimer(seconds) {
             clearInterval(timerInterval);
             timeRemaining = seconds;
@@ -180,7 +184,6 @@
             const display = document.getElementById('timerDisplay');
             const container = document.getElementById('timerContainer');
             
-            // Сброс цвета плашки на стандартный indigo
             container.className = "bg-indigo-50 border border-indigo-100 px-4 py-1.5 rounded-lg flex items-center gap-2 text-indigo-700 transition-colors";
             
             const updateDisplay = () => {
@@ -195,37 +198,33 @@
                 timeRemaining--;
                 updateDisplay();
                 
-                // Если осталось меньше 5 секунд, красим в красный
                 if (timeRemaining < 5 && timeRemaining > 0) {
                     container.className = "bg-rose-50 border border-rose-100 px-4 py-1.5 rounded-lg flex items-center gap-2 text-rose-600 transition-colors";
                 }
                 
                 if (timeRemaining <= 0) {
                     clearInterval(timerInterval);
-                    handleNextStep(); // Время вышло — автоматический переход дальше
+                    handleNextStep(); 
                 }
             }, 1000);
         }
 
-        // 2. Главная функция рендеринга (переключатель экранов)
+        // 2. Рендеринг экранов
         function renderCurrentState() {
             const container = document.getElementById('taskContainer');
             const block = testQueue[currentBlockIdx];
             selectedOptionIndex = null;
             
-            // Сброс активности таймера на время переключения/загрузки экрана
             clearInterval(timerInterval);
             document.getElementById('timerDisplay').innerText = "--:--";
             document.getElementById('timerContainer').className = "bg-indigo-50 border border-indigo-100 px-4 py-1.5 rounded-lg flex items-center gap-2 text-indigo-700 transition-colors";
 
-            // Сброс кнопки Next
             const nextBtn = document.getElementById('nextBtn');
             nextBtn.disabled = true;
             nextBtn.className = 'bg-slate-100 text-slate-400 text-xs font-bold px-5 py-2.5 rounded-lg transition-all flex items-center cursor-not-allowed';
             
             document.getElementById('stepIndicator').innerText = `Section ${currentBlockIdx + 1} of ${testQueue.length} — ${block.block_type.toUpperCase()}`;
 
-            // Остановка глобального аудио
             const globalAudio = document.getElementById('globalAudio');
             globalAudio.pause();
             globalAudio.onended = null;
@@ -240,7 +239,6 @@
                     initStandardAudioLogic(block);
                 } else {
                     container.innerHTML = getStandardQuestionsHTML(block, currentSubQIdx);
-                    // Назначение лимитов: academic — 30 сек, остальные — 20 сек
                     let seconds = (block.block_type === 'academic') ? 30 : 20;
                     startQuestionTimer(seconds);
                 }
@@ -248,7 +246,7 @@
             lucide.createIcons();
         }
 
-        // --- ШАБЛОНЫ И ЛОГИКА ДЛЯ CHOOSE A RESPONSE ---
+        // --- ШАБЛОНЫ ---
         function getResponseHTML(block, qIdx) {
             return `
                 <div class="flex flex-col md:flex-row gap-8 md:gap-12 w-full fade-in h-full">
@@ -345,15 +343,12 @@
                 optionsList.classList.remove('opacity-25', 'pointer-events-none');
                 optionsList.classList.add('opacity-100');
                 lucide.createIcons();
-                
-                // Таймер для Response запускается СТРОГО после окончания воспроизведения реплики
                 startQuestionTimer(20); 
             };
             
             setTimeout(() => { audioEl.play().then(() => {setPlayIcon('pause'); lucide.createIcons();}).catch(e=>console.log(e)); }, 500);
         }
 
-        // --- ШАБЛОНЫ И ЛОГИКА ДЛЯ ДЛИННЫХ АУДИО (CONVERSATION/ACADEMIC) ---
         function getStandardAudioHTML(block) {
             return `
                 <div class="flex-1 flex flex-col items-center justify-center fade-in h-full">
@@ -415,7 +410,6 @@
             `;
         }
 
-        // 3. Маршрутизация кнопки Next
         function enableNextBtn() {
             const btn = document.getElementById('nextBtn');
             btn.disabled = false;
@@ -433,7 +427,6 @@
         }
 
         function handleNextStep() {
-            // Перед переходом сбрасываем старый интервал таймера текущего вопроса
             clearInterval(timerInterval);
             const block = testQueue[currentBlockIdx];
             
@@ -444,7 +437,7 @@
                 if (radio) {
                     userAnswers[block.questions[currentSubQIdx].id] = parseInt(radio.value);
                 } else {
-                    userAnswers[block.questions[currentSubQIdx].id] = null; // Если время истекло и ничего не выбрано
+                    userAnswers[block.questions[currentSubQIdx].id] = null; 
                 }
             }
 
@@ -463,14 +456,14 @@
             renderCurrentState();
         }
 
-        // 4. Финальный подсчет и сохранение в БД
+        // 4. Финальный подсчет, сохранение и детальное ревью
         async function submitTest() {
             clearInterval(timerInterval);
             document.querySelector('header').style.display = 'none';
             document.getElementById('taskContainer').innerHTML = `
-                <div class="flex flex-col items-center justify-center h-full text-center">
+                <div class="flex flex-col items-center justify-center h-full text-center fade-in">
                     <div class="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-                    <p class="font-bold text-slate-800">Calculating your score...</p>
+                    <p class="font-bold text-slate-800">Calculating your score and preparing review...</p>
                 </div>
             `;
 
@@ -480,7 +473,8 @@
             testQueue.forEach(block => {
                 block.questions.forEach(q => {
                     totalQuestions++;
-                    if (userAnswers[q.id] === q.correct_index) {
+                    const correctIdx = q.correct_index !== undefined ? q.correct_index : q.correct_answer;
+                    if (userAnswers[q.id] === correctIdx) {
                         correctAnswers++;
                     }
                 });
@@ -507,30 +501,154 @@
             }
 
             setTimeout(() => {
+                // Генерируем HTML для каждого блока теста
+                let reviewHTML = '';
+                
+                testQueue.forEach((block, bIdx) => {
+                    if (block.block_type === 'response') {
+                        // Для Response каждое задание выводим отдельно
+                        block.questions.forEach((q, qIdx) => {
+                            reviewHTML += buildReviewRow(
+                                q.audio_url, 
+                                q.transcript, 
+                                q.speaker_image || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&q=80&w=600', 
+                                [q], 
+                                `Section ${bIdx + 1}: Choose a Response (Task ${qIdx + 1})`
+                            );
+                        });
+                    } else {
+                        // Для длинных текстов выводим один плеер и список вопросов справа
+                        reviewHTML += buildReviewRow(
+                            block.audio_url, 
+                            block.transcript, 
+                            block.image_url || '', 
+                            block.questions, 
+                            `Section ${bIdx + 1}: ${block.block_type.toUpperCase()}`
+                        );
+                    }
+                });
+
                 document.getElementById('taskContainer').innerHTML = `
-                    <div class="bg-white rounded-2xl border border-emerald-200 p-10 text-center max-w-lg mx-auto mt-10 shadow-sm fade-in w-full">
-                        <div class="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <i data-lucide="check-check" class="w-8 h-8"></i>
-                        </div>
-                        <h2 class="text-2xl font-bold text-slate-900 mb-2">Simulation Completed!</h2>
-                        <p class="text-slate-500 text-sm mb-8">Your answers have been processed and saved.</p>
-                        
-                        <div class="flex gap-4 mb-8">
-                            <div class="flex-1 bg-slate-50 border border-slate-100 rounded-xl p-4">
-                                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Raw Score</p>
-                                <p class="text-xl font-bold text-slate-700">${correctAnswers} / ${totalQuestions}</p>
+                    <div class="w-full fade-in pb-12">
+                        <div class="bg-white rounded-2xl border border-emerald-200 p-8 md:p-10 text-center mb-10 shadow-sm max-w-4xl mx-auto">
+                            <div class="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <i data-lucide="check-check" class="w-8 h-8"></i>
                             </div>
-                            <div class="flex-1 bg-emerald-50 border border-emerald-100 rounded-xl p-4">
-                                <p class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-1">Est. Band</p>
-                                <p class="text-3xl font-extrabold text-emerald-600">${finalCalculatedScore.toFixed(1)} <span class="text-sm font-medium text-emerald-500">/ 6.0</span></p>
+                            <h2 class="text-2xl font-bold text-slate-900 mb-2">Simulation Completed!</h2>
+                            <p class="text-slate-500 text-sm mb-8">Your answers have been processed and saved.</p>
+                            
+                            <div class="flex gap-4 mb-8 max-w-lg mx-auto">
+                                <div class="flex-1 bg-slate-50 border border-slate-100 rounded-xl p-4">
+                                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Raw Score</p>
+                                    <p class="text-xl font-bold text-slate-700">${correctAnswers} / ${totalQuestions}</p>
+                                </div>
+                                <div class="flex-1 bg-emerald-50 border border-emerald-100 rounded-xl p-4">
+                                    <p class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-1">Est. Band</p>
+                                    <p class="text-3xl font-extrabold text-emerald-600">${finalCalculatedScore.toFixed(1)} <span class="text-sm font-medium text-emerald-500">/ 6.0</span></p>
+                                </div>
                             </div>
+
+                            <a href="listening-mini-mock.html" class="inline-block bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold px-8 py-3.5 rounded-xl transition">Return to Library</a>
                         </div>
 
-                        <a href="listening-mini-mock.html" class="block w-full bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold py-3.5 rounded-xl transition">Return to Library</a>
+                        <div class="max-w-6xl mx-auto mt-12">
+                            <h2 class="text-2xl font-extrabold text-slate-900 mb-8 flex items-center">
+                                <i data-lucide="list-checks" class="w-7 h-7 mr-3 text-indigo-600"></i> Detailed Test Review
+                            </h2>
+                            ${reviewHTML}
+                        </div>
                     </div>
                 `;
                 lucide.createIcons();
             }, 800);
+        }
+
+        // Функция генерации HTML-блока для ревью (плеер слева, вопросы справа)
+        function buildReviewRow(audio_url, transcript, image_url, questions, title) {
+            let qsHTML = '';
+            
+            questions.forEach((q) => {
+                const userAns = userAnswers[q.id];
+                const correctIdx = q.correct_index !== undefined ? q.correct_index : q.correct_answer;
+                const isCorrect = userAns === correctIdx;
+
+                let optionsHTML = '<div class="space-y-2 mt-4">';
+                q.options.forEach((opt, oIdx) => {
+                    const isUserChoice = (oIdx === userAns);
+                    const isRightChoice = (oIdx === correctIdx);
+
+                    let styleClass = "border-slate-100 bg-gray-50 text-gray-500 opacity-60";
+                    let icon = `<div class="w-4 h-4 mr-2 shrink-0"></div>`;
+                    
+                    if (isRightChoice) {
+                        styleClass = "border-emerald-200 bg-emerald-50 text-emerald-900 font-medium";
+                        icon = `<i data-lucide="check" class="w-4 h-4 text-emerald-600 mt-0.5 mr-2 shrink-0"></i>`;
+                    } else if (isUserChoice && !isRightChoice) {
+                        styleClass = "border-rose-200 bg-rose-50 text-rose-900";
+                        icon = `<i data-lucide="x" class="w-4 h-4 text-rose-500 mt-0.5 mr-2 shrink-0"></i>`;
+                    }
+                    
+                    optionsHTML += `
+                        <div class="flex items-start p-2.5 rounded-lg border ${styleClass}">
+                            ${icon}
+                            <span class="text-sm">${opt}</span>
+                        </div>
+                    `;
+                });
+                optionsHTML += '</div>';
+
+                const explanationHTML = q.explanation ? `
+                    <div class="mt-4 bg-slate-50 p-4 rounded-xl border border-slate-100 flex gap-3">
+                        <i data-lucide="lightbulb" class="w-4 h-4 text-amber-500 shrink-0 mt-0.5"></i>
+                        <p class="text-xs text-slate-600 leading-relaxed">${q.explanation}</p>
+                    </div>
+                ` : '';
+
+                const statusBadge = isCorrect 
+                    ? `<span class="text-xs font-extrabold tracking-wide text-emerald-500 uppercase">Correct</span>`
+                    : (userAns === null || userAns === undefined)
+                        ? `<span class="text-xs font-extrabold tracking-wide text-gray-400 uppercase">Skipped</span>`
+                        : `<span class="text-xs font-extrabold tracking-wide text-rose-500 uppercase">Incorrect</span>`;
+
+                qsHTML += `
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200/60 shadow-sm mb-6 transition hover:border-slate-300">
+                        <div class="flex justify-between items-start mb-2">
+                            <h4 class="font-bold text-slate-800 text-base leading-snug pr-4">${q.text || "Select the best response:"}</h4>
+                            <div class="shrink-0 mt-1">${statusBadge}</div>
+                        </div>
+                        ${optionsHTML}
+                        ${explanationHTML}
+                    </div>
+                `;
+            });
+
+            return `
+                <div class="mb-12 border-t border-slate-200 pt-8">
+                    <h3 class="text-sm font-extrabold text-indigo-900 mb-6 bg-indigo-50 inline-block px-4 py-2 rounded-lg uppercase tracking-wider">${title}</h3>
+                    <div class="flex flex-col lg:flex-row gap-8">
+                        
+                        <div class="lg:w-5/12 shrink-0">
+                            <div class="bg-white p-5 rounded-2xl border border-slate-200/60 shadow-sm sticky top-6">
+                                ${image_url ? `<img src="${image_url}" class="w-full rounded-xl border border-slate-100 object-cover aspect-video mb-5">` : ''}
+                                <audio src="${audio_url}" controls class="w-full mb-2 outline-none"></audio>
+                                ${transcript ? `
+                                <div class="mt-5 pt-5 border-t border-slate-100">
+                                    <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center">
+                                        <i data-lucide="file-text" class="w-3.5 h-3.5 mr-1.5"></i> Audio Transcript
+                                    </h4>
+                                    <div class="h-64 overflow-y-auto text-sm text-slate-600 leading-relaxed pr-3 whitespace-pre-wrap">${transcript}</div>
+                                </div>
+                                ` : ''}
+                            </div>
+                        </div>
+
+                        <div class="lg:w-7/12">
+                            ${qsHTML}
+                        </div>
+
+                    </div>
+                </div>
+            `;
         }
     </script>
 </body>
