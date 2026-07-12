@@ -94,13 +94,15 @@
         let userAnswers = {}; 
         let testMetadata = {};
 
+        const urlParams = new URLSearchParams(window.location.search);
+        const isReviewMode = urlParams.get('review') === 'true';
+
         document.addEventListener('DOMContentLoaded', async () => {
-            const urlParams = new URLSearchParams(window.location.search);
             const testId = urlParams.get('id') || '1'; 
             await buildTestQueue(testId);
         });
 
-        // 1. Сборка очереди заданий с защитой от коллизий ID
+        // 1. Сборка очереди заданий
         async function buildTestQueue(testId) {
             try {
                 let response = await db.from('listening_mock_tests').select('*').eq('id', testId).single();
@@ -127,7 +129,7 @@
                         if (qErr) console.error("Error fetching response questions:", qErr);
 
                         if (qData && qData.length > 0) {
-                            // НАДЕЖНЫЙ ФИКС: Уникализируем ID для секции Response
+                            // Уникализируем ID, чтобы ответы не перезаписывали друг друга
                             qData.forEach((q, idx) => {
                                 q.id = `resp_${block.source_id}_${q.id || idx}`;
                             });
@@ -148,7 +150,7 @@
                         if (taskErr) console.error("Error fetching listening test:", taskErr);
 
                         if (taskData) {
-                            // НАДЕЖНЫЙ ФИКС: Уникализируем ID для JSON-вопросов стандартных блоков
+                            // Уникализируем ID для стандартных блоков
                             if (taskData.questions && Array.isArray(taskData.questions)) {
                                 taskData.questions.forEach((q, idx) => {
                                     q.id = `std_${block.source_id}_${idx}`;
@@ -170,7 +172,28 @@
                 if (testQueue.length === 0) {
                     throw new Error("No valid test blocks found for this mock configuration.");
                 }
+
+                // ЕСЛИ РЕЖИМ РЕВЬЮ - подтягиваем старые ответы и переходим к финалу
+                if (isReviewMode) {
+                    const { data: { session } } = await db.auth.getSession();
+                    if (session?.user) {
+                        const { data: oldRes } = await db
+                            .from('listening_mini_mock_results')
+                            .select('*')
+                            .eq('user_id', session.user.id)
+                            .eq('mock_test_id', testId)
+                            .order('created_at', { ascending: false })
+                            .limit(1);
+                            
+                        if (oldRes && oldRes.length > 0) {
+                            userAnswers = oldRes[0].detailed_answers;
+                            renderFinalReview(oldRes[0].score_earned, oldRes[0].score_total, oldRes[0].final_calculated_score);
+                            return;
+                        }
+                    }
+                }
                 
+                // Стандартный старт теста
                 currentBlockIdx = 0;
                 currentSubQIdx = 0;
                 currentPhase = testQueue[0].block_type === 'response' ? 'questions' : 'audio';
@@ -188,7 +211,7 @@
             }
         }
 
-        // Таймер задания
+        // Таймер
         function startQuestionTimer(seconds) {
             clearInterval(timerInterval);
             timeRemaining = seconds;
@@ -221,7 +244,7 @@
             }, 1000);
         }
 
-        // 2. Управление рендерингом состояний
+        // 2. Рендеринг экранов
         function renderCurrentState() {
             const container = document.getElementById('taskContainer');
             const block = testQueue[currentBlockIdx];
@@ -258,7 +281,7 @@
             lucide.createIcons();
         }
 
-        // --- HTML ШАБЛОНЫ И ИНИЦИАЛИЗАЦИЯ ИНТЕРФЕЙСА ---
+        // --- ШАБЛОНЫ ---
         function getResponseHTML(block, qIdx) {
             return `
                 <div class="flex flex-col md:flex-row gap-8 md:gap-12 w-full fade-in h-full">
@@ -358,7 +381,11 @@
                 startQuestionTimer(20); 
             };
             
-            setTimeout(() => { audioEl.play().then(() => {setPlayIcon('pause'); lucide.createIcons();}).catch(e=>console.log(e)); }, 500);
+            setTimeout(() => { 
+                audioEl.play()
+                    .then(() => { setPlayIcon('pause'); lucide.createIcons(); })
+                    .catch(e => console.log(e)); 
+            }, 500);
         }
 
         function getStandardAudioHTML(block) {
@@ -469,17 +496,17 @@
             renderCurrentState();
         }
 
-        // 4. Подсчёт результатов (шкала от 1.0 до 6.0 с шагом 0.5) и рендеринг подробного ревью
+        // 4. ПОДСЧЕТ И РЕВЬЮ
         async function submitTest() {
             clearInterval(timerInterval);
             document.querySelector('header').style.display = 'none';
             document.getElementById('taskContainer').innerHTML = `
                 <div class="flex flex-col items-center justify-center h-full text-center fade-in">
                     <div class="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-                    <p class="font-bold text-slate-800">Calculating your score and preparing review...</p>
+                    <p class="font-bold text-slate-800">Saving results...</p>
                 </div>
             `;
-
+            
             let totalQuestions = 0;
             let correctAnswers = 0;
 
@@ -487,13 +514,11 @@
                 block.questions.forEach(q => {
                     totalQuestions++;
                     const correctIdx = q.correct_index !== undefined ? q.correct_index : q.correct_answer;
-                    if (userAnswers[q.id] === correctIdx) {
-                        correctAnswers++;
-                    }
+                    if (userAnswers[q.id] === correctIdx) correctAnswers++;
                 });
             });
 
-            // Расчёт шкалы с гарантированным шагом 0.5 (округление в пользу ученика)
+            // Шкала от 1.0 до 6.0 с шагом 0.5
             let proportionalScore = totalQuestions > 0 ? (1.0 + (correctAnswers / totalQuestions) * 5.0) : 1.0;
             let finalCalculatedScore = Math.min(Math.ceil(proportionalScore * 2) / 2, 6.0);
 
@@ -513,67 +538,70 @@
                 console.error("Database save failed:", err);
             }
 
-            setTimeout(() => {
-                let reviewHTML = '';
-                
-                testQueue.forEach((block, bIdx) => {
-                    if (block.block_type === 'response') {
-                        block.questions.forEach((q, qIdx) => {
-                            reviewHTML += buildReviewRow(
-                                q.audio_url, 
-                                q.transcript, 
-                                q.speaker_image || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&q=80&w=600', 
-                                [q], 
-                                `Section ${bIdx + 1}: Choose a Response (Task ${qIdx + 1})`
-                            );
-                        });
-                    } else {
-                        reviewHTML += buildReviewRow(
-                            block.audio_url, 
-                            block.transcript, 
-                            block.image_url || '', 
-                            block.questions, 
-                            `Section ${bIdx + 1}: ${block.block_type.toUpperCase()}`
-                        );
-                    }
-                });
-
-                document.getElementById('taskContainer').innerHTML = `
-                    <div class="w-full fade-in pb-12">
-                        <div class="bg-white rounded-2xl border border-emerald-200 p-8 md:p-10 text-center mb-10 shadow-sm max-w-4xl mx-auto">
-                            <div class="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <i data-lucide="check-check" class="w-8 h-8"></i>
-                            </div>
-                            <h2 class="text-2xl font-bold text-slate-900 mb-2">Simulation Completed!</h2>
-                            <p class="text-slate-500 text-sm mb-8">Your answers have been processed and saved.</p>
-                            
-                            <div class="flex gap-4 mb-8 max-w-lg mx-auto">
-                                <div class="flex-1 bg-slate-50 border border-slate-100 rounded-xl p-4">
-                                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Raw Score</p>
-                                    <p class="text-xl font-bold text-slate-700">${correctAnswers} / ${totalQuestions}</p>
-                                </div>
-                                <div class="flex-1 bg-emerald-50 border border-emerald-100 rounded-xl p-4">
-                                    <p class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-1">Est. Band</p>
-                                    <p class="text-3xl font-extrabold text-emerald-600">${finalCalculatedScore.toFixed(1)} <span class="text-sm font-medium text-emerald-500">/ 6.0</span></p>
-                                </div>
-                            </div>
-
-                            <a href="listening-mini-mock.html" class="inline-block bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold px-8 py-3.5 rounded-xl transition">Return to Library</a>
-                        </div>
-
-                        <div class="max-w-6xl mx-auto mt-12">
-                            <h2 class="text-2xl font-extrabold text-slate-900 mb-8 flex items-center">
-                                <i data-lucide="list-checks" class="w-7 h-7 mr-3 text-indigo-600"></i> Detailed Test Review
-                            </h2>
-                            ${reviewHTML}
-                        </div>
-                    </div>
-                `;
-                lucide.createIcons();
-            }, 800);
+            renderFinalReview(correctAnswers, totalQuestions, finalCalculatedScore);
         }
 
-        // Генерация строки ревью (Аудио и Транскрипт слева, Вопросы справа)
+        // Функция отрисовки финала
+        function renderFinalReview(correctAnswers, totalQuestions, finalCalculatedScore) {
+            document.querySelector('header').style.display = 'none';
+
+            let reviewHTML = '';
+            testQueue.forEach((block, bIdx) => {
+                if (block.block_type === 'response') {
+                    block.questions.forEach((q, qIdx) => {
+                        reviewHTML += buildReviewRow(
+                            q.audio_url, 
+                            q.transcript, 
+                            q.speaker_image || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&q=80&w=600', 
+                            [q], 
+                            `Section ${bIdx + 1}: Choose a Response (Task ${qIdx + 1})`
+                        );
+                    });
+                } else {
+                    reviewHTML += buildReviewRow(
+                        block.audio_url, 
+                        block.transcript, 
+                        block.image_url || '', 
+                        block.questions, 
+                        `Section ${bIdx + 1}: ${block.block_type.toUpperCase()}`
+                    );
+                }
+            });
+
+            document.getElementById('taskContainer').innerHTML = `
+                <div class="w-full fade-in pb-12 mt-4">
+                    <div class="bg-white rounded-2xl border border-emerald-200 p-8 md:p-10 text-center mb-10 shadow-sm max-w-4xl mx-auto">
+                        <div class="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i data-lucide="check-check" class="w-8 h-8"></i>
+                        </div>
+                        <h2 class="text-2xl font-bold text-slate-900 mb-2">${isReviewMode ? 'Past Results' : 'Simulation Completed!'}</h2>
+                        <p class="text-slate-500 text-sm mb-8">${isReviewMode ? 'Here is a breakdown of your performance on this test.' : 'Your answers have been processed and saved.'}</p>
+                        
+                        <div class="flex gap-4 mb-8 max-w-lg mx-auto">
+                            <div class="flex-1 bg-slate-50 border border-slate-100 rounded-xl p-4">
+                                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Raw Score</p>
+                                <p class="text-xl font-bold text-slate-700">${correctAnswers} / ${totalQuestions}</p>
+                            </div>
+                            <div class="flex-1 bg-emerald-50 border border-emerald-100 rounded-xl p-4">
+                                <p class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-1">Est. Band</p>
+                                <p class="text-3xl font-extrabold text-emerald-600">${parseFloat(finalCalculatedScore).toFixed(1)} <span class="text-sm font-medium text-emerald-500">/ 6.0</span></p>
+                            </div>
+                        </div>
+
+                        <a href="listening-mini-mock.html" class="inline-block bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold px-8 py-3.5 rounded-xl transition">Return to Library</a>
+                    </div>
+
+                    <div class="max-w-6xl mx-auto mt-12">
+                        <h2 class="text-2xl font-extrabold text-slate-900 mb-8 flex items-center">
+                            <i data-lucide="list-checks" class="w-7 h-7 mr-3 text-indigo-600"></i> Detailed Test Review
+                        </h2>
+                        ${reviewHTML}
+                    </div>
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
         function buildReviewRow(audio_url, transcript, image_url, questions, title) {
             let qsHTML = '';
             
@@ -586,7 +614,7 @@
                 q.options.forEach((opt, oIdx) => {
                     const isUserChoice = (oIdx === userAns);
                     const isRightChoice = (oIdx === correctIdx);
-
+                    
                     let styleClass = "border-slate-100 bg-gray-50 text-gray-500 opacity-60";
                     let icon = `<div class="w-4 h-4 mr-2 shrink-0"></div>`;
                     
@@ -615,9 +643,9 @@
                 ` : '';
 
                 const statusBadge = isCorrect 
-                    ? `<span class="text-xs font-extrabold tracking-wide text-emerald-500 uppercase">Correct</span>`
-                    : (userAns === null || userAns === undefined)
-                        ? `<span class="text-xs font-extrabold tracking-wide text-gray-400 uppercase">Skipped</span>`
+                    ? `<span class="text-xs font-extrabold tracking-wide text-emerald-500 uppercase">Correct</span>` 
+                    : (userAns === null || userAns === undefined) 
+                        ? `<span class="text-xs font-extrabold tracking-wide text-gray-400 uppercase">Skipped</span>` 
                         : `<span class="text-xs font-extrabold tracking-wide text-rose-500 uppercase">Incorrect</span>`;
 
                 qsHTML += `
@@ -663,3 +691,4 @@
     </script>
 </body>
 </html>
+
