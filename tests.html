@@ -247,7 +247,6 @@
             const inputs = document.querySelectorAll('.letter-input');
             const task = currentTasks[currentIndex];
             
-            // Заполнение инпутов, если юзер возвращается кнопкой Back
             if (task && task.type === 'complete_words' && task.userWords) {
                 let charIndex = 0;
                 task.userWords.forEach(word => {
@@ -264,7 +263,7 @@
                 input.setAttribute('maxlength', '1');
                 input.addEventListener('input', function() {
                     this.value = this.value.replace(/[^a-zA-Z]/g, '').toLowerCase();
-                    updateCompleteWordsState(); // Сохраняем состояние при каждом вводе
+                    updateCompleteWordsState(); 
                     if (this.value.length === 1 && index < inputs.length - 1) inputs[index + 1].focus();
                 });
                 input.addEventListener('keydown', function(e) {
@@ -326,10 +325,10 @@
                         type: 'complete_words', 
                         title: taskData.title, 
                         passage: parsedPassage,
-                        originalPassage: taskData.passage, // Сохраняем оригинал для экрана Review
+                        originalPassage: taskData.passage, 
                         stage: stageName,
-                        correctWords: correctWords, // Массив правильных слов
-                        userWords: new Array(correctWords.length).fill(""), // Массив ответов юзера
+                        correctWords: correctWords, 
+                        userWords: new Array(correctWords.length).fill(""), 
                         correctAnswer: null, 
                         userAnswer: null
                     });
@@ -641,52 +640,17 @@
             
             const resultsView = document.getElementById('results-view');
             resultsView.classList.remove('hidden');
-            resultsView.className = 'fixed inset-0 z-50 bg-[#f8f9fa] flex flex-row w-screen h-screen overflow-hidden';
+            resultsView.className = 'fixed inset-0 z-50 bg-[#f8f9fa] flex flex-col w-screen h-screen overflow-hidden';
 
-            let leftColHtml = '';
-            let rightColHtml = '';
+            let blocksHtml = '';
 
             Object.keys(modules).forEach(modName => {
-                rightColHtml += `<div class="mt-8 mb-6 font-extrabold text-2xl text-slate-800 border-b pb-3 border-gray-200">${modName}</div>`;
-                leftColHtml += `<div class="mt-8 mb-6 font-extrabold text-2xl text-slate-800 border-b pb-3 border-gray-200">${modName}</div>`;
+                blocksHtml += `<div class="mt-12 mb-6 font-extrabold text-2xl text-slate-800 border-b pb-3 border-gray-200 uppercase tracking-wide">${modName}</div>`;
 
                 modules[modName].forEach(pObj => {
-                    // Рендер левой части
-                    let renderedPassage = '';
-                    if (pObj.type === 'daily_life') {
-                        renderedPassage = renderDailyLifeLayout(pObj.passage, pObj.layout, pObj.title);
-                    } else if (pObj.type === 'complete_words') {
-                        let taskData = pObj.questions[0]; 
-                        let reviewPassage = pObj.passage; 
-                        
-                        // Вставляем правильные ответы прямо в текст для удобного чтения
-                        if (taskData && taskData.originalPassage && taskData.correctWords) {
-                            let gapIdx = 0;
-                            reviewPassage = taskData.originalPassage.replace(/(?:\[[a-zA-Z]\])+/g, (match) => {
-                                let correctWord = taskData.correctWords[gapIdx];
-                                let simpleHtml = `<span class="inline-flex mx-1 px-1.5 py-0.5 rounded text-sm font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 shadow-sm">${correctWord}</span>`;
-                                gapIdx++;
-                                return simpleHtml;
-                            });
-                        }
+                    let passageQuestionsHtml = '';
 
-                        renderedPassage = `
-                            <div class="bg-white p-8 rounded-2xl border border-gray-200 shadow-sm">
-                                <div class="text-slate-800 leading-loose text-sm">${reviewPassage}</div>
-                            </div>
-                        `;
-                    } else {
-                        renderedPassage = `<div class="bg-white p-8 border border-slate-500 shadow-sm text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">${pObj.passage}</div>`;
-                    }
-                    
-                    leftColHtml += `
-                        <div class="mb-12">
-                            <h3 class="text-xl font-bold text-slate-800 mb-4">${pObj.type === 'academic' ? 'Academic Text' : (pObj.type === 'complete_words' ? 'Word Puzzle Text' : 'Reading Passage')}</h3>
-                            ${renderedPassage}
-                        </div>
-                    `;
-
-                    // Рендер правой части (ответы)
+                    // Сначала генерируем HTML для вопросов к текущему тексту
                     pObj.questions.forEach(q => {
                         if (q.type === 'complete_words') {
                             let wordsListHtml = '';
@@ -714,7 +678,7 @@
                                 });
                             }
 
-                            rightColHtml += `
+                            passageQuestionsHtml += `
                                 <div class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm mb-4">
                                     <div class="flex justify-between items-center mb-5">
                                         <span class="bg-indigo-500 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider flex items-center shadow-sm"><i data-lucide="puzzle" class="w-3 h-3 mr-1"></i> COMPLETE WORDS</span>
@@ -771,7 +735,7 @@
 
                         let badgeLabel = q.qType ? q.qType.toUpperCase() : 'DETAIL';
 
-                        rightColHtml += `
+                        passageQuestionsHtml += `
                             <div class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm mb-4 relative overflow-hidden">
                                 <div class="flex justify-between items-center mb-5">
                                     <span class="bg-indigo-500 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider shadow-sm flex items-center"><i data-lucide="target" class="w-3 h-3 mr-1"></i> TYPE: ${badgeLabel}</span>
@@ -785,47 +749,94 @@
                             </div>
                         `;
                     });
+
+                    // Теперь генерируем разметку самого текста
+                    let renderedPassage = '';
+                    if (pObj.type === 'daily_life') {
+                        renderedPassage = renderDailyLifeLayout(pObj.passage, pObj.layout, pObj.title);
+                    } else if (pObj.type === 'complete_words') {
+                        let taskData = pObj.questions[0]; 
+                        let reviewPassage = pObj.passage; 
+                        
+                        if (taskData && taskData.originalPassage && taskData.correctWords) {
+                            let gapIdx = 0;
+                            reviewPassage = taskData.originalPassage.replace(/(?:\[[a-zA-Z]\])+/g, (match) => {
+                                let correctWord = taskData.correctWords[gapIdx];
+                                let simpleHtml = `<span class="inline-flex mx-1 px-1.5 py-0.5 rounded text-sm font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 shadow-sm">${correctWord}</span>`;
+                                gapIdx++;
+                                return simpleHtml;
+                            });
+                        }
+
+                        renderedPassage = `
+                            <div class="bg-white p-8 rounded-2xl border border-gray-200 shadow-sm">
+                                <div class="text-slate-800 leading-loose text-sm">${reviewPassage}</div>
+                            </div>
+                        `;
+                    } else {
+                        renderedPassage = `<div class="bg-white p-8 border border-gray-200 rounded-2xl shadow-sm text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">${pObj.passage}</div>`;
+                    }
+                    
+                    let passageTitle = pObj.type === 'academic' ? 'Academic Text' : (pObj.type === 'complete_words' ? 'Word Puzzle Text' : 'Reading Passage');
+
+                    // Соединяем их в единый 2-колоночный Grid-строку для этого текста
+                    blocksHtml += `
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-16 items-start">
+                            <!-- Слева: Текст (будет закрепляться на экране при прокрутке длинных вопросов) -->
+                            <div class="space-y-4 lg:sticky lg:top-6">
+                                <h3 class="text-lg font-bold text-slate-900 bg-slate-100 px-4 py-2 rounded-xl inline-block">${passageTitle}: ${pObj.title}</h3>
+                                ${renderedPassage}
+                            </div>
+                            <!-- Справа: Список вопросов строго к этому тексту -->
+                            <div class="space-y-4">
+                                ${passageQuestionsHtml}
+                            </div>
+                        </div>
+                    `;
                 });
             });
 
+            // Рендерим всю страницу в один скролл-контейнер
             resultsView.innerHTML = `
-                <div class="w-1/2 h-full overflow-y-auto custom-scrollbar p-10 border-r border-slate-200 bg-white">
-                    ${leftColHtml}
-                </div>
-                <div class="w-1/2 h-full overflow-y-auto custom-scrollbar p-10 bg-[#f8f9fa]">
-                    
-                    <div class="bg-white rounded-[2rem] p-8 border border-gray-100 shadow-sm text-center mb-10 relative overflow-hidden">
-                        <div class="w-16 h-16 bg-yellow-50 text-yellow-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl shadow-inner">🏆</div>
-                        <h2 class="text-2xl font-bold text-slate-900 mb-8">Review Mode</h2>
+                <div class="w-full h-full overflow-y-auto custom-scrollbar p-6 md:p-10 bg-[#f8f9fa]">
+                    <div class="max-w-7xl mx-auto">
                         
-                        <div class="flex justify-center items-center mb-8">
-                            <div class="px-8 text-center border-r border-gray-100">
-                                <div class="text-6xl font-extrabold text-indigo-600 mb-2">${finalScore}</div>
-                                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Est. Band Score</div>
+                        <!-- Общая плашка результатов сверху по центру -->
+                        <div class="bg-white rounded-[2rem] p-8 border border-gray-100 shadow-sm text-center mb-10 relative overflow-hidden max-w-2xl mx-auto">
+                            <div class="w-16 h-16 bg-yellow-50 text-yellow-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl shadow-inner">🏆</div>
+                            <h2 class="text-2xl font-bold text-slate-900 mb-8">Review Mode</h2>
+                            
+                            <div class="flex justify-center items-center mb-8">
+                                <div class="px-8 text-center border-r border-gray-100">
+                                    <div class="text-6xl font-extrabold text-indigo-600 mb-2">${finalScore}</div>
+                                    <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Est. Band Score</div>
+                                </div>
+                                <div class="px-8 text-center">
+                                    <div class="text-3xl font-bold text-slate-700 mb-2 mt-2">${correctAnswers} <span class="text-gray-300 text-xl">/</span> <span class="text-gray-400 text-2xl">${totalQuestions}</span></div>
+                                    <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">Raw Score</div>
+                                </div>
                             </div>
-                            <div class="px-8 text-center">
-                                <div class="text-3xl font-bold text-slate-700 mb-2 mt-2">${correctAnswers} <span class="text-gray-300 text-xl">/</span> <span class="text-gray-400 text-2xl">${totalQuestions}</span></div>
-                                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">Raw Score</div>
+
+                            <div class="flex justify-center space-x-3">
+                                <button onclick="startExamEngine(currentActiveTestId, document.getElementById('dynamic-test-title').innerText)" class="px-6 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition shadow-md text-sm flex items-center">
+                                    <i data-lucide="rotate-ccw" class="w-4 h-4 mr-2"></i> Try Again
+                                </button>
+                                <button onclick="closeResults()" class="px-6 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition shadow-sm text-sm">
+                                    Dashboard
+                                </button>
                             </div>
                         </div>
 
-                        <div class="flex justify-center space-x-3">
-                            <button onclick="startExamEngine(currentActiveTestId, document.getElementById('dynamic-test-title').innerText)" class="px-6 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition shadow-md text-sm flex items-center">
-                                <i data-lucide="rotate-ccw" class="w-4 h-4 mr-2"></i> Try Again
-                            </button>
-                            <button onclick="closeResults()" class="px-6 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition shadow-sm text-sm">
-                                Dashboard
-                            </button>
+                        <div class="flex items-center space-x-2 mb-8 text-yellow-500 justify-center">
+                            <i data-lucide="lightbulb" class="w-6 h-6"></i>
+                            <h3 class="text-xl font-bold text-slate-900">Review Answers & Explanations</h3>
                         </div>
-                    </div>
 
-                    <div class="flex items-center space-x-2 mb-6 text-yellow-500 px-2">
-                        <i data-lucide="lightbulb" class="w-6 h-6"></i>
-                        <h3 class="text-lg font-bold text-slate-900">Review Answers & Explanations</h3>
-                    </div>
-
-                    <div class="space-y-4">
-                        ${rightColHtml}
+                        <!-- Здесь рендерятся наши связанные блоки -->
+                        <div class="space-y-6">
+                            ${blocksHtml}
+                        </div>
+                        
                     </div>
                 </div>
             `;
