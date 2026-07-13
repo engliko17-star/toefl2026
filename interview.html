@@ -3,114 +3,181 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interview — TOEFL Practice</title>
+    <title>Interview Results</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <script src="auth.js"></script>
+    
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8f9fa; }
     </style>
 </head>
-<body class="text-slate-800 min-h-screen flex flex-col md:flex-row">
+<body class="min-h-screen p-4 md:p-8">
 
-    <aside class="hidden md:flex flex-col w-64 bg-white border-r border-gray-100 px-4 py-6 h-screen sticky top-0 shrink-0">
-        <div class="font-bold text-2xl tracking-tighter mb-8 px-2 flex items-center space-x-2">
-            <span>TOEFL</span><span class="w-1.5 h-1.5 bg-indigo-600 rounded-full mt-2"></span>
-        </div>
-        <nav class="flex-1 space-y-1">
-            <a href="speaking.html" class="flex items-center space-x-3 p-3 rounded-xl text-gray-400 hover:bg-gray-50 transition">
-                <i data-lucide="arrow-left" class="w-5 h-5"></i><span>Back to Speaking</span>
-            </a>
-        </nav>
-    </aside>
-
-    <main class="flex-1 p-6 overflow-y-auto pb-24 md:pb-6 max-w-5xl mx-auto">
-        
-        <div class="mb-8 mt-4">
-            <a href="speaking.html" class="inline-flex items-center text-xs font-bold text-gray-400 hover:text-slate-700 uppercase tracking-wider mb-4 transition">
-                <i data-lucide="arrow-left" class="w-3 h-3 mr-1"></i> Back to Speaking
-            </a>
-            <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Interview Practice</h1>
-            <p class="text-sm text-gray-500 mt-1">Simulate a live interview environment. Watch the video question and respond within 45 seconds.</p>
-        </div>
-
-        <div id="tests-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div class="max-w-5xl mx-auto">
+        <!-- Шапка -->
+        <header class="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-800">Interview Review</h1>
+                <p class="text-sm text-slate-500 mt-1">Analyze your performance, listen to your answers, and check the interviewer's questions.</p>
             </div>
+            <a href="interview.html" class="inline-flex items-center justify-center px-6 py-3 bg-slate-900 hover:bg-indigo-600 text-white font-bold rounded-xl transition shadow-md">
+                <i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i> Exit Review
+            </a>
+        </header>
 
-    </main>
+        <!-- Контейнер с карточками вопросов и ответов -->
+        <div id="interviewResultsContainer" class="space-y-8">
+            <div class="text-center py-12 text-slate-400 font-medium flex flex-col items-center">
+                <i data-lucide="loader-2" class="w-8 h-8 animate-spin mb-4 text-indigo-500"></i>
+                Loading your interview performance...
+            </div>
+        </div>
+    </div>
 
     <script>
-        // Инициализация иконок
         lucide.createIcons();
+        let currentUser = null;
 
-        // Инициализация Supabase
-        const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-        // Функция для загрузки тестов из базы данных
-        async function loadTests() {
-            const container = document.getElementById('tests-container');
-            container.innerHTML = '<p class="text-sm text-gray-500 col-span-full">Loading tests from database...</p>';
-
+        async function loadInterviewResults() {
             try {
-                // Запрашиваем тесты, где тип = interview
-                const { data: tests, error } = await supabaseClient
-                    .from('speaking_tests')
-                    .select('*')
-                    .eq('type', 'interview') 
-                    .order('created_at', { ascending: true }); // Сортируем от старых к новым (Set 1, Set 2...)
+                if (typeof requireAuth !== 'function') throw new Error("auth.js is missing.");
+                currentUser = await requireAuth();
+                if (!currentUser) return;
+
+                const urlParams = new URLSearchParams(window.location.search);
+                const attemptId = urlParams.get('attempt_id');
+
+                if (!attemptId) throw new Error("No interview attempt ID found in URL.");
+
+                // Исправлено: запрашиваем из общей таблицы speaking_responses и связываем со speaking_questions
+                const { data, error } = await _supabase
+                    .from('speaking_responses')
+                    .select(`
+                        id,
+                        user_audio_url,
+                        speaking_questions (
+                            id,
+                            question_text,
+                            transcript,
+                            media_url,
+                            order_num
+                        )
+                    `)
+                    .eq('attempt_id', attemptId);
 
                 if (error) throw error;
-
-                // Очищаем надпись загрузки
-                container.innerHTML = '';
-
-                // Если тестов пока нет
-                if (!tests || tests.length === 0) {
-                    container.innerHTML = `
-                        <div class="col-span-full bg-white p-8 rounded-2xl border border-gray-100 text-center">
-                            <i data-lucide="video" class="w-8 h-8 text-gray-300 mx-auto mb-3"></i>
-                            <p class="text-sm text-gray-500">No interview tests available yet. Add them in Supabase!</p>
-                        </div>
+                if (!data || data.length === 0) {
+                    document.getElementById('interviewResultsContainer').innerHTML = `
+                        <p class="text-center text-slate-500 py-8">No responses found for this interview session.</p>
                     `;
-                    lucide.createIcons();
                     return;
                 }
 
-                // Перебираем полученные тесты и создаем HTML-карточки
-                tests.forEach((test, index) => {
-                    const setNumber = index + 1;
-                    
-                    const cardHTML = `
-                        <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col hover:border-sky-100 transition">
-                            <div class="flex justify-between items-start mb-2">
-                                <span class="text-[10px] font-bold tracking-wider text-sky-500 uppercase bg-sky-50 px-2 py-1 rounded">Set ${setNumber}</span>
-                                <span class="text-[10px] font-bold text-gray-400 bg-gray-50 px-2 py-1 rounded">Practice</span>
-                            </div>
-                            <h3 class="font-bold text-slate-800 mb-1 mt-4">${test.title}</h3>
-                            <p class="text-xs text-gray-400 mb-5">${test.total_questions} Questions • 45s Response</p>
-                            
-                            <a href="speaking_player.html?type=interview&id=${test.id}" class="mt-auto w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl flex items-center justify-center transition shadow-sm">
-                                Start Practice <i data-lucide="arrow-right" class="w-3.5 h-3.5 ml-1.5"></i>
-                            </a>
-                        </div>
-                    `;
-                    container.innerHTML += cardHTML;
-                });
+                // Исправлено: сортируем по порядку вопросов из правильной таблицы
+                data.sort((a, b) => a.speaking_questions.order_num - b.speaking_questions.order_num);
 
-                // Перерисовываем иконки для новых карточек
-                lucide.createIcons();
+                // Новое: Асинхронно генерируем временные безопасные ссылки для аудиозаписей
+                const responsesWithUrls = await Promise.all(data.map(async (item) => {
+                    const { data: urlData, error: urlError } = await _supabase.storage
+                        .from('student_recordings')
+                        .createSignedUrl(item.user_audio_url, 3600); // Ссылка живет 1 час
+
+                    if (urlError) console.error("Error generating signed URL:", urlError);
+
+                    return {
+                        ...item,
+                        signed_url: urlData ? urlData.signedUrl : ''
+                    };
+                }));
+
+                renderInterviewResults(responsesWithUrls);
 
             } catch (err) {
-                console.error("Error loading tests:", err.message);
-                container.innerHTML = '<p class="text-sm text-rose-500 col-span-full">Failed to load tests. Please check console.</p>';
+                console.error("Error loading interview results:", err);
+                document.getElementById('interviewResultsContainer').innerHTML = `
+                    <div class="bg-rose-50 text-rose-600 p-6 rounded-2xl border border-rose-100 text-center">
+                        <p class="font-bold mb-2">Failed to load results</p>
+                        <p class="text-sm">${err.message}</p>
+                    </div>`;
             }
         }
 
-        // Запускаем загрузку сразу после построения DOM
-        document.addEventListener('DOMContentLoaded', loadTests);
+        function renderInterviewResults(responses) {
+            const container = document.getElementById('interviewResultsContainer');
+            container.innerHTML = '';
+
+            responses.forEach((item, index) => {
+                const q = item.speaking_questions;
+                
+                // Используем сгенерированную подписанную ссылку
+                const userAudioPublicUrl = item.signed_url;
+                
+                // Делаем гибкую проверку текста вопроса (на случай, если используется поле transcript)
+                const questionText = q.question_text ? q.question_text : (q.transcript ? q.transcript : "Question text not provided.");
+
+                const cardHTML = `
+                    <div class="bg-white rounded-[2rem] border border-gray-200 shadow-sm overflow-hidden">
+                        <div class="bg-slate-50 px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+                            <span class="font-bold text-xs bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full border border-indigo-100">
+                                Question ${index + 1}
+                            </span>
+                        </div>
+                        
+                        <!-- Две колонки для десктопа, одна для мобильных -->
+                        <div class="p-6 grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            
+                            <!-- ЛЕВАЯ КОЛОНКА: Вопрос интервьюера -->
+                            <div class="flex flex-col">
+                                <div class="uppercase tracking-widest text-[10px] font-bold text-indigo-500 mb-3">Interviewer Prompt</div>
+                                
+                                ${q.media_url ? `
+                                    <div class="w-full aspect-video bg-slate-900 rounded-xl overflow-hidden mb-4 border border-gray-100 relative">
+                                        ${q.media_url.includes('.mp4') || q.media_url.includes('.webm')
+                                            ? `<video src="${q.media_url}" class="w-full h-full object-cover" controls></video>`
+                                            : `<audio src="${q.media_url}" controls class="absolute bottom-4 left-4 right-4 w-[calc(100%-32px)]"></audio>
+                                               <div class="w-full h-full flex items-center justify-center text-slate-500"><i data-lucide="volume-2" class="w-12 h-12 text-slate-700"></i></div>`
+                                        }
+                                    </div>
+                                ` : ''}
+
+                                <div class="bg-slate-50 p-4 rounded-xl text-sm text-slate-700 border border-slate-100 flex-1 flex flex-col justify-center">
+                                    <span class="font-semibold block mb-1 text-slate-400 text-xs uppercase tracking-wider">Spoken Question:</span>
+                                    <p class="italic text-base text-slate-800">"${questionText}"</p>
+                                </div>
+                            </div>
+
+                            <!-- ПРАВАЯ КОЛОНКА: Ответ студента -->
+                            <div class="flex flex-col border-t lg:border-t-0 lg:border-l border-gray-100 pt-6 lg:pt-0 lg:pl-8">
+                                <div class="uppercase tracking-widest text-[10px] font-bold text-emerald-500 mb-3">Your Answer</div>
+                                
+                                <div class="flex-1 flex flex-col justify-center items-center bg-emerald-50/20 rounded-2xl p-6 border border-emerald-100/40">
+                                    <div class="w-14 h-14 bg-white shadow-sm text-emerald-500 rounded-full flex items-center justify-center mb-4">
+                                        <i data-lucide="play" class="w-6 h-6 ml-1"></i>
+                                    </div>
+                                    
+                                    <audio src="${userAudioPublicUrl}" controls class="w-full max-w-sm"></audio>
+                                    
+                                    <p class="text-xs text-slate-400 mt-4 text-center max-w-xs">
+                                        Review your fluency, pauses, and grammatical accuracy for this answer.
+                                    </p>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                `;
+                
+                container.insertAdjacentHTML('beforeend', cardHTML);
+            });
+            
+            lucide.createIcons();
+        }
+
+        document.addEventListener('DOMContentLoaded', loadInterviewResults);
     </script>
 </body>
 </html>
