@@ -53,7 +53,7 @@
 
                 if (!attemptId) throw new Error("No interview attempt ID found in URL.");
 
-                // Исправлено: запрашиваем из общей таблицы speaking_responses и связываем со speaking_questions
+                // Исправлено: запрашиваем существующее поле transcript вместо question_text
                 const { data, error } = await _supabase
                     .from('speaking_responses')
                     .select(`
@@ -61,7 +61,6 @@
                         user_audio_url,
                         speaking_questions (
                             id,
-                            question_text,
                             transcript,
                             media_url,
                             order_num
@@ -77,10 +76,10 @@
                     return;
                 }
 
-                // Исправлено: сортируем по порядку вопросов из правильной таблицы
+                // Сортируем по порядку вопросов
                 data.sort((a, b) => a.speaking_questions.order_num - b.speaking_questions.order_num);
 
-                // Новое: Асинхронно генерируем временные безопасные ссылки для аудиозаписей
+                // Асинхронно генерируем временные безопасные ссылки для аудиозаписей
                 const responsesWithUrls = await Promise.all(data.map(async (item) => {
                     const { data: urlData, error: urlError } = await _supabase.storage
                         .from('student_recordings')
@@ -116,8 +115,8 @@
                 // Используем сгенерированную подписанную ссылку
                 const userAudioPublicUrl = item.signed_url;
                 
-                // Делаем гибкую проверку текста вопроса (на случай, если используется поле transcript)
-                const questionText = q.question_text ? q.question_text : (q.transcript ? q.transcript : "Question text not provided.");
+                // Исправлено: берем текст вопроса напрямую из поля transcript
+                const questionText = q.transcript ? q.transcript : "Question text not provided.";
 
                 const cardHTML = `
                     <div class="bg-white rounded-[2rem] border border-gray-200 shadow-sm overflow-hidden">
