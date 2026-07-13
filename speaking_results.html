@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Practice Results</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <script src="auth.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8f9fa; }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+
+    <div class="max-w-5xl mx-auto">
+        <!-- Шапка -->
+        <header class="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-800">Your Practice Results</h1>
+                <p class="text-sm text-slate-500 mt-1">Review your answers and compare them with the original audio.</p>
+            </div>
+            <a href="speaking.html" class="inline-flex items-center justify-center px-6 py-3 bg-slate-900 hover:bg-indigo-600 text-white font-bold rounded-xl transition shadow-md">
+                <i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i> Back to Tasks
+            </a>
+        </header>
+
+        <!-- Контейнер для карточек результатов -->
+        <div id="resultsContainer" class="space-y-8">
+            <div class="text-center py-12 text-slate-400 font-medium flex flex-col items-center">
+                <i data-lucide="loader-2" class="w-8 h-8 animate-spin mb-4 text-indigo-500"></i>
+                Loading your responses...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+        let currentUser = null;
+
+        async function loadResults() {
+            try {
+                if (typeof requireAuth !== 'function') throw new Error("auth.js is missing.");
+                currentUser = await requireAuth();
+                if (!currentUser) return;
+
+                const urlParams = new URLSearchParams(window.location.search);
+                const attemptId = urlParams.get('attempt_id');
+
+                if (!attemptId) throw new Error("No attempt ID found in URL.");
+
+                // Запрашиваем ответы пользователя и присоединяем данные оригинального вопроса
+                const { data, error } = await _supabase
+                    .from('speaking_responses')
+                    .select(`
+                        id,
+                        user_audio_url,
+                        speaking_questions (
+                            id,
+                            media_url,
+                            audio_prompt_url,
+                            transcript,
+                            order_num
+                        )
+                    `)
+                    .eq('attempt_id', attemptId);
+
+                if (error) throw error;
+                if (!data || data.length === 0) {
+                    document.getElementById('resultsContainer').innerHTML = `<p class="text-center text-slate-500 py-8">No responses found for this attempt.</p>`;
+                    return;
+                }
+
+                // Сортируем по номеру вопроса
+                data.sort((a, b) => a.speaking_questions.order_num - b.speaking_questions.order_num);
+
+                renderResults(data);
+
+            } catch (err) {
+                console.error("Error loading results:", err);
+                document.getElementById('resultsContainer').innerHTML = `
+                    <div class="bg-rose-50 text-rose-600 p-6 rounded-2xl border border-rose-100 text-center">
+                        <p class="font-bold mb-2">Oops, something went wrong!</p>
+                        <p class="text-sm">${err.message}</p>
+                    </div>`;
+            }
+        }
+
+        function renderResults(responses) {
+            const container = document.getElementById('resultsContainer');
+            container.innerHTML = '';
+
+            responses.forEach((item, index) => {
+                const q = item.speaking_questions;
+                
+                // Получаем публичную ссылку на аудио пользователя из Storage
+                const userAudioData = _supabase.storage
+                    .from('student_recordings')
+                    .getPublicUrl(item.user_audio_url);
+                
+                const userAudioPublicUrl = userAudioData.data.publicUrl;
+                const transcriptText = q.transcript ? q.transcript : "No transcript available for this task.";
+
+                const cardHTML = `
+                    <div class="bg-white rounded-[2rem] border border-gray-200 shadow-sm overflow-hidden">
+                        <div class="bg-slate-50 px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+                            <h2 class="font-bold text-slate-700">Task ${index + 1}</h2>
+                        </div>
+                        
+                        <!-- Сетка: 1 колонка на мобилках, 2 колонки на ПК -->
+                        <div class="p-6 grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            
+                            <!-- ЛЕВАЯ ЧАСТЬ: Задание -->
+                            <div class="flex flex-col">
+                                <div class="uppercase tracking-widest text-[10px] font-bold text-indigo-500 mb-3">Original Task</div>
+                                
+                                <div class="w-full aspect-video sm:aspect-square lg:aspect-video bg-black rounded-xl overflow-hidden mb-4 border border-gray-100 relative">
+                                    ${q.media_url.includes('.mp4') || q.media_url.includes('.webm') 
+                                        ? `<video src="${q.media_url}" class="w-full h-full object-cover" controls></video>` 
+                                        : `<img src="${q.media_url}" class="w-full h-full object-cover">`
+                                    }
+                                </div>
+                                
+                                ${q.audio_prompt_url ? `
+                                    <div class="mb-4">
+                                        <audio src="${q.audio_prompt_url}" controls class="w-full h-10 rounded-full"></audio>
+                                    </div>
+                                ` : ''}
+
+                                <div class="bg-slate-50 p-4 rounded-xl text-sm text-slate-600 border border-slate-100 flex-1">
+                                    <span class="font-semibold block mb-1 text-slate-800">Transcript:</span>
+                                    ${transcriptText}
+                                </div>
+                            </div>
+
+                            <!-- ПРАВАЯ ЧАСТЬ: Ответ ученика -->
+                            <div class="flex flex-col border-t lg:border-t-0 lg:border-l border-gray-100 pt-6 lg:pt-0 lg:pl-8">
+                                <div class="uppercase tracking-widest text-[10px] font-bold text-emerald-500 mb-3">Your Recording</div>
+                                
+                                <div class="flex-1 flex flex-col justify-center items-center bg-emerald-50/30 rounded-2xl p-6 border border-emerald-100/50">
+                                    <div class="w-16 h-16 bg-white shadow-sm text-emerald-500 rounded-full flex items-center justify-center mb-6">
+                                        <i data-lucide="mic" class="w-8 h-8"></i>
+                                    </div>
+                                    
+                                    <audio src="${userAudioPublicUrl}" controls class="w-full max-w-sm"></audio>
+                                    
+                                    <p class="text-xs text-slate-400 mt-4 text-center max-w-xs">
+                                        Listen to your pronunciation and compare it with the original transcript on the left.
+                                    </p>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                `;
+                
+                container.insertAdjacentHTML('beforeend', cardHTML);
+            });
+            
+            lucide.createIcons(); // Перерисовываем иконки для новых элементов
+        }
+
+        document.addEventListener('DOMContentLoaded', loadResults);
+    </script>
+</body>
+</html>
