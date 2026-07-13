@@ -78,7 +78,21 @@
                 // Сортируем по номеру вопроса
                 data.sort((a, b) => a.speaking_questions.order_num - b.speaking_questions.order_num);
 
-                renderResults(data);
+                // Асинхронно создаем временные безопасные ссылки для каждого аудиофайла из Storage
+                const responsesWithUrls = await Promise.all(data.map(async (item) => {
+                    const { data: urlData, error: urlError } = await _supabase.storage
+                        .from('student_recordings')
+                        .createSignedUrl(item.user_audio_url, 3600); // Ссылка будет активна 1 час
+
+                    if (urlError) console.error("Error generating signed URL:", urlError);
+
+                    return {
+                        ...item,
+                        signed_url: urlData ? urlData.signedUrl : ''
+                    };
+                }));
+
+                renderResults(responsesWithUrls);
 
             } catch (err) {
                 console.error("Error loading results:", err);
@@ -97,12 +111,8 @@
             responses.forEach((item, index) => {
                 const q = item.speaking_questions;
                 
-                // Получаем публичную ссылку на аудио пользователя из Storage
-                const userAudioData = _supabase.storage
-                    .from('student_recordings')
-                    .getPublicUrl(item.user_audio_url);
-                
-                const userAudioPublicUrl = userAudioData.data.publicUrl;
+                // Используем сгенерированную подписанную ссылку
+                const userAudioPublicUrl = item.signed_url;
                 const transcriptText = q.transcript ? q.transcript : "No transcript available for this task.";
 
                 const cardHTML = `
@@ -168,3 +178,4 @@
     </script>
 </body>
 </html>
+
