@@ -173,24 +173,55 @@
                     throw new Error("No valid test blocks found for this mock configuration.");
                 }
 
-                // ЕСЛИ РЕЖИМ РЕВЬЮ - подтягиваем старые ответы и переходим к финалу
+                // ЕСЛИ РЕЖИМ РЕВЬЮ - жестко блокируем старт и показываем результаты
                 if (isReviewMode) {
-                    const { data: { session } } = await db.auth.getSession();
-                    if (session?.user) {
-                        const { data: oldRes } = await db
+                    document.getElementById('taskContainer').innerHTML = `
+                        <div class="flex flex-col items-center justify-center h-full text-center fade-in mt-20">
+                            <i data-lucide="loader-2" class="w-10 h-10 animate-spin text-indigo-500 mx-auto mb-4"></i>
+                            <p class="font-bold text-slate-800 text-lg">Loading your review...</p>
+                            <p class="text-slate-500 text-sm mt-2">Fetching data from the server</p>
+                        </div>
+                    `;
+                    lucide.createIcons();
+
+                    try {
+                        const { data: { session }, error: authErr } = await db.auth.getSession();
+                        if (authErr) throw authErr;
+                        if (!session?.user) throw new Error("Authentication required. Please wait a second and refresh, or log in again.");
+
+                        const { data: oldRes, error: fetchErr } = await db
                             .from('listening_mini_mock_results')
                             .select('*')
                             .eq('user_id', session.user.id)
-                            .eq('mock_test_id', testId)
-                            .order('created_at', { ascending: false })
-                            .limit(1);
-                            
+                            .eq('mock_test_id', testId);
+
+                        if (fetchErr) throw fetchErr;
+
                         if (oldRes && oldRes.length > 0) {
-                            userAnswers = oldRes[0].detailed_answers;
-                            renderFinalReview(oldRes[0].score_earned, oldRes[0].score_total, oldRes[0].final_calculated_score);
-                            return;
+                            const latestResult = oldRes.reduce((latest, current) => {
+                                return new Date(current.created_at) > new Date(latest.created_at) ? current : latest;
+                            }, oldRes[0]);
+
+                            userAnswers = latestResult.detailed_answers || {};
+                            renderFinalReview(latestResult.score_earned, latestResult.score_total, latestResult.final_calculated_score);
+                        } else {
+                            throw new Error("No previous results found for this test in the database.");
                         }
+                    } catch (err) {
+                        console.error("Review mode error:", err);
+                        document.getElementById('taskContainer').innerHTML = `
+                            <div class="bg-white rounded-2xl border border-rose-200 p-8 text-center max-w-md mx-auto mt-20 shadow-sm">
+                                <div class="w-16 h-16 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <i data-lucide="alert-triangle" class="w-8 h-8"></i>
+                                </div>
+                                <p class="text-rose-600 font-bold text-lg mb-2">Could not load review</p>
+                                <p class="text-slate-600 text-sm mb-6">${err.message}</p>
+                                <a href="listening-mini-mock.html" class="bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold px-6 py-3 rounded-xl transition inline-block">Return to Dashboard</a>
+                            </div>
+                        `;
+                        lucide.createIcons();
                     }
+                    return; // ВАЖНО: строго прерываем выполнение, чтобы тест не начался
                 }
                 
                 // Стандартный старт теста
@@ -691,3 +722,4 @@
     </script>
 </body>
 </html>
+
