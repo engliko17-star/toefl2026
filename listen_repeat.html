@@ -7,6 +7,10 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <!-- Подключаем auth.js для получения текущего пользователя и _supabase -->
+    <script src="auth.js"></script>
+    
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8f9fa; }
@@ -36,37 +40,44 @@
         </div>
 
         <div id="tests-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            </div>
+            <!-- Карточки тестов будут загружены сюда -->
+        </div>
     </main>
 
     <script>
-        // Инициализация иконок
         lucide.createIcons();
+        let currentUser = null;
 
-        // Инициализация Supabase
-        const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-        // Функция для загрузки тестов из базы данных
         async function loadTests() {
             const container = document.getElementById('tests-container');
             container.innerHTML = '<p class="text-sm text-gray-500 col-span-full">Loading tests from database...</p>';
 
             try {
-                // Запрашиваем тесты из таблицы speaking_tests
-                const { data: tests, error } = await supabaseClient
+                // 1. Проверяем авторизацию
+                if (typeof requireAuth !== 'function') throw new Error("auth.js is missing.");
+                currentUser = await requireAuth();
+                if (!currentUser) return; // Если не авторизован, auth.js сам перекинет на логин
+
+                // 2. Запрашиваем тесты из базы
+                const { data: tests, error: testsError } = await _supabase
                     .from('speaking_tests')
                     .select('*')
-                    .eq('type', 'listen_repeat') // Берем только задания типа Listen & Repeat
-                    .order('created_at', { ascending: true }); // Сортируем от старых к новым (Set 1, Set 2...)
+                    .eq('type', 'listen_repeat')
+                    .order('created_at', { ascending: true });
 
-                if (error) throw error;
+                if (testsError) throw testsError;
 
-                // Очищаем надпись загрузки
+                // 3. Запрашиваем попытки текущего пользователя, чтобы знать, что он уже решал
+                const { data: attempts, error: attemptsError } = await _supabase
+                    .from('speaking_attempts')
+                    .select('id, test_id')
+                    .eq('user_id', currentUser.id)
+                    .order('created_at', { ascending: false }); // Сортируем, чтобы первой была последняя попытка
+
+                if (attemptsError) throw attemptsError;
+
                 container.innerHTML = '';
 
-                // Если тестов в базе пока нет
                 if (!tests || tests.length === 0) {
                     container.innerHTML = `
                         <div class="col-span-full bg-white p-8 rounded-2xl border border-gray-100 text-center">
@@ -78,38 +89,68 @@
                     return;
                 }
 
-                // Перебираем полученные тесты и создаем для каждого HTML-карточку
+                // 4. Отрисовываем карточки
                 tests.forEach((test, index) => {
                     const setNumber = index + 1;
                     
+                    // Ищем, есть ли попытка для этого конкретного теста
+                    // Берем самую свежую попытку благодаря сортировке выше
+                    const testAttempt = attempts ? attempts.find(a => a.test_id === test.id) : null;
+                    
+                    let buttonsHTML = '';
+
+                    // Если попытка есть, показываем Review и Retake
+                    if (testAttempt) {
+                        buttonsHTML = `
+                            <div class="mt-auto flex space-x-2 w-full pt-4">
+                                <a href="speaking_results.html?attempt_id=${testAttempt.id}" class="flex-1 py-2.5 bg-teal-50 hover:bg-teal-100 text-teal-600 text-xs font-bold rounded-xl flex items-center justify-center transition border border-teal-200 shadow-sm">
+                                    Review <i data-lucide="headphones" class="w-3.5 h-3.5 ml-1.5"></i>
+                                </a>
+                                <a href="speaking_player.html?type=listen_repeat&id=${test.id}" class="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl flex items-center justify-center transition shadow-sm">
+                                    Retake <i data-lucide="rotate-cw" class="w-3.5 h-3.5 ml-1.5"></i>
+                                </a>
+                            </div>
+                        `;
+                    } else {
+                        // Если попыток нет, показываем стандартную кнопку старта
+                        buttonsHTML = `
+                            <div class="mt-auto pt-4">
+                                <a href="speaking_player.html?type=listen_repeat&id=${test.id}" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl flex items-center justify-center transition shadow-sm">
+                                    Start Practice <i data-lucide="arrow-right" class="w-3.5 h-3.5 ml-1.5"></i>
+                                </a>
+                            </div>
+                        `;
+                    }
+
+                    const cardStatus = testAttempt 
+                        ? `<span class="text-[10px] font-bold tracking-wider text-teal-600 uppercase bg-teal-100 px-2 py-1 rounded border border-teal-200">Completed</span>`
+                        : `<span class="text-[10px] font-bold tracking-wider text-slate-500 uppercase bg-slate-100 px-2 py-1 rounded border border-slate-200">New</span>`;
+
                     const cardHTML = `
-                        <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col hover:border-teal-100 transition">
+                        <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col hover:border-indigo-100 transition">
                             <div class="flex justify-between items-start mb-2">
-                                <span class="text-[10px] font-bold tracking-wider text-teal-500 uppercase bg-teal-50 px-2 py-1 rounded">Set ${setNumber}</span>
-                                <span class="text-[10px] font-bold text-gray-400 bg-gray-50 px-2 py-1 rounded">Practice</span>
+                                <span class="text-[10px] font-bold tracking-wider text-indigo-500 uppercase bg-indigo-50 px-2 py-1 rounded border border-indigo-100">Set ${setNumber}</span>
+                                ${cardStatus}
                             </div>
                             <h3 class="font-bold text-slate-800 mb-1 mt-4">${test.title}</h3>
-                            <p class="text-xs text-gray-400 mb-5">${test.total_questions} Questions • Audio recording</p>
+                            <p class="text-xs text-gray-400 mb-2">${test.total_questions} Questions • Audio recording</p>
                             
-                            <a href="speaking_player.html?type=listen_repeat&id=${test.id}" class="mt-auto w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl flex items-center justify-center transition shadow-sm">
-                                Start Practice <i data-lucide="arrow-right" class="w-3.5 h-3.5 ml-1.5"></i>
-                            </a>
+                            ${buttonsHTML}
                         </div>
                     `;
                     container.innerHTML += cardHTML;
                 });
 
-                // Перерисовываем иконки Lucide внутри новых карточек
                 lucide.createIcons();
 
             } catch (err) {
                 console.error("Error loading tests:", err.message);
-                container.innerHTML = '<p class="text-sm text-rose-500 col-span-full">Failed to load tests. Please check console.</p>';
+                container.innerHTML = '<p class="text-sm text-rose-500 col-span-full font-medium p-4 bg-rose-50 rounded-xl">Failed to load tests. Please check console.</p>';
             }
         }
 
-        // Запускаем загрузку сразу после построения DOM
         document.addEventListener('DOMContentLoaded', loadTests);
     </script>
 </body>
 </html>
+
