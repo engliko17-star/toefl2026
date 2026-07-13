@@ -53,16 +53,16 @@
 
                 if (!attemptId) throw new Error("No interview attempt ID found in URL.");
 
-                // Достаем ответы на интервью и связываем с вопросами
-                // Предполагаем, что таблицы называются interview_responses и interview_questions
+                // Исправлено: запрашиваем из общей таблицы speaking_responses и связываем со speaking_questions
                 const { data, error } = await _supabase
-                    .from('interview_responses')
+                    .from('speaking_responses')
                     .select(`
                         id,
                         user_audio_url,
-                        interview_questions (
+                        speaking_questions (
                             id,
                             question_text,
+                            transcript,
                             media_url,
                             order_num
                         )
@@ -77,10 +77,24 @@
                     return;
                 }
 
-                // Сортируем по порядку вопросов в интервью
-                data.sort((a, b) => a.interview_questions.order_num - b.interview_questions.order_num);
+                // Исправлено: сортируем по порядку вопросов из правильной таблицы
+                data.sort((a, b) => a.speaking_questions.order_num - b.speaking_questions.order_num);
 
-                renderInterviewResults(data);
+                // Новое: Асинхронно генерируем временные безопасные ссылки для аудиозаписей
+                const responsesWithUrls = await Promise.all(data.map(async (item) => {
+                    const { data: urlData, error: urlError } = await _supabase.storage
+                        .from('student_recordings')
+                        .createSignedUrl(item.user_audio_url, 3600); // Ссылка живет 1 час
+
+                    if (urlError) console.error("Error generating signed URL:", urlError);
+
+                    return {
+                        ...item,
+                        signed_url: urlData ? urlData.signedUrl : ''
+                    };
+                }));
+
+                renderInterviewResults(responsesWithUrls);
 
             } catch (err) {
                 console.error("Error loading interview results:", err);
@@ -97,15 +111,13 @@
             container.innerHTML = '';
 
             responses.forEach((item, index) => {
-                const q = item.interview_questions;
+                const q = item.speaking_questions;
                 
-                // Ссылка на запись студента
-                const userAudioData = _supabase.storage
-                    .from('student_recordings')
-                    .getPublicUrl(item.user_audio_url);
+                // Используем сгенерированную подписанную ссылку
+                const userAudioPublicUrl = item.signed_url;
                 
-                const userAudioPublicUrl = userAudioData.data.publicUrl;
-                const questionText = q.question_text ? q.question_text : "Question text not provided.";
+                // Делаем гибкую проверку текста вопроса (на случай, если используется поле transcript)
+                const questionText = q.question_text ? q.question_text : (q.transcript ? q.transcript : "Question text not provided.");
 
                 const cardHTML = `
                     <div class="bg-white rounded-[2rem] border border-gray-200 shadow-sm overflow-hidden">
@@ -169,4 +181,3 @@
     </script>
 </body>
 </html>
-
