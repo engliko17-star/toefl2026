@@ -11,67 +11,33 @@ let currentIndex = 0;
 let timerInterval;
 let timeRemaining = 35 * 60; 
 
+// Загружаем сетку тестов чистой (без оценок)
 async function loadTestsGrid() {
     const container = document.getElementById('tests-container');
     try {
-        container.innerHTML = `<div class="col-span-full text-slate-400 text-sm flex items-center"><i data-lucide="loader-2" class="w-4 h-4 mr-2 animate-spin"></i> Fetching tests and user data...</div>`;
+        container.innerHTML = `<div class="col-span-full text-slate-400 text-sm flex items-center"><i data-lucide="loader-2" class="w-4 h-4 mr-2 animate-spin"></i> Fetching tests...</div>`;
         
         const { data: tests, error: errTests } = await supabaseClient.from('full_tests').select('*').order('created_at', { ascending: false });
         if (errTests) throw errTests;
-
-        const { data: attempts, error: errAttempts } = await supabaseClient.from('big_mock_attempts').select('*').eq('section_name', 'reading');
-        if (errAttempts) throw errAttempts;
 
         if (!tests || tests.length === 0) {
             container.innerHTML = `<div class="col-span-full text-center text-slate-500 py-10">No tests found in 'full_tests' table.</div>`;
             return;
         }
 
+        // Выводим только карточки-кнопки (без проверки попыток в цикле)
         container.innerHTML = tests.map(test => {
-            // Ищем попытку пользователя для этого теста
-            const attempt = attempts?.sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at)).find(a => a.test_id === test.id && a.status === 'completed');
-
-            if (attempt) {
-                return `
-                    <div class="bg-white rounded-3xl border border-indigo-100 p-6 shadow-md relative overflow-hidden flex flex-col h-full group">
-                        <div class="absolute top-0 right-0 bg-indigo-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg uppercase tracking-wider shadow-sm">Completed</div>
-                        
-                        <div class="flex items-center space-x-4 mb-4">
-                            <div class="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center text-2xl shadow-inner">${test.emoji || '📝'}</div>
-                            <div>
-                                <h3 class="text-lg font-bold text-slate-900">${test.title}</h3>
-                                <p class="text-[11px] text-gray-400 font-medium">Reading Section</p>
-                            </div>
-                        </div>
-
-                        <div class="bg-slate-50 rounded-2xl p-4 mb-6 flex-1 flex flex-col justify-center items-center border border-slate-100 shadow-inner">
-                            <span class="text-3xl font-extrabold text-indigo-600">${attempt.total_score || '0.0'}</span>
-                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">Est. Score</span>
-                        </div>
-
-                        <div class="flex flex-col sm:flex-row gap-2 mt-auto">
-                            <button onclick="loadReviewMode('${attempt.id}', ${test.id}, '${test.title}')" class="flex-1 py-2.5 bg-white border border-gray-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition text-sm flex items-center justify-center shadow-xs">
-                                <i data-lucide="search" class="w-4 h-4 mr-1.5"></i> Review
-                            </button>
-                            <button onclick="openTestView(${test.id}, '${test.title}', '${test.emoji}')" class="flex-1 py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition text-sm flex items-center justify-center shadow-xs">
-                                Retake <i data-lucide="rotate-cw" class="w-4 h-4 ml-1.5"></i>
-                            </button>
-                        </div>
+            return `
+                <div onclick="openTestView(${test.id}, '${test.title}', '${test.emoji}')" class="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm hover:shadow-md hover:-translate-y-1 hover:border-indigo-200 transition-all cursor-pointer group flex flex-col h-full">
+                    <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center text-3xl mb-5 group-hover:scale-110 transition-transform">${test.emoji || '📝'}</div>
+                    <h3 class="text-xl font-bold text-slate-900 mb-1">${test.title}</h3>
+                    <p class="text-xs text-gray-400 mb-6">Full Section Simulation</p>
+                    <div class="flex items-center justify-between border-t border-gray-50 pt-4 mt-auto">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">35 mins</span>
+                        <span class="px-2.5 py-1 bg-indigo-50 text-indigo-600 font-bold text-[10px] rounded-lg uppercase tracking-wider">Open</span>
                     </div>
-                `;
-            } else {
-                return `
-                    <div onclick="openTestView(${test.id}, '${test.title}', '${test.emoji}')" class="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm hover:shadow-md hover:-translate-y-1 hover:border-indigo-200 transition-all cursor-pointer group flex flex-col h-full">
-                        <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center text-3xl mb-5 group-hover:scale-110 transition-transform">${test.emoji || '📝'}</div>
-                        <h3 class="text-xl font-bold text-slate-900 mb-1">${test.title}</h3>
-                        <p class="text-xs text-gray-400 mb-6">Full Section Simulation</p>
-                        <div class="flex items-center justify-between border-t border-gray-50 pt-4 mt-auto">
-                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">35 mins</span>
-                            <span class="px-2.5 py-1 bg-green-50 text-green-600 font-bold text-[10px] rounded-lg uppercase tracking-wider">Start</span>
-                        </div>
-                    </div>
-                `;
-            }
+                </div>
+            `;
         }).join('');
         lucide.createIcons();
     } catch (err) {
@@ -82,16 +48,82 @@ async function loadTestsGrid() {
 
 loadTestsGrid();
 
-function openTestView(testId, title, emoji) {
+// Открываем детали теста и проверяем оценку ИМЕННО ТУТ
+async function openTestView(testId, title, emoji) {
     currentActiveTestId = testId;
     document.getElementById('view-tests-grid').classList.add('hidden');
     document.getElementById('view-test-detail').classList.remove('hidden');
     
     document.getElementById('dynamic-test-title').innerText = title;
     document.getElementById('dynamic-emoji-container').innerText = emoji || '📝';
+
+    const scoreContainer = document.getElementById('reading-score-container');
+    const actionsContainer = document.getElementById('reading-action-buttons');
+
+    if(scoreContainer) scoreContainer.innerHTML = '<div class="text-xs text-gray-400 flex items-center"><i data-lucide="loader-2" class="w-3 h-3 mr-1 animate-spin"></i> Loading results...</div>';
+    if(actionsContainer) actionsContainer.innerHTML = '';
+    lucide.createIcons();
     
-    const startBtn = document.getElementById('start-btn');
-    startBtn.onclick = () => startExamEngine(testId, title);
+    try {
+        // Ищем последнюю завершенную попытку конкретно по этому тесту и секции Reading
+        const { data: attempts, error } = await supabaseClient
+            .from('big_mock_attempts')
+            .select('*')
+            .eq('test_id', testId)
+            .eq('section_name', 'reading')
+            .order('completed_at', { ascending: false })
+            .limit(1);
+
+        if (error) throw error;
+
+        // Если попытка найдена - выводим оценку и кнопки Review/Retake
+        if (attempts && attempts.length > 0 && attempts[0].status === 'completed') {
+            const attempt = attempts[0];
+            
+            if (scoreContainer) {
+                scoreContainer.innerHTML = `
+                    <div class="inline-flex items-center bg-green-50 border border-green-200 px-3 py-1.5 rounded-lg shadow-sm">
+                        <span class="text-[10px] font-bold text-green-800 uppercase tracking-wider mr-2">Est. Score</span>
+                        <span class="text-lg font-extrabold text-green-600">${attempt.total_score}</span>
+                    </div>
+                `;
+            }
+            if (actionsContainer) {
+                actionsContainer.innerHTML = `
+                    <button onclick="loadReviewMode('${attempt.id}', ${testId}, '${title}')" class="flex-1 py-2.5 bg-white border border-gray-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition text-sm flex items-center justify-center shadow-xs">
+                        <i data-lucide="search" class="w-4 h-4 mr-1.5"></i> Review
+                    </button>
+                    <button onclick="startExamEngine(${testId}, '${title}')" class="flex-1 py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition text-sm flex items-center justify-center shadow-xs">
+                        Retake <i data-lucide="rotate-cw" class="w-4 h-4 ml-1.5"></i>
+                    </button>
+                `;
+            }
+        } 
+        // Если попыток не было - выводим просто кнопку Start
+        else {
+            if (scoreContainer) scoreContainer.innerHTML = '';
+            if (actionsContainer) {
+                actionsContainer.innerHTML = `
+                    <button onclick="startExamEngine(${testId}, '${title}')" class="w-full text-center py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition text-sm flex items-center justify-center shadow-xs">
+                        Start Section <i data-lucide="arrow-right" class="w-4 h-4 ml-1.5"></i>
+                    </button>
+                `;
+            }
+        }
+        lucide.createIcons();
+    } catch(e) {
+        console.error("Error checking attempt:", e);
+        // Fallback если произошла ошибка сети
+        if (scoreContainer) scoreContainer.innerHTML = '';
+        if (actionsContainer) {
+            actionsContainer.innerHTML = `
+                <button onclick="startExamEngine(${testId}, '${title}')" class="w-full text-center py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition text-sm flex items-center justify-center shadow-xs">
+                    Start Section <i data-lucide="arrow-right" class="w-4 h-4 ml-1.5"></i>
+                </button>
+            `;
+        }
+        lucide.createIcons();
+    }
 }
 
 function closeTestView() {
@@ -522,7 +554,7 @@ async function saveAttemptAndFinish() {
         const answersToSave = currentTasks.map(task => {
             let isCorrect = false;
             let answerText = null;
-            let answerJson = { question: task.question }; // Сохраняем текст вопроса для точного матчинга при ревью
+            let answerJson = { question: task.question }; 
 
             if (task.type === 'complete_words') {
                 answerJson.userWords = task.userWords;
