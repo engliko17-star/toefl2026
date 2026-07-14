@@ -5,37 +5,82 @@ const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
 
 lucide.createIcons();
 
+let currentActiveTestId = null;
+let currentTasks = [];
+let currentIndex = 0;
+let timerInterval;
+let timeRemaining = 35 * 60; 
+
 async function loadTestsGrid() {
     const container = document.getElementById('tests-container');
     try {
-        const { data: tests, error } = await supabaseClient.from('full_tests').select('*').order('created_at', { ascending: false });
-        if (error) throw error;
+        container.innerHTML = `<div class="col-span-full text-slate-400 text-sm flex items-center"><i data-lucide="loader-2" class="w-4 h-4 mr-2 animate-spin"></i> Fetching tests and user data...</div>`;
+        
+        const { data: tests, error: errTests } = await supabaseClient.from('full_tests').select('*').order('created_at', { ascending: false });
+        if (errTests) throw errTests;
+
+        const { data: attempts, error: errAttempts } = await supabaseClient.from('big_mock_attempts').select('*').eq('section_name', 'reading');
+        if (errAttempts) throw errAttempts;
 
         if (!tests || tests.length === 0) {
             container.innerHTML = `<div class="col-span-full text-center text-slate-500 py-10">No tests found in 'full_tests' table.</div>`;
             return;
         }
 
-        container.innerHTML = tests.map(test => `
-            <div onclick="openTestView(${test.id}, '${test.title}', '${test.emoji}')" class="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm hover:shadow-md hover:-translate-y-1 hover:border-indigo-200 transition-all cursor-pointer group">
-                <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center text-3xl mb-5 group-hover:scale-110 transition-transform">${test.emoji || '📝'}</div>
-                <h3 class="text-xl font-bold text-slate-900 mb-1">${test.title}</h3>
-                <p class="text-xs text-gray-400 mb-6">Full Section Simulation</p>
-                <div class="flex items-center justify-between border-t border-gray-50 pt-4">
-                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">35 mins</span>
-                    <span class="px-2.5 py-1 bg-green-50 text-green-600 font-bold text-[10px] rounded-lg uppercase tracking-wider">Ready</span>
-                </div>
-            </div>
-        `).join('');
+        container.innerHTML = tests.map(test => {
+            // Ищем попытку пользователя для этого теста
+            const attempt = attempts?.sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at)).find(a => a.test_id === test.id && a.status === 'completed');
+
+            if (attempt) {
+                return `
+                    <div class="bg-white rounded-3xl border border-indigo-100 p-6 shadow-md relative overflow-hidden flex flex-col h-full group">
+                        <div class="absolute top-0 right-0 bg-indigo-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg uppercase tracking-wider shadow-sm">Completed</div>
+                        
+                        <div class="flex items-center space-x-4 mb-4">
+                            <div class="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center text-2xl shadow-inner">${test.emoji || '📝'}</div>
+                            <div>
+                                <h3 class="text-lg font-bold text-slate-900">${test.title}</h3>
+                                <p class="text-[11px] text-gray-400 font-medium">Reading Section</p>
+                            </div>
+                        </div>
+
+                        <div class="bg-slate-50 rounded-2xl p-4 mb-6 flex-1 flex flex-col justify-center items-center border border-slate-100 shadow-inner">
+                            <span class="text-3xl font-extrabold text-indigo-600">${attempt.total_score || '0.0'}</span>
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">Est. Score</span>
+                        </div>
+
+                        <div class="flex flex-col sm:flex-row gap-2 mt-auto">
+                            <button onclick="loadReviewMode('${attempt.id}', ${test.id}, '${test.title}')" class="flex-1 py-2.5 bg-white border border-gray-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition text-sm flex items-center justify-center shadow-xs">
+                                <i data-lucide="search" class="w-4 h-4 mr-1.5"></i> Review
+                            </button>
+                            <button onclick="openTestView(${test.id}, '${test.title}', '${test.emoji}')" class="flex-1 py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition text-sm flex items-center justify-center shadow-xs">
+                                Retake <i data-lucide="rotate-cw" class="w-4 h-4 ml-1.5"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            } else {
+                return `
+                    <div onclick="openTestView(${test.id}, '${test.title}', '${test.emoji}')" class="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm hover:shadow-md hover:-translate-y-1 hover:border-indigo-200 transition-all cursor-pointer group flex flex-col h-full">
+                        <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center text-3xl mb-5 group-hover:scale-110 transition-transform">${test.emoji || '📝'}</div>
+                        <h3 class="text-xl font-bold text-slate-900 mb-1">${test.title}</h3>
+                        <p class="text-xs text-gray-400 mb-6">Full Section Simulation</p>
+                        <div class="flex items-center justify-between border-t border-gray-50 pt-4 mt-auto">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">35 mins</span>
+                            <span class="px-2.5 py-1 bg-green-50 text-green-600 font-bold text-[10px] rounded-lg uppercase tracking-wider">Start</span>
+                        </div>
+                    </div>
+                `;
+            }
+        }).join('');
+        lucide.createIcons();
     } catch (err) {
         console.error("Error loading tests:", err);
-        container.innerHTML = `<div class="col-span-full text-red-500">Error loading tests. Check console.</div>`;
+        container.innerHTML = `<div class="col-span-full text-red-500 font-bold">Error loading tests. Check console.</div>`;
     }
 }
 
 loadTestsGrid();
-
-let currentActiveTestId = null;
 
 function openTestView(testId, title, emoji) {
     currentActiveTestId = testId;
@@ -55,11 +100,6 @@ function closeTestView() {
     currentActiveTestId = null;
 }
 
-let currentTasks = [];
-let currentIndex = 0;
-let timerInterval;
-let timeRemaining = 35 * 60; 
-
 function renderDailyLifeLayout(passage, layoutType, taskTitle) {
     if (!passage) return "";
     const cleanPassage = passage.replace(/[\[\]]/g, ''); 
@@ -78,12 +118,7 @@ function renderDailyLifeLayout(passage, layoutType, taskTitle) {
                     let sender = chatParts[i].trim();
                     let msg = (chatParts[i+1] || '').trim();
                     if (sender && msg) {
-                        chatHtml += `
-                            <div class="mb-5">
-                                <div class="text-[11px] text-slate-500 mb-1.5 ml-1">${sender}</div>
-                                <div class="bg-white border border-slate-100 text-slate-700 p-4 rounded-2xl rounded-tl-sm shadow-sm text-sm leading-relaxed inline-block">${msg}</div>
-                            </div>
-                        `;
+                        chatHtml += `<div class="mb-5"><div class="text-[11px] text-slate-500 mb-1.5 ml-1">${sender}</div><div class="bg-white border border-slate-100 text-slate-700 p-4 rounded-2xl rounded-tl-sm shadow-sm text-sm leading-relaxed inline-block">${msg}</div></div>`;
                     }
                 }
             } else {
@@ -177,6 +212,7 @@ async function fetchAndParseTasks(testId, stageName) {
             });
             
             parsedTasks.push({ 
+                taskId: step.task_id,
                 type: 'complete_words', 
                 title: taskData.title, 
                 passage: parsedPassage,
@@ -211,6 +247,7 @@ async function fetchAndParseTasks(testId, stageName) {
                 }
 
                 parsedTasks.push({
+                    taskId: step.task_id,
                     type: step.task_type,
                     title: taskData.title,
                     layout: taskData.layout_type || 'notice',
@@ -247,12 +284,13 @@ async function startExamEngine(testId, testTitle) {
     `;
     
     currentTasks = [];
+    currentActiveTestId = testId;
     
     try {
         currentTasks = await fetchAndParseTasks(testId, '1');
 
         if (currentTasks.length === 0) {
-            alert("This test is empty (No module 1 tasks)! Please add tasks in Supabase 'full_test_tasks' table with stage '1'.");
+            alert("This test is empty! Please add tasks in Supabase 'full_test_tasks'.");
             exitExamEngine();
             return;
         }
@@ -285,7 +323,7 @@ function startTimer() {
         if (timeRemaining <= 0) {
             clearInterval(timerInterval);
             alert("Time is up!");
-            exitExamEngine();
+            saveAttemptAndFinish();
         }
         let m = Math.floor(timeRemaining / 60);
         let s = timeRemaining % 60;
@@ -300,7 +338,7 @@ function renderEngine() {
     document.getElementById('engine-progress').innerText = `${currentIndex + 1} / ${currentTasks.length}`;
     document.getElementById('engine-prev').disabled = (currentIndex === 0);
     document.getElementById('engine-next').innerHTML = (currentIndex === currentTasks.length - 1) 
-        ? 'Continue <i data-lucide="check" class="w-4 h-4 ml-1"></i>' 
+        ? 'Finish <i data-lucide="check" class="w-4 h-4 ml-1"></i>' 
         : 'Next <i data-lucide="chevron-right" class="w-4 h-4 ml-1"></i>';
 
     contentDiv.innerHTML = '';
@@ -344,37 +382,11 @@ function renderEngine() {
         let rightPanelContent = '';
 
         if (task.qType === 'Select a Sentence') {
-            rightPanelContent = `
-                <div class="bg-amber-50 border border-amber-100 p-3 rounded-xl mb-6 text-xs text-amber-800 flex items-center">
-                    <i data-lucide="mouse-pointer-click" class="w-4 h-4 mr-2"></i> Click a sentence on the left.
-                </div>
-                <h3 class="font-bold text-slate-900">${task.question}</h3>
-            `;
+            rightPanelContent = `<div class="bg-amber-50 border border-amber-100 p-3 rounded-xl mb-6 text-xs text-amber-800 flex items-center"><i data-lucide="mouse-pointer-click" class="w-4 h-4 mr-2"></i> Click a sentence on the left.</div><h3 class="font-bold text-slate-900">${task.question}</h3>`;
         } else if (task.qType === 'Insert Text') {
-            rightPanelContent = `
-                <div class="bg-blue-50 border border-blue-100 p-3 rounded-xl mb-6 text-xs text-blue-800 flex items-center">
-                    <i data-lucide="mouse-pointer-click" class="w-4 h-4 mr-2"></i> Click on a square [■] to insert the sentence.
-                </div>
-                <h3 class="font-bold text-slate-900 mb-4">${task.question}</h3>
-                <div class="p-4 bg-white border-2 border-dashed border-indigo-300 rounded-xl text-sm font-bold text-indigo-900 text-center shadow-xs">
-                    "${task.insertSentence}"
-                </div>
-            `;
+            rightPanelContent = `<div class="bg-blue-50 border border-blue-100 p-3 rounded-xl mb-6 text-xs text-blue-800 flex items-center"><i data-lucide="mouse-pointer-click" class="w-4 h-4 mr-2"></i> Click on a square [■] to insert the sentence.</div><h3 class="font-bold text-slate-900 mb-4">${task.question}</h3><div class="p-4 bg-white border-2 border-dashed border-indigo-300 rounded-xl text-sm font-bold text-indigo-900 text-center shadow-xs">"${task.insertSentence}"</div>`;
         } else {
-            rightPanelContent = `
-                <h3 class="font-bold text-slate-900 mb-6">${task.question}</h3>
-                <div class="space-y-3">
-                    ${task.options.map((opt) => `
-                        <label class="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer hover:bg-slate-50 transition">
-                            <input type="radio" name="q" value="${opt}"
-                                ${task.userAnswer === opt ? 'checked' : ''}
-                                onchange="currentTasks[${currentIndex}].userAnswer = this.value"
-                                class="w-4 h-4 text-indigo-600 mr-3">
-                            <span class="text-sm text-slate-700">${opt}</span>
-                        </label>
-                    `).join('')}
-                </div>
-            `;
+            rightPanelContent = `<h3 class="font-bold text-slate-900 mb-6">${task.question}</h3><div class="space-y-3">${task.options.map((opt) => `<label class="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer hover:bg-slate-50 transition"><input type="radio" name="q" value="${opt}" ${task.userAnswer === opt ? 'checked' : ''} onchange="currentTasks[${currentIndex}].userAnswer = this.value" class="w-4 h-4 text-indigo-600 mr-3"><span class="text-sm text-slate-700">${opt}</span></label>`).join('')}</div>`;
         }
 
         contentDiv.innerHTML = `
@@ -383,9 +395,7 @@ function renderEngine() {
                 <div class="text-sm text-slate-700 leading-relaxed space-y-4 whitespace-pre-wrap">${task.passage}</div>
             </section>
             <section class="w-1/2 bg-slate-50 p-10 overflow-y-auto custom-scrollbar">
-                 <div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-xs max-w-xl mx-auto">
-                    ${rightPanelContent}
-                </div>
+                 <div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-xs max-w-xl mx-auto">${rightPanelContent}</div>
             </section>
         `;
 
@@ -393,7 +403,6 @@ function renderEngine() {
             document.querySelectorAll('.clickable-sentence').forEach(el => {
                 const sentenceText = el.textContent.trim();
                 if (task.userAnswer === sentenceText) el.classList.add('selected');
-                
                 el.onclick = function() {
                     if (task.qType !== 'Select a Sentence') return;
                     document.querySelectorAll('.clickable-sentence').forEach(s => s.classList.remove('selected'));
@@ -405,7 +414,6 @@ function renderEngine() {
             document.querySelectorAll('.insert-square').forEach((el, index) => {
                 const squareIndexStr = index.toString();
                 if (task.userAnswer === squareIndexStr) el.classList.add('selected');
-
                 el.onclick = function() {
                     if (task.qType !== 'Insert Text') return;
                     document.querySelectorAll('.insert-square').forEach(s => s.classList.remove('selected'));
@@ -427,9 +435,7 @@ async function loadModule2Tasks() {
     for (let task of currentTasks) {
         if (task.stage === '1' && task.correctAnswer !== null) {
             module1Total++;
-            if (task.userAnswer && task.userAnswer === task.correctAnswer) {
-                correctCount++;
-            }
+            if (task.userAnswer && task.userAnswer === task.correctAnswer) correctCount++;
         }
     }
 
@@ -443,9 +449,7 @@ async function loadModule2Tasks() {
             currentTasks = currentTasks.concat(module2Tasks);
             return true; 
         }
-    } catch(e) {
-        console.error("Error loading module 2:", e);
-    }
+    } catch(e) { console.error("Error loading module 2:", e); }
     return false; 
 }
 
@@ -456,39 +460,159 @@ function calculateTOEFLScore(correct, total) {
     return (Math.round(score * 2) / 2).toFixed(1);
 }
 
-function showResults() {
+async function nextTask() {
+    if (currentIndex < currentTasks.length - 1) {
+        currentIndex++;
+        renderEngine();
+    } else {
+        const isModule1Finished = !currentTasks.some(t => t.stage.startsWith('2'));
+        if (isModule1Finished) {
+            const loaded = await loadModule2Tasks();
+            if (loaded) {
+                currentIndex++;
+                renderEngine();
+                return;
+            }
+        }
+        saveAttemptAndFinish();
+    }
+}
+
+function prevTask() {
+    if (currentIndex > 0) {
+        currentIndex--;
+        renderEngine();
+    }
+}
+
+async function saveAttemptAndFinish() {
     clearInterval(timerInterval);
     
+    const engineContent = document.getElementById('engine-content');
+    engineContent.innerHTML = `<div class="m-auto flex flex-col items-center justify-center text-slate-500"><i data-lucide="loader-2" class="w-8 h-8 animate-spin mb-4 text-indigo-600"></i><p class="font-bold text-slate-700">Saving results to database...</p></div>`;
+    lucide.createIcons();
+
     let correctAnswers = 0;
     let totalQuestions = 0;
 
-    const modules = {};
-
-    currentTasks.forEach((task, index) => {
+    currentTasks.forEach((task) => {
         if (task.correctAnswer !== null && task.correctAnswer !== undefined) { 
             totalQuestions++;
             if (task.userAnswer === task.correctAnswer) correctAnswers++;
         }
-
-        let stageName = task.stage.startsWith('2') ? 'Module 2' : 'Module 1';
-        if (!modules[stageName]) modules[stageName] = [];
-
-        let pObj = modules[stageName].find(p => p.title === task.title && p.type === task.type);
-        if (!pObj) {
-            pObj = {
-                title: task.title,
-                type: task.type,
-                passage: task.passage,
-                layout: task.layout,
-                questions: []
-            };
-            modules[stageName].push(pObj);
-        }
-        pObj.questions.push({...task, globalIndex: index + 1});
     });
 
     const finalScore = calculateTOEFLScore(correctAnswers, totalQuestions);
 
+    try {
+        const { data: attempt, error: attemptErr } = await supabaseClient
+            .from('big_mock_attempts')
+            .insert([{ 
+                test_id: currentActiveTestId, 
+                section_name: 'reading', 
+                total_score: parseFloat(finalScore), 
+                status: 'completed',
+                completed_at: new Date().toISOString()
+            }])
+            .select()
+            .single();
+
+        if (attemptErr) throw attemptErr;
+
+        const answersToSave = currentTasks.map(task => {
+            let isCorrect = false;
+            let answerText = null;
+            let answerJson = { question: task.question }; // Сохраняем текст вопроса для точного матчинга при ревью
+
+            if (task.type === 'complete_words') {
+                answerJson.userWords = task.userWords;
+                answerJson.correctWords = task.correctWords;
+                isCorrect = task.userWords && task.correctWords && task.userWords.join(',').toLowerCase() === task.correctWords.join(',').toLowerCase();
+            } else {
+                answerText = task.userAnswer;
+                isCorrect = task.userAnswer === task.correctAnswer;
+            }
+
+            return {
+                attempt_id: attempt.id,
+                task_id: task.taskId || 0,
+                task_type: task.type,
+                answer_text: answerText,
+                answer_json: answerJson,
+                is_correct: isCorrect
+            };
+        });
+
+        const { error: answersErr } = await supabaseClient.from('big_mock_answers').insert(answersToSave);
+        if (answersErr) throw answersErr;
+
+        renderResultsUI(currentTasks, finalScore, correctAnswers, totalQuestions);
+
+    } catch(e) {
+        console.error("Error saving test:", e);
+        alert("Could not save results to database, but we will show your score.");
+        renderResultsUI(currentTasks, finalScore, correctAnswers, totalQuestions);
+    }
+}
+
+async function loadReviewMode(attemptId, testId, testTitle) {
+    document.getElementById('view-tests-grid').classList.add('hidden');
+    document.getElementById('main-interface').classList.add('hidden');
+
+    const resultsView = document.getElementById('results-view');
+    resultsView.classList.remove('hidden');
+    resultsView.className = 'fixed inset-0 z-50 bg-[#f8f9fa] flex flex-col w-screen h-screen overflow-hidden';
+    
+    resultsView.innerHTML = `<div class="m-auto flex flex-col items-center justify-center text-slate-500"><i data-lucide="loader-2" class="w-8 h-8 animate-spin mb-4 text-indigo-600"></i><p class="font-bold">Reconstructing your past attempt...</p></div>`;
+    lucide.createIcons();
+
+    try {
+        currentActiveTestId = testId;
+        document.getElementById('dynamic-test-title').innerText = testTitle;
+
+        const { data: attempt } = await supabaseClient.from('big_mock_attempts').select('*').eq('id', attemptId).single();
+        const { data: answers } = await supabaseClient.from('big_mock_answers').select('*').eq('attempt_id', attemptId);
+
+        const stage1 = await fetchAndParseTasks(testId, '1');
+        const stage2E = await fetchAndParseTasks(testId, '2_easy');
+        const stage2H = await fetchAndParseTasks(testId, '2_hard');
+
+        let reconstructedTasks = [...stage1];
+        const answerTaskIds = answers.map(a => a.task_id);
+        const tookEasy = stage2E.some(t => answerTaskIds.includes(t.taskId));
+        const tookHard = stage2H.some(t => answerTaskIds.includes(t.taskId));
+        
+        if (tookEasy) reconstructedTasks = reconstructedTasks.concat(stage2E);
+        if (tookHard) reconstructedTasks = reconstructedTasks.concat(stage2H);
+
+        let correctCount = 0;
+        let totalCount = 0;
+
+        reconstructedTasks.forEach(task => {
+            if (task.type === 'complete_words') {
+                let ans = answers.find(a => a.task_id === task.taskId && a.task_type === 'complete_words');
+                if (ans && ans.answer_json) task.userWords = ans.answer_json.userWords || [];
+            } else {
+                let ans = answers.find(a => a.task_id === task.taskId && a.answer_json && a.answer_json.question === task.question);
+                if (ans) task.userAnswer = ans.answer_text;
+            }
+
+            if (task.correctAnswer !== null && task.correctAnswer !== undefined) { 
+                totalCount++;
+                if (task.userAnswer === task.correctAnswer) correctCount++;
+            }
+        });
+
+        renderResultsUI(reconstructedTasks, attempt.total_score, correctCount, totalCount);
+
+    } catch (err) {
+        console.error("Error loading review:", err);
+        alert("Could not load review mode from database.");
+        closeResults();
+    }
+}
+
+function renderResultsUI(tasksArray, finalScore, correctAnswers, totalQuestions) {
     document.getElementById('exam-engine-view').classList.add('hidden');
     document.getElementById('exam-engine-view').classList.remove('flex');
     document.getElementById('main-interface').classList.add('hidden');
@@ -496,6 +620,20 @@ function showResults() {
     const resultsView = document.getElementById('results-view');
     resultsView.classList.remove('hidden');
     resultsView.className = 'fixed inset-0 z-50 bg-[#f8f9fa] flex flex-col w-screen h-screen overflow-hidden';
+
+    const modules = {};
+
+    tasksArray.forEach((task, index) => {
+        let stageName = task.stage.startsWith('2') ? 'Module 2' : 'Module 1';
+        if (!modules[stageName]) modules[stageName] = [];
+
+        let pObj = modules[stageName].find(p => p.title === task.title && p.type === task.type);
+        if (!pObj) {
+            pObj = { title: task.title, type: task.type, passage: task.passage, layout: task.layout, questions: [] };
+            modules[stageName].push(pObj);
+        }
+        pObj.questions.push({...task, globalIndex: index + 1});
+    });
 
     let blocksHtml = '';
 
@@ -518,90 +656,41 @@ function showResults() {
                                 <div class="p-4 rounded-xl border mb-3 ${isCorrect ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}">
                                     <div class="flex justify-between items-center mb-3">
                                         <span class="text-[11px] font-bold opacity-70 uppercase tracking-wider ${isCorrect ? 'text-green-800' : 'text-red-800'}">GAP ${i + 1}</span>
-                                        ${isCorrect 
-                                            ? '<div class="w-5 h-5 bg-green-500 text-white rounded-md flex items-center justify-center"><i data-lucide="check" class="w-3.5 h-3.5"></i></div>'
-                                            : '<div class="w-5 h-5 bg-red-500 text-white rounded-md flex items-center justify-center"><i data-lucide="x" class="w-3.5 h-3.5"></i></div>'
-                                        }
+                                        ${isCorrect ? '<div class="w-5 h-5 bg-green-500 text-white rounded-md flex items-center justify-center"><i data-lucide="check" class="w-3.5 h-3.5"></i></div>' : '<div class="w-5 h-5 bg-red-500 text-white rounded-md flex items-center justify-center"><i data-lucide="x" class="w-3.5 h-3.5"></i></div>'}
                                     </div>
                                     <div class="space-y-2">
                                         <div class="text-sm flex items-center"><span class="w-16 font-bold text-slate-400 text-[10px] uppercase tracking-wider">You:</span> <span class="font-mono ${isCorrect ? 'text-green-900 font-bold' : 'text-red-900 font-bold'} tracking-widest text-[15px]">${displayUserW}</span></div>
                                         ${!isCorrect ? `<div class="text-sm flex items-center"><span class="w-16 font-bold text-slate-400 text-[10px] uppercase tracking-wider">Correct:</span> <span class="font-mono text-slate-900 font-bold tracking-widest text-[15px]">${correctWord}</span></div>` : ''}
                                     </div>
-                                </div>
-                            `;
+                                </div>`;
                         });
                     }
 
-                    passageQuestionsHtml += `
-                        <div class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm mb-4">
-                            <div class="flex justify-between items-center mb-5">
-                                <span class="bg-indigo-500 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider flex items-center shadow-sm"><i data-lucide="puzzle" class="w-3 h-3 mr-1"></i> COMPLETE WORDS</span>
-                            </div>
-                            <h4 class="font-bold text-slate-900 mb-5 text-[15px]">Word Puzzle Breakdown</h4>
-                            <div class="space-y-1">
-                                ${wordsListHtml || '<div class="text-sm text-slate-500">No data available</div>'}
-                            </div>
-                        </div>
-                    `;
+                    passageQuestionsHtml += `<div class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm mb-4"><div class="flex justify-between items-center mb-5"><span class="bg-indigo-500 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider flex items-center shadow-sm"><i data-lucide="puzzle" class="w-3 h-3 mr-1"></i> COMPLETE WORDS</span></div><h4 class="font-bold text-slate-900 mb-5 text-[15px]">Word Puzzle Breakdown</h4><div class="space-y-1">${wordsListHtml || '<div class="text-sm text-slate-500">No data available</div>'}</div></div>`;
                     return;
                 }
 
                 let optionsHtml = '';
                 if (q.qType === 'Select a Sentence' || q.qType === 'Insert Text') {
                     let isCorrect = q.userAnswer === q.correctAnswer;
-                    optionsHtml = `
-                        <div class="p-4 rounded-xl border ${isCorrect ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}">
-                            <div class="text-[10px] uppercase tracking-wider font-bold mb-1 opacity-70">Your Answer:</div>
-                            <div class="text-sm mb-3 font-medium">${q.userAnswer || 'No answer'}</div>
-                            ${!isCorrect ? `
-                                <div class="text-[10px] uppercase tracking-wider font-bold mb-1 mt-3 opacity-70">Correct Answer:</div>
-                                <div class="text-sm font-medium">${q.correctAnswer}</div>
-                            ` : ''}
-                        </div>
-                    `;
+                    optionsHtml = `<div class="p-4 rounded-xl border ${isCorrect ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}"><div class="text-[10px] uppercase tracking-wider font-bold mb-1 opacity-70">Your Answer:</div><div class="text-sm mb-3 font-medium">${q.userAnswer || 'No answer'}</div>${!isCorrect ? `<div class="text-[10px] uppercase tracking-wider font-bold mb-1 mt-3 opacity-70">Correct Answer:</div><div class="text-sm font-medium">${q.correctAnswer}</div>` : ''}</div>`;
                 } else if (q.options) {
                     optionsHtml = q.options.map(opt => {
                         let isUserChoice = (q.userAnswer === opt);
                         let isCorrectChoice = (q.correctAnswer === opt);
-                        
                         let boxClass = "bg-white border-gray-200 text-slate-600";
                         let iconBox = '<div class="w-5 h-5 rounded-full border border-gray-300 mr-3 flex-shrink-0 bg-gray-50"></div>';
 
-                        if (isCorrectChoice && isUserChoice) {
-                            boxClass = "bg-green-50 border-green-400 text-green-900 shadow-sm";
-                            iconBox = `<div class="w-5 h-5 rounded bg-green-500 text-white flex items-center justify-center mr-3 flex-shrink-0"><i data-lucide="check" class="w-3.5 h-3.5"></i></div>`;
-                        } else if (isUserChoice && !isCorrectChoice) {
-                            boxClass = "bg-red-50 border-red-300 text-red-900 shadow-sm";
-                            iconBox = `<div class="w-5 h-5 rounded bg-red-500 text-white flex items-center justify-center mr-3 flex-shrink-0"><i data-lucide="x" class="w-3.5 h-3.5"></i></div>`;
-                        } else if (!isUserChoice && isCorrectChoice) {
-                            boxClass = "bg-green-50 border-green-400 text-green-900 shadow-sm";
-                            iconBox = `<div class="w-5 h-5 rounded bg-green-500 text-white flex items-center justify-center mr-3 flex-shrink-0"><i data-lucide="check" class="w-3.5 h-3.5"></i></div>`;
-                        }
+                        if (isCorrectChoice && isUserChoice) { boxClass = "bg-green-50 border-green-400 text-green-900 shadow-sm"; iconBox = `<div class="w-5 h-5 rounded bg-green-500 text-white flex items-center justify-center mr-3 flex-shrink-0"><i data-lucide="check" class="w-3.5 h-3.5"></i></div>`; }
+                        else if (isUserChoice && !isCorrectChoice) { boxClass = "bg-red-50 border-red-300 text-red-900 shadow-sm"; iconBox = `<div class="w-5 h-5 rounded bg-red-500 text-white flex items-center justify-center mr-3 flex-shrink-0"><i data-lucide="x" class="w-3.5 h-3.5"></i></div>`; }
+                        else if (!isUserChoice && isCorrectChoice) { boxClass = "bg-green-50 border-green-400 text-green-900 shadow-sm"; iconBox = `<div class="w-5 h-5 rounded bg-green-500 text-white flex items-center justify-center mr-3 flex-shrink-0"><i data-lucide="check" class="w-3.5 h-3.5"></i></div>`; }
 
-                        return `
-                            <div class="flex items-center p-3 border rounded-xl mb-2.5 ${boxClass} transition-colors">
-                                ${iconBox}
-                                <span class="text-sm font-medium">${opt}</span>
-                            </div>
-                        `;
+                        return `<div class="flex items-center p-3 border rounded-xl mb-2.5 ${boxClass} transition-colors">${iconBox}<span class="text-sm font-medium">${opt}</span></div>`;
                     }).join('');
                 }
 
                 let badgeLabel = q.qType ? q.qType.toUpperCase() : 'DETAIL';
-
-                passageQuestionsHtml += `
-                    <div class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm mb-4 relative overflow-hidden">
-                        <div class="flex justify-between items-center mb-5">
-                            <span class="bg-indigo-500 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider shadow-sm flex items-center"><i data-lucide="target" class="w-3 h-3 mr-1"></i> TYPE: ${badgeLabel}</span>
-                            <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Q${q.globalIndex}</span>
-                        </div>
-                        <h4 class="font-bold text-slate-900 mb-5 text-[15px] leading-relaxed">${q.question}</h4>
-                        <div class="space-y-1">
-                            ${optionsHtml}
-                        </div>
-                        ${q.explanation ? `<div class="mt-5 p-4 bg-amber-50 text-amber-900 text-sm rounded-xl border border-amber-100 leading-relaxed"><strong class="font-bold uppercase tracking-wider text-[10px] block mb-1.5 opacity-60">Explanation</strong> ${q.explanation}</div>` : ''}
-                    </div>
-                `;
+                passageQuestionsHtml += `<div class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm mb-4 relative overflow-hidden"><div class="flex justify-between items-center mb-5"><span class="bg-indigo-500 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider shadow-sm flex items-center"><i data-lucide="target" class="w-3 h-3 mr-1"></i> TYPE: ${badgeLabel}</span><span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Q${q.globalIndex}</span></div><h4 class="font-bold text-slate-900 mb-5 text-[15px] leading-relaxed">${q.question}</h4><div class="space-y-1">${optionsHtml}</div>${q.explanation ? `<div class="mt-5 p-4 bg-amber-50 text-amber-900 text-sm rounded-xl border border-amber-100 leading-relaxed"><strong class="font-bold uppercase tracking-wider text-[10px] block mb-1.5 opacity-60">Explanation</strong> ${q.explanation}</div>` : ''}</div>`;
             });
 
             let renderedPassage = '';
@@ -610,7 +699,6 @@ function showResults() {
             } else if (pObj.type === 'complete_words') {
                 let taskData = pObj.questions[0]; 
                 let reviewPassage = pObj.passage; 
-                
                 if (taskData && taskData.originalPassage && taskData.correctWords) {
                     let gapIdx = 0;
                     reviewPassage = taskData.originalPassage.replace(/(?:\[[a-zA-Z]\])+/g, (match) => {
@@ -620,40 +708,23 @@ function showResults() {
                         return simpleHtml;
                     });
                 }
-
-                renderedPassage = `
-                    <div class="bg-white p-8 rounded-2xl border border-gray-200 shadow-sm">
-                        <div class="text-slate-800 leading-loose text-sm">${reviewPassage}</div>
-                    </div>
-                `;
+                renderedPassage = `<div class="bg-white p-8 rounded-2xl border border-gray-200 shadow-sm"><div class="text-slate-800 leading-loose text-sm">${reviewPassage}</div></div>`;
             } else {
                 renderedPassage = `<div class="bg-white p-8 border border-gray-200 rounded-2xl shadow-sm text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">${pObj.passage}</div>`;
             }
             
             let passageTitle = pObj.type === 'academic' ? 'Academic Text' : (pObj.type === 'complete_words' ? 'Word Puzzle Text' : 'Reading Passage');
 
-            blocksHtml += `
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-16 items-start">
-                    <div class="space-y-4 lg:sticky lg:top-6">
-                        <h3 class="text-lg font-bold text-slate-900 bg-slate-100 px-4 py-2 rounded-xl inline-block">${passageTitle}: ${pObj.title}</h3>
-                        ${renderedPassage}
-                    </div>
-                    <div class="space-y-4">
-                        ${passageQuestionsHtml}
-                    </div>
-                </div>
-            `;
+            blocksHtml += `<div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-16 items-start"><div class="space-y-4 lg:sticky lg:top-6"><h3 class="text-lg font-bold text-slate-900 bg-slate-100 px-4 py-2 rounded-xl inline-block">${passageTitle}: ${pObj.title}</h3>${renderedPassage}</div><div class="space-y-4">${passageQuestionsHtml}</div></div>`;
         });
     });
 
     resultsView.innerHTML = `
         <div class="w-full h-full overflow-y-auto custom-scrollbar p-6 md:p-10 bg-[#f8f9fa]">
             <div class="max-w-7xl mx-auto">
-                
                 <div class="bg-white rounded-[2rem] p-8 border border-gray-100 shadow-sm text-center mb-10 relative overflow-hidden max-w-2xl mx-auto">
                     <div class="w-16 h-16 bg-yellow-50 text-yellow-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl shadow-inner">🏆</div>
                     <h2 class="text-2xl font-bold text-slate-900 mb-8">Review Mode</h2>
-                    
                     <div class="flex justify-center items-center mb-8">
                         <div class="px-8 text-center border-r border-gray-100">
                             <div class="text-6xl font-extrabold text-indigo-600 mb-2">${finalScore}</div>
@@ -664,26 +735,19 @@ function showResults() {
                             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">Raw Score</div>
                         </div>
                     </div>
-
                     <div class="flex justify-center space-x-3">
                         <button onclick="startExamEngine(currentActiveTestId, document.getElementById('dynamic-test-title').innerText)" class="px-6 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition shadow-md text-sm flex items-center">
-                            <i data-lucide="rotate-ccw" class="w-4 h-4 mr-2"></i> Try Again
+                            <i data-lucide="rotate-ccw" class="w-4 h-4 mr-2"></i> Retake Test
                         </button>
                         <button onclick="closeResults()" class="px-6 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition shadow-sm text-sm">
-                            Dashboard
+                            Back to Dashboard
                         </button>
                     </div>
                 </div>
-
                 <div class="flex items-center space-x-2 mb-8 text-yellow-500 justify-center">
-                    <i data-lucide="lightbulb" class="w-6 h-6"></i>
-                    <h3 class="text-xl font-bold text-slate-900">Review Answers & Explanations</h3>
+                    <i data-lucide="lightbulb" class="w-6 h-6"></i><h3 class="text-xl font-bold text-slate-900">Review Answers & Explanations</h3>
                 </div>
-
-                <div class="space-y-6">
-                    ${blocksHtml}
-                </div>
-                
+                <div class="space-y-6">${blocksHtml}</div>
             </div>
         </div>
     `;
@@ -694,32 +758,6 @@ function closeResults() {
     document.getElementById('results-view').classList.add('hidden');
     document.getElementById('results-view').classList.remove('flex');
     document.getElementById('main-interface').classList.remove('hidden');
-    loadTestsGrid();
-}
-
-async function nextTask() {
-    if (currentIndex < currentTasks.length - 1) {
-        currentIndex++;
-        renderEngine();
-    } else {
-        const isModule1Finished = !currentTasks.some(t => t.stage.startsWith('2'));
-        
-        if (isModule1Finished) {
-            const loaded = await loadModule2Tasks();
-            if (loaded) {
-                currentIndex++;
-                renderEngine();
-                return;
-            }
-        }
-        showResults();
-    }
-}
-
-function prevTask() {
-    if (currentIndex > 0) {
-        currentIndex--;
-        renderEngine();
-    }
+    loadTestsGrid(); 
 }
 
