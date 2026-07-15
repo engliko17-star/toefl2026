@@ -5,18 +5,94 @@ let listBlockIdx = 0;
 let listSubQIdx = 0; 
 let listPhase = 'audio'; // 'audio' или 'questions'
         
+// Новые переменные для поответочных таймеров
+let listQuestionTimerInterval = null;
+let listQuestionTimeRemaining = 0;
+
+// Совместимость с глобальной структурой (legacy)
 let listTimeRemaining = 0; 
-let listTimerInterval;
+let listTimerInterval = null;
+
 let listSelectedOption = null;
 let listUserAnswers = {}; 
 
 window.engineType = null; // Глобальный флаг для роутинга кнопок в tests.html
 
+// Вспомогательная функция определения длительности таймера по типу задания
+function getQuestionTimerDuration(block) {
+    if (!block || !block.block_type) return 20;
+    const type = block.block_type.toLowerCase();
+    
+    if (type === 'response' || type === 'conversation' || type === 'announcement') {
+        return 20; // 20 секунд на вопрос
+    } else if (type === 'academic') {
+        return 30; // 30 секунд на вопрос
+    }
+    return 20; // Значение по умолчанию
+}
+
+// Запуск поответочного таймера
+function startQuestionTimer(duration) {
+    stopQuestionTimer(); // Сбрасываем предыдущий интервал перед стартом нового
+    listQuestionTimeRemaining = duration;
+    
+    const display = document.getElementById('engine-timer');
+    const container = document.getElementById('engine-timer-container');
+    
+    if (container) {
+        container.classList.remove('hidden');
+        // Стандартный изумрудный стиль для таймера
+        container.className = "flex items-center space-x-1.5 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-4 py-1.5 rounded-lg";
+    }
+    
+    const updateDisplay = () => {
+        if (display) {
+            display.innerText = `${listQuestionTimeRemaining}s`;
+        }
+    };
+    updateDisplay();
+    
+    listQuestionTimerInterval = setInterval(() => {
+        listQuestionTimeRemaining--;
+        updateDisplay();
+        
+        // Когда остается 5 секунд или меньше - таймер становится красным и пульсирует
+        if (listQuestionTimeRemaining <= 5 && listQuestionTimeRemaining > 0) {
+            if (container) {
+                container.className = "flex items-center space-x-1.5 text-sm font-bold text-rose-600 bg-rose-50 border border-rose-100 px-4 py-1.5 rounded-lg animate-pulse";
+            }
+        }
+        
+        // Время вышло - автосабмит
+        if (listQuestionTimeRemaining <= 0) {
+            stopQuestionTimer();
+            handleTimerExpiration();
+        }
+    }, 1000);
+}
+
+// Остановка таймера и скрытие его контейнера
+function stopQuestionTimer() {
+    if (listQuestionTimerInterval) {
+        clearInterval(listQuestionTimerInterval);
+        listQuestionTimerInterval = null;
+    }
+    const container = document.getElementById('engine-timer-container');
+    if (container) {
+        container.classList.add('hidden');
+    }
+}
+
+// Обработка истечения таймера
+async function handleTimerExpiration() {
+    // Вызываем стандартный шаг перехода. Движок сам запишет текущий выбор (или null)
+    await handleListeningNextStep();
+}
+
 // 1. Сборка и парсинг структуры Listening
 async function fetchAndParseListeningTasks(testId, stageName) {
     let parsedBlocks = [];
     
-    // Получаем план из full_test_listening_tasks
     const { data: plan, error: planErr } = await supabaseClient
         .from('full_test_listening_tasks')
         .select('*')
@@ -29,7 +105,6 @@ async function fetchAndParseListeningTasks(testId, stageName) {
 
     for (let step of plan) {
         if (step.task_type === 'response') {
-            // Для Response task_id - это set_number в таблице listening_questions
             const { data: qData, error: qErr } = await supabaseClient
                 .from('listening_questions')
                 .select('*')
@@ -49,7 +124,6 @@ async function fetchAndParseListeningTasks(testId, stageName) {
                 });
             }
         } else {
-            // Для длинных текстов task_id - это id в таблице listening_tests
             const { data: taskData, error: taskErr } = await supabaseClient
                 .from('listening_tests')
                 .select('*')
@@ -91,7 +165,6 @@ async function startListeningEngine(testId, testTitle) {
     document.getElementById('exam-engine-view').classList.remove('hidden');
     document.getElementById('exam-engine-view').classList.add('flex');
     
-    // Скрываем кнопку Prev (в Listening нельзя возвращаться)
     document.getElementById('engine-prev').style.display = 'none';
 
     document.getElementById('engine-title').innerText = `Loading Listening Section...`;
@@ -107,7 +180,6 @@ async function startListeningEngine(testId, testTitle) {
     currentActiveTestId = testId;
     
     try {
-        // Загружаем только Stage 1
         listQueue = await fetchAndParseListeningTasks(testId, '1');
 
         if (listQueue.length === 0) {
@@ -122,9 +194,7 @@ async function startListeningEngine(testId, testTitle) {
         
         document.getElementById('engine-title').innerText = `Listening Section — ${testTitle}`;
         
-        // В TOEFL Listening дает около 36 минут
-        listTimeRemaining = 36 * 60;
-        startListeningTimer();
+        // Общий таймер на 36 минут отключен. Теперь всё управляется поответочными таймерами в renderListeningEngine()
         renderListeningEngine();
 
     } catch (err) {
@@ -134,34 +204,9 @@ async function startListeningEngine(testId, testTitle) {
     }
 }
 
+// Заглушка для обратной совместимости (если вызывается извне)
 function startListeningTimer() {
-    clearInterval(listTimerInterval);
-    const display = document.getElementById('engine-timer');
-    const container = document.getElementById('engine-timer-container');
-    
-    container.className = "flex items-center space-x-1.5 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-4 py-1.5 rounded-lg";
-    
-    const updateDisplay = () => {
-        let m = Math.floor(listTimeRemaining / 60);
-        let s = listTimeRemaining % 60;
-        display.innerText = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-    };
-    updateDisplay();
-    
-    listTimerInterval = setInterval(() => {
-        listTimeRemaining--;
-        updateDisplay();
-        
-        if (listTimeRemaining < 300 && listTimeRemaining > 0) {
-            container.className = "flex items-center space-x-1.5 text-sm font-bold text-rose-600 bg-rose-50 border border-rose-100 px-4 py-1.5 rounded-lg";
-        }
-        
-        if (listTimeRemaining <= 0) {
-            clearInterval(listTimerInterval);
-            alert("Time is up!");
-            saveListeningAttemptAndFinish();
-        }
-    }, 1000);
+    // Не выполняет действий, так как теперь используются точечные таймеры по вопросам
 }
 
 // 3. Рендеринг интерфейса
@@ -170,7 +215,7 @@ function renderListeningEngine() {
     const block = listQueue[listBlockIdx];
     listSelectedOption = null;
     
-    // Пересчет прогресса (только для визуального понимания)
+    // Пересчет прогресса
     let totalQ = listQueue.reduce((acc, b) => acc + b.questions.length, 0);
     let passedQ = 0;
     for(let i=0; i<listBlockIdx; i++) passedQ += listQueue[i].questions.length;
@@ -186,6 +231,9 @@ function renderListeningEngine() {
     const globalAudio = document.getElementById('globalAudio');
     globalAudio.pause(); globalAudio.onended = null; globalAudio.ontimeupdate = null;
 
+    // Сбрасываем любой активный таймер при перерисовке экрана
+    stopQuestionTimer();
+
     if (block.block_type === 'response') {
         const q = block.questions[listSubQIdx];
         contentDiv.innerHTML = getListResponseHTML(q, listSubQIdx, block.questions.length);
@@ -196,7 +244,10 @@ function renderListeningEngine() {
             initListStandardAudioLogic(block);
         } else {
             contentDiv.innerHTML = getListStandardQuestionsHTML(block, listSubQIdx);
-            // Если вопрос требует прослушивания фрагмента (replay), аудио логику можно расширить, но пока стандарт.
+            
+            // Старт таймера для стандартного вопроса (20 или 30 секунд в зависимости от типа)
+            const duration = getQuestionTimerDuration(block);
+            startQuestionTimer(duration);
         }
     }
     lucide.createIcons();
@@ -273,11 +324,16 @@ function initListResponseLogic(question) {
         if (prog && audioEl.duration) prog.style.width = `${(audioEl.currentTime / audioEl.duration) * 100}%`;
     };
 
+    // Запуск таймера ПОСЛЕ того, как закончится воспроизведение аудио-вопроса
     audioEl.onended = () => {
         setPlayIcon('play');
         optionsList.classList.remove('opacity-30', 'pointer-events-none');
         optionsList.classList.add('opacity-100');
         lucide.createIcons();
+        
+        // Запуск таймера на 20 секунд (тип block_type для Response — всегда 'response')
+        const duration = getQuestionTimerDuration(listQueue[listBlockIdx]);
+        startQuestionTimer(duration);
     };
     
     setTimeout(() => { audioEl.play().then(() => {setPlayIcon('pause'); lucide.createIcons();}).catch(e=>console.log(e)); }, 500);
@@ -317,7 +373,6 @@ function initListStandardAudioLogic(block) {
     audioEl.onended = () => {
         document.getElementById('engine-next').disabled = false;
         document.getElementById('engine-next').classList.add('animate-pulse');
-        // В реальном TOEFL переход происходит автоматически или по кнопке. Сделаем по кнопке.
     };
 
     setTimeout(() => { audioEl.play().catch(e => { console.log(e); document.getElementById('engine-next').disabled = false; }); }, 500);
@@ -360,6 +415,9 @@ function getListStandardQuestionsHTML(block, qIdx) {
 
 // 4. Логика маршрутизации и переходов
 async function handleListeningNextStep() {
+    // Останавливаем и скрываем таймер перед любыми дальнейшими действиями во избежание накладок
+    stopQuestionTimer();
+
     const block = listQueue[listBlockIdx];
     
     // Сохранение ответа
@@ -443,7 +501,8 @@ async function loadListeningStage2() {
 
 // 5. Финализация и сохранение
 async function saveListeningAttemptAndFinish() {
-    clearInterval(listTimerInterval);
+    stopQuestionTimer(); // На всякий случай гасим все таймеры при сохранении
+    
     document.getElementById('engine-content').innerHTML = `
         <div class="m-auto flex flex-col items-center justify-center text-slate-500">
             <i data-lucide="loader-2" class="w-10 h-10 animate-spin mb-4 text-emerald-600"></i>
@@ -526,7 +585,6 @@ async function loadListeningReviewMode(attemptId, testId, testTitle) {
         const { data: attempt } = await supabaseClient.from('big_mock_listening_attempts').select('*').eq('id', attemptId).single();
         const { data: answers } = await supabaseClient.from('big_mock_listening_answers').select('*').eq('attempt_id', attemptId);
 
-        // Тянем все возможные стадии, чтобы понять, какой путь был выбран
         const stage1 = await fetchAndParseListeningTasks(testId, '1');
         const stage2L = await fetchAndParseListeningTasks(testId, '2_lower');
         const stage2U = await fetchAndParseListeningTasks(testId, '2_upper');
@@ -600,7 +658,6 @@ function renderListeningReview(finalScore, correctAnswers, totalQuestions) {
             qsHTML += `<div class="bg-white p-6 rounded-2xl border border-slate-200/60 shadow-sm mb-6"><div class="flex justify-between items-start mb-2"><h4 class="font-bold text-slate-800 text-base leading-snug pr-4">${q.text || "Select the best response:"}</h4><div class="shrink-0 mt-1">${statusBadge}</div></div>${optionsHTML}${explanationHTML}</div>`;
         });
 
-        // Компоновка блока
         if (block.block_type === 'response') {
             blocksHtml += `<div class="mb-12 border-t border-slate-200 pt-8"><h3 class="text-sm font-extrabold text-emerald-900 mb-6 bg-emerald-50 inline-block px-4 py-2 rounded-lg uppercase tracking-wider">Section ${bIdx + 1}: Choose a Response</h3><div class="grid grid-cols-1 lg:grid-cols-2 gap-8">${qsHTML}</div></div>`;
         } else {
@@ -653,4 +710,3 @@ function renderListeningReview(finalScore, correctAnswers, totalQuestions) {
     `;
     lucide.createIcons();
 }
-
