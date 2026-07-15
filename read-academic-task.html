@@ -174,6 +174,7 @@
 
                 const urlParams = new URLSearchParams(window.location.search);
                 const taskId = urlParams.get('id');
+                const isReviewMode = urlParams.get('mode') === 'review';
 
                 if (!taskId) {
                     document.getElementById('passageTitle').innerText = "Error: No Test ID";
@@ -194,13 +195,20 @@
                     if (typeof currentTask.questions === 'string') {
                         currentTask.questions = JSON.parse(currentTask.questions);
                     }
-                    startTime = Date.now();
                     
-                    document.getElementById('quizContainer').classList.remove('hidden');
-                    topNavButtons.classList.remove('hidden');
-                    headerSeparator.classList.remove('hidden');
-                    
+                    // 1. Сначала подгружаем текст задания на страницу
                     initTask();
+
+                    // 2. В зависимости от режима либо загружаем результаты, либо запускаем тест
+                    if (isReviewMode) {
+                        await loadAndShowReview(taskId);
+                    } else {
+                        startTime = Date.now();
+                        document.getElementById('quizContainer').classList.remove('hidden');
+                        topNavButtons.classList.remove('hidden');
+                        headerSeparator.classList.remove('hidden');
+                        showQuestion(currentQuestionIdx);
+                    }
                 }
             } catch (err) {
                 console.error(err);
@@ -222,7 +230,7 @@
             document.getElementById('passageContent').innerHTML = parsedText;
 
             setupInteractiveClicks();
-            showQuestion(currentQuestionIdx);
+            // Убрали отсюда автоматический вызов showQuestion(currentQuestionIdx)
         }
 
         function setupInteractiveClicks() {
@@ -270,11 +278,11 @@
                 if (q.type === "Select a Sentence") {
                     passageContainer.classList.add('select-sentence-mode');
                     document.getElementById('instructionText').innerText = "Click directly on the sentence inside the left passage text to select your answer.";
-                    if (userAnswers[idx]) document.querySelector(`.clickable-sentence[data-id="${userAnswers[idx]}"]`)?.classList.add('selected');
+                    if (userAnswers[idx] !== undefined) document.querySelector(`.clickable-sentence[data-id="${userAnswers[idx]}"]`)?.classList.add('selected');
                 } else {
                     passageContainer.classList.add('insert-text-mode');
                     document.getElementById('instructionText').innerText = "Click on one of the squares [■] in the left passage to insert the sentence.";
-                    if (userAnswers[idx]) document.querySelector(`.insert-square[data-sq="${userAnswers[idx]}"]`)?.classList.add('selected');
+                    if (userAnswers[idx] !== undefined) document.querySelector(`.insert-square[data-sq="${userAnswers[idx]}"]`)?.classList.add('selected');
                 }
             } else {
                 instruction.classList.add('hidden');
@@ -348,36 +356,56 @@
             showQuestion(currentQuestionIdx);
         };
 
-        async function finishTest() {
-            if (userAnswers[currentQuestionIdx] === undefined) {
-                alert("Please select an answer for the final question!");
-                return;
+        // Загрузка сохранённого ранее результата из Supabase при режиме review
+        async function loadAndShowReview(taskId) {
+            let scoreEarned = 0;
+            let scoreTotal = currentTask.questions.length;
+
+            if (currentUser && db) {
+                try {
+                    const { data, error } = await db
+                        .from('reading_results')
+                        .select('score_earned, score_total')
+                        .eq('user_id', currentUser.id)
+                        .eq('task_id', parseInt(taskId))
+                        .eq('task_type', 'academic')
+                        .order('id', { ascending: false }) // На случай, если записей несколько, берем последнюю
+                        .limit(1)
+                        .maybeSingle();
+
+                    if (!error && data) {
+                        scoreEarned = data.score_earned;
+                        scoreTotal = data.score_total;
+                    }
+                } catch (err) {
+                    console.error("Error fetching results for review:", err);
+                }
             }
 
-            let score = 0;
-            let stats = {}; 
+            renderReviewUI(scoreEarned, scoreTotal);
+        }
+
+        // Вывод результатов и разбора ошибок
+        function renderReviewUI(scoreEarned, scoreTotal) {
             const explanationsList = document.getElementById('explanationsList');
             explanationsList.innerHTML = ''; 
 
-            const timeSpentSeconds = Math.round((Date.now() - startTime) / 1000);
+            // Включаем отображение квадратов для правильного рендеринга текста
+            document.body.classList.add('insert-text-mode');
+
+            // Проверяем, есть ли у нас детальные ответы пользователя (для режима прохождения в реальном времени)
+            const hasUserAnswers = Object.keys(userAnswers).length > 0;
 
             currentTask.questions.forEach((q, idx) => {
                 const userAns = userAnswers[idx];
-                const isCorrect = userAns === q.correct;
-                if (isCorrect) score++;
-
-                const qType = q.type || 'Detail';
-                if (!stats[qType]) stats[qType] = { earned: 0, total: 0 };
-                stats[qType].total += 1;
-                if (isCorrect) stats[qType].earned += 1;
+                const isCorrect = hasUserAnswers ? (userAns === q.correct) : true;
 
                 let optionsReviewHtml = '';
                 
                 if (q.type === "Select a Sentence" || q.type === "Insert Text") {
-                    
                     if (q.type === "Select a Sentence") {
                         document.querySelector(`.clickable-sentence[data-id="${q.correct}"]`)?.classList.add('review-correct');
-                        if (userAns && !isCorrect) {
+                        if (hasUserAnswers && userAns !== undefined && !isCorrect) {
                             document.querySelector(`.clickable-sentence[data-id="${userAns}"]`)?.classList.add('review-wrong');
                         }
                         optionsReviewHtml = `
@@ -385,15 +413,15 @@
                                 <div class="flex items-center p-2.5 rounded-lg text-[11px] bg-emerald-50 text-emerald-900 border border-emerald-200 font-medium">
                                     <i data-lucide="check" class="w-3.5 h-3.5 text-emerald-600 mr-2 shrink-0"></i> <span>Correct Answer: Sentence [s${q.correct}]</span>
                                 </div>
-                                ${!isCorrect ? `
+                                ${(hasUserAnswers && !isCorrect) ? `
                                 <div class="flex items-center p-2.5 rounded-lg text-[11px] bg-rose-50 text-rose-900 border border-rose-200 line-through">
-                                    <i data-lucide="x" class="w-3.5 h-3.5 text-rose-600 mr-2 shrink-0"></i> <span>Your Selection: Sentence [s${userAns || 'None'}]</span>
+                                    <i data-lucide="x" class="w-3.5 h-3.5 text-rose-600 mr-2 shrink-0"></i> <span>Your Selection: Sentence [s${userAns !== undefined ? userAns : 'None'}]</span>
                                 </div>` : ''}
                             </div>
                         `;
                     } else {
                         document.querySelector(`.insert-square[data-sq="${q.correct}"]`)?.classList.add('review-square-correct');
-                        if (userAns && !isCorrect) {
+                        if (hasUserAnswers && userAns !== undefined && !isCorrect) {
                             document.querySelector(`.insert-square[data-sq="${userAns}"]`)?.classList.add('review-square-wrong');
                         }
                         [1, 2, 3, 4].forEach(sqNum => {
@@ -403,7 +431,7 @@
                             if (sqNum === q.correct) {
                                 bgStyle = 'bg-emerald-50 text-emerald-900 border border-emerald-200 font-medium';
                                 icon = '<i data-lucide="check" class="w-3.5 h-3.5 text-emerald-600 mr-2 shrink-0"></i>';
-                            } else if (sqNum === userAns) {
+                            } else if (hasUserAnswers && sqNum === userAns) {
                                 bgStyle = 'bg-rose-50 text-rose-900 border border-rose-200 line-through';
                                 icon = '<i data-lucide="x" class="w-3.5 h-3.5 text-rose-600 mr-2 shrink-0"></i>';
                             }
@@ -423,7 +451,7 @@
                             if (i === q.correct) {
                                 bgStyle = 'bg-emerald-50 text-emerald-900 border border-emerald-200 font-medium';
                                 icon = '<i data-lucide="check" class="w-3.5 h-3.5 text-emerald-600 mr-2 shrink-0"></i>';
-                            } else if (i === userAns) {
+                            } else if (hasUserAnswers && i === userAns) {
                                 bgStyle = 'bg-rose-50 text-rose-900 border border-rose-200 line-through';
                                 icon = '<i data-lucide="x" class="w-3.5 h-3.5 text-rose-600 mr-2 shrink-0"></i>';
                             }
@@ -438,12 +466,18 @@
                 }
 
                 const questionContent = q.question || q.text || '';
+                const qType = q.type || 'Detail';
                 
+                // Стиль статуса карточки вопроса (в зависимости от наличия ответов пользователя)
+                const statusLabel = hasUserAnswers ? (isCorrect ? 'Correct' : 'Incorrect') : 'Practice Question';
+                const statusColorClass = hasUserAnswers ? (isCorrect ? 'text-emerald-600' : 'text-rose-600') : 'text-indigo-600';
+                const cardBorderClass = hasUserAnswers ? (isCorrect ? 'border-emerald-100' : 'border-rose-100') : 'border-slate-100';
+
                 const qCard = `
-                    <div class="bg-white rounded-2xl border ${isCorrect ? 'border-emerald-100' : 'border-rose-100'} p-5 shadow-xs">
+                    <div class="bg-white rounded-2xl border ${cardBorderClass} p-5 shadow-xs">
                         <div class="flex items-center justify-between mb-3">
-                            <span class="text-[10px] font-bold ${isCorrect ? 'text-emerald-600' : 'text-rose-600'} uppercase tracking-wider">
-                                Question ${idx + 1} — ${isCorrect ? 'Correct' : 'Incorrect'}
+                            <span class="text-[10px] font-bold ${statusColorClass} uppercase tracking-wider">
+                                Question ${idx + 1} — ${statusLabel}
                             </span>
                             <span class="text-[9px] px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md font-medium uppercase">${qType}</span>
                         </div>
@@ -464,8 +498,40 @@
                 explanationsList.innerHTML += qCard;
             });
 
-            document.body.classList.add('insert-text-mode');
-            const scorePercent = Math.round((score / currentTask.questions.length) * 100);
+            const scorePercent = Math.round((scoreEarned / scoreTotal) * 100);
+
+            document.getElementById('quizContainer').classList.add('hidden');
+            document.getElementById('resultsContainer').classList.remove('hidden');
+            
+            topNavButtons.classList.add('hidden');
+            headerSeparator.classList.add('hidden');
+
+            document.getElementById('finalScorePercent').innerText = `${scorePercent}%`;
+            document.getElementById('finalScoreRaw').innerText = `${scoreEarned} / ${scoreTotal}`;
+            
+            lucide.createIcons();
+        }
+
+        async function finishTest() {
+            if (userAnswers[currentQuestionIdx] === undefined) {
+                alert("Please select an answer for the final question!");
+                return;
+            }
+
+            let score = 0;
+            let stats = {}; 
+            const timeSpentSeconds = Math.round((Date.now() - startTime) / 1000);
+
+            currentTask.questions.forEach((q, idx) => {
+                const userAns = userAnswers[idx];
+                const isCorrect = userAns === q.correct;
+                if (isCorrect) score++;
+
+                const qType = q.type || 'Detail';
+                if (!stats[qType]) stats[qType] = { earned: 0, total: 0 };
+                stats[qType].total += 1;
+                if (isCorrect) stats[qType].earned += 1;
+            });
 
             if (currentUser && db) {
                 try {
@@ -480,6 +546,9 @@
                                 score_total: currentTask.questions.length,
                                 time_spent_seconds: timeSpentSeconds,
                                 category_stats: stats 
+                                // Примечание: Если в таблице Supabase появится колонка "user_answers" (JSONB),
+                                // вы сможете сохранять индивидуальные ответы пользователя:
+                                // user_answers: userAnswers
                             }
                         ]);
 
@@ -489,16 +558,8 @@
                 }
             }
 
-            document.getElementById('quizContainer').classList.add('hidden');
-            document.getElementById('resultsContainer').classList.remove('hidden');
-            
-            topNavButtons.classList.add('hidden');
-            headerSeparator.classList.add('hidden');
-
-            document.getElementById('finalScorePercent').innerText = `${scorePercent}%`;
-            document.getElementById('finalScoreRaw').innerText = `${score} / ${currentTask.questions.length}`;
-            
-            lucide.createIcons();
+            // Рендерим UI разбора на основе текущего прохождения
+            renderReviewUI(score, currentTask.questions.length);
         }
     </script>
 </body>
