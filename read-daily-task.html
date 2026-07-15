@@ -284,18 +284,25 @@
                         const { data: resData, error: resError } = await db
                             .from('reading_results')
                             .select('user_answers')
-                            .eq('task_id', taskId)
+                            .eq('task_id', parseInt(taskId)) 
                             .eq('task_type', 'daily')
                             .eq('user_id', currentUser.id)
                             .order('created_at', { ascending: false })
                             .limit(1);
 
                         if (!resError && resData && resData.length > 0) {
-                            userAnswers = resData[0].user_answers || {};
+                            const rawAnswers = resData[0].user_answers;
+                            userAnswers = typeof rawAnswers === 'string' ? JSON.parse(rawAnswers) : (rawAnswers || {});
                         }
                         
                         renderTask();
-                        processResults(true); // Запускаем процессинг результатов без записи в БД
+                        
+                        try {
+                            processResults(true); 
+                        } catch (err) {
+                            console.error("Ошибка при рендере результатов:", err);
+                            alert("Не удалось загрузить ответы для проверки.");
+                        }
                     } else {
                         startTime = Date.now(); 
                         renderTask();
@@ -382,10 +389,8 @@
         };
 
         async function processResults(isReviewOnly = false) {
-            const timeSpentSeconds = Math.round((Date.now() - startTime) / 1000);
             
             let correctCount = 0;
-            let categoryStats = {}; 
             explanationsList.innerHTML = ''; 
 
             currentTask.questions.forEach((q, idx) => {
@@ -394,9 +399,6 @@
                 if (isCorrect) correctCount++;
 
                 const qType = q.type || 'Detail';
-                if (!categoryStats[qType]) categoryStats[qType] = { earned: 0, total: 0 };
-                categoryStats[qType].total += 1;
-                if (isCorrect) categoryStats[qType].earned += 1;
 
                 let optionsReviewHtml = '';
                 q.options.forEach((option, i) => {
@@ -456,21 +458,24 @@
                             task_type: 'daily',
                             score_earned: correctCount,
                             score_total: currentTask.questions.length,
-                            time_spent_seconds: timeSpentSeconds, 
-                            category_stats: categoryStats,
                             user_answers: userAnswers
                         }]);
                     
                     if (error) {
                         console.error("Ошибка сохранения в базу:", error);
+                        alert("Тест не сохранился! Ошибка БД: " + error.message);
                     }
                 } catch (err) {
                     console.error("Сбой сети/базы:", err);
+                    alert("Сбой сети: не удалось сохранить результаты.");
                 }
             }
 
             // Настройка UI для результатов
+            quizContainer.classList.remove('flex', 'flex-col', 'flex-1');
             quizContainer.classList.add('hidden');
+            quizContainer.style.display = 'none';
+            
             resultsContainer.classList.remove('hidden');
             topNavButtons.classList.add('hidden');
             headerSeparator.classList.add('hidden');
