@@ -3,7 +3,7 @@
 let listQueue = []; 
 let listBlockIdx = 0; 
 let listSubQIdx = 0; 
-let listPhase = 'audio'; // 'audio' или 'questions'
+let listPhase = 'audio'; // 'audio', 'questions' или 'transition'
         
 // Новые переменные для поответочных таймеров
 let listQuestionTimerInterval = null;
@@ -85,7 +85,6 @@ function stopQuestionTimer() {
 
 // Обработка истечения таймера
 async function handleTimerExpiration() {
-    // Вызываем стандартный шаг перехода. Движок сам запишет текущий выбор (или null)
     await handleListeningNextStep();
 }
 
@@ -158,8 +157,12 @@ async function fetchAndParseListeningTasks(testId, stageName) {
 // 2. Старт движка
 async function startListeningEngine(testId, testTitle) {
     window.engineType = 'listening';
-    document.getElementById('results-view').classList.add('hidden');
-    document.getElementById('results-view').classList.remove('flex');
+    
+    const resultsView = document.getElementById('results-view');
+    if (resultsView) {
+        resultsView.classList.add('hidden');
+        resultsView.classList.remove('flex');
+    }
 
     document.getElementById('main-interface').classList.add('hidden');
     document.getElementById('exam-engine-view').classList.remove('hidden');
@@ -194,7 +197,6 @@ async function startListeningEngine(testId, testTitle) {
         
         document.getElementById('engine-title').innerText = `Listening Section — ${testTitle}`;
         
-        // Общий таймер на 36 минут отключен. Теперь всё управляется поответочными таймерами в renderListeningEngine()
         renderListeningEngine();
 
     } catch (err) {
@@ -204,10 +206,14 @@ async function startListeningEngine(testId, testTitle) {
     }
 }
 
-// Заглушка для обратной совместимости (если вызывается извне)
-function startListeningTimer() {
-    // Не выполняет действий, так как теперь используются точечные таймеры по вопросам
-}
+// Заглушка для обратной совместимости
+function startListeningTimer() {}
+
+// Глобальная функция для кнопки экрана перехода к Module 2
+window.startModuleTwo = function() {
+    listPhase = listQueue[listBlockIdx].block_type === 'response' ? 'questions' : 'audio';
+    renderListeningEngine();
+};
 
 // 3. Рендеринг интерфейса
 function renderListeningEngine() {
@@ -229,10 +235,38 @@ function renderListeningEngine() {
     nextBtn.innerHTML = 'Next <i data-lucide="chevron-right" class="w-4 h-4 ml-1"></i>';
 
     const globalAudio = document.getElementById('globalAudio');
-    globalAudio.pause(); globalAudio.onended = null; globalAudio.ontimeupdate = null;
+    if (globalAudio) {
+        globalAudio.pause(); 
+        globalAudio.onended = null; 
+        globalAudio.ontimeupdate = null;
+    }
 
     // Сбрасываем любой активный таймер при перерисовке экрана
     stopQuestionTimer();
+
+    // Экран перехода между модулями (Intermission)
+    if (listPhase === 'transition') {
+        contentDiv.innerHTML = `
+            <div class="flex-1 flex flex-col items-center justify-center fade-in h-full p-8 w-full">
+                <div class="bg-white p-10 rounded-[2rem] border border-slate-200/60 w-full max-w-lg text-center shadow-sm">
+                    <div class="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+                        <i data-lucide="check-circle" class="w-8 h-8"></i>
+                    </div>
+                    <h2 class="text-2xl font-bold text-slate-900 mb-3">Module 1 Completed</h2>
+                    <p class="text-slate-500 mb-8 font-medium text-sm">The system has analyzed your responses and prepared the adaptive module.</p>
+                    <button onclick="startModuleTwo()" class="px-8 py-3.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-emerald-600 transition shadow-md w-full flex items-center justify-center cursor-pointer">
+                        Start Module 2 <i data-lucide="arrow-right" class="w-5 h-5 ml-2"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+        document.getElementById('engine-progress').innerText = "Module 2 Ready";
+        nextBtn.style.display = 'none';
+        lucide.createIcons();
+        return;
+    } else {
+        nextBtn.style.display = 'flex';
+    }
 
     if (block.block_type === 'response') {
         const q = block.questions[listSubQIdx];
@@ -245,7 +279,6 @@ function renderListeningEngine() {
         } else {
             contentDiv.innerHTML = getListStandardQuestionsHTML(block, listSubQIdx);
             
-            // Старт таймера для стандартного вопроса (20 или 30 секунд в зависимости от типа)
             const duration = getQuestionTimerDuration(block);
             startQuestionTimer(duration);
         }
@@ -296,7 +329,7 @@ function initListResponseLogic(question) {
     optionsList.innerHTML = '';
     question.options.forEach((optText, i) => {
         const btn = document.createElement('button');
-        btn.className = 'w-full text-left p-4 rounded-xl border-2 border-gray-100 bg-white hover:border-emerald-200 hover:bg-emerald-50/50 transition-all text-sm font-medium text-slate-700 flex items-center group shadow-xs';
+        btn.className = 'w-full text-left p-4 rounded-xl border-2 border-gray-100 bg-white hover:border-emerald-200 hover:bg-emerald-50/50 transition-all text-sm font-medium text-slate-700 flex items-center group shadow-xs cursor-pointer';
         btn.innerHTML = `<div class="w-5 h-5 rounded-full border-2 border-gray-200 mr-3 flex items-center justify-center group-hover:border-emerald-400 option-circle shrink-0"><div class="w-2.5 h-2.5 rounded-full bg-emerald-500 opacity-0 scale-50 transition-all option-dot"></div></div><span>${optText}</span>`;
         btn.onclick = () => {
             listSelectedOption = i;
@@ -324,14 +357,12 @@ function initListResponseLogic(question) {
         if (prog && audioEl.duration) prog.style.width = `${(audioEl.currentTime / audioEl.duration) * 100}%`;
     };
 
-    // Запуск таймера ПОСЛЕ того, как закончится воспроизведение аудио-вопроса
     audioEl.onended = () => {
         setPlayIcon('play');
         optionsList.classList.remove('opacity-30', 'pointer-events-none');
         optionsList.classList.add('opacity-100');
         lucide.createIcons();
         
-        // Запуск таймера на 20 секунд (тип block_type для Response — всегда 'response')
         const duration = getQuestionTimerDuration(listQueue[listBlockIdx]);
         startQuestionTimer(duration);
     };
@@ -370,9 +401,16 @@ function initListStandardAudioLogic(block) {
         if (prog && audioEl.duration) prog.style.width = `${(audioEl.currentTime / audioEl.duration) * 100}%`;
     };
 
+    // АВТО-ПЕРЕХОД: Как только аудио закончилось, ждем 1.5 сек и переходим к вопросам
     audioEl.onended = () => {
-        document.getElementById('engine-next').disabled = false;
-        document.getElementById('engine-next').classList.add('animate-pulse');
+        const nextBtn = document.getElementById('engine-next');
+        nextBtn.disabled = true;
+        nextBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin mr-1"></i> Loading questions...';
+        lucide.createIcons();
+        
+        setTimeout(() => {
+            handleListeningNextStep();
+        }, 1500);
     };
 
     setTimeout(() => { audioEl.play().catch(e => { console.log(e); document.getElementById('engine-next').disabled = false; }); }, 500);
@@ -415,7 +453,6 @@ function getListStandardQuestionsHTML(block, qIdx) {
 
 // 4. Логика маршрутизации и переходов
 async function handleListeningNextStep() {
-    // Останавливаем и скрываем таймер перед любыми дальнейшими действиями во избежание накладок
     stopQuestionTimer();
 
     const block = listQueue[listBlockIdx];
@@ -450,10 +487,28 @@ async function handleListeningNextStep() {
     if (listBlockIdx < listQueue.length - 1) {
         listBlockIdx++;
         listSubQIdx = 0;
+        
+        // Проверяем, закончили ли мы Stage 1 перед переходом к блокам Stage 2
+        const isStage1Finished = !listQueue.some(t => t.stage.startsWith('2')) && listQueue[listBlockIdx].stage.startsWith('2');
+        
+        if (isStage1Finished || listPhase === 'transition_trigger') {
+            // Этот блок срабатывает если переходим на 2 этап
+        }
+
+        // Проверяем смену с Stage 1 на Stage 2 специально через заставку
+        const prevBlockStage = listQueue[listBlockIdx - 1]?.stage;
+        const currentBlockStage = listQueue[listBlockIdx]?.stage;
+        
+        if (prevBlockStage === '1' && currentBlockStage && currentBlockStage.startsWith('2')) {
+            listPhase = 'transition';
+            renderListeningEngine();
+            return;
+        }
+
         listPhase = listQueue[listBlockIdx].block_type === 'response' ? 'questions' : 'audio';
         renderListeningEngine();
     } else {
-        // Проверяем, закончили ли мы Stage 1
+        // Проверяем, закончили ли мы Stage 1 (если после него больше нет элементов в очереди)
         const isStage1Finished = !listQueue.some(t => t.stage.startsWith('2'));
         if (isStage1Finished) {
             document.getElementById('engine-next').innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin mr-1"></i> Adapting...';
@@ -461,7 +516,7 @@ async function handleListeningNextStep() {
             if (loaded) {
                 listBlockIdx++;
                 listSubQIdx = 0;
-                listPhase = listQueue[listBlockIdx].block_type === 'response' ? 'questions' : 'audio';
+                listPhase = 'transition'; // Показываем экран-заставку перед Module 2
                 renderListeningEngine();
                 return;
             }
@@ -475,7 +530,6 @@ async function loadListeningStage2() {
     let correctCount = 0;
     let totalStage1 = 0;
 
-    // Подсчет баллов 1 этапа для роутинга
     for (let block of listQueue) {
         if (block.stage === '1') {
             for (let q of block.questions) {
@@ -486,7 +540,7 @@ async function loadListeningStage2() {
         }
     }
 
-    const threshold = 0.50; // 50% порог для перехода на сложный модуль
+    const threshold = 0.50; 
     const nextStage = (totalStage1 > 0 && (correctCount / totalStage1 >= threshold)) ? '2_upper' : '2_lower';
     
     try {
@@ -501,7 +555,7 @@ async function loadListeningStage2() {
 
 // 5. Финализация и сохранение
 async function saveListeningAttemptAndFinish() {
-    stopQuestionTimer(); // На всякий случай гасим все таймеры при сохранении
+    stopQuestionTimer(); 
     
     document.getElementById('engine-content').innerHTML = `
         <div class="m-auto flex flex-col items-center justify-center text-slate-500">
@@ -522,44 +576,46 @@ async function saveListeningAttemptAndFinish() {
         });
     });
 
-    // Шкала TOEFL Listening от 1.0 до 6.0 с шагом 0.5 (округление в пользу ученика)
     let proportionalScore = totalQuestions > 0 ? (1.0 + (correctAnswers / totalQuestions) * 5.0) : 1.0;
     let finalCalculatedScore = Math.min(Math.ceil(proportionalScore * 2) / 2, 6.0);
 
     try {
-        const { data: { session } } = await db.auth.getSession();
-        if (session?.user) {
-            const { data: attempt, error: attemptErr } = await supabaseClient
-                .from('big_mock_listening_attempts')
-                .insert([{ 
-                    test_id: currentActiveTestId, 
-                    user_id: session.user.id,
-                    total_score: finalCalculatedScore, 
-                    score_earned: correctAnswers,
-                    score_total: totalQuestions,
-                    status: 'completed',
-                    completed_at: new Date().toISOString()
-                }])
-                .select()
-                .single();
+        const client = window.supabaseClient || window.supabase || window.db || (typeof supabase !== 'undefined' ? supabase : null);
+        if (client) {
+            const { data: { session } } = await client.auth.getSession();
+            if (session?.user) {
+                const { data: attempt, error: attemptErr } = await client
+                    .from('big_mock_listening_attempts')
+                    .insert([{ 
+                        test_id: currentActiveTestId, 
+                        user_id: session.user.id,
+                        total_score: finalCalculatedScore, 
+                        score_earned: correctAnswers,
+                        score_total: totalQuestions,
+                        status: 'completed',
+                        completed_at: new Date().toISOString()
+                    }])
+                    .select()
+                    .single();
 
-            if (attemptErr) throw attemptErr;
+                if (attemptErr) throw attemptErr;
 
-            const answersToSave = listQueue.flatMap(block => {
-                return block.questions.map(q => {
-                    return {
-                        attempt_id: attempt.id,
-                        task_id: block.db_id,
-                        task_type: block.block_type,
-                        answer_json: { question_id: q.id, unique_id: q.uniqueId, question_text: q.text },
-                        user_choice_index: listUserAnswers[q.uniqueId] !== undefined ? listUserAnswers[q.uniqueId] : null,
-                        is_correct: listUserAnswers[q.uniqueId] === (q.correct_index !== undefined ? q.correct_index : q.correct_answer)
-                    };
+                const answersToSave = listQueue.flatMap(block => {
+                    return block.questions.map(q => {
+                        return {
+                            attempt_id: attempt.id,
+                            task_id: block.db_id,
+                            task_type: block.block_type,
+                            answer_json: { question_id: q.id, unique_id: q.uniqueId, question_text: q.text },
+                            user_choice_index: listUserAnswers[q.uniqueId] !== undefined ? listUserAnswers[q.uniqueId] : null,
+                            is_correct: listUserAnswers[q.uniqueId] === (q.correct_index !== undefined ? q.correct_index : q.correct_answer)
+                        };
+                    });
                 });
-            });
 
-            const { error: answersErr } = await supabaseClient.from('big_mock_listening_answers').insert(answersToSave);
-            if (answersErr) throw answersErr;
+                const { error: answersErr } = await client.from('big_mock_listening_answers').insert(answersToSave);
+                if (answersErr) throw answersErr;
+            }
         }
     } catch(e) {
         console.error("Error saving Listening test:", e);
@@ -568,11 +624,48 @@ async function saveListeningAttemptAndFinish() {
     renderListeningReview(finalCalculatedScore, correctAnswers, totalQuestions);
 }
 
-// 6. Режим Ревью
+// 6. Выход в дашборд с перезагрузкой
+window.exitExamEngine = function() {
+    stopQuestionTimer();
+    
+    const globalAudio = document.getElementById('globalAudio');
+    if (globalAudio) {
+        globalAudio.pause();
+        globalAudio.src = '';
+        globalAudio.onended = null;
+        globalAudio.ontimeupdate = null;
+    }
+
+    const examView = document.getElementById('exam-engine-view');
+    if (examView) {
+        examView.classList.add('hidden');
+        examView.classList.remove('flex');
+    }
+
+    const resultsView = document.getElementById('results-view');
+    if (resultsView) {
+        resultsView.classList.add('hidden');
+        resultsView.classList.remove('flex');
+    }
+
+    const mainInterface = document.getElementById('main-interface');
+    if (mainInterface) {
+        mainInterface.classList.remove('hidden');
+    }
+    
+    // Перезагружаем страницу чтобы карточки тестов подтянули свежие статусы и результаты
+    location.reload(); 
+};
+
+// 7. Режим Ревью
 async function loadListeningReviewMode(attemptId, testId, testTitle) {
     window.engineType = 'listening';
-    document.getElementById('view-tests-grid').classList.add('hidden');
-    document.getElementById('main-interface').classList.add('hidden');
+    
+    const grid = document.getElementById('view-tests-grid');
+    if (grid) grid.classList.add('hidden');
+    
+    const mainInterface = document.getElementById('main-interface');
+    if (mainInterface) mainInterface.classList.add('hidden');
 
     const resultsView = document.getElementById('results-view');
     resultsView.classList.remove('hidden');
@@ -582,8 +675,9 @@ async function loadListeningReviewMode(attemptId, testId, testTitle) {
 
     try {
         currentActiveTestId = testId;
-        const { data: attempt } = await supabaseClient.from('big_mock_listening_attempts').select('*').eq('id', attemptId).single();
-        const { data: answers } = await supabaseClient.from('big_mock_listening_answers').select('*').eq('attempt_id', attemptId);
+        const client = window.supabaseClient || window.supabase || window.db;
+        const { data: attempt } = await client.from('big_mock_listening_attempts').select('*').eq('id', attemptId).single();
+        const { data: answers } = await client.from('big_mock_listening_answers').select('*').eq('attempt_id', attemptId);
 
         const stage1 = await fetchAndParseListeningTasks(testId, '1');
         const stage2L = await fetchAndParseListeningTasks(testId, '2_lower');
@@ -615,9 +709,14 @@ async function loadListeningReviewMode(attemptId, testId, testTitle) {
 }
 
 function renderListeningReview(finalScore, correctAnswers, totalQuestions) {
-    document.getElementById('exam-engine-view').classList.add('hidden');
-    document.getElementById('exam-engine-view').classList.remove('flex');
-    document.getElementById('main-interface').classList.add('hidden');
+    const examView = document.getElementById('exam-engine-view');
+    if (examView) {
+        examView.classList.add('hidden');
+        examView.classList.remove('flex');
+    }
+    
+    const mainInterface = document.getElementById('main-interface');
+    if (mainInterface) mainInterface.classList.add('hidden');
     
     const resultsView = document.getElementById('results-view');
     resultsView.classList.remove('hidden');
@@ -696,10 +795,10 @@ function renderListeningReview(finalScore, correctAnswers, totalQuestions) {
                         </div>
                     </div>
                     <div class="flex justify-center space-x-3">
-                        <button onclick="startListeningEngine(currentActiveTestId, document.getElementById('dynamic-test-title').innerText)" class="px-6 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-emerald-600 transition shadow-md text-sm flex items-center">
+                        <button onclick="startListeningEngine(currentActiveTestId, document.getElementById('dynamic-test-title').innerText)" class="px-6 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-emerald-600 transition shadow-md text-sm flex items-center cursor-pointer">
                             <i data-lucide="rotate-ccw" class="w-4 h-4 mr-2"></i> Retake Listening
                         </button>
-                        <button onclick="exitExamEngine()" class="px-6 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition shadow-sm text-sm">
+                        <button onclick="exitExamEngine()" class="px-6 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition shadow-sm text-sm cursor-pointer">
                             Back to Dashboard
                         </button>
                     </div>
@@ -710,3 +809,4 @@ function renderListeningReview(finalScore, correctAnswers, totalQuestions) {
     `;
     lucide.createIcons();
 }
+
