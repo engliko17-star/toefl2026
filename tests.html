@@ -130,10 +130,10 @@
                 </div>
                 <span class="text-gray-300 block">|</span>
                 <div class="flex items-center space-x-3">
-                    <button id="engine-prev" onclick="if(window.engineType==='reading') prevTask();" class="px-5 py-2 rounded-lg border border-gray-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 disabled:opacity-30 transition flex items-center shadow-xs">
+                    <button id="engine-prev" onclick="globalPrev()" class="px-5 py-2 rounded-lg border border-gray-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 disabled:opacity-30 transition flex items-center shadow-xs">
                         <i data-lucide="chevron-left" class="w-4 h-4 mr-1"></i> Back
                     </button>
-                    <button id="engine-next" onclick="window.engineType==='reading' ? nextTask() : handleListeningNextStep()" class="px-6 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center shadow-xs">
+                    <button id="engine-next" onclick="globalNext()" class="px-6 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center shadow-xs">
                         Next <i data-lucide="chevron-right" class="w-4 h-4 ml-1"></i>
                     </button>
                 </div>
@@ -150,6 +150,23 @@
     <script src="listening-engine.js"></script>
 
     <script>
+        // ГЛОБАЛЬНЫЙ РОУТЕР
+        function globalNext() {
+            if (window.engineType === 'reading') {
+                if (typeof nextTask === 'function') nextTask();
+            } else if (window.engineType === 'listening') {
+                if (typeof handleListeningNextStep === 'function') handleListeningNextStep();
+            }
+        }
+
+        function globalPrev() {
+            if (window.engineType === 'reading') {
+                if (typeof prevTask === 'function') prevTask();
+            } else if (window.engineType === 'listening') {
+                if (typeof handleListeningPrevStep === 'function') handleListeningPrevStep();
+            }
+        }
+
         // Переопределяем функции из движков, чтобы объединить логику
         async function loadTestsGrid() {
             const container = document.getElementById('tests-container');
@@ -253,19 +270,25 @@
         }
 
         function exitExamEngine() {
-            if(window.engineType === 'listening') {
-                clearInterval(listTimerInterval);
-                const globalAudio = document.getElementById('globalAudio');
-                if(globalAudio) { globalAudio.pause(); globalAudio.onended = null; }
-            } else {
-                clearInterval(timerInterval);
+            // Очистка всех таймеров, независимо от того, какой движок был активен
+            if (typeof timerInterval !== 'undefined') clearInterval(timerInterval);
+            if (typeof listTimerInterval !== 'undefined') clearInterval(listTimerInterval);
+            if (typeof listQuestionTimerInterval !== 'undefined') clearInterval(listQuestionTimerInterval);
+            
+            const globalAudio = document.getElementById('globalAudio');
+            if (globalAudio) { 
+                globalAudio.pause(); 
+                globalAudio.onended = null; 
             }
+
             document.getElementById('exam-engine-view').classList.add('hidden');
             document.getElementById('exam-engine-view').classList.remove('flex');
             document.getElementById('main-interface').classList.remove('hidden');
             
             // Обновляем данные в карточках при выходе
-            openTestView(currentActiveTestId, document.getElementById('dynamic-test-title').innerText, document.getElementById('dynamic-emoji-container').innerText);
+            if (currentActiveTestId) {
+                openTestView(currentActiveTestId, document.getElementById('dynamic-test-title').innerText, document.getElementById('dynamic-emoji-container').innerText);
+            }
         }
 
         // Запускаем изначальную отрисовку (переопределенную)
@@ -273,3 +296,4 @@
     </script>
 </body>
 </html>
+
