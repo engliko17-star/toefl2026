@@ -660,7 +660,7 @@ async function saveListeningAttemptAndFinish() {
     renderListeningReview(finalCalculatedScore, correctAnswers, totalQuestions);
 }
 
-// 6. Выход в дашборд с перезагрузкой
+// 6. Выход в дашборд (возврат к карточке теста без перезагрузки страницы)
 window.exitExamEngine = function() {
     stopQuestionTimer();
     
@@ -689,8 +689,15 @@ window.exitExamEngine = function() {
         mainInterface.classList.remove('hidden');
     }
     
-    // Перезагружаем страницу чтобы карточки тестов подтянули свежие статусы и результаты
-    location.reload(); 
+    // Обновляем карточку текущего теста, чтобы подтянулись новые баллы
+    if (typeof openTestView === 'function' && typeof currentActiveTestId !== 'undefined' && currentActiveTestId) {
+        const title = document.getElementById('dynamic-test-title')?.innerText || 'Mock Test';
+        const emoji = document.getElementById('dynamic-emoji-container')?.innerText || '📝';
+        openTestView(currentActiveTestId, title, emoji);
+    } else {
+        // Резервный вариант, если вдруг мы не на странице tests.html
+        window.location.href = 'tests.html';
+    }
 };
 
 // 7. Режим Ревью
@@ -845,4 +852,3 @@ function renderListeningReview(finalScore, correctAnswers, totalQuestions) {
     `;
     lucide.createIcons();
 }
-
