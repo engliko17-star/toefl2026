@@ -1,3 +1,28 @@
+// ==========================================
+// 🚨 МОБИЛЬНЫЙ ОТЛАДЧИК (ЛОКАЛИЗАТОР ОШИБОК)
+// ==========================================
+window.onerror = function (message, source, lineno, colno, error) {
+    const errorDiv = document.createElement('div');
+    errorDiv.style.position = 'fixed';
+    errorDiv.style.bottom = '10px';
+    errorDiv.style.left = '10px';
+    errorDiv.style.right = '10px';
+    errorDiv.style.backgroundColor = '#fee2e2';
+    errorDiv.style.border = '2px solid #ef4444';
+    errorDiv.style.color = '#991b1b';
+    errorDiv.style.padding = '15px';
+    errorDiv.style.borderRadius = '12px';
+    errorDiv.style.zIndex = '999999';
+    errorDiv.style.fontFamily = 'monospace';
+    errorDiv.style.fontSize = '11px';
+    errorDiv.style.maxHeight = '200px';
+    errorDiv.style.overflowY = 'auto';
+    errorDiv.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
+    errorDiv.innerHTML = `<strong>JS Error:</strong> ${message}<br><small>File: ${source} (Line: ${lineno}:${colno})</small>`;
+    document.body.appendChild(errorDiv);
+    return false;
+};
+
 const supabaseUrl = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
 
@@ -135,7 +160,11 @@ function closeTestView() {
 function renderDailyLifeLayout(passage, layoutType, taskTitle) {
     if (!passage) return "";
     const cleanPassage = passage.replace(/[\[\]]/g, ''); 
-    switch(layoutType?.toLowerCase().trim()) {
+    
+    // БЕЗОПАСНО: Если макет пустой или не задан, откатываемся на дефолтный 'notice'
+    const safeLayout = (layoutType || 'notice').toLowerCase().trim();
+
+    switch(safeLayout) {
         case 'email': 
             return `<div class="max-w-xl mx-auto bg-white border border-slate-200 rounded-lg overflow-hidden shadow-xs font-sans text-sm"><div class="bg-slate-50 p-4 border-b border-slate-200 space-y-1.5 text-slate-700"><div><span class="inline-block w-14 font-semibold text-slate-400">To:</span> <span class="bg-white px-2 py-0.5 border border-slate-200 rounded text-xs">student@toeflprep.com</span></div><div><span class="inline-block w-14 font-semibold text-slate-400">From:</span> <span class="text-slate-600">admin</span></div><div><span class="inline-block w-14 font-semibold text-slate-400">Subject:</span> <span class="font-medium text-slate-900">${taskTitle}</span></div></div><div class="p-6 text-slate-800 space-y-4 leading-relaxed font-normal bg-white">${cleanPassage}</div></div>`;
         case 'social_media': 
@@ -356,106 +385,135 @@ function startTimer() {
             clearInterval(timerInterval);
             alert("Time is up!");
             saveAttemptAndFinish();
+            return;
         }
         let m = Math.floor(timeRemaining / 60);
         let s = timeRemaining % 60;
-        document.getElementById('engine-timer').innerText = `${m}:${s < 10 ? '0' : ''}${s}`;
+        
+        // БЕЗОПАСНО: обновляем таймер, только если элемент присутствует в HTML
+        const timerEl = document.getElementById('engine-timer');
+        if (timerEl) {
+            timerEl.innerText = `${m}:${s < 10 ? '0' : ''}${s}`;
+        }
     }, 1000);
 }
 
 function renderEngine() {
-    const task = currentTasks[currentIndex];
-    const contentDiv = document.getElementById('engine-content');
-    
-    document.getElementById('engine-progress').innerText = `${currentIndex + 1} / ${currentTasks.length}`;
-    document.getElementById('engine-prev').disabled = (currentIndex === 0);
-    document.getElementById('engine-next').innerHTML = (currentIndex === currentTasks.length - 1) 
-        ? 'Finish <i data-lucide="check" class="w-4 h-4 ml-1"></i>' 
-        : 'Next <i data-lucide="chevron-right" class="w-4 h-4 ml-1"></i>';
+    try {
+        const task = currentTasks[currentIndex];
+        if (!task) throw new Error("No task found at index " + currentIndex);
 
-    contentDiv.innerHTML = '';
-
-    if (task.type === 'complete_words') {
-        contentDiv.innerHTML = `
-            <div class="w-full p-10 overflow-y-auto custom-scrollbar flex items-center justify-center bg-[#f8f9fa]">
-                <div class="max-w-3xl w-full bg-white p-10 rounded-3xl border border-gray-100 shadow-sm">
-                    <h2 class="text-xl font-bold mb-6 text-center text-slate-900">${task.title}</h2>
-                    <div class="text-lg leading-loose text-slate-700 text-center">${task.passage}</div>
-                </div>
-            </div>
-        `;
-        setTimeout(() => setupInputs(), 50);
-    } 
-    else if (task.type === 'daily_life') {
-        const renderedLayout = renderDailyLifeLayout(task.passage, task.layout, task.title);
-        contentDiv.innerHTML = `
-            <section class="w-1/2 bg-white p-10 overflow-y-auto custom-scrollbar border-r border-slate-200 flex flex-col justify-center">
-                <div>${renderedLayout}</div>
-            </section>
-            <section class="w-1/2 bg-slate-50 p-10 overflow-y-auto custom-scrollbar">
-                <div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-xs max-w-xl mx-auto mt-10">
-                    <h3 class="font-bold text-slate-900 mb-6">${task.question}</h3>
-                    <div class="space-y-3">
-                        ${task.options.map((opt) => `
-                            <label class="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer hover:bg-slate-50 transition">
-                                <input type="radio" name="q" value="${opt}"
-                                    ${task.userAnswer === opt ? 'checked' : ''}
-                                    onchange="currentTasks[${currentIndex}].userAnswer = this.value"
-                                    class="w-4 h-4 text-indigo-600 mr-3">
-                                <span class="text-sm text-slate-700">${opt}</span>
-                            </label>
-                        `).join('')}
-                    </div>
-                </div>
-            </section>
-        `;
-    }
-    else if (task.type === 'academic') {
-        let rightPanelContent = '';
-
-        if (task.qType === 'Select a Sentence') {
-            rightPanelContent = `<div class="bg-amber-50 border border-amber-100 p-3 rounded-xl mb-6 text-xs text-amber-800 flex items-center"><i data-lucide="mouse-pointer-click" class="w-4 h-4 mr-2"></i> Click a sentence on the left.</div><h3 class="font-bold text-slate-900">${task.question}</h3>`;
-        } else if (task.qType === 'Insert Text') {
-            rightPanelContent = `<div class="bg-blue-50 border border-blue-100 p-3 rounded-xl mb-6 text-xs text-blue-800 flex items-center"><i data-lucide="mouse-pointer-click" class="w-4 h-4 mr-2"></i> Click on a square [■] to insert the sentence.</div><h3 class="font-bold text-slate-900 mb-4">${task.question}</h3><div class="p-4 bg-white border-2 border-dashed border-indigo-300 rounded-xl text-sm font-bold text-indigo-900 text-center shadow-xs">"${task.insertSentence}"</div>`;
-        } else {
-            rightPanelContent = `<h3 class="font-bold text-slate-900 mb-6">${task.question}</h3><div class="space-y-3">${task.options.map((opt) => `<label class="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer hover:bg-slate-50 transition"><input type="radio" name="q" value="${opt}" ${task.userAnswer === opt ? 'checked' : ''} onchange="currentTasks[${currentIndex}].userAnswer = this.value" class="w-4 h-4 text-indigo-600 mr-3"><span class="text-sm text-slate-700">${opt}</span></label>`).join('')}</div>`;
+        const contentDiv = document.getElementById('engine-content');
+        if (!contentDiv) throw new Error("engine-content element not found");
+        
+        // БЕЗОПАСНО: обновляем элементы, только если они физически есть на странице
+        const progressEl = document.getElementById('engine-progress');
+        if (progressEl) {
+            progressEl.innerText = `${currentIndex + 1} / ${currentTasks.length}`;
         }
 
-        contentDiv.innerHTML = `
-            <section class="w-1/2 bg-white p-10 overflow-y-auto custom-scrollbar border-r border-slate-200">
-                <h2 class="text-xl font-bold text-slate-900 mb-6">${task.title}</h2>
-                <div class="text-sm text-slate-700 leading-relaxed space-y-4 whitespace-pre-wrap">${task.passage}</div>
-            </section>
-            <section class="w-1/2 bg-slate-50 p-10 overflow-y-auto custom-scrollbar">
-                 <div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-xs max-w-xl mx-auto">${rightPanelContent}</div>
-            </section>
-        `;
+        const prevEl = document.getElementById('engine-prev');
+        if (prevEl) {
+            prevEl.disabled = (currentIndex === 0);
+        }
 
-        setTimeout(() => {
-            document.querySelectorAll('.clickable-sentence').forEach(el => {
-                const sentenceText = el.textContent.trim();
-                if (task.userAnswer === sentenceText) el.classList.add('selected');
-                el.onclick = function() {
-                    if (task.qType !== 'Select a Sentence') return;
-                    document.querySelectorAll('.clickable-sentence').forEach(s => s.classList.remove('selected'));
-                    this.classList.add('selected');
-                    currentTasks[currentIndex].userAnswer = this.textContent.trim();
-                };
-            });
+        const nextEl = document.getElementById('engine-next');
+        if (nextEl) {
+            nextEl.innerHTML = (currentIndex === currentTasks.length - 1) 
+                ? 'Finish <i data-lucide="check" class="w-4 h-4 ml-1"></i>' 
+                : 'Next <i data-lucide="chevron-right" class="w-4 h-4 ml-1"></i>';
+        }
 
-            document.querySelectorAll('.insert-square').forEach((el, index) => {
-                const squareIndexStr = index.toString();
-                if (task.userAnswer === squareIndexStr) el.classList.add('selected');
-                el.onclick = function() {
-                    if (task.qType !== 'Insert Text') return;
-                    document.querySelectorAll('.insert-square').forEach(s => s.classList.remove('selected'));
-                    this.classList.add('selected');
-                    currentTasks[currentIndex].userAnswer = squareIndexStr;
-                };
-            });
-        }, 50);
+        contentDiv.innerHTML = '';
+
+        if (task.type === 'complete_words') {
+            contentDiv.innerHTML = `
+                <div class="w-full p-10 overflow-y-auto custom-scrollbar flex items-center justify-center bg-[#f8f9fa]">
+                    <div class="max-w-3xl w-full bg-white p-10 rounded-3xl border border-gray-100 shadow-sm">
+                        <h2 class="text-xl font-bold mb-6 text-center text-slate-900">${task.title}</h2>
+                        <div class="text-lg leading-loose text-slate-700 text-center">${task.passage}</div>
+                    </div>
+                </div>
+            `;
+            setTimeout(() => setupInputs(), 50);
+        } 
+        else if (task.type === 'daily_life') {
+            const renderedLayout = renderDailyLifeLayout(task.passage, task.layout, task.title);
+            contentDiv.innerHTML = `
+                <section class="w-1/2 bg-white p-10 overflow-y-auto custom-scrollbar border-r border-slate-200 flex flex-col justify-center">
+                    <div>${renderedLayout}</div>
+                </section>
+                <section class="w-1/2 bg-slate-50 p-10 overflow-y-auto custom-scrollbar">
+                    <div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-xs max-w-xl mx-auto mt-10">
+                        <h3 class="font-bold text-slate-900 mb-6">${task.question}</h3>
+                        <div class="space-y-3">
+                            ${(task.options || []).map((opt) => `
+                                <label class="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer hover:bg-slate-50 transition">
+                                    <input type="radio" name="q" value="${opt}"
+                                        ${task.userAnswer === opt ? 'checked' : ''}
+                                        onchange="currentTasks[${currentIndex}].userAnswer = this.value"
+                                        class="w-4 h-4 text-indigo-600 mr-3">
+                                    <span class="text-sm text-slate-700">${opt}</span>
+                                </label>
+                            `).join('')}
+                        </div>
+                    </div>
+                </section>
+            `;
+        }
+        else if (task.type === 'academic') {
+            let rightPanelContent = '';
+
+            if (task.qType === 'Select a Sentence') {
+                rightPanelContent = `<div class="bg-amber-50 border border-amber-100 p-3 rounded-xl mb-6 text-xs text-amber-800 flex items-center"><i data-lucide="mouse-pointer-click" class="w-4 h-4 mr-2"></i> Click a sentence on the left.</div><h3 class="font-bold text-slate-900">${task.question}</h3>`;
+            } else if (task.qType === 'Insert Text') {
+                rightPanelContent = `<div class="bg-blue-50 border border-blue-100 p-3 rounded-xl mb-6 text-xs text-blue-800 flex items-center"><i data-lucide="mouse-pointer-click" class="w-4 h-4 mr-2"></i> Click on a square [■] to insert the sentence.</div><h3 class="font-bold text-slate-900 mb-4">${task.question}</h3><div class="p-4 bg-white border-2 border-dashed border-indigo-300 rounded-xl text-sm font-bold text-indigo-900 text-center shadow-xs">"${task.insertSentence}"</div>`;
+            } else {
+                rightPanelContent = `<h3 class="font-bold text-slate-900 mb-6">${task.question}</h3><div class="space-y-3">${(task.options || []).map((opt) => `<label class="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer hover:bg-slate-50 transition"><input type="radio" name="q" value="${opt}" ${task.userAnswer === opt ? 'checked' : ''} onchange="currentTasks[${currentIndex}].userAnswer = this.value" class="w-4 h-4 text-indigo-600 mr-3"><span class="text-sm text-slate-700">${opt}</span></label>`).join('')}</div>`;
+            }
+
+            contentDiv.innerHTML = `
+                <section class="w-1/2 bg-white p-10 overflow-y-auto custom-scrollbar border-r border-slate-200">
+                    <h2 class="text-xl font-bold text-slate-900 mb-6">${task.title}</h2>
+                    <div class="text-sm text-slate-700 leading-relaxed space-y-4 whitespace-pre-wrap">${task.passage}</div>
+                </section>
+                <section class="w-1/2 bg-slate-50 p-10 overflow-y-auto custom-scrollbar">
+                     <div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-xs max-w-xl mx-auto">${rightPanelContent}</div>
+                </section>
+            `;
+
+            setTimeout(() => {
+                document.querySelectorAll('.clickable-sentence').forEach(el => {
+                    const sentenceText = el.textContent.trim();
+                    if (task.userAnswer === sentenceText) el.classList.add('selected');
+                    el.onclick = function() {
+                        if (task.qType !== 'Select a Sentence') return;
+                        document.querySelectorAll('.clickable-sentence').forEach(s => s.classList.remove('selected'));
+                        this.classList.add('selected');
+                        currentTasks[currentIndex].userAnswer = this.textContent.trim();
+                    };
+                });
+
+                document.querySelectorAll('.insert-square').forEach((el, index) => {
+                    const squareIndexStr = index.toString();
+                    if (task.userAnswer === squareIndexStr) el.classList.add('selected');
+                    el.onclick = function() {
+                        if (task.qType !== 'Insert Text') return;
+                        document.querySelectorAll('.insert-square').forEach(s => s.classList.remove('selected'));
+                        this.classList.add('selected');
+                        currentTasks[currentIndex].userAnswer = squareIndexStr;
+                    };
+                });
+            }, 50);
+        }
+        
+        if (typeof lucide !== 'undefined' && lucide.createIcons) {
+            lucide.createIcons();
+        }
+    } catch (err) {
+        console.error("Critical render error:", err);
+        alert("Render error: " + err.message);
     }
-    lucide.createIcons();
 }
 
 async function loadModule2Tasks() {
