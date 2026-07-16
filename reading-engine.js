@@ -198,12 +198,14 @@ function setupInputs() {
     const inputs = document.querySelectorAll('.letter-input');
     const task = currentTasks[currentIndex];
     
-    if (task && task.type === 'complete_words' && task.userWords) {
+    // ИСПРАВЛЕНИЕ: опираемся на correctWords для корректного инкремента charIndex
+    if (task && task.type === 'complete_words' && task.correctWords) {
         let charIndex = 0;
-        task.userWords.forEach(word => {
-            for(let i=0; i < word.length; i++) {
-                if(inputs[charIndex] && word[i] !== '_') {
-                    inputs[charIndex].value = word[i];
+        task.correctWords.forEach((correctWord, wordIdx) => {
+            let uWord = (task.userWords && task.userWords[wordIdx]) ? task.userWords[wordIdx] : "";
+            for (let i = 0; i < correctWord.length; i++) {
+                if (inputs[charIndex] && uWord[i] && uWord[i] !== '_') {
+                    inputs[charIndex].value = uWord[i];
                 }
                 charIndex++;
             }
@@ -522,10 +524,17 @@ async function loadModule2Tasks() {
     let correctCount = 0;
     let module1Total = 0;
 
+    // ИСПРАВЛЕНИЕ: Учет заданий complete_words для расчета прохождения модуля
     for (let task of currentTasks) {
-        if (task.stage === '1' && task.correctAnswer !== null) {
-            module1Total++;
-            if (task.userAnswer && task.userAnswer === task.correctAnswer) correctCount++;
+        if (task.stage === '1') {
+            if (task.type === 'complete_words') {
+                module1Total++;
+                let isTaskCorrect = task.userWords && task.correctWords && task.userWords.join(',').toLowerCase() === task.correctWords.join(',').toLowerCase();
+                if (isTaskCorrect) correctCount++;
+            } else if (task.correctAnswer !== null && task.correctAnswer !== undefined) {
+                module1Total++;
+                if (task.userAnswer && task.userAnswer === task.correctAnswer) correctCount++;
+            }
         }
     }
 
@@ -585,8 +594,13 @@ async function saveAttemptAndFinish() {
     let correctAnswers = 0;
     let totalQuestions = 0;
 
+    // ИСПРАВЛЕНИЕ: Подсчет баллов включая complete_words
     currentTasks.forEach((task) => {
-        if (task.correctAnswer !== null && task.correctAnswer !== undefined) { 
+        if (task.type === 'complete_words') {
+            totalQuestions++;
+            let isTaskCorrect = task.userWords && task.correctWords && task.userWords.join(',').toLowerCase() === task.correctWords.join(',').toLowerCase();
+            if (isTaskCorrect) correctAnswers++;
+        } else if (task.correctAnswer !== null && task.correctAnswer !== undefined) { 
             totalQuestions++;
             if (task.userAnswer === task.correctAnswer) correctAnswers++;
         }
@@ -678,18 +692,23 @@ async function loadReviewMode(attemptId, testId, testTitle) {
         let correctCount = 0;
         let totalCount = 0;
 
+        // ИСПРАВЛЕНИЕ: Восстановление результатов с учетом complete_words
         reconstructedTasks.forEach(task => {
             if (task.type === 'complete_words') {
                 let ans = answers.find(a => a.task_id === task.taskId && a.task_type === 'complete_words');
                 if (ans && ans.answer_json) task.userWords = ans.answer_json.userWords || [];
+                
+                totalCount++;
+                let isTaskCorrect = task.userWords && task.correctWords && task.userWords.join(',').toLowerCase() === task.correctWords.join(',').toLowerCase();
+                if (isTaskCorrect) correctCount++;
             } else {
                 let ans = answers.find(a => a.task_id === task.taskId && a.answer_json && a.answer_json.question === task.question);
                 if (ans) task.userAnswer = ans.answer_text;
-            }
-
-            if (task.correctAnswer !== null && task.correctAnswer !== undefined) { 
-                totalCount++;
-                if (task.userAnswer === task.correctAnswer) correctCount++;
+                
+                if (task.correctAnswer !== null && task.correctAnswer !== undefined) { 
+                    totalCount++;
+                    if (task.userAnswer === task.correctAnswer) correctCount++;
+                }
             }
         });
 
