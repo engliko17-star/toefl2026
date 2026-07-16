@@ -553,31 +553,65 @@ async function loadListeningStage2() {
     return false;
 }
 
-// 5. Финализация и сохранение
+// 5. Финализация и сохранение (УМНЫЙ ПОДСЧЕТ БАЛЛОВ С УЧЕТОМ СЛОЖНОСТИ)
 async function saveListeningAttemptAndFinish() {
     stopQuestionTimer(); 
     
     document.getElementById('engine-content').innerHTML = `
         <div class="m-auto flex flex-col items-center justify-center text-slate-500">
             <i data-lucide="loader-2" class="w-10 h-10 animate-spin mb-4 text-emerald-600"></i>
-            <p class="font-bold text-slate-700 text-lg">Saving Listening results...</p>
+            <p class="font-bold text-slate-700 text-lg">Saving results and calculating weighted score...</p>
         </div>
     `;
     lucide.createIcons();
 
     let totalQuestions = 0;
     let correctAnswers = 0;
+    
+    // Переменные для взвешенного (IRT) подсчета
+    let weightedScoreEarned = 0;
+    let maxPossibleWeightedScore = 0;
+    let isLowerTrack = false;
 
     listQueue.forEach(block => {
+        const isUpper = block.stage.includes('2_upper');
+        const isLower = block.stage.includes('2_lower');
+        
+        if (isLower) isLowerTrack = true;
+
         block.questions.forEach(q => {
             totalQuestions++;
-            const correctIdx = q.correct_index !== undefined ? q.correct_index : q.correct_answer;
-            if (listUserAnswers[q.uniqueId] === correctIdx) correctAnswers++;
+            
+            // Назначаем веса вопросам
+            let weight = 1.0; // По умолчанию для Stage 1
+            if (isUpper) weight = 1.25; // Сложный модуль ценится выше
+            if (isLower) weight = 0.75; // Легкий модуль ценится ниже
+            
+            maxPossibleWeightedScore += weight;
+
+            const correctObj = typeof q.correct_answer === 'string' ? JSON.parse(q.correct_answer) : q.correct_answer;
+            const correctIdx = correctObj?.index !== undefined ? correctObj.index : correctObj;
+            
+            if (listUserAnswers[q.uniqueId] === correctIdx) {
+                correctAnswers++;
+                weightedScoreEarned += weight;
+            }
         });
     });
 
-    let proportionalScore = totalQuestions > 0 ? (1.0 + (correctAnswers / totalQuestions) * 5.0) : 1.0;
-    let finalCalculatedScore = Math.min(Math.ceil(proportionalScore * 2) / 2, 6.0);
+    // Высчитываем пропорцию на основе весов
+    let scoreRatio = maxPossibleWeightedScore > 0 ? (weightedScoreEarned / maxPossibleWeightedScore) : 0;
+    let proportionalScore = 1.0 + (scoreRatio * 5.0);
+
+    // Ограничение балла (Ceiling): 
+    // Если студент попал в легкий модуль (Lower), он физически не может получить высший балл.
+    // Максимум для Lower модуля ограничивается уровнем B2 (4.5 балла).
+    if (isLowerTrack) {
+        proportionalScore = Math.min(proportionalScore, 4.5);
+    }
+
+    // Округляем до ближайшей половинки (1.0, 1.5, 2.0 ... 6.0)
+    let finalCalculatedScore = Math.min(Math.round(proportionalScore * 2) / 2, 6.0);
 
     try {
         const client = window.supabaseClient || window.supabase || window.db || (typeof supabase !== 'undefined' ? supabase : null);
@@ -602,13 +636,15 @@ async function saveListeningAttemptAndFinish() {
 
                 const answersToSave = listQueue.flatMap(block => {
                     return block.questions.map(q => {
+                        const correctObj = typeof q.correct_answer === 'string' ? JSON.parse(q.correct_answer) : q.correct_answer;
+                        const correctIdx = correctObj?.index !== undefined ? correctObj.index : correctObj;
                         return {
                             attempt_id: attempt.id,
                             task_id: block.db_id,
                             task_type: block.block_type,
                             answer_json: { question_id: q.id, unique_id: q.uniqueId, question_text: q.text },
                             user_choice_index: listUserAnswers[q.uniqueId] !== undefined ? listUserAnswers[q.uniqueId] : null,
-                            is_correct: listUserAnswers[q.uniqueId] === (q.correct_index !== undefined ? q.correct_index : q.correct_answer)
+                            is_correct: listUserAnswers[q.uniqueId] === correctIdx
                         };
                     });
                 });
