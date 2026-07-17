@@ -18,6 +18,9 @@ let listUserAnswers = {};
 
 window.engineType = null; // Глобальный флаг для роутинга кнопок в tests.html
 
+// Флаг для предотвращения гонки состояний при переходах
+let isProcessingNextStep = false;
+
 // Вспомогательная функция определения длительности таймера по типу задания
 function getQuestionTimerDuration(block) {
     if (!block || !block.block_type) return 20;
@@ -157,6 +160,7 @@ async function fetchAndParseListeningTasks(testId, stageName) {
 // 2. Старт движка
 async function startListeningEngine(testId, testTitle) {
     window.engineType = 'listening';
+    isProcessingNextStep = false;
     
     const resultsView = document.getElementById('results-view');
     if (resultsView) {
@@ -453,76 +457,88 @@ function getListStandardQuestionsHTML(block, qIdx) {
 
 // 4. Логика маршрутизации и переходов
 async function handleListeningNextStep() {
-    stopQuestionTimer();
+    if (isProcessingNextStep) return;
+    isProcessingNextStep = true;
 
-    const block = listQueue[listBlockIdx];
-    
-    // Сохранение ответа
-    if (listPhase === 'questions' || block.block_type === 'response') {
-        let qId = block.questions[listSubQIdx].uniqueId;
-        if (block.block_type === 'response') {
-            listUserAnswers[qId] = listSelectedOption;
-        } else {
-            const radio = document.querySelector('input[name="listOption"]:checked');
-            listUserAnswers[qId] = radio ? parseInt(radio.value) : null;
+    try {
+        stopQuestionTimer();
+
+        const block = listQueue[listBlockIdx];
+        if (!block) {
+            console.warn("Critical: Current block is undefined. Ignoring next step trigger.");
+            return;
         }
-    }
-
-    // Переход фаз внутри стандартного блока
-    if (listPhase === 'audio') {
-        listPhase = 'questions';
-        listSubQIdx = 0;
-        renderListeningEngine();
-        return;
-    }
-
-    // Переход вопросов
-    if (listSubQIdx < block.questions.length - 1) {
-        listSubQIdx++;
-        renderListeningEngine();
-        return;
-    }
-
-    // Переход блоков и MST логика
-    if (listBlockIdx < listQueue.length - 1) {
-        listBlockIdx++;
-        listSubQIdx = 0;
         
-        // Проверяем, закончили ли мы Stage 1 перед переходом к блокам Stage 2
-        const isStage1Finished = !listQueue.some(t => t.stage.startsWith('2')) && listQueue[listBlockIdx].stage.startsWith('2');
-        
-        if (isStage1Finished || listPhase === 'transition_trigger') {
-            // Этот блок срабатывает если переходим на 2 этап
+        // Сохранение ответа
+        if (listPhase === 'questions' || block.block_type === 'response') {
+            let qId = block.questions[listSubQIdx].uniqueId;
+            if (block.block_type === 'response') {
+                // Если ответ не был выбран, сохраняем null без ошибки, чтобы не сломать авто-пропуск по таймеру
+                listUserAnswers[qId] = listSelectedOption !== null ? listSelectedOption : null;
+            } else {
+                const radio = document.querySelector('input[name="listOption"]:checked');
+                listUserAnswers[qId] = radio ? parseInt(radio.value) : null;
+            }
         }
 
-        // Проверяем смену с Stage 1 на Stage 2 специально через заставку
-        const prevBlockStage = listQueue[listBlockIdx - 1]?.stage;
-        const currentBlockStage = listQueue[listBlockIdx]?.stage;
-        
-        if (prevBlockStage === '1' && currentBlockStage && currentBlockStage.startsWith('2')) {
-            listPhase = 'transition';
+        // Переход фаз внутри стандартного блока
+        if (listPhase === 'audio') {
+            listPhase = 'questions';
+            listSubQIdx = 0;
             renderListeningEngine();
             return;
         }
 
-        listPhase = listQueue[listBlockIdx].block_type === 'response' ? 'questions' : 'audio';
-        renderListeningEngine();
-    } else {
-        // Проверяем, закончили ли мы Stage 1 (если после него больше нет элементов в очереди)
-        const isStage1Finished = !listQueue.some(t => t.stage.startsWith('2'));
-        if (isStage1Finished) {
-            document.getElementById('engine-next').innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin mr-1"></i> Adapting...';
-            const loaded = await loadListeningStage2();
-            if (loaded) {
-                listBlockIdx++;
-                listSubQIdx = 0;
-                listPhase = 'transition'; // Показываем экран-заставку перед Module 2
+        // Переход вопросов
+        if (listSubQIdx < block.questions.length - 1) {
+            listSubQIdx++;
+            renderListeningEngine();
+            return;
+        }
+
+        // Переход блоков и MST логика
+        if (listBlockIdx < listQueue.length - 1) {
+            listBlockIdx++;
+            listSubQIdx = 0;
+            
+            // Проверяем, закончили ли мы Stage 1 перед переходом к блокам Stage 2
+            const isStage1Finished = !listQueue.some(t => t.stage.startsWith('2')) && listQueue[listBlockIdx].stage.startsWith('2');
+            
+            if (isStage1Finished || listPhase === 'transition_trigger') {
+                // Этот блок срабатывает если переходим на 2 этап
+            }
+
+            // Проверяем смену с Stage 1 на Stage 2 специально через заставку
+            const prevBlockStage = listQueue[listBlockIdx - 1]?.stage;
+            const currentBlockStage = listQueue[listBlockIdx]?.stage;
+            
+            if (prevBlockStage === '1' && currentBlockStage && currentBlockStage.startsWith('2')) {
+                listPhase = 'transition';
                 renderListeningEngine();
                 return;
             }
+
+            listPhase = listQueue[listBlockIdx].block_type === 'response' ? 'questions' : 'audio';
+            renderListeningEngine();
+        } else {
+            // Проверяем, закончили ли мы Stage 1 (если после него больше нет элементов в очереди)
+            const isStage1Finished = !listQueue.some(t => t.stage.startsWith('2'));
+            if (isStage1Finished) {
+                document.getElementById('engine-next').innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin mr-1"></i> Adapting...';
+                const loaded = await loadListeningStage2();
+                if (loaded) {
+                    listBlockIdx++;
+                    listSubQIdx = 0;
+                    listPhase = 'transition'; // Показываем экран-заставку перед Module 2
+                    renderListeningEngine();
+                    return;
+                }
+            }
+            // Если Stage 2 пройден или не загрузился - финиш
+            await saveListeningAttemptAndFinish();
         }
-        // Если Stage 2 пройден или не загрузился - финиш
-        saveListeningAttemptAndFinish();
+    } finally {
+        isProcessingNextStep = false;
     }
 }
 
@@ -663,6 +679,7 @@ async function saveListeningAttemptAndFinish() {
 // 6. Выход в дашборд (возврат к карточке теста без перезагрузки страницы)
 window.exitExamEngine = function() {
     stopQuestionTimer();
+    isProcessingNextStep = false;
     
     const globalAudio = document.getElementById('globalAudio');
     if (globalAudio) {
