@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mini-Mock Simulation — TOEFL</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+        
+        .exam-textarea {
+            resize: none;
+            outline: none;
+            font-family: inherit;
+        }
+    </style>
+</head>
+<body class="bg-[#f3f4f6] text-slate-800 min-h-screen antialiased flex flex-col opacity-0 transition-opacity duration-200" id="mainBody">
+
+    <!-- Top Navigation (Exam Mode) -->
+    <header class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shrink-0 sticky top-0 z-50">
+        <div class="flex items-center gap-4">
+            <a href="mini-mock-writing-list.html" id="exitBtn" class="text-sm font-bold text-gray-400 hover:text-slate-700 transition flex items-center">
+                <i data-lucide="x" class="w-4 h-4 mr-1"></i> Exit Mock
+            </a>
+            <div class="h-4 w-px bg-gray-200"></div>
+            <span class="text-sm font-bold text-slate-900" id="mockTitle">Loading Simulation...</span>
+        </div>
+        
+        <!-- Timer -->
+        <div class="flex items-center gap-2 bg-slate-900 text-white px-4 py-1.5 rounded-lg font-mono text-lg font-bold shadow-sm">
+            <i data-lucide="clock" class="w-4 h-4 text-indigo-400"></i>
+            <span id="timeLeft">00:00</span>
+        </div>
+    </header>
+
+    <!-- Main Exam Area -->
+    <main class="flex-1 overflow-y-auto p-4 md:p-8 flex justify-center">
+        <div class="w-full max-w-4xl flex flex-col h-full" id="examContainer">
+            
+            <!-- Progress Steps -->
+            <div class="flex items-center justify-between mb-6 px-2">
+                <div class="flex items-center gap-2" id="stepIndicator">
+                    <span class="text-xs font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2 py-1 rounded">Task 1 of 3</span>
+                    <span class="text-sm font-semibold text-slate-700" id="taskTypeLabel">Sentence Building</span>
+                </div>
+            </div>
+
+            <!-- Task Content Box -->
+            <div class="bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col flex-1 overflow-hidden">
+                
+                <!-- Prompt Section -->
+                <div class="p-6 md:p-8 border-b border-gray-100 bg-gray-50/50">
+                    <h2 class="text-lg font-bold text-slate-900 mb-4" id="taskTitle">Loading prompt...</h2>
+                    <div class="prose prose-sm max-w-none text-slate-600" id="taskPrompt">
+                        <!-- Контент задания появится здесь -->
+                    </div>
+                </div>
+
+                <!-- Response Section -->
+                <div class="p-6 md:p-8 flex flex-col flex-1 bg-white relative">
+                    <label class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 block">Your Response</label>
+                    <textarea 
+                        id="responseArea" 
+                        class="exam-textarea w-full flex-1 border-0 text-slate-700 text-base leading-relaxed placeholder-gray-300"
+                        placeholder="Start typing your response here..."></textarea>
+                    
+                    <div class="flex items-center justify-between mt-6 pt-4 border-t border-gray-50">
+                        <div class="text-xs font-medium text-gray-400">
+                            Word count: <span id="wordCount" class="font-bold text-slate-600">0</span>
+                        </div>
+                        <button id="nextBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition shadow-sm hover:shadow flex items-center">
+                            <span>Next Task</span>
+                            <i data-lucide="arrow-right" class="w-4 h-4 ml-1.5"></i>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+        
+        <!-- Success Screen (Hidden by default) -->
+        <div id="successScreen" class="hidden w-full max-w-2xl m-auto bg-white rounded-3xl p-10 text-center border border-gray-100 shadow-lg">
+            <div class="w-20 h-20 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center mx-auto mb-6 transform rotate-3">
+                <i data-lucide="check-circle-2" class="w-10 h-10"></i>
+            </div>
+            <h2 class="text-2xl font-black text-slate-900 mb-2">Simulation Complete!</h2>
+            <p class="text-gray-500 mb-8 max-w-md mx-auto">All three responses have been successfully submitted. Your teacher will review your performance shortly.</p>
+            
+            <div class="bg-gray-50 rounded-2xl p-6 mb-8 border border-gray-100">
+                <h3 class="text-sm font-bold text-slate-800 mb-1">Grading Scale</h3>
+                <p class="text-xs text-slate-500 mb-4">You will receive an official exam-style rating.</p>
+                <div class="flex justify-center items-end gap-1">
+                    <span class="text-4xl font-black text-indigo-600">?.?</span>
+                    <span class="text-lg font-bold text-gray-400 mb-1">/ 6.0</span>
+                </div>
+            </div>
+            
+            <a href="mini-mock-writing-list.html" class="inline-flex items-center justify-center bg-slate-900 hover:bg-slate-800 text-white px-8 py-3.5 rounded-xl text-sm font-bold transition shadow-sm">
+                Return to Mocks
+            </a>
+        </div>
+    </main>
+
+    <script>
+        lucide.createIcons();
+
+        const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        let currentUser = null;
+        let mockData = null;
+        let tasks = [];
+        let currentStep = 0;
+        
+        // Массив для хранения ответов пользователя
+        let userResponses = [];
+        
+        // Таймер
+        let timerInterval;
+        const TIME_LIMITS = {
+            'sentence': 3 * 60, // 3 минуты
+            'email': 10 * 60,   // 10 минут
+            'academic': 10 * 60 // 10 минут
+        };
+
+        const textarea = document.getElementById('responseArea');
+        const wordCountDisplay = document.getElementById('wordCount');
+        const nextBtn = document.getElementById('nextBtn');
+
+        // Подсчет слов
+        textarea.addEventListener('input', () => {
+            const text = textarea.value.trim();
+            const words = text.length > 0 ? text.split(/\s+/).length : 0;
+            wordCountDisplay.textContent = words;
+        });
+
+        async function checkAuthAndLoad() {
+            try {
+                const { data: { session }, error } = await supabaseClient.auth.getSession();
+                if (error || !session) {
+                    window.location.replace('index.html');
+                    return;
+                }
+                currentUser = session.user;
+                document.getElementById('mainBody').classList.remove('opacity-0');
+                
+                const urlParams = new URLSearchParams(window.location.search);
+                const mockId = urlParams.get('id');
+                
+                if (!mockId) {
+                    window.location.replace('mini-mock-writing-list.html');
+                    return;
+                }
+                
+                await loadMockData(mockId);
+            } catch (err) {
+                console.error("Initialization error:", err);
+            }
+        }
+
+        async function loadMockData(mockId) {
+            try {
+                // 1. Получаем данные мока
+                const { data: mock, error: mockErr } = await supabaseClient
+                    .from('mini_mock_writing')
+                    .select('*')
+                    .eq('id', mockId)
+                    .single();
+
+                if (mockErr || !mock) throw mockErr;
+                mockData = mock;
+                document.getElementById('mockTitle').textContent = mock.title;
+
+                // 2. Получаем сами задания из writing_tasks
+                const taskIds = [mock.sentence_task_id, mock.email_task_id, mock.academic_task_id];
+                
+                const { data: fetchedTasks, error: tasksErr } = await supabaseClient
+                    .from('writing_tasks')
+                    .select('*')
+                    .in('id', taskIds);
+
+                if (tasksErr) throw tasksErr;
+
+                // Сортируем задания в нужном порядке (Sentence -> Email -> Academic)
+                tasks[0] = fetchedTasks.find(t => t.id === mock.sentence_task_id);
+                tasks[1] = fetchedTasks.find(t => t.id === mock.email_task_id);
+                tasks[2] = fetchedTasks.find(t => t.id === mock.academic_task_id);
+                
+                // Проверка на отсутствующие задания
+                if (!tasks[0] || !tasks[1] || !tasks[2]) {
+                    alert("Error: One or more tasks are missing from this mock test.");
+                    return;
+                }
+
+                // Запускаем первое задание
+                renderCurrentTask();
+
+            } catch (err) {
+                console.error("Error loading mock:", err);
+                alert("Could not load the simulation. Please try again.");
+                window.location.replace('mini-mock-writing-list.html');
+            }
+        }
+
+        function renderCurrentTask() {
+            const task = tasks[currentStep];
+            
+            // Обновляем UI индикаторы
+            const labels = ['Sentence Building', 'Email Writing', 'Academic Discussion'];
+            document.querySelector('#stepIndicator span:first-child').textContent = `Task ${currentStep + 1} of 3`;
+            document.getElementById('taskTypeLabel').textContent = labels[currentStep];
+            
+            // Загружаем контент задания
+            document.getElementById('taskTitle').textContent = task.title;
+            document.getElementById('taskPrompt').innerHTML = task.content;
+            
+            // Очищаем текстовое поле
+            textarea.value = '';
+            wordCountDisplay.textContent = '0';
+            
+            // Обновляем кнопку
+            if (currentStep === 2) {
+                nextBtn.innerHTML = `<span>Submit Simulation</span> <i data-lucide="check" class="w-4 h-4 ml-1.5"></i>`;
+                nextBtn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
+                nextBtn.classList.add('bg-emerald-600', 'hover:bg-emerald-700');
+            }
+            lucide.createIcons();
+
+            // Запускаем таймер
+            let type = 'sentence';
+            if (currentStep === 1) type = 'email';
+            if (currentStep === 2) type = 'academic';
+            startTimer(TIME_LIMITS[type]);
+        }
+
+        function startTimer(secondsLeft) {
+            clearInterval(timerInterval);
+            updateTimerDisplay(secondsLeft);
+            
+            const display = document.getElementById('timeLeft');
+            display.classList.remove('text-red-400');
+
+            timerInterval = setInterval(() => {
+                secondsLeft--;
+                updateTimerDisplay(secondsLeft);
+                
+                if (secondsLeft <= 60) {
+                    display.classList.add('text-red-400');
+                }
+
+                if (secondsLeft <= 0) {
+                    clearInterval(timerInterval);
+                    handleNextStep(); // Автоматическое переключение при истечении времени
+                }
+            }, 1000);
+        }
+
+        function updateTimerDisplay(seconds) {
+            const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+            const s = (seconds % 60).toString().padStart(2, '0');
+            document.getElementById('timeLeft').textContent = `${m}:${s}`;
+        }
+
+        async function handleNextStep() {
+            // Сохраняем текущий ответ локально
+            const currentResponse = textarea.value.trim();
+            userResponses.push({
+                task_id: tasks[currentStep].id,
+                task_type: tasks[currentStep].type || 'mock_task', 
+                response_content: currentResponse,
+                user_id: currentUser.id
+            });
+
+            if (currentStep < 2) {
+                // Переход к следующему заданию
+                currentStep++;
+                renderCurrentTask();
+            } else {
+                // Последнее задание завершено - отправка
+                clearInterval(timerInterval);
+                await submitAllResponses();
+            }
+        }
+
+        async function submitAllResponses() {
+            nextBtn.disabled = true;
+            nextBtn.innerHTML = `<span class="animate-pulse">Submitting...</span>`;
+            
+            try {
+                // Отправляем все 3 ответа в таблицу student_responses
+                const { error } = await supabaseClient
+                    .from('student_responses')
+                    .insert(userResponses);
+
+                if (error) throw error;
+                
+                // Показываем экран успешного завершения
+                document.getElementById('examContainer').classList.add('hidden');
+                document.getElementById('successScreen').classList.remove('hidden');
+                document.getElementById('timeLeft').textContent = "--:--";
+                document.getElementById('exitBtn').classList.add('hidden');
+
+            } catch (err) {
+                console.error("Error submitting mock:", err);
+                alert("There was an error submitting your responses. Please try again.");
+                nextBtn.disabled = false;
+                nextBtn.innerHTML = `<span>Submit Simulation</span> <i data-lucide="check" class="w-4 h-4 ml-1.5"></i>`;
+                lucide.createIcons();
+            }
+        }
+
+        nextBtn.addEventListener('click', handleNextStep);
+
+        // Предупреждение при попытке уйти со страницы
+        window.onbeforeunload = function() {
+            if (currentStep <= 2 && !document.getElementById('examContainer').classList.contains('hidden')) {
+                return "You are in the middle of a mock test. If you leave, your progress will be lost.";
+            }
+        };
+
+        // Старт
+        document.addEventListener('DOMContentLoaded', checkAuthAndLoad);
+    </script>
+</body>
+</html>
+
