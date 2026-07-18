@@ -331,6 +331,7 @@ async function fetchAndParseTasks(testId, stageName) {
 }
 
 async function startExamEngine(testId, testTitle) {
+    window.engineType = 'reading';
     document.getElementById('results-view').classList.add('hidden');
     document.getElementById('results-view').classList.remove('flex');
 
@@ -660,6 +661,7 @@ async function saveAttemptAndFinish() {
 }
 
 async function loadReviewMode(attemptId, testId, testTitle) {
+    window.engineType = 'reading';
     document.getElementById('view-tests-grid').classList.add('hidden');
     document.getElementById('main-interface').classList.add('hidden');
 
@@ -762,14 +764,19 @@ function renderResultsUI(tasksArray, finalScore, correctAnswers, totalQuestions)
                             let isCorrect = userW.toLowerCase() === correctWord.toLowerCase();
                             
                             wordsListHtml += `
-                                <div class="p-4 rounded-xl border mb-3 ${isCorrect ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}">
-                                    <div class="flex justify-between items-center mb-3">
-                                        <span class="text-[11px] font-bold opacity-70 uppercase tracking-wider ${isCorrect ? 'text-green-800' : 'text-red-800'}">GAP ${i + 1}</span>
-                                        ${isCorrect ? '<div class="w-5 h-5 bg-green-500 text-white rounded-md flex items-center justify-center"><i data-lucide="check" class="w-3.5 h-3.5"></i></div>' : '<div class="w-5 h-5 bg-red-500 text-white rounded-md flex items-center justify-center"><i data-lucide="x" class="w-3.5 h-3.5"></i></div>'}
+                                <div class="p-4 rounded-xl border mb-3 flex flex-row items-center justify-between gap-4 ${isCorrect ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="text-[11px] font-bold opacity-70 uppercase tracking-wider ${isCorrect ? 'text-green-800' : 'text-red-800'} mr-2">GAP ${i + 1}</span>
+                                        <span class="w-10 font-bold text-slate-400 text-[10px] uppercase tracking-wider text-right">You:</span> 
+                                        <span class="font-mono ${isCorrect ? 'text-green-900 font-bold' : 'text-red-900 font-bold'} tracking-widest text-[15px]">${displayUserW}</span>
                                     </div>
-                                    <div class="space-y-2">
-                                        <div class="text-sm flex items-center"><span class="w-16 font-bold text-slate-400 text-[10px] uppercase tracking-wider">You:</span> <span class="font-mono ${isCorrect ? 'text-green-900 font-bold' : 'text-red-900 font-bold'} tracking-widest text-[15px]">${displayUserW}</span></div>
-                                        ${!isCorrect ? `<div class="text-sm flex items-center"><span class="w-16 font-bold text-slate-400 text-[10px] uppercase tracking-wider">Correct:</span> <span class="font-mono text-slate-900 font-bold tracking-widest text-[15px]">${correctWord}</span></div>` : ''}
+                                    ${!isCorrect ? `
+                                    <div class="flex items-center space-x-2 border-l border-red-200 pl-4">
+                                        <span class="w-16 font-bold text-slate-400 text-[10px] uppercase tracking-wider text-right">Correct:</span> 
+                                        <span class="font-mono text-slate-900 font-bold tracking-widest text-[15px]">${correctWord}</span>
+                                    </div>` : ''}
+                                    <div class="flex-shrink-0">
+                                        ${isCorrect ? '<div class="w-5 h-5 bg-green-500 text-white rounded-md flex items-center justify-center"><i data-lucide="check" class="w-3.5 h-3.5"></i></div>' : '<div class="w-5 h-5 bg-red-500 text-white rounded-md flex items-center justify-center"><i data-lucide="x" class="w-3.5 h-3.5"></i></div>'}
                                     </div>
                                 </div>`;
                         });
@@ -782,7 +789,18 @@ function renderResultsUI(tasksArray, finalScore, correctAnswers, totalQuestions)
                 let optionsHtml = '';
                 if (q.qType === 'Select a Sentence' || q.qType === 'Insert Text') {
                     let isCorrect = q.userAnswer === q.correctAnswer;
-                    optionsHtml = `<div class="p-4 rounded-xl border ${isCorrect ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}"><div class="text-[10px] uppercase tracking-wider font-bold mb-1 opacity-70">Your Answer:</div><div class="text-sm mb-3 font-medium">${q.userAnswer || 'No answer'}</div>${!isCorrect ? `<div class="text-[10px] uppercase tracking-wider font-bold mb-1 mt-3 opacity-70">Correct Answer:</div><div class="text-sm font-medium">${q.correctAnswer}</div>` : ''}</div>`;
+                    optionsHtml = `
+                        <div class="p-4 rounded-xl border flex flex-row items-center justify-between gap-4 ${isCorrect ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}">
+                            <div class="flex-1">
+                                <div class="text-[10px] uppercase tracking-wider font-bold mb-1 opacity-70">Your Answer:</div>
+                                <div class="text-sm font-medium">${q.userAnswer || 'No answer'}</div>
+                            </div>
+                            ${!isCorrect ? `
+                            <div class="flex-1 border-l pl-4 border-red-200">
+                                <div class="text-[10px] uppercase tracking-wider font-bold mb-1 opacity-70">Correct Answer:</div>
+                                <div class="text-sm font-medium">${q.correctAnswer}</div>
+                            </div>` : ''}
+                        </div>`;
                 } else if (q.options) {
                     optionsHtml = q.options.map(opt => {
                         let isUserChoice = (q.userAnswer === opt);
@@ -794,7 +812,11 @@ function renderResultsUI(tasksArray, finalScore, correctAnswers, totalQuestions)
                         else if (isUserChoice && !isCorrectChoice) { boxClass = "bg-red-50 border-red-300 text-red-900 shadow-sm"; iconBox = `<div class="w-5 h-5 rounded bg-red-500 text-white flex items-center justify-center mr-3 flex-shrink-0"><i data-lucide="x" class="w-3.5 h-3.5"></i></div>`; }
                         else if (!isUserChoice && isCorrectChoice) { boxClass = "bg-green-50 border-green-400 text-green-900 shadow-sm"; iconBox = `<div class="w-5 h-5 rounded bg-green-500 text-white flex items-center justify-center mr-3 flex-shrink-0"><i data-lucide="check" class="w-3.5 h-3.5"></i></div>`; }
 
-                        return `<div class="flex items-center p-3 border rounded-xl mb-2.5 ${boxClass} transition-colors">${iconBox}<span class="text-sm font-medium">${opt}</span></div>`;
+                        return `<div class="flex items-center justify-between p-3 border rounded-xl mb-2.5 ${boxClass} transition-colors">
+                            <div class="flex items-center"><div class="mr-3">${iconBox}</div><span class="text-sm font-medium">${opt}</span></div>
+                            ${isUserChoice && !isCorrectChoice ? `<span class="text-[10px] font-bold text-red-700 uppercase tracking-wider ml-4">Your Answer</span>` : ''}
+                            ${isCorrectChoice ? `<span class="text-[10px] font-bold text-green-700 uppercase tracking-wider ml-4">Correct Answer</span>` : ''}
+                        </div>`;
                     }).join('');
                 }
 
@@ -869,4 +891,3 @@ function closeResults() {
     document.getElementById('main-interface').classList.remove('hidden');
     loadTestsGrid(); 
 }
-
