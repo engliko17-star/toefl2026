@@ -243,6 +243,7 @@ function renderListeningEngine() {
         globalAudio.pause(); 
         globalAudio.onended = null; 
         globalAudio.ontimeupdate = null;
+        globalAudio.onerror = null;
     }
 
     // Сбрасываем любой активный таймер при перерисовке экрана
@@ -327,6 +328,17 @@ function initListResponseLogic(question) {
     const playBtn = document.getElementById('playBtn');
     const optionsList = document.getElementById('optionsList');
     
+    // Обработка ошибок загрузки аудио
+    audioEl.onerror = () => {
+        console.error("Audio failed to load");
+        const nextBtn = document.getElementById('engine-next');
+        if (nextBtn) {
+            nextBtn.disabled = false;
+            nextBtn.innerHTML = 'Skip Error <i data-lucide="alert-triangle" class="w-4 h-4 ml-1"></i>';
+            lucide.createIcons();
+        }
+    };
+
     audioEl.src = question.audio_url;
     audioEl.load();
 
@@ -397,6 +409,18 @@ function getListStandardAudioHTML(block) {
 
 function initListStandardAudioLogic(block) {
     const audioEl = document.getElementById('globalAudio');
+    
+    // Обработка ошибок загрузки аудио
+    audioEl.onerror = () => {
+        console.error("Audio failed to load");
+        const nextBtn = document.getElementById('engine-next');
+        if (nextBtn) {
+            nextBtn.disabled = false;
+            nextBtn.innerHTML = 'Skip Error <i data-lucide="alert-triangle" class="w-4 h-4 ml-1"></i>';
+            lucide.createIcons();
+        }
+    };
+
     audioEl.src = block.audio_url;
     audioEl.load();
 
@@ -807,7 +831,14 @@ function renderListeningReview(finalScore, correctAnswers, totalQuestions) {
                     icon = `<i data-lucide="x" class="w-4 h-4 text-rose-500 mt-0.5 mr-2 shrink-0"></i>`;
                 }
                 
-                optionsHTML += `<div class="flex items-start p-3 rounded-lg border ${styleClass}">${icon}<span class="text-sm">${opt}</span></div>`;
+                // ОБНОВЛЕНО: выравнивание ответа и иконки по краям
+                optionsHTML += `
+                    <div class="flex items-center justify-between p-3 rounded-lg border ${styleClass}">
+                        <div class="flex items-center">
+                            ${icon}
+                            <span class="text-sm">${opt}</span>
+                        </div>
+                    </div>`;
             });
             optionsHTML += '</div>';
 
@@ -844,16 +875,19 @@ function renderListeningReview(finalScore, correctAnswers, totalQuestions) {
                 <div class="bg-white rounded-[2rem] p-8 border border-emerald-100 shadow-sm text-center mb-10 relative overflow-hidden max-w-2xl mx-auto">
                     <div class="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl shadow-inner"><i data-lucide="headphones" class="w-8 h-8"></i></div>
                     <h2 class="text-2xl font-bold text-slate-900 mb-8">Listening Section Review</h2>
+                    
+                    <!-- ОБНОВЛЕНО: Двойное отображение результатов (TOEFL + Raw Score) -->
                     <div class="flex justify-center items-center mb-8">
                         <div class="px-8 text-center border-r border-gray-100">
                             <div class="text-6xl font-extrabold text-emerald-600 mb-2">${parseFloat(finalScore).toFixed(1)}</div>
-                            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Est. Band Score</div>
+                            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">TOEFL Score</div>
                         </div>
                         <div class="px-8 text-center">
                             <div class="text-3xl font-bold text-slate-700 mb-2 mt-2">${correctAnswers} <span class="text-gray-300 text-xl">/</span> <span class="text-gray-400 text-2xl">${totalQuestions}</span></div>
                             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">Raw Score</div>
                         </div>
                     </div>
+                    
                     <div class="flex justify-center space-x-3">
                         <button onclick="startListeningEngine(currentActiveTestId, document.getElementById('dynamic-test-title').innerText)" class="px-6 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-emerald-600 transition shadow-md text-sm flex items-center cursor-pointer">
                             <i data-lucide="rotate-ccw" class="w-4 h-4 mr-2"></i> Retake Listening
