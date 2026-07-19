@@ -89,7 +89,7 @@
         lucide.createIcons();
 
         const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ'; // УБЕДИСЬ ЧТО ТУТ ТВОЙ КЛЮЧ
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ'; 
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         let currentUser = null;
@@ -288,7 +288,7 @@
             
             if (currentSentenceIndex === sentencesData.length - 1) {
                 navNextText.textContent = "Next Part";
-                navNext.onclick = finishSentencePhase;
+                navNext.onclick = finishSentencePhase; // Прямой переход без автоматического review листа
             } else {
                 navNextText.textContent = "Next";
                 navNext.onclick = () => { currentSentenceIndex++; updateSentenceUI(); };
@@ -542,9 +542,29 @@
             });
             
             try {
-                const { error } = await supabaseClient.from('student_responses').insert(userResponses);
-                if (error) throw error;
+                // 1. Создаем запись о попытке в новой таблице mini_mock_writing_attempts
+                const { data: attempt, error: attemptError } = await supabaseClient
+                    .from('mini_mock_writing_attempts')
+                    .insert([{ user_id: currentUser.id, mock_id: mockData.id }])
+                    .select()
+                    .single();
+
+                if (attemptError) throw attemptError;
+
+                // 2. Привязываем полученный attempt_id к каждому ответу
+                const responsesWithAttempt = userResponses.map(resp => ({
+                    ...resp,
+                    attempt_id: attempt.id
+                }));
+
+                // 3. Отправляем обогащенные ответы в student_responses
+                const { error: responsesError } = await supabaseClient
+                    .from('student_responses')
+                    .insert(responsesWithAttempt);
+                    
+                if (responsesError) throw responsesError;
                 
+                // 4. Показываем экран успешной отправки
                 document.getElementById('examContainer').classList.add('hidden');
                 document.querySelector('header').classList.add('hidden');
                 document.getElementById('successScreen').classList.replace('hidden', 'flex');
@@ -561,3 +581,4 @@
     </script>
 </body>
 </html>
+
