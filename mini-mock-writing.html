@@ -26,8 +26,8 @@
 </head>
 <body class="bg-[#f3f4f6] text-slate-800 min-h-screen antialiased flex flex-col opacity-0 transition-opacity duration-200" id="mainBody">
 
-    <!-- Top Navigation (Современный дизайн + Расположение TOEFL) -->
-    <header class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shrink-0 sticky top-0 z-50 shadow-sm">
+    <!-- Top Navigation -->
+    <header class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shrink-0 sticky top-0 z-50 shadow-sm" id="topHeader">
         <div class="flex items-center gap-4">
             <a href="mini-mock-writing-list.html" id="exitBtn" class="text-sm font-bold text-gray-400 hover:text-slate-700 transition flex items-center">
                 <i data-lucide="x" class="w-4 h-4 mr-1"></i> Exit Mock
@@ -47,7 +47,7 @@
                 <span id="navNextText">Next</span> <i data-lucide="arrow-right" class="w-4 h-4 ml-1.5" id="navNextIcon"></i>
             </button>
             
-            <div class="flex items-center gap-2 bg-slate-900 text-white px-4 py-1.5 rounded-lg font-mono text-lg font-bold shadow-sm ml-2" id="timerBadge">
+            <div class="flex items-center gap-2 bg-slate-900 text-white px-4 py-1.5 rounded-lg font-mono text-lg font-bold shadow-sm ml-2 transition-all duration-300" id="timerBadge">
                 <i data-lucide="clock" class="w-4 h-4 text-indigo-400"></i>
                 <span id="timeLeft">00:00</span>
             </div>
@@ -57,7 +57,7 @@
     <!-- Main Exam Area -->
     <main class="flex-1 overflow-hidden flex justify-center p-4 md:p-6" id="examContainer">
         <div class="w-full max-w-6xl flex flex-col h-full bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden relative">
-            <div id="dynamicTaskArea" class="flex flex-col flex-1 overflow-hidden">
+            <div id="dynamicTaskArea" class="flex flex-col flex-1 overflow-hidden w-full h-full">
                 <!-- Задания рендерятся сюда -->
             </div>
         </div>
@@ -103,6 +103,7 @@
         const navNext = document.getElementById('navNext');
         const navNextText = document.getElementById('navNextText');
         const navNextIcon = document.getElementById('navNextIcon');
+        const timerBadge = document.getElementById('timerBadge');
 
         async function checkAuthAndLoad() {
             try {
@@ -139,6 +140,7 @@
                 emailData = emailRes.data;
                 academicData = academicRes.data;
 
+                // Парсим JSON
                 sentencesData.forEach(q => {
                     if (typeof q.structure === 'string') q.structure = JSON.parse(q.structure);
                     if (typeof q.bank === 'string') q.bank = JSON.parse(q.bank);
@@ -172,6 +174,8 @@
         // ==========================================
         function startPhaseTimer(minutes, timeoutCallback) {
             clearInterval(timerInterval);
+            timerBadge.classList.remove('hidden'); // Показываем таймер
+            
             let seconds = minutes * 60;
             const display = document.getElementById('timeLeft');
             display.classList.remove('text-red-400');
@@ -191,7 +195,7 @@
         }
 
         // ==========================================
-        // PHASE 1: SENTENCES (Modern UI)
+        // PHASE 1: SENTENCES
         // ==========================================
         function initPhaseSentence() {
             currentPhase = 'sentence';
@@ -274,9 +278,9 @@
                 navBack.onclick = () => { currentSentenceIndex--; updateSentenceUI(); };
             }
             
-            // На последнем предложении Next ведет сразу к Email части
+            // На последнем предложении Next меняется на Next Part
             if (currentSentenceIndex === sentencesData.length - 1) {
-                navNextText.textContent = "Next Task";
+                navNextText.textContent = "Next Part";
                 navNext.onclick = finishSentencePhase;
             } else {
                 navNextText.textContent = "Next";
@@ -312,9 +316,9 @@
 
             navReview.classList.add('hidden');
             navBack.classList.remove('hidden');
-            navBack.onclick = initPhaseSentence; // Возврат обратно к текущему предложению
+            navBack.onclick = initPhaseSentence; 
             
-            navNextText.textContent = "Next Task";
+            navNextText.textContent = "Next Part";
             navNext.onclick = finishSentencePhase;
 
             document.getElementById('sentencesWrapper').style.display = 'none';
@@ -355,6 +359,7 @@
         };
 
         async function finishSentencePhase() {
+            // Сохраняем ответы локально
             sentencesData.forEach((q, i) => {
                 userResponses.push({
                     task_id: q.id,
@@ -364,22 +369,52 @@
                 });
             });
             
-            const sw = document.getElementById('sentencesWrapper');
-            if(sw) sw.style.display = 'none';
-            const srw = document.getElementById('sentenceReviewWrapper');
-            if(srw) srw.style.display = 'none';
-
-            initPhaseEmail();
+            showPhaseTransition();
         }
 
         // ==========================================
-        // PHASE 2: EMAIL (Modern UI)
+        // TRANSITION SCREEN
+        // ==========================================
+        function showPhaseTransition() {
+            currentPhase = 'transition';
+            
+            // Скрываем все кнопки и таймер на время переходного экрана
+            navReview.classList.add('hidden');
+            navBack.classList.add('hidden');
+            navNext.classList.add('hidden');
+            timerBadge.classList.add('hidden');
+            clearInterval(timerInterval); // Останавливаем таймер предложений
+
+            document.getElementById('taskCounterLabel').textContent = "Section Transition";
+
+            // Отрисовываем красивое переходное окно внутри рабочей зоны
+            dynamicTaskArea.innerHTML = `
+                <div class="flex-1 flex items-center justify-center p-6 bg-slate-50 w-full h-full">
+                    <div class="w-full max-w-xl bg-white rounded-3xl p-10 text-center border border-gray-200 shadow-sm">
+                        <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-indigo-100 shadow-inner">
+                            <i data-lucide="pen-tool" class="w-8 h-8"></i>
+                        </div>
+                        <h2 class="text-3xl font-black text-slate-900 mb-3">Writing Section</h2>
+                        <p class="text-slate-500 mb-8 max-w-md mx-auto text-[15px] leading-relaxed">
+                            You have successfully completed the <b>Sentence Building</b> tasks. <br><br>
+                            Next, you will write an <b>Email</b> and participate in an <b>Academic Discussion</b>. Each of these tasks will have its own time limit.
+                        </p>
+                        <button onclick="initPhaseEmail()" class="inline-flex bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3.5 rounded-xl text-sm font-bold transition shadow-sm items-center">
+                            Start Writing Tasks <i data-lucide="arrow-right" class="w-4 h-4 ml-2"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        // ==========================================
+        // PHASE 2: EMAIL
         // ==========================================
         function initPhaseEmail() {
             currentPhase = 'email';
             
-            navReview.classList.add('hidden');
-            navBack.classList.add('hidden');
+            navNext.classList.remove('hidden'); // Возвращаем кнопку Next
             navNextText.textContent = "Next Task";
             navNext.onclick = finishEmailPhase;
             
@@ -387,7 +422,7 @@
             
             let instr = (emailData.instructions || []).map(li => `<li>${li}</li>`).join('');
             dynamicTaskArea.innerHTML = `
-                <div class="flex flex-col md:flex-row h-full divide-y md:divide-y-0 md:divide-x divide-gray-200">
+                <div class="flex flex-col md:flex-row h-full divide-y md:divide-y-0 md:divide-x divide-gray-200 w-full">
                     <div class="w-full md:w-1/2 p-6 overflow-y-auto bg-white">
                         <h2 class="text-xl font-bold mb-4 text-slate-900">${emailData.title || 'Email Writing'}</h2>
                         <p class="text-sm text-slate-700 leading-relaxed">${emailData.prompt_context}</p>
@@ -399,7 +434,7 @@
                     </div>
                     <div class="w-full md:w-1/2 p-6 bg-slate-50 flex flex-col">
                         <div class="bg-white border border-gray-200 rounded-2xl flex flex-col h-full shadow-sm overflow-hidden min-h-[300px]">
-                            <div class="bg-gray-50 border-b border-gray-200 px-5 py-4 text-sm flex justify-between items-center">
+                            <div class="bg-gray-50 border-b border-gray-200 px-5 py-4 text-sm flex justify-between items-center shrink-0">
                                 <div>
                                     <p><span class="font-bold text-gray-400">To:</span> <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-semibold ml-1">${emailData.meta_to || 'Recipient'}</span></p>
                                     <p class="mt-2"><span class="font-bold text-gray-400">Subject:</span> <span class="font-semibold text-slate-700 ml-1">${emailData.meta_subject || 'Topic'}</span></p>
@@ -412,7 +447,7 @@
                 </div>
             `;
             setupWordCounter('emailResponse', 'emailWordCount');
-            startPhaseTimer(7, finishEmailPhase); // 7 минут на email
+            startPhaseTimer(7, finishEmailPhase); // 7 минут на email, таймер снова появится
         }
 
         async function finishEmailPhase() {
@@ -427,7 +462,7 @@
         }
 
         // ==========================================
-        // PHASE 3: ACADEMIC (Modern UI)
+        // PHASE 3: ACADEMIC
         // ==========================================
         function initPhaseAcademic() {
             currentPhase = 'academic';
@@ -454,7 +489,7 @@
             `).join('');
 
             dynamicTaskArea.innerHTML = `
-                <div class="flex flex-col md:flex-row h-full divide-y md:divide-y-0 md:divide-x divide-gray-200">
+                <div class="flex flex-col md:flex-row h-full divide-y md:divide-y-0 md:divide-x divide-gray-200 w-full">
                     <div class="w-full md:w-1/2 p-6 overflow-y-auto bg-white">
                         <h2 class="text-xl font-bold mb-4 text-slate-900">${academicData.title || 'Academic Discussion'}</h2>
                         <div class="bg-teal-50 text-teal-900 p-4 rounded-xl text-sm font-medium mb-6 border border-teal-100 leading-relaxed">
@@ -484,7 +519,7 @@
             `;
             lucide.createIcons();
             setupWordCounter('academicResponse', 'academicWordCount');
-            startPhaseTimer(10, submitSimulation); // 10 минут на academic
+            startPhaseTimer(10, submitSimulation); 
         }
 
         // ==========================================
