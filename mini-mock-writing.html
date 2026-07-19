@@ -63,7 +63,7 @@
 
             <!-- Dynamic Task Content Box -->
             <div class="bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col flex-1 overflow-hidden relative">
-                <div id="dynamicTaskArea" class="flex flex-col flex-1 overflow-y-auto">
+                <div id="dynamicTaskArea" class="flex flex-col flex-1 overflow-hidden">
                     <!-- Задания рендерятся сюда -->
                 </div>
                 
@@ -103,7 +103,7 @@
         lucide.createIcons();
 
         const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ'; // УБЕДИСЬ ЧТО ТУТ ТВОЙ КЛЮЧ ИЗ ПРЕДЫДУЩИХ ФАЙЛОВ
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ'; // УБЕДИСЬ ЧТО ТУТ ТВОЙ КЛЮЧ
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         let currentUser = null;
@@ -148,11 +148,9 @@
                 mockData = mock;
                 document.getElementById('mockTitle').textContent = mock.title;
 
-                // 1. Получаем test_id для предложений
                 const { data: firstSentence } = await supabaseClient.from('writing_tasks').select('test_id').eq('id', mock.sentence_task_id).single();
                 const targetTestId = (firstSentence && firstSentence.test_id) ? firstSentence.test_id : mock.sentence_task_id;
 
-                // 2. Грузим все данные
                 const [sentencesRes, emailRes, academicRes] = await Promise.all([
                     supabaseClient.from('writing_tasks').select('*').eq('type', 'sentence').eq('test_id', targetTestId).order('id'),
                     supabaseClient.from('writing_tasks').select('*').eq('id', mock.email_task_id).single(),
@@ -163,7 +161,6 @@
                 emailData = emailRes.data;
                 academicData = academicRes.data;
 
-                // Парсим JSON
                 sentencesData.forEach(q => {
                     if (typeof q.structure === 'string') q.structure = JSON.parse(q.structure);
                     if (typeof q.bank === 'string') q.bank = JSON.parse(q.bank);
@@ -215,7 +212,7 @@
                 if (seconds <= 60) display.classList.add('text-red-400');
                 if (seconds <= 0) {
                     clearInterval(timerInterval);
-                    timeoutCallback();
+                    timeoutCallback(); // Автоматически вызывает функцию переключения этапа
                 }
             }, 1000);
         }
@@ -230,72 +227,83 @@
             headerReviewBtn.classList.add('hidden');
             document.getElementById('taskTypeLabel').textContent = "Build a Sentence";
             
-            // Рендерим все предложения сразу (скрытыми)
-            dynamicTaskArea.innerHTML = `<div id="sentencesWrapper" class="w-full h-full relative"></div>`;
-            const wrapper = document.getElementById('sentencesWrapper');
+            let wrapper = document.getElementById('sentencesWrapper');
             
-            sentencesData.forEach((q, index) => {
-                let sentenceHTML = '';
-                (q.structure || []).forEach((item, sIndex) => {
-                    if (item.type === 'text') {
-                        sentenceHTML += `<div class="inline-flex px-1.5 py-2 text-sm font-bold text-slate-800">${item.value}</div>`;
-                    } else if (item.type === 'slot') {
-                        sentenceHTML += `<div class="word-slot inline-flex items-center justify-center border-b-2 border-gray-300 mx-1 pb-1 align-bottom" id="slot-${index}-${sIndex}"></div>`;
-                    }
-                });
-
-                const div = document.createElement('div');
-                div.id = `sentence-container-${index}`;
-                div.className = `absolute inset-0 flex flex-col items-center p-8 overflow-y-auto ${index === 0 ? '' : 'hidden'}`;
+            // Генерируем элементы только один раз, чтобы не терять состояние drag-and-drop
+            if (!wrapper) {
+                dynamicTaskArea.innerHTML = `<div id="sentencesWrapper" class="w-full h-full flex flex-col flex-1"></div>`;
+                wrapper = document.getElementById('sentencesWrapper');
                 
-                let bankWords = [...(q.bank || [])].sort(() => Math.random() - 0.5);
-                let bankHTML = bankWords.map(word => `<div class="bg-white border border-gray-200 text-slate-700 text-sm font-bold px-4 py-2 rounded-xl shadow-sm cursor-grab select-none">${word}</div>`).join('');
+                sentencesData.forEach((q, index) => {
+                    let sentenceHTML = '';
+                    (q.structure || []).forEach((item, sIndex) => {
+                        if (item.type === 'text') {
+                            sentenceHTML += `<div class="inline-flex px-1.5 py-2 text-sm font-bold text-slate-800">${item.value}</div>`;
+                        } else if (item.type === 'slot') {
+                            sentenceHTML += `<div class="word-slot inline-flex items-center justify-center border-b-2 border-gray-300 mx-1 pb-1 align-bottom" id="slot-${index}-${sIndex}"></div>`;
+                        }
+                    });
 
-                div.innerHTML = `
-                    <div class="w-full max-w-3xl space-y-8 mb-12 bg-gray-50 p-8 rounded-3xl border border-gray-100 shadow-sm mt-4">
-                        <div class="flex items-start space-x-4">
-                            <div class="w-10 h-10 bg-blue-50 border rounded-full flex items-center justify-center text-lg shrink-0">${q.avatar_left || '👨‍🏫'}</div>
-                            <div class="bg-white border rounded-2xl px-5 py-3 text-sm text-slate-700 mt-1 shadow-sm">${q.prompt_context}</div>
-                        </div>
-                        <div class="flex items-start space-x-4 pt-4 border-t border-dashed border-gray-200">
-                            <div class="w-10 h-10 bg-rose-50 border rounded-full flex items-center justify-center text-lg shrink-0">${q.avatar_right || '👩‍🏫'}</div>
-                            <div class="flex-1 flex flex-wrap items-end gap-y-3 pt-1">${sentenceHTML}<span class="text-2xl font-bold text-slate-400 select-none ml-1 align-bottom leading-none">.</span></div>
-                        </div>
-                    </div>
-                    <div class="w-full max-w-2xl mx-auto">
-                        <div class="flex flex-wrap justify-center gap-2.5 bg-gray-50 border border-gray-200 p-5 rounded-3xl min-h-[80px]" id="bank-${index}">${bankHTML}</div>
-                    </div>
-                `;
-                wrapper.appendChild(div);
+                    const div = document.createElement('div');
+                    div.id = `sentence-container-${index}`;
+                    // Используем flex вместо absolute для правильного отображения на мобильных
+                    div.className = `w-full flex-1 flex flex-col items-center p-4 md:p-8 overflow-y-auto`;
+                    div.style.display = index === 0 ? 'flex' : 'none';
+                    
+                    let bankWords = [...(q.bank || [])].sort(() => Math.random() - 0.5);
+                    let bankHTML = bankWords.map(word => `<div class="bg-white border border-gray-200 text-slate-700 text-sm font-bold px-4 py-2 rounded-xl shadow-sm cursor-grab select-none">${word}</div>`).join('');
 
-                // Инициализация Drag and Drop для этого предложения
-                new Sortable(div.querySelector(`#bank-${index}`), { group: `shared-${index}`, animation: 150 });
-                div.querySelectorAll(`[id^="slot-${index}-"]`).forEach(slot => {
-                    new Sortable(slot, { group: `shared-${index}`, animation: 150 });
+                    div.innerHTML = `
+                        <div class="w-full max-w-3xl space-y-8 mb-12 bg-gray-50 p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm mt-4 shrink-0">
+                            <div class="flex items-start space-x-4">
+                                <div class="w-10 h-10 bg-blue-50 border rounded-full flex items-center justify-center text-lg shrink-0">${q.avatar_left || '👨‍🏫'}</div>
+                                <div class="bg-white border rounded-2xl px-5 py-3 text-sm text-slate-700 mt-1 shadow-sm">${q.prompt_context}</div>
+                            </div>
+                            <div class="flex items-start space-x-4 pt-4 border-t border-dashed border-gray-200">
+                                <div class="w-10 h-10 bg-rose-50 border rounded-full flex items-center justify-center text-lg shrink-0">${q.avatar_right || '👩‍🏫'}</div>
+                                <div class="flex-1 flex flex-wrap items-end gap-y-3 pt-1">${sentenceHTML}<span class="text-2xl font-bold text-slate-400 select-none ml-1 align-bottom leading-none">.</span></div>
+                            </div>
+                        </div>
+                        <div class="w-full max-w-2xl mx-auto shrink-0 pb-10">
+                            <div class="flex flex-wrap justify-center gap-2.5 bg-gray-50 border border-gray-200 p-5 rounded-3xl min-h-[80px]" id="bank-${index}">${bankHTML}</div>
+                        </div>
+                    `;
+                    wrapper.appendChild(div);
+
+                    new Sortable(div.querySelector(`#bank-${index}`), { group: `shared-${index}`, animation: 150 });
+                    div.querySelectorAll(`[id^="slot-${index}-"]`).forEach(slot => {
+                        new Sortable(slot, { group: `shared-${index}`, animation: 150 });
+                    });
                 });
-            });
 
-            startPhaseTimer(10, finishSentencePhase); // 10 минут на все предложения
+                startPhaseTimer(10, finishSentencePhase); // 10 минут на все предложения
+            }
+
+            // Скрываем экран Review, если он открыт
+            const reviewWrapper = document.getElementById('sentenceReviewWrapper');
+            if (reviewWrapper) reviewWrapper.style.display = 'none';
+            wrapper.style.display = 'flex';
+
             updateSentenceUI();
         }
 
         function updateSentenceUI() {
             document.getElementById('taskCounterLabel').textContent = `Question ${currentSentenceIndex + 1} of ${sentencesData.length}`;
             
-            // Показываем только текущий контейнер
             sentencesData.forEach((_, i) => {
                 const c = document.getElementById(`sentence-container-${i}`);
-                if (c) c.classList.toggle('hidden', i !== currentSentenceIndex);
+                if (c) c.style.display = i === currentSentenceIndex ? 'flex' : 'none';
             });
 
             document.getElementById('prevBtn').style.visibility = currentSentenceIndex === 0 ? 'hidden' : 'visible';
             
             const nBtn = document.getElementById('nextBtn');
+            nBtn.innerHTML = `<span>Next</span> <i data-lucide="arrow-right" class="w-4 h-4 ml-1.5"></i>`;
+            
             if (currentSentenceIndex === sentencesData.length - 1) {
-                nBtn.innerHTML = `<span>Review</span> <i data-lucide="list-checks" class="w-4 h-4 ml-1.5"></i>`;
+                // На последнем предложении Next ведет на экран Review
                 nBtn.onclick = showSentenceReview;
             } else {
-                nBtn.innerHTML = `<span>Next</span> <i data-lucide="arrow-right" class="w-4 h-4 ml-1.5"></i>`;
                 nBtn.onclick = () => { currentSentenceIndex++; updateSentenceUI(); };
             }
             lucide.createIcons();
@@ -334,6 +342,17 @@
             document.getElementById('taskTypeLabel').textContent = "Review Sentences";
             document.getElementById('taskCounterLabel').textContent = "Overview";
 
+            // Скрываем предложения, но НЕ удаляем их из DOM (чтобы сохранить состояние drag-and-drop)
+            document.getElementById('sentencesWrapper').style.display = 'none';
+
+            let reviewDiv = document.getElementById('sentenceReviewWrapper');
+            if (!reviewDiv) {
+                reviewDiv = document.createElement('div');
+                reviewDiv.id = 'sentenceReviewWrapper';
+                reviewDiv.className = 'p-4 md:p-8 max-w-3xl mx-auto w-full h-full flex flex-col flex-1 overflow-y-auto';
+                dynamicTaskArea.appendChild(reviewDiv);
+            }
+
             let listHTML = sentencesData.map((s, i) => `
                 <div class="flex justify-between items-center p-4 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0 transition" onclick="returnToSentence(${i})">
                     <div class="flex items-center gap-3">
@@ -346,27 +365,23 @@
                 </div>
             `).join('');
 
-            dynamicTaskArea.innerHTML = `
-                <div class="p-8 max-w-3xl mx-auto w-full h-full flex flex-col">
-                    <h2 class="text-2xl font-black text-slate-900 mb-6 text-center">Section 1 Review</h2>
-                    <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex-1">
-                        ${listHTML}
-                    </div>
+            reviewDiv.innerHTML = `
+                <h2 class="text-2xl font-black text-slate-900 mb-6 text-center">Section 1 Review</h2>
+                <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex-1 shrink-0">
+                    ${listHTML}
                 </div>
             `;
+            reviewDiv.style.display = 'flex';
             lucide.createIcons();
         }
 
         window.returnToSentence = function(i) {
             currentSentenceIndex = i;
-            // Восстанавливаем DOM предложений
-            initPhaseSentence(); 
-            // Отключаем перезапуск таймера, так как таймер идет глобально для фазы
-            updateSentenceUI();
+            initPhaseSentence(); // Эта функция теперь просто покажет нужный скрытый div
         };
 
         async function finishSentencePhase() {
-            // Собираем ответы предложений
+            // Собираем ответы предложений (Они безопасно соберутся даже если время вышло на экране Review)
             sentencesData.forEach((q, i) => {
                 userResponses.push({
                     task_id: q.id,
@@ -375,6 +390,12 @@
                     user_id: currentUser.id
                 });
             });
+            
+            const sw = document.getElementById('sentencesWrapper');
+            if(sw) sw.style.display = 'none';
+            const srw = document.getElementById('sentenceReviewWrapper');
+            if(srw) srw.style.display = 'none';
+
             initPhaseEmail();
         }
 
@@ -404,7 +425,7 @@
                         </div>
                     </div>
                     <div class="w-full md:w-1/2 p-6 bg-slate-50 flex flex-col">
-                        <div class="bg-white border border-gray-200 rounded-2xl flex flex-col h-full shadow-sm overflow-hidden">
+                        <div class="bg-white border border-gray-200 rounded-2xl flex flex-col h-full shadow-sm overflow-hidden min-h-[300px]">
                             <div class="bg-gray-50 border-b border-gray-200 px-5 py-4 text-sm flex justify-between items-center">
                                 <div>
                                     <p><span class="font-bold text-gray-400">To:</span> <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-semibold ml-1">${emailData.meta_to || 'Recipient'}</span></p>
@@ -412,7 +433,7 @@
                                 </div>
                                 <span class="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">Words: <span id="emailWordCount">0</span></span>
                             </div>
-                            <textarea id="emailResponse" placeholder="Write your email here..." class="exam-textarea flex-1 p-5 text-sm text-slate-700 w-full"></textarea>
+                            <textarea id="emailResponse" placeholder="Write your email here..." class="exam-textarea flex-1 p-5 text-sm text-slate-700 w-full h-full"></textarea>
                         </div>
                     </div>
                 </div>
@@ -448,7 +469,7 @@
             document.getElementById('taskTypeLabel').textContent = "Academic Discussion";
 
             let peersHTML = (academicData.peers || []).map(p => `
-                <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex gap-4">
+                <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex gap-4 shrink-0">
                     <div class="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-lg shrink-0 border border-indigo-100">${p.avatar || '👤'}</div>
                     <div>
                         <p class="text-xs font-bold text-slate-400 uppercase mb-1">${p.name}</p>
@@ -464,7 +485,7 @@
                         <div class="bg-teal-50 text-teal-900 p-4 rounded-xl text-sm font-medium mb-6 border border-teal-100 leading-relaxed">
                             ${academicData.instruction_box || ''}
                         </div>
-                        <div class="bg-gray-50 p-5 rounded-2xl border border-gray-200 flex gap-4">
+                        <div class="bg-gray-50 p-5 rounded-2xl border border-gray-200 flex gap-4 shrink-0">
                             <div class="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-2xl shrink-0 border border-gray-200 shadow-sm">${academicData.professor_avatar || '👨‍🏫'}</div>
                             <div>
                                 <p class="text-xs font-black text-slate-500 uppercase tracking-wide mb-1.5">${academicData.professor_name || 'Professor'}</p>
@@ -473,15 +494,15 @@
                         </div>
                     </div>
                     <div class="w-full md:w-1/2 p-6 bg-slate-50 flex flex-col gap-4 overflow-y-auto">
-                        <div class="flex flex-col gap-4">
+                        <div class="flex flex-col gap-4 shrink-0">
                             ${peersHTML}
                         </div>
-                        <div class="bg-white border border-gray-200 rounded-2xl flex flex-col mt-4 flex-1 min-h-[250px] shadow-sm overflow-hidden">
-                            <div class="flex justify-between items-center bg-gray-50 px-4 py-3 border-b border-gray-200">
+                        <div class="bg-white border border-gray-200 rounded-2xl flex flex-col mt-4 flex-1 min-h-[300px] shadow-sm overflow-hidden">
+                            <div class="flex justify-between items-center bg-gray-50 px-4 py-3 border-b border-gray-200 shrink-0">
                                 <span class="text-xs font-black text-slate-400 uppercase tracking-wide">TOEFL Editor</span>
                                 <span class="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">Words: <span id="academicWordCount">0</span></span>
                             </div>
-                            <textarea id="academicResponse" placeholder="Write your contribution here..." class="exam-textarea flex-1 p-5 text-sm text-slate-700 w-full"></textarea>
+                            <textarea id="academicResponse" placeholder="Write your contribution here..." class="exam-textarea flex-1 p-5 text-sm text-slate-700 w-full h-full"></textarea>
                         </div>
                     </div>
                 </div>
