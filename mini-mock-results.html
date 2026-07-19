@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mock Results — TOEFL</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .correction-box { white-space: pre-wrap; }
+    </style>
+</head>
+<body class="bg-[#f3f4f6] text-slate-800 antialiased opacity-0 transition-opacity duration-200" id="mainBody">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shadow-sm sticky top-0 z-50">
+        <div class="flex items-center gap-4">
+            <a href="mini-mock-writing-list.html" class="text-sm font-bold text-gray-400 hover:text-slate-700 transition flex items-center">
+                <i data-lucide="arrow-left" class="w-4 h-4 mr-1"></i> Back to Dashboard
+            </a>
+            <div class="h-4 w-px bg-gray-200"></div>
+            <h1 class="text-sm font-bold text-slate-900" id="headerTitle">Simulation Results</h1>
+        </div>
+        
+        <div id="statusBadge" class="hidden text-sm font-bold px-4 py-1.5 rounded-lg border">
+            <!-- Сюда вставится статус проверки -->
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto p-4 md:p-8 space-y-8" id="resultsContainer">
+        <!-- Загрузка -->
+        <div id="loadingIndicator" class="text-center py-20 text-gray-400 font-bold animate-pulse">Loading results...</div>
+        
+        <!-- Контент рендерится сюда -->
+        <div id="contentArea" class="hidden space-y-10">
+            <!-- Sentences Section -->
+            <section>
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-xl font-black text-slate-900 flex items-center"><i data-lucide="list-checks" class="w-5 h-5 mr-2 text-indigo-500"></i> Part 1: Sentence Building</h2>
+                </div>
+                <div id="sentencesResults" class="space-y-4"></div>
+            </section>
+
+            <!-- Email Section -->
+            <section>
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-xl font-black text-slate-900 flex items-center"><i data-lucide="mail" class="w-5 h-5 mr-2 text-indigo-500"></i> Part 2: Email Writing</h2>
+                    <span id="emailScore" class="font-bold text-lg text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-100 hidden"></span>
+                </div>
+                <div id="emailResult" class="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden"></div>
+            </section>
+
+            <!-- Academic Section -->
+            <section>
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-xl font-black text-slate-900 flex items-center"><i data-lucide="graduation-cap" class="w-5 h-5 mr-2 text-emerald-500"></i> Part 3: Academic Discussion</h2>
+                    <span id="academicScore" class="font-bold text-lg text-emerald-600 bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-100 hidden"></span>
+                </div>
+                <div id="academicResult" class="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden"></div>
+            </section>
+        </div>
+    </main>
+
+    <script>
+        lucide.createIcons();
+
+        const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
+        const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY_HERE'; // ВСТАВЬ СВОЙ КЛЮЧ
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        async function initResults() {
+            try {
+                const { data: { session } } = await supabaseClient.auth.getSession();
+                if (!session) return window.location.replace('index.html');
+                
+                document.getElementById('mainBody').classList.remove('opacity-0');
+                
+                // Получаем attempt_id из URL (например: mini-mock-results.html?attempt_id=123-456)
+                const urlParams = new URLSearchParams(window.location.search);
+                const attemptId = urlParams.get('attempt_id');
+                
+                if (!attemptId) {
+                    alert('Attempt ID not found');
+                    return;
+                }
+
+                await loadAttemptData(attemptId);
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function loadAttemptData(attemptId) {
+            // 1. Получаем саму попытку
+            const { data: attempt } = await supabaseClient
+                .from('mock_attempts')
+                .select('*, mock:mini_mock_writing(title)')
+                .eq('id', attemptId)
+                .single();
+
+            // 2. Получаем ответы ученика
+            const { data: responses } = await supabaseClient
+                .from('student_responses')
+                .select('*, task:writing_tasks(*)')
+                .eq('attempt_id', attemptId);
+
+            renderStatus(attempt);
+            renderSentences(responses.filter(r => r.task_type === 'sentence'));
+            renderEssay(responses.find(r => r.task_type === 'email'), 'emailResult', 'emailScore');
+            renderEssay(responses.find(r => r.task_type === 'academic'), 'academicResult', 'academicScore');
+
+            document.getElementById('loadingIndicator').classList.add('hidden');
+            document.getElementById('contentArea').classList.remove('hidden');
+        }
+
+        function renderStatus(attempt) {
+            document.getElementById('headerTitle').textContent = attempt.mock?.title || 'Simulation Results';
+            
+            const badge = document.getElementById('statusBadge');
+            badge.classList.remove('hidden');
+            
+            if (attempt.status === 'reviewed') {
+                badge.className = 'text-sm font-bold px-4 py-1.5 rounded-lg border bg-emerald-50 text-emerald-600 border-emerald-200 flex items-center';
+                badge.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 mr-1.5"></i> Reviewed (Score: ${attempt.overall_score || '-'})`;
+            } else {
+                badge.className = 'text-sm font-bold px-4 py-1.5 rounded-lg border bg-amber-50 text-amber-600 border-amber-200 flex items-center';
+                badge.innerHTML = `<i data-lucide="clock" class="w-4 h-4 mr-1.5"></i> Pending Teacher Review`;
+            }
+            lucide.createIcons();
+        }
+
+        function getCorrectSentence(structureStr) {
+            if (!structureStr) return '';
+            let structure = typeof structureStr === 'string' ? JSON.parse(structureStr) : structureStr;
+            // Собираем правильный ответ, если type=slot, берем поле answer (предполагая, что ты его добавлял при создании задания)
+            let parts = structure.map(item => item.type === 'text' ? item.value : (item.answer || '_____'));
+            return parts.join(" ").replace(/\s+([.?!])/g, "$1").trim() + ".";
+        }
+
+        function renderSentences(sentenceResponses) {
+            const container = document.getElementById('sentencesResults');
+            if (!sentenceResponses.length) {
+                container.innerHTML = '<p class="text-gray-500">No sentence building responses found.</p>';
+                return;
+            }
+
+            container.innerHTML = sentenceResponses.map((r, i) => {
+                const correctAns = getCorrectSentence(r.task.structure);
+                // Простая логика сверки (можно усложнить)
+                const isCorrect = r.response_content.toLowerCase() === correctAns.toLowerCase();
+                
+                return `
+                    <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+                        <div class="flex items-start justify-between mb-3">
+                            <div class="text-sm font-bold text-slate-400">Sentence ${i + 1}</div>
+                            ${isCorrect 
+                                ? `<span class="bg-emerald-50 text-emerald-500 px-2 py-1 rounded text-xs font-bold border border-emerald-100">Exact Match</span>`
+                                : `<span class="bg-rose-50 text-rose-500 px-2 py-1 rounded text-xs font-bold border border-rose-100">Needs Review</span>`
+                            }
+                        </div>
+                        <div class="mb-4">
+                            <p class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">Your Answer</p>
+                            <p class="text-slate-800 font-medium ${!isCorrect ? 'text-rose-600' : ''}">${r.response_content}</p>
+                        </div>
+                        <div class="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                            <p class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">Correct Structure</p>
+                            <p class="text-slate-600 font-medium">${correctAns}</p>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderEssay(response, containerId, scoreId) {
+            const container = document.getElementById(containerId);
+            if (!response) {
+                container.innerHTML = '<div class="p-6 text-gray-500">No response recorded.</div>';
+                return;
+            }
+
+            // Рендер оценки, если она уже выставлена учителем
+            if (response.score) {
+                const scoreBadge = document.getElementById(scoreId);
+                scoreBadge.classList.remove('hidden');
+                scoreBadge.textContent = `Score: ${response.score} / 6.0`;
+            }
+
+            // Верстка для эссе и фидбека
+            container.innerHTML = `
+                <div class="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-gray-200">
+                    <!-- Оригинальный ответ ученика -->
+                    <div class="p-6 bg-slate-50">
+                        <h3 class="text-xs font-black text-slate-400 uppercase tracking-wider mb-4 flex items-center">
+                            <i data-lucide="file-text" class="w-4 h-4 mr-1.5"></i> Your Response
+                        </h3>
+                        <div class="bg-white border border-gray-200 rounded-xl p-5 text-sm text-slate-700 leading-relaxed shadow-sm min-h-[200px] whitespace-pre-wrap">${response.response_content || 'No text submitted.'}</div>
+                    </div>
+                    
+                    <!-- Фидбек учителя -->
+                    <div class="p-6 bg-white flex flex-col">
+                        <h3 class="text-xs font-black text-indigo-400 uppercase tracking-wider mb-4 flex items-center">
+                            <i data-lucide="pen-tool" class="w-4 h-4 mr-1.5"></i> Teacher's Correction & Feedback
+                        </h3>
+                        ${response.teacher_correction 
+                            ? `<div class="correction-box bg-indigo-50 border border-indigo-100 rounded-xl p-5 text-sm text-indigo-900 leading-relaxed flex-1 shadow-inner">${response.teacher_correction}</div>`
+                            : `<div class="flex-1 border-2 border-dashed border-gray-100 rounded-xl flex items-center justify-center flex-col text-gray-400 p-8 text-center">
+                                 <i data-lucide="clock" class="w-8 h-8 mb-2 opacity-50"></i>
+                                 <p class="text-sm font-medium">Your teacher hasn't reviewed this task yet.</p>
+                               </div>`
+                        }
+                    </div>
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        document.addEventListener('DOMContentLoaded', initResults);
+    </script>
+</body>
+</html>
+
