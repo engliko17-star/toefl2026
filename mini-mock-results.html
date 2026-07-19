@@ -96,18 +96,30 @@
         }
 
         async function loadAttemptData(attemptId) {
-            // 1. Получаем саму попытку
-            const { data: attempt } = await supabaseClient
-                .from('mock_attempts')
+            // 1. Получаем саму попытку из новой таблицы
+            const { data: attempt, error: attemptError } = await supabaseClient
+                .from('mini_mock_writing_attempts')
                 .select('*, mock:mini_mock_writing(title)')
                 .eq('id', attemptId)
                 .single();
 
+            if (attemptError) {
+                console.error('Error fetching attempt:', attemptError);
+                document.getElementById('loadingIndicator').textContent = 'Failed to load results.';
+                return;
+            }
+
             // 2. Получаем ответы ученика
-            const { data: responses } = await supabaseClient
+            const { data: responses, error: respError } = await supabaseClient
                 .from('student_responses')
                 .select('*, task:writing_tasks(*)')
                 .eq('attempt_id', attemptId);
+
+            if (respError) {
+                console.error('Error fetching responses:', respError);
+                document.getElementById('loadingIndicator').textContent = 'Failed to load responses.';
+                return;
+            }
 
             renderStatus(attempt);
             renderSentences(responses.filter(r => r.task_type === 'sentence'));
@@ -126,7 +138,7 @@
             
             if (attempt.status === 'reviewed') {
                 badge.className = 'text-sm font-bold px-4 py-1.5 rounded-lg border bg-emerald-50 text-emerald-600 border-emerald-200 flex items-center';
-                badge.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 mr-1.5"></i> Reviewed (Score: ${attempt.overall_score || '-'})`;
+                badge.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 mr-1.5"></i> Reviewed (Score: ${attempt.overall_score || '-'} / 6.0)`;
             } else {
                 badge.className = 'text-sm font-bold px-4 py-1.5 rounded-lg border bg-amber-50 text-amber-600 border-amber-200 flex items-center';
                 badge.innerHTML = `<i data-lucide="clock" class="w-4 h-4 mr-1.5"></i> Pending Teacher Review`;
@@ -223,4 +235,3 @@
     </script>
 </body>
 </html>
-
