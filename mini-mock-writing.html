@@ -7,6 +7,7 @@
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <style>
@@ -18,16 +19,14 @@
         ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
         
-        .exam-textarea {
-            resize: none;
-            outline: none;
-            font-family: inherit;
-        }
+        .exam-textarea { resize: none; outline: none; font-family: inherit; }
+        .word-slot { min-width: 90px; min-height: 40px; transition: all 0.2s; }
+        .sortable-ghost { opacity: 0.2; background-color: #f1f5f9; border: 2px dashed #94a3b8; color: transparent; }
     </style>
 </head>
 <body class="bg-[#f3f4f6] text-slate-800 min-h-screen antialiased flex flex-col opacity-0 transition-opacity duration-200" id="mainBody">
 
-    <!-- Top Navigation (Exam Mode) -->
+    <!-- Top Navigation -->
     <header class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shrink-0 sticky top-0 z-50">
         <div class="flex items-center gap-4">
             <a href="mini-mock-writing-list.html" id="exitBtn" class="text-sm font-bold text-gray-400 hover:text-slate-700 transition flex items-center">
@@ -37,7 +36,6 @@
             <span class="text-sm font-bold text-slate-900" id="mockTitle">Loading Simulation...</span>
         </div>
         
-        <!-- Timer -->
         <div class="flex items-center gap-2 bg-slate-900 text-white px-4 py-1.5 rounded-lg font-mono text-lg font-bold shadow-sm">
             <i data-lucide="clock" class="w-4 h-4 text-indigo-400"></i>
             <span id="timeLeft">00:00</span>
@@ -45,69 +43,50 @@
     </header>
 
     <!-- Main Exam Area -->
-    <main class="flex-1 overflow-y-auto p-4 md:p-8 flex justify-center">
-        <div class="w-full max-w-4xl flex flex-col h-full" id="examContainer">
+    <main class="flex-1 overflow-hidden flex justify-center p-4 md:p-8">
+        <div class="w-full max-w-5xl flex flex-col h-full" id="examContainer">
             
-            <!-- Progress Steps -->
-            <div class="flex items-center justify-between mb-6 px-2">
+            <div class="flex items-center justify-between mb-4 px-2 shrink-0">
                 <div class="flex items-center gap-2" id="stepIndicator">
                     <span class="text-xs font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2 py-1 rounded">Task 1 of 3</span>
                     <span class="text-sm font-semibold text-slate-700" id="taskTypeLabel">Sentence Building</span>
                 </div>
             </div>
 
-            <!-- Task Content Box -->
-            <div class="bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col flex-1 overflow-hidden">
+            <!-- Dynamic Task Content Box -->
+            <div class="bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col flex-1 overflow-hidden relative">
+                <div id="dynamicTaskArea" class="flex flex-col flex-1 overflow-y-auto">
+                    <!-- Задания рендерятся сюда -->
+                </div>
                 
-                <!-- Prompt Section -->
-                <div class="p-6 md:p-8 border-b border-gray-100 bg-gray-50/50">
-                    <h2 class="text-lg font-bold text-slate-900 mb-4" id="taskTitle">Loading prompt...</h2>
-                    <div class="prose prose-sm max-w-none text-slate-600" id="taskPrompt">
-                        <!-- Контент задания появится здесь -->
-                    </div>
+                <!-- Next / Submit Bar -->
+                <div class="p-4 bg-gray-50 border-t border-gray-200 shrink-0 flex justify-end">
+                    <button id="nextBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl text-sm font-bold transition shadow-sm hover:shadow flex items-center">
+                        <span>Next Task</span>
+                        <i data-lucide="arrow-right" class="w-4 h-4 ml-1.5"></i>
+                    </button>
                 </div>
-
-                <!-- Response Section -->
-                <div class="p-6 md:p-8 flex flex-col flex-1 bg-white relative">
-                    <label class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 block">Your Response</label>
-                    <textarea 
-                        id="responseArea" 
-                        class="exam-textarea w-full flex-1 border-0 text-slate-700 text-base leading-relaxed placeholder-gray-300"
-                        placeholder="Start typing your response here..."></textarea>
-                    
-                    <div class="flex items-center justify-between mt-6 pt-4 border-t border-gray-50">
-                        <div class="text-xs font-medium text-gray-400">
-                            Word count: <span id="wordCount" class="font-bold text-slate-600">0</span>
-                        </div>
-                        <button id="nextBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition shadow-sm hover:shadow flex items-center">
-                            <span>Next Task</span>
-                            <i data-lucide="arrow-right" class="w-4 h-4 ml-1.5"></i>
-                        </button>
-                    </div>
-                </div>
-
             </div>
         </div>
         
-        <!-- Success Screen (Hidden by default) -->
+        <!-- Success Screen -->
         <div id="successScreen" class="hidden w-full max-w-2xl m-auto bg-white rounded-3xl p-10 text-center border border-gray-100 shadow-lg">
-            <div class="w-20 h-20 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center mx-auto mb-6 transform rotate-3">
+            <div class="w-20 h-20 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
                 <i data-lucide="check-circle-2" class="w-10 h-10"></i>
             </div>
             <h2 class="text-2xl font-black text-slate-900 mb-2">Simulation Complete!</h2>
-            <p class="text-gray-500 mb-8 max-w-md mx-auto">All three responses have been successfully submitted. Your teacher will review your performance shortly.</p>
+            <p class="text-gray-500 mb-8 max-w-md mx-auto">All responses submitted. Your teacher will review them shortly.</p>
             
             <div class="bg-gray-50 rounded-2xl p-6 mb-8 border border-gray-100">
                 <h3 class="text-sm font-bold text-slate-800 mb-1">Grading Scale</h3>
-                <p class="text-xs text-slate-500 mb-4">You will receive an official exam-style rating.</p>
-                <div class="flex justify-center items-end gap-1">
+                <div class="flex justify-center items-end gap-1 mt-2">
                     <span class="text-4xl font-black text-indigo-600">?.?</span>
                     <span class="text-lg font-bold text-gray-400 mb-1">/ 6.0</span>
                 </div>
             </div>
             
-            <a href="mini-mock-writing-list.html" class="inline-flex items-center justify-center bg-slate-900 hover:bg-slate-800 text-white px-8 py-3.5 rounded-xl text-sm font-bold transition shadow-sm">
-                Return to Mocks
+            <a href="mini-mock-writing-list.html" class="inline-flex bg-slate-900 hover:bg-slate-800 text-white px-8 py-3.5 rounded-xl text-sm font-bold transition shadow-sm">
+                Return to Dashboard
             </a>
         </div>
     </main>
@@ -120,219 +99,263 @@
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         let currentUser = null;
-        let mockData = null;
         let tasks = [];
         let currentStep = 0;
-        
-        // Массив для хранения ответов пользователя
         let userResponses = [];
         
-        // Таймер
         let timerInterval;
-        const TIME_LIMITS = {
-            'sentence': 3 * 60, // 3 минуты
-            'email': 10 * 60,   // 10 минут
-            'academic': 10 * 60 // 10 минут
-        };
+        // Таймеры (в секундах)
+        const TIME_LIMITS = { 'sentence': 6 * 60, 'email': 10 * 60, 'academic': 10 * 60 };
 
-        const textarea = document.getElementById('responseArea');
-        const wordCountDisplay = document.getElementById('wordCount');
+        const dynamicTaskArea = document.getElementById('dynamicTaskArea');
         const nextBtn = document.getElementById('nextBtn');
-
-        // Подсчет слов
-        textarea.addEventListener('input', () => {
-            const text = textarea.value.trim();
-            const words = text.length > 0 ? text.split(/\s+/).length : 0;
-            wordCountDisplay.textContent = words;
-        });
 
         async function checkAuthAndLoad() {
             try {
-                const { data: { session }, error } = await supabaseClient.auth.getSession();
-                if (error || !session) {
-                    window.location.replace('index.html');
-                    return;
-                }
+                const { data: { session } } = await supabaseClient.auth.getSession();
+                if (!session) return window.location.replace('index.html');
+                
                 currentUser = session.user;
                 document.getElementById('mainBody').classList.remove('opacity-0');
                 
-                const urlParams = new URLSearchParams(window.location.search);
-                const mockId = urlParams.get('id');
-                
-                if (!mockId) {
-                    window.location.replace('mini-mock-writing-list.html');
-                    return;
-                }
+                const mockId = new URLSearchParams(window.location.search).get('id');
+                if (!mockId) return window.location.replace('mini-mock-writing-list.html');
                 
                 await loadMockData(mockId);
             } catch (err) {
-                console.error("Initialization error:", err);
+                console.error(err);
             }
         }
 
         async function loadMockData(mockId) {
             try {
-                // 1. Получаем данные мока
-                const { data: mock, error: mockErr } = await supabaseClient
-                    .from('mini_mock_writing')
-                    .select('*')
-                    .eq('id', mockId)
-                    .single();
-
-                if (mockErr || !mock) throw mockErr;
-                mockData = mock;
+                const { data: mock } = await supabaseClient.from('mini_mock_writing').select('*').eq('id', mockId).single();
                 document.getElementById('mockTitle').textContent = mock.title;
 
-                // 2. Получаем сами задания из writing_tasks
-                const taskIds = [mock.sentence_task_id, mock.email_task_id, mock.academic_task_id];
-                
-                const { data: fetchedTasks, error: tasksErr } = await supabaseClient
-                    .from('writing_tasks')
-                    .select('*')
-                    .in('id', taskIds);
+                const { data: fetchedTasks } = await supabaseClient.from('writing_tasks').select('*')
+                    .in('id', [mock.sentence_task_id, mock.email_task_id, mock.academic_task_id]);
 
-                if (tasksErr) throw tasksErr;
+                // Парсим JSON поля, если они пришли строкой
+                fetchedTasks.forEach(q => {
+                    if (typeof q.structure === 'string') q.structure = JSON.parse(q.structure);
+                    if (typeof q.bank === 'string') q.bank = JSON.parse(q.bank);
+                    if (typeof q.instructions === 'string') q.instructions = JSON.parse(q.instructions);
+                    if (typeof q.peers === 'string') q.peers = JSON.parse(q.peers);
+                });
 
-                // Сортируем задания в нужном порядке (Sentence -> Email -> Academic)
                 tasks[0] = fetchedTasks.find(t => t.id === mock.sentence_task_id);
                 tasks[1] = fetchedTasks.find(t => t.id === mock.email_task_id);
                 tasks[2] = fetchedTasks.find(t => t.id === mock.academic_task_id);
-                
-                // Проверка на отсутствующие задания
-                if (!tasks[0] || !tasks[1] || !tasks[2]) {
-                    alert("Error: One or more tasks are missing from this mock test.");
-                    return;
-                }
 
-                // Запускаем первое задание
                 renderCurrentTask();
-
             } catch (err) {
-                console.error("Error loading mock:", err);
-                alert("Could not load the simulation. Please try again.");
-                window.location.replace('mini-mock-writing-list.html');
+                console.error(err);
+                alert("Error loading test data.");
             }
         }
 
         function renderCurrentTask() {
             const task = tasks[currentStep];
+            const type = currentStep === 0 ? 'sentence' : (currentStep === 1 ? 'email' : 'academic');
             
-            // Обновляем UI индикаторы
-            const labels = ['Sentence Building', 'Email Writing', 'Academic Discussion'];
             document.querySelector('#stepIndicator span:first-child').textContent = `Task ${currentStep + 1} of 3`;
-            document.getElementById('taskTypeLabel').textContent = labels[currentStep];
+            document.getElementById('taskTypeLabel').textContent = type.toUpperCase();
             
-            // Загружаем контент задания
-            document.getElementById('taskTitle').textContent = task.title;
-            document.getElementById('taskPrompt').innerHTML = task.content;
-            
-            // Очищаем текстовое поле
-            textarea.value = '';
-            wordCountDisplay.textContent = '0';
-            
-            // Обновляем кнопку
+            dynamicTaskArea.innerHTML = '';
+
+            if (type === 'sentence') {
+                renderSentenceTask(task);
+            } else if (type === 'email') {
+                renderEmailTask(task);
+            } else if (type === 'academic') {
+                renderAcademicTask(task);
+            }
+
             if (currentStep === 2) {
                 nextBtn.innerHTML = `<span>Submit Simulation</span> <i data-lucide="check" class="w-4 h-4 ml-1.5"></i>`;
-                nextBtn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
-                nextBtn.classList.add('bg-emerald-600', 'hover:bg-emerald-700');
+                nextBtn.classList.replace('bg-indigo-600', 'bg-emerald-600');
+                nextBtn.classList.replace('hover:bg-indigo-700', 'hover:bg-emerald-700');
             }
             lucide.createIcons();
-
-            // Запускаем таймер
-            let type = 'sentence';
-            if (currentStep === 1) type = 'email';
-            if (currentStep === 2) type = 'academic';
             startTimer(TIME_LIMITS[type]);
         }
 
-        function startTimer(secondsLeft) {
+        // --- РЕНДЕР ЗАДАНИЙ ---
+
+        function renderSentenceTask(q) {
+            let sentenceHTML = '';
+            (q.structure || []).forEach((item, index) => {
+                if (item.type === 'text') {
+                    sentenceHTML += `<div class="inline-flex px-1.5 py-2 text-sm font-bold text-slate-800">${item.value}</div>`;
+                } else if (item.type === 'slot') {
+                    sentenceHTML += `<div class="word-slot inline-flex items-center justify-center border-b-2 border-gray-300 mx-1 pb-1 align-bottom" id="mock-slot-${index}"></div>`;
+                }
+            });
+            sentenceHTML += `<span class="text-2xl font-bold text-slate-400 select-none ml-1 align-bottom leading-none">.</span>`;
+
+            dynamicTaskArea.innerHTML = `
+                <div class="flex flex-col items-center justify-center p-8 w-full h-full">
+                    <h2 class="text-xl font-bold text-center mb-8">${q.title || 'Make an appropriate sentence'}</h2>
+                    <div class="w-full max-w-3xl space-y-8 mb-12 bg-gray-50 p-8 rounded-3xl border border-gray-100 shadow-sm">
+                        <div class="flex items-start space-x-4">
+                            <div class="w-10 h-10 bg-blue-50 border rounded-full flex items-center justify-center text-lg">${q.avatar_left || '👨‍🏫'}</div>
+                            <div class="bg-white border rounded-2xl px-5 py-3 text-sm text-slate-700 mt-1 shadow-sm">${q.prompt_context}</div>
+                        </div>
+                        <div class="flex items-start space-x-4 pt-4 border-t border-dashed border-gray-200">
+                            <div class="w-10 h-10 bg-rose-50 border rounded-full flex items-center justify-center text-lg">${q.avatar_right || '👩‍🏫'}</div>
+                            <div class="flex-1 flex flex-wrap items-end gap-y-3 pt-1">${sentenceHTML}</div>
+                        </div>
+                    </div>
+                    <div class="w-full max-w-2xl mx-auto">
+                        <div class="flex flex-wrap justify-center gap-2.5 bg-gray-50 border border-gray-200 p-5 rounded-3xl min-h-[80px]" id="mockWordBank"></div>
+                    </div>
+                </div>
+            `;
+
+            // Инициализация Drag and Drop
+            const bankContainer = document.getElementById('mockWordBank');
+            const shuffledWords = [...(q.bank || [])].sort(() => Math.random() - 0.5);
+            shuffledWords.forEach(word => {
+                bankContainer.innerHTML += `<div class="bg-white border border-gray-200 text-slate-700 text-xs font-bold px-4 py-2 rounded-xl shadow-sm cursor-grab select-none">${word}</div>`;
+            });
+
+            new Sortable(bankContainer, { group: 'mock-shared', animation: 150 });
+            document.querySelectorAll('[id^="mock-slot-"]').forEach(slot => {
+                new Sortable(slot, { group: 'mock-shared', animation: 150 });
+            });
+        }
+
+        function renderEmailTask(q) {
+            let instr = (q.instructions || []).map(li => `<li>${li}</li>`).join('');
+            dynamicTaskArea.innerHTML = `
+                <div class="flex flex-col md:flex-row h-full divide-y md:divide-y-0 md:divide-x divide-gray-200">
+                    <div class="w-full md:w-1/2 p-6 overflow-y-auto bg-white">
+                        <h2 class="text-lg font-bold mb-4">${q.title || 'Email Writing'}</h2>
+                        <p class="text-sm text-slate-700 leading-relaxed">${q.prompt_context}</p>
+                        <hr class="my-6 border-gray-100">
+                        <h3 class="text-sm font-bold uppercase tracking-wide">Write an email to ${q.meta_to || 'Recipient'}. In the email:</h3>
+                        <ul class="list-disc pl-5 text-sm text-slate-600 mt-3 space-y-2">${instr}</ul>
+                    </div>
+                    <div class="w-full md:w-1/2 p-6 bg-[#f8f9fa] flex flex-col">
+                        <div class="bg-white border rounded-2xl p-5 flex flex-col h-full shadow-sm">
+                            <div class="mb-4 pb-4 border-b border-gray-100 text-sm">
+                                <p><span class="font-bold text-gray-400">To:</span> <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-semibold">${q.meta_to || 'Recipient'}</span></p>
+                                <p class="mt-2"><span class="font-bold text-gray-400">Subject:</span> <span class="font-semibold">${q.meta_subject || 'Topic'}</span></p>
+                            </div>
+                            <textarea id="mockResponseArea" placeholder="Write your email here..." class="exam-textarea flex-1 text-sm text-slate-700"></textarea>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderAcademicTask(q) {
+            let peersHTML = (q.peers || []).map(p => `
+                <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm mb-3">
+                    <p class="text-xs font-bold text-slate-400 uppercase">${p.name}</p>
+                    <p class="text-sm text-slate-600 mt-1">${p.text}</p>
+                </div>
+            `).join('');
+
+            dynamicTaskArea.innerHTML = `
+                <div class="flex flex-col md:flex-row h-full divide-y md:divide-y-0 md:divide-x divide-gray-200">
+                    <div class="w-full md:w-1/2 p-6 overflow-y-auto bg-white">
+                        <h2 class="text-lg font-bold mb-4">${q.title || 'Academic Discussion'}</h2>
+                        <div class="bg-teal-50 text-teal-800 p-3 rounded-lg text-xs font-bold mb-6 border border-teal-100">${q.instruction_box || ''}</div>
+                        <div class="bg-gray-50 p-4 rounded-xl border border-gray-100 mb-6">
+                            <p class="text-xs font-bold text-slate-400 uppercase">Professor</p>
+                            <p class="text-sm text-slate-700 mt-1">${q.prompt_context || ''}</p>
+                        </div>
+                        <div>${peersHTML}</div>
+                    </div>
+                    <div class="w-full md:w-1/2 p-6 bg-[#f8f9fa] flex flex-col">
+                        <div class="bg-white border rounded-2xl p-5 flex flex-col h-full shadow-sm">
+                            <textarea id="mockResponseArea" placeholder="Write your contribution here..." class="exam-textarea flex-1 text-sm text-slate-700"></textarea>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- ЛОГИКА ТАЙМЕРА И СМЕНЫ ЗАДАНИЙ ---
+
+        function startTimer(seconds) {
             clearInterval(timerInterval);
-            updateTimerDisplay(secondsLeft);
-            
             const display = document.getElementById('timeLeft');
             display.classList.remove('text-red-400');
 
             timerInterval = setInterval(() => {
-                secondsLeft--;
-                updateTimerDisplay(secondsLeft);
+                seconds--;
+                const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+                const s = (seconds % 60).toString().padStart(2, '0');
+                display.textContent = `${m}:${s}`;
                 
-                if (secondsLeft <= 60) {
-                    display.classList.add('text-red-400');
-                }
-
-                if (secondsLeft <= 0) {
+                if (seconds <= 60) display.classList.add('text-red-400');
+                if (seconds <= 0) {
                     clearInterval(timerInterval);
-                    handleNextStep(); // Автоматическое переключение при истечении времени
+                    handleNextStep(); 
                 }
             }, 1000);
         }
 
-        function updateTimerDisplay(seconds) {
-            const m = Math.floor(seconds / 60).toString().padStart(2, '0');
-            const s = (seconds % 60).toString().padStart(2, '0');
-            document.getElementById('timeLeft').textContent = `${m}:${s}`;
+        function extractCurrentAnswer() {
+            const task = tasks[currentStep];
+            if (currentStep === 0) { // Sentence
+                let parts = [];
+                (task.structure || []).forEach((item, index) => {
+                    if (item.type === 'text') parts.push(item.value);
+                    else if (item.type === 'slot') {
+                        const s = document.getElementById(`mock-slot-${index}`);
+                        parts.push(s && s.children.length > 0 ? s.children[0].textContent.trim() : "____");
+                    }
+                });
+                return parts.join(" ").replace(/\s+([.?!])/g, "$1").trim() + ".";
+            } else { // Email & Academic
+                const area = document.getElementById('mockResponseArea');
+                return area ? area.value.trim() : "";
+            }
         }
 
         async function handleNextStep() {
-            // Сохраняем текущий ответ локально
-            const currentResponse = textarea.value.trim();
+            const ans = extractCurrentAnswer();
             userResponses.push({
                 task_id: tasks[currentStep].id,
-                task_type: tasks[currentStep].type || 'mock_task', 
-                response_content: currentResponse,
+                task_type: tasks[currentStep].type,
+                response_content: ans,
                 user_id: currentUser.id
             });
 
             if (currentStep < 2) {
-                // Переход к следующему заданию
                 currentStep++;
                 renderCurrentTask();
             } else {
-                // Последнее задание завершено - отправка
                 clearInterval(timerInterval);
-                await submitAllResponses();
+                await submitAll();
             }
         }
 
-        async function submitAllResponses() {
+        async function submitAll() {
             nextBtn.disabled = true;
             nextBtn.innerHTML = `<span class="animate-pulse">Submitting...</span>`;
             
             try {
-                // Отправляем все 3 ответа в таблицу student_responses
-                const { error } = await supabaseClient
-                    .from('student_responses')
-                    .insert(userResponses);
-
+                const { error } = await supabaseClient.from('student_responses').insert(userResponses);
                 if (error) throw error;
                 
-                // Показываем экран успешного завершения
                 document.getElementById('examContainer').classList.add('hidden');
                 document.getElementById('successScreen').classList.remove('hidden');
-                document.getElementById('timeLeft').textContent = "--:--";
                 document.getElementById('exitBtn').classList.add('hidden');
-
+                document.getElementById('timeLeft').textContent = "--:--";
             } catch (err) {
-                console.error("Error submitting mock:", err);
-                alert("There was an error submitting your responses. Please try again.");
+                console.error(err);
+                alert("Error submitting. Please try again.");
                 nextBtn.disabled = false;
-                nextBtn.innerHTML = `<span>Submit Simulation</span> <i data-lucide="check" class="w-4 h-4 ml-1.5"></i>`;
-                lucide.createIcons();
             }
         }
 
         nextBtn.addEventListener('click', handleNextStep);
-
-        // Предупреждение при попытке уйти со страницы
-        window.onbeforeunload = function() {
-            if (currentStep <= 2 && !document.getElementById('examContainer').classList.contains('hidden')) {
-                return "You are in the middle of a mock test. If you leave, your progress will be lost.";
-            }
-        };
-
-        // Старт
+        window.onbeforeunload = () => (currentStep <= 2 && !document.getElementById('examContainer').classList.contains('hidden')) ? "Warning" : null;
         document.addEventListener('DOMContentLoaded', checkAuthAndLoad);
     </script>
 </body>
 </html>
-
