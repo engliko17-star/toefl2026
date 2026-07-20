@@ -28,15 +28,15 @@
         </div>
         
         <div id="statusBadge" class="hidden text-sm font-bold px-4 py-1.5 rounded-lg border">
-            <!-- Сюда вставится статус проверки -->
+            <!-- Статус проверки -->
         </div>
     </header>
 
     <main class="max-w-5xl mx-auto p-4 md:p-8 space-y-8" id="resultsContainer">
-        <!-- Загрузка -->
+        <!-- Индикатор загрузки -->
         <div id="loadingIndicator" class="text-center py-20 text-gray-400 font-bold animate-pulse">Loading results...</div>
         
-        <!-- Контент рендерится сюда -->
+        <!-- Контент -->
         <div id="contentArea" class="hidden space-y-10">
             <!-- Sentences Section -->
             <section>
@@ -80,58 +80,91 @@
                 
                 document.getElementById('mainBody').classList.remove('opacity-0');
                 
-                // Получаем attempt_id из URL
                 const urlParams = new URLSearchParams(window.location.search);
                 const attemptId = urlParams.get('attempt_id');
                 
                 if (!attemptId) {
-                    alert('Attempt ID not found');
+                    document.getElementById('loadingIndicator').textContent = 'Attempt ID is missing in URL.';
                     return;
                 }
 
                 await loadAttemptData(attemptId);
             } catch (err) {
                 console.error(err);
+                document.getElementById('loadingIndicator').textContent = 'Error loading results.';
             }
         }
 
         async function loadAttemptData(attemptId) {
-            // 1. Получаем саму попытку из таблицы mini_mock_writing_attempts
+            // 1. Загружаем данные попытки
             const { data: attempt, error: attemptError } = await supabaseClient
                 .from('mini_mock_writing_attempts')
-                .select('*, mock:mini_mock_writing(title)')
+                .select('*')
                 .eq('id', attemptId)
                 .single();
 
-            if (attemptError) {
+            if (attemptError || !attempt) {
                 console.error('Error fetching attempt:', attemptError);
-                document.getElementById('loadingIndicator').textContent = 'Failed to load results.';
+                document.getElementById('loadingIndicator').textContent = 'Failed to load results (Attempt not found).';
                 return;
             }
 
-            // 2. Получаем ответы ученика из новой таблицы mini_mock_writing_responses
+            // Загружаем заголовок мока
+            let mockTitle = 'Simulation Results';
+            if (attempt.mock_id) {
+                const { data: mock } = await supabaseClient
+                    .from('mini_mock_writing')
+                    .select('title')
+                    .eq('id', attempt.mock_id)
+                    .single();
+                if (mock && mock.title) mockTitle = mock.title;
+            }
+            attempt.mockTitle = mockTitle;
+
+            // 2. Загружаем ответы пользователя из mini_mock_writing_responses
             const { data: responses, error: respError } = await supabaseClient
                 .from('mini_mock_writing_responses')
-                .select('*, task:writing_tasks(*)')
+                .select('*')
                 .eq('attempt_id', attemptId);
 
             if (respError) {
                 console.error('Error fetching responses:', respError);
-                document.getElementById('loadingIndicator').textContent = 'Failed to load responses.';
+                document.getElementById('loadingIndicator').textContent = 'Failed to load student responses.';
                 return;
             }
 
+            // 3. Подтягиваем карточки заданий из writing_tasks
+            const taskIds = (responses || []).map(r => r.task_id).filter(Boolean);
+            let tasksMap = {};
+            
+            if (taskIds.length > 0) {
+                const { data: tasks } = await supabaseClient
+                    .from('writing_tasks')
+                    .select('*')
+                    .in('id', taskIds);
+                    
+                if (tasks) {
+                    tasks.forEach(t => { tasksMap[t.id] = t; });
+                }
+            }
+
+            // Объединяем ответы с данными заданий
+            const fullResponses = (responses || []).map(r => ({
+                ...r,
+                task: tasksMap[r.task_id] || null
+            }));
+
             renderStatus(attempt);
-            renderSentences(responses.filter(r => r.task_type === 'sentence'));
-            renderEssay(responses.find(r => r.task_type === 'email'), 'emailResult', 'emailScore');
-            renderEssay(responses.find(r => r.task_type === 'academic'), 'academicResult', 'academicScore');
+            renderSentences(fullResponses.filter(r => r.task_type === 'sentence'));
+            renderEssay(fullResponses.find(r => r.task_type === 'email'), 'emailResult', 'emailScore');
+            renderEssay(fullResponses.find(r => r.task_type === 'academic'), 'academicResult', 'academicScore');
 
             document.getElementById('loadingIndicator').classList.add('hidden');
             document.getElementById('contentArea').classList.remove('hidden');
         }
 
         function renderStatus(attempt) {
-            document.getElementById('headerTitle').textContent = attempt.mock?.title || 'Simulation Results';
+            document.getElementById('headerTitle').textContent = attempt.mockTitle;
             
             const badge = document.getElementById('statusBadge');
             badge.classList.remove('hidden');
@@ -162,7 +195,6 @@
             }
 
             container.innerHTML = sentenceResponses.map((r, i) => {
-                // Защита от отсутствия связанной задачи (если task_id пустой или структура не найдена)
                 const correctAns = r.task ? getCorrectSentence(r.task.structure) : '';
                 const isCorrect = r.response_content && correctAns && r.response_content.toLowerCase() === correctAns.toLowerCase();
                 
@@ -195,7 +227,6 @@
                 return;
             }
 
-            // Рендер оценки, с поддержкой сырого балла и официального формата 1.0 - 6.0
             if (response.score !== undefined && response.score !== null) {
                 const scoreBadge = document.getElementById(scoreId);
                 scoreBadge.classList.remove('hidden');
@@ -211,7 +242,6 @@
 
             container.innerHTML = `
                 <div class="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-gray-200">
-                    <!-- Оригинальный ответ ученика -->
                     <div class="p-6 bg-slate-50">
                         <h3 class="text-xs font-black text-slate-400 uppercase tracking-wider mb-4 flex items-center">
                             <i data-lucide="file-text" class="w-4 h-4 mr-1.5"></i> Your Response
@@ -219,7 +249,6 @@
                         <div class="bg-white border border-gray-200 rounded-xl p-5 text-sm text-slate-700 leading-relaxed shadow-sm min-h-[200px] whitespace-pre-wrap">${response.response_content || 'No text submitted.'}</div>
                     </div>
                     
-                    <!-- Фидбек учителя -->
                     <div class="p-6 bg-white flex flex-col">
                         <h3 class="text-xs font-black text-indigo-400 uppercase tracking-wider mb-4 flex items-center">
                             <i data-lucide="pen-tool" class="w-4 h-4 mr-1.5"></i> Teacher's Correction & Feedback
