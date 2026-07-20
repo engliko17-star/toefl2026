@@ -50,7 +50,7 @@
             <section>
                 <div class="flex items-center justify-between mb-4">
                     <h2 class="text-xl font-black text-slate-900 flex items-center"><i data-lucide="mail" class="w-5 h-5 mr-2 text-indigo-500"></i> Part 2: Email Writing</h2>
-                    <span id="emailScore" class="font-bold text-lg text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-100 hidden"></span>
+                    <span id="emailScore" class="font-bold text-lg text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-100 hidden flex items-center"></span>
                 </div>
                 <div id="emailResult" class="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden"></div>
             </section>
@@ -59,7 +59,7 @@
             <section>
                 <div class="flex items-center justify-between mb-4">
                     <h2 class="text-xl font-black text-slate-900 flex items-center"><i data-lucide="graduation-cap" class="w-5 h-5 mr-2 text-emerald-500"></i> Part 3: Academic Discussion</h2>
-                    <span id="academicScore" class="font-bold text-lg text-emerald-600 bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-100 hidden"></span>
+                    <span id="academicScore" class="font-bold text-lg text-emerald-600 bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-100 hidden flex items-center"></span>
                 </div>
                 <div id="academicResult" class="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden"></div>
             </section>
@@ -80,7 +80,7 @@
                 
                 document.getElementById('mainBody').classList.remove('opacity-0');
                 
-                // Получаем attempt_id из URL (например: mini-mock-results.html?attempt_id=123-456)
+                // Получаем attempt_id из URL
                 const urlParams = new URLSearchParams(window.location.search);
                 const attemptId = urlParams.get('attempt_id');
                 
@@ -109,9 +109,9 @@
                 return;
             }
 
-            // 2. Получаем ответы ученика
+            // 2. Получаем ответы ученика из новой таблицы mini_mock_writing_responses
             const { data: responses, error: respError } = await supabaseClient
-                .from('student_responses')
+                .from('mini_mock_writing_responses')
                 .select('*, task:writing_tasks(*)')
                 .eq('attempt_id', attemptId);
 
@@ -137,8 +137,9 @@
             badge.classList.remove('hidden');
             
             if (attempt.status === 'reviewed') {
+                const formattedOverall = attempt.overall_score ? Number(attempt.overall_score).toFixed(1) : '-';
                 badge.className = 'text-sm font-bold px-4 py-1.5 rounded-lg border bg-emerald-50 text-emerald-600 border-emerald-200 flex items-center';
-                badge.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 mr-1.5"></i> Reviewed (Score: ${attempt.overall_score || '-'} / 6.0)`;
+                badge.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 mr-1.5"></i> Reviewed (Score: ${formattedOverall} / 6.0)`;
             } else {
                 badge.className = 'text-sm font-bold px-4 py-1.5 rounded-lg border bg-amber-50 text-amber-600 border-amber-200 flex items-center';
                 badge.innerHTML = `<i data-lucide="clock" class="w-4 h-4 mr-1.5"></i> Pending Teacher Review`;
@@ -161,8 +162,9 @@
             }
 
             container.innerHTML = sentenceResponses.map((r, i) => {
-                const correctAns = getCorrectSentence(r.task.structure);
-                const isCorrect = r.response_content.toLowerCase() === correctAns.toLowerCase();
+                // Защита от отсутствия связанной задачи (если task_id пустой или структура не найдена)
+                const correctAns = r.task ? getCorrectSentence(r.task.structure) : '';
+                const isCorrect = r.response_content && correctAns && r.response_content.toLowerCase() === correctAns.toLowerCase();
                 
                 return `
                     <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
@@ -175,11 +177,11 @@
                         </div>
                         <div class="mb-4">
                             <p class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">Your Answer</p>
-                            <p class="text-slate-800 font-medium ${!isCorrect ? 'text-rose-600' : ''}">${r.response_content}</p>
+                            <p class="text-slate-800 font-medium ${!isCorrect ? 'text-rose-600' : ''}">${r.response_content || '-'}</p>
                         </div>
                         <div class="bg-gray-50 rounded-xl p-3 border border-gray-100">
                             <p class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">Correct Structure</p>
-                            <p class="text-slate-600 font-medium">${correctAns}</p>
+                            <p class="text-slate-600 font-medium">${correctAns || 'Not specified'}</p>
                         </div>
                     </div>
                 `;
@@ -193,10 +195,18 @@
                 return;
             }
 
-            if (response.score) {
+            // Рендер оценки, с поддержкой сырого балла и официального формата 1.0 - 6.0
+            if (response.score !== undefined && response.score !== null) {
                 const scoreBadge = document.getElementById(scoreId);
                 scoreBadge.classList.remove('hidden');
-                scoreBadge.textContent = `Score: ${response.score} / 6.0`;
+                
+                const formattedScore = Number(response.score).toFixed(1);
+                
+                if (response.raw_score !== undefined && response.raw_score !== null) {
+                    scoreBadge.innerHTML = `<span class="opacity-60 text-sm font-semibold mr-2 uppercase tracking-wide">Raw: ${response.raw_score}</span> <span class="border-l-2 border-current pl-3 py-0.5">TOEFL: ${formattedScore} / 6.0</span>`;
+                } else {
+                    scoreBadge.textContent = `Score: ${formattedScore} / 6.0`;
+                }
             }
 
             container.innerHTML = `
