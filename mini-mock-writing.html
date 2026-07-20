@@ -13,13 +13,12 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         
-        /* Жесткая фиксация экрана для планшетов */
         html, body { 
             font-family: 'Plus Jakarta Sans', sans-serif; 
-            height: 100dvh; /* Динамическая высота для корректной работы на мобильных устройствах */
+            height: 100dvh;
             width: 100vw;
-            overflow: hidden; /* Запрещаем скролл всей страницы */
-            overscroll-behavior: none; /* Убираем эффект резинки (pull-to-refresh) */
+            overflow: hidden;
+            overscroll-behavior: none;
         }
         
         ::-webkit-scrollbar { width: 6px; }
@@ -148,7 +147,6 @@
                 emailData = emailRes.data;
                 academicData = academicRes.data;
 
-                // Парсим JSON
                 sentencesData.forEach(q => {
                     if (typeof q.structure === 'string') q.structure = JSON.parse(q.structure);
                     if (typeof q.bank === 'string') q.bank = JSON.parse(q.bank);
@@ -177,12 +175,9 @@
             }
         }
 
-        // ==========================================
-        // TIMER LOGIC
-        // ==========================================
         function startPhaseTimer(minutes, timeoutCallback) {
             clearInterval(timerInterval);
-            timerBadge.classList.remove('hidden'); // Показываем таймер
+            timerBadge.classList.remove('hidden'); 
             
             let seconds = minutes * 60;
             const display = document.getElementById('timeLeft');
@@ -202,9 +197,6 @@
             }, 1000);
         }
 
-        // ==========================================
-        // PHASE 1: SENTENCES
-        // ==========================================
         function initPhaseSentence() {
             currentPhase = 'sentence';
             
@@ -288,7 +280,7 @@
             
             if (currentSentenceIndex === sentencesData.length - 1) {
                 navNextText.textContent = "Next Part";
-                navNext.onclick = finishSentencePhase; // Прямой переход без автоматического review листа
+                navNext.onclick = finishSentencePhase; 
             } else {
                 navNextText.textContent = "Next";
                 navNext.onclick = () => { currentSentenceIndex++; updateSentenceUI(); };
@@ -366,6 +358,9 @@
         };
 
         async function finishSentencePhase() {
+            // Очищаем массив от старых ответов первой секции, чтобы избежать дубликатов при возврате из Review
+            userResponses = userResponses.filter(r => r.task_type !== 'sentence');
+            
             sentencesData.forEach((q, i) => {
                 userResponses.push({
                     task_id: q.id,
@@ -378,9 +373,6 @@
             showPhaseTransition();
         }
 
-        // ==========================================
-        // TRANSITION SCREEN
-        // ==========================================
         function showPhaseTransition() {
             currentPhase = 'transition';
             
@@ -412,9 +404,6 @@
             lucide.createIcons();
         }
 
-        // ==========================================
-        // PHASE 2: EMAIL
-        // ==========================================
         function initPhaseEmail() {
             currentPhase = 'email';
             
@@ -455,6 +444,9 @@
         }
 
         async function finishEmailPhase() {
+            // Очищаем на случай случайного двойного клика
+            userResponses = userResponses.filter(r => r.task_type !== 'email');
+            
             const ans = document.getElementById('emailResponse') ? document.getElementById('emailResponse').value.trim() : "";
             userResponses.push({
                 task_id: emailData.id,
@@ -465,9 +457,6 @@
             initPhaseAcademic();
         }
 
-        // ==========================================
-        // PHASE 3: ACADEMIC
-        // ==========================================
         function initPhaseAcademic() {
             currentPhase = 'academic';
             
@@ -526,12 +515,12 @@
             startPhaseTimer(10, submitSimulation); 
         }
 
-        // ==========================================
-        // SUBMIT
-        // ==========================================
         async function submitSimulation() {
             navNext.disabled = true;
             navNextText.innerHTML = `<span class="animate-pulse">Submitting...</span>`;
+            
+            // Очищаем на случай случайного двойного клика по кнопке Submit
+            userResponses = userResponses.filter(r => r.task_type !== 'academic');
             
             const ans = document.getElementById('academicResponse') ? document.getElementById('academicResponse').value.trim() : "";
             userResponses.push({
@@ -557,9 +546,9 @@
                     attempt_id: attempt.id
                 }));
 
-                // 3. Отправляем обогащенные ответы в student_responses
+                // 3. Отправляем обогащенные ответы в НОВУЮ ТАБЛИЦУ ответов 
                 const { error: responsesError } = await supabaseClient
-                    .from('student_responses')
+                    .from('mini_mock_writing_responses')
                     .insert(responsesWithAttempt);
                     
                 if (responsesError) throw responsesError;
@@ -581,4 +570,3 @@
     </script>
 </body>
 </html>
-
