@@ -15,10 +15,10 @@
         
         html, body { 
             font-family: 'Plus Jakarta Sans', sans-serif; 
-            height: 100dvh;
+            height: 100dvh; 
             width: 100vw;
-            overflow: hidden;
-            overscroll-behavior: none;
+            overflow: hidden; 
+            overscroll-behavior: none; 
         }
         
         ::-webkit-scrollbar { width: 6px; }
@@ -70,18 +70,9 @@
         </div>
     </main>
 
-    <!-- Success Screen -->
+    <!-- Success Screen (Контейнер для финального экрана) -->
     <main id="successScreen" class="hidden flex-1 flex items-center justify-center p-4 h-full">
-        <div class="w-full max-w-2xl bg-white rounded-3xl p-10 text-center border border-gray-100 shadow-lg">
-            <div class="w-20 h-20 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                <i data-lucide="check-circle-2" class="w-10 h-10"></i>
-            </div>
-            <h2 class="text-2xl font-black text-slate-900 mb-2">Simulation Complete!</h2>
-            <p class="text-gray-500 mb-8 max-w-md mx-auto">All responses submitted. Your teacher will review them shortly.</p>
-            <a href="mini-mock-writing-list.html" class="inline-flex bg-slate-900 hover:bg-slate-800 text-white px-8 py-3.5 rounded-xl text-sm font-bold transition shadow-sm">
-                Return to Dashboard
-            </a>
-        </div>
+        <!-- Сюда JS вставит две кнопки после успешной отправки -->
     </main>
 
     <script>
@@ -147,6 +138,7 @@
                 emailData = emailRes.data;
                 academicData = academicRes.data;
 
+                // Парсим JSON
                 sentencesData.forEach(q => {
                     if (typeof q.structure === 'string') q.structure = JSON.parse(q.structure);
                     if (typeof q.bank === 'string') q.bank = JSON.parse(q.bank);
@@ -175,6 +167,9 @@
             }
         }
 
+        // ==========================================
+        // TIMER LOGIC
+        // ==========================================
         function startPhaseTimer(minutes, timeoutCallback) {
             clearInterval(timerInterval);
             timerBadge.classList.remove('hidden'); 
@@ -197,6 +192,9 @@
             }, 1000);
         }
 
+        // ==========================================
+        // PHASE 1: SENTENCES
+        // ==========================================
         function initPhaseSentence() {
             currentPhase = 'sentence';
             
@@ -358,9 +356,6 @@
         };
 
         async function finishSentencePhase() {
-            // Очищаем массив от старых ответов первой секции, чтобы избежать дубликатов при возврате из Review
-            userResponses = userResponses.filter(r => r.task_type !== 'sentence');
-            
             sentencesData.forEach((q, i) => {
                 userResponses.push({
                     task_id: q.id,
@@ -373,6 +368,9 @@
             showPhaseTransition();
         }
 
+        // ==========================================
+        // TRANSITION SCREEN
+        // ==========================================
         function showPhaseTransition() {
             currentPhase = 'transition';
             
@@ -404,6 +402,9 @@
             lucide.createIcons();
         }
 
+        // ==========================================
+        // PHASE 2: EMAIL
+        // ==========================================
         function initPhaseEmail() {
             currentPhase = 'email';
             
@@ -444,9 +445,6 @@
         }
 
         async function finishEmailPhase() {
-            // Очищаем на случай случайного двойного клика
-            userResponses = userResponses.filter(r => r.task_type !== 'email');
-            
             const ans = document.getElementById('emailResponse') ? document.getElementById('emailResponse').value.trim() : "";
             userResponses.push({
                 task_id: emailData.id,
@@ -457,6 +455,9 @@
             initPhaseAcademic();
         }
 
+        // ==========================================
+        // PHASE 3: ACADEMIC
+        // ==========================================
         function initPhaseAcademic() {
             currentPhase = 'academic';
             
@@ -515,12 +516,12 @@
             startPhaseTimer(10, submitSimulation); 
         }
 
+        // ==========================================
+        // SUBMIT AND SHOW SUCCESS SCREEN
+        // ==========================================
         async function submitSimulation() {
             navNext.disabled = true;
             navNextText.innerHTML = `<span class="animate-pulse">Submitting...</span>`;
-            
-            // Очищаем на случай случайного двойного клика по кнопке Submit
-            userResponses = userResponses.filter(r => r.task_type !== 'academic');
             
             const ans = document.getElementById('academicResponse') ? document.getElementById('academicResponse').value.trim() : "";
             userResponses.push({
@@ -531,7 +532,7 @@
             });
             
             try {
-                // 1. Создаем запись о попытке в новой таблице mini_mock_writing_attempts
+                // 1. Создаем попытку
                 const { data: attempt, error: attemptError } = await supabaseClient
                     .from('mini_mock_writing_attempts')
                     .insert([{ user_id: currentUser.id, mock_id: mockData.id }])
@@ -540,26 +541,48 @@
 
                 if (attemptError) throw attemptError;
 
-                // 2. Привязываем полученный attempt_id к каждому ответу
+                // 2. Привязываем attempt_id
                 const responsesWithAttempt = userResponses.map(resp => ({
                     ...resp,
                     attempt_id: attempt.id
                 }));
 
-                // 3. Отправляем обогащенные ответы в НОВУЮ ТАБЛИЦУ ответов 
+                // 3. Отправляем ответы
                 const { error: responsesError } = await supabaseClient
                     .from('mini_mock_writing_responses')
                     .insert(responsesWithAttempt);
                     
                 if (responsesError) throw responsesError;
                 
-                // 4. Показываем экран успешной отправки
+                // 4. Показываем обновленный экран с двумя кнопками
                 document.getElementById('examContainer').classList.add('hidden');
                 document.querySelector('header').classList.add('hidden');
-                document.getElementById('successScreen').classList.replace('hidden', 'flex');
+                
+                const successScreen = document.getElementById('successScreen');
+                successScreen.classList.replace('hidden', 'flex');
+                
+                successScreen.innerHTML = `
+                    <div class="w-full max-w-2xl bg-white rounded-3xl p-10 text-center border border-gray-100 shadow-lg">
+                        <div class="w-20 h-20 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                            <i data-lucide="check-circle-2" class="w-10 h-10"></i>
+                        </div>
+                        <h2 class="text-2xl font-black text-slate-900 mb-2">Simulation Complete!</h2>
+                        <p class="text-gray-500 mb-8 max-w-md mx-auto">All responses have been successfully saved to the database.</p>
+                        <div class="flex flex-col sm:flex-row justify-center gap-4">
+                            <a href="mini-mock-writing-list.html" class="inline-flex justify-center bg-gray-100 hover:bg-gray-200 text-slate-700 px-6 py-3.5 rounded-xl text-sm font-bold transition shadow-sm items-center">
+                                Dashboard
+                            </a>
+                            <a href="mini-mock-results.html?attempt_id=${attempt.id}" class="inline-flex justify-center bg-slate-900 hover:bg-slate-800 text-white px-8 py-3.5 rounded-xl text-sm font-bold transition shadow-sm items-center">
+                                View Full Review <i data-lucide="arrow-right" class="w-4 h-4 ml-2"></i>
+                            </a>
+                        </div>
+                    </div>
+                `;
+                lucide.createIcons();
+                
             } catch (err) {
-                console.error(err);
-                alert("Error submitting. Please try again.");
+                console.error("Full error object:", err);
+                alert("Error submitting. Please try again.\n" + (err.message || JSON.stringify(err)));
                 navNext.disabled = false;
                 navNextText.textContent = "Submit Simulation";
             }
