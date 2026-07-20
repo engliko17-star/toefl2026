@@ -121,7 +121,7 @@
             }
             attempt.mockTitle = mockTitle;
 
-            // 2. Загружаем ответы пользователя из mini_mock_writing_responses
+            // 2. Загружаем ответы пользователя
             const { data: responses, error: respError } = await supabaseClient
                 .from('mini_mock_writing_responses')
                 .select('*')
@@ -220,6 +220,76 @@
             }).join('');
         }
 
+        function renderPromptHTML(task, taskType) {
+            if (!task) return '';
+
+            if (taskType === 'email') {
+                let instructions = task.instructions || [];
+                if (typeof instructions === 'string') {
+                    try { instructions = JSON.parse(instructions); } catch(e) { instructions = []; }
+                }
+                let instrList = Array.isArray(instructions) 
+                    ? instructions.map(i => `<li>${i}</li>`).join('') 
+                    : '';
+
+                return `
+                    <div class="bg-slate-50 border-b border-gray-200 p-6 space-y-3">
+                        <div class="flex items-center gap-2 text-xs font-black text-indigo-500 uppercase tracking-wider">
+                            <i data-lucide="file-question" class="w-4 h-4"></i> Task Prompt & Instructions
+                        </div>
+                        ${task.prompt_context ? `<p class="text-sm text-slate-700 font-medium leading-relaxed">${task.prompt_context}</p>` : ''}
+                        
+                        <div class="bg-white rounded-xl p-4 border border-gray-200 text-xs space-y-2 shadow-sm">
+                            <div class="flex flex-wrap gap-4 text-slate-500 font-semibold border-b border-gray-100 pb-2.5">
+                                <span><strong class="text-slate-800">To:</strong> ${task.meta_to || 'Recipient'}</span>
+                                <span class="text-gray-300">|</span>
+                                <span><strong class="text-slate-800">Subject:</strong> ${task.meta_subject || 'Topic'}</span>
+                            </div>
+                            ${instrList ? `<ul class="list-disc pl-4 space-y-1 text-slate-700 font-medium pt-1">${instrList}</ul>` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (taskType === 'academic') {
+                let peers = task.peers || [];
+                if (typeof peers === 'string') {
+                    try { peers = JSON.parse(peers); } catch(e) { peers = []; }
+                }
+                let peersHTML = Array.isArray(peers) ? peers.map(p => `
+                    <div class="bg-white p-3 rounded-xl border border-gray-200 text-xs shadow-sm flex items-start gap-2.5">
+                        <span class="text-base leading-none shrink-0">${p.avatar || '👤'}</span>
+                        <div>
+                            <span class="font-bold text-slate-800 block mb-0.5">${p.name}</span>
+                            <span class="text-slate-600 leading-relaxed">${p.text}</span>
+                        </div>
+                    </div>
+                `).join('') : '';
+
+                return `
+                    <div class="bg-slate-50 border-b border-gray-200 p-6 space-y-3">
+                        <div class="flex items-center gap-2 text-xs font-black text-emerald-600 uppercase tracking-wider">
+                            <i data-lucide="file-question" class="w-4 h-4"></i> Task Prompt & Discussion
+                        </div>
+                        
+                        ${task.instruction_box ? `<div class="bg-emerald-50 text-emerald-900 border border-emerald-100 p-3.5 rounded-xl text-xs font-medium leading-relaxed">${task.instruction_box}</div>` : ''}
+                        
+                        <div class="bg-white p-4 rounded-xl border border-gray-200 text-xs flex items-start gap-3 shadow-sm">
+                            <div class="text-2xl shrink-0">${task.professor_avatar || '👨‍🏫'}</div>
+                            <div>
+                                <div class="font-bold text-slate-800 uppercase text-[11px] tracking-wider mb-1">${task.professor_name || 'Professor'}</div>
+                                <div class="text-slate-700 leading-relaxed font-medium">${task.professor_prompt || ''}</div>
+                            </div>
+                        </div>
+
+                        ${peersHTML ? `<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">${peersHTML}</div>` : ''}
+                    </div>
+                `;
+            }
+
+            return '';
+        }
+
         function renderEssay(response, containerId, scoreId) {
             const container = document.getElementById(containerId);
             if (!response) {
@@ -240,26 +310,34 @@
                 }
             }
 
+            const promptHTML = renderPromptHTML(response.task, response.task_type);
+
             container.innerHTML = `
-                <div class="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-gray-200">
-                    <div class="p-6 bg-slate-50">
-                        <h3 class="text-xs font-black text-slate-400 uppercase tracking-wider mb-4 flex items-center">
-                            <i data-lucide="file-text" class="w-4 h-4 mr-1.5"></i> Your Response
-                        </h3>
-                        <div class="bg-white border border-gray-200 rounded-xl p-5 text-sm text-slate-700 leading-relaxed shadow-sm min-h-[200px] whitespace-pre-wrap">${response.response_content || 'No text submitted.'}</div>
-                    </div>
-                    
-                    <div class="p-6 bg-white flex flex-col">
-                        <h3 class="text-xs font-black text-indigo-400 uppercase tracking-wider mb-4 flex items-center">
-                            <i data-lucide="pen-tool" class="w-4 h-4 mr-1.5"></i> Teacher's Correction & Feedback
-                        </h3>
-                        ${response.teacher_correction 
-                            ? `<div class="correction-box bg-indigo-50 border border-indigo-100 rounded-xl p-5 text-sm text-indigo-900 leading-relaxed flex-1 shadow-inner">${response.teacher_correction}</div>`
-                            : `<div class="flex-1 border-2 border-dashed border-gray-100 rounded-xl flex items-center justify-center flex-col text-gray-400 p-8 text-center">
-                                 <i data-lucide="clock" class="w-8 h-8 mb-2 opacity-50"></i>
-                                 <p class="text-sm font-medium">Your teacher hasn't reviewed this task yet.</p>
-                               </div>`
-                        }
+                <div class="flex flex-col">
+                    <!-- Задание (Prompt) -->
+                    ${promptHTML}
+
+                    <!-- Ответ ученика и Поле проверки учителя -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-gray-200">
+                        <div class="p-6 bg-slate-50/50">
+                            <h3 class="text-xs font-black text-slate-400 uppercase tracking-wider mb-4 flex items-center">
+                                <i data-lucide="file-text" class="w-4 h-4 mr-1.5"></i> Your Response
+                            </h3>
+                            <div class="bg-white border border-gray-200 rounded-xl p-5 text-sm text-slate-700 leading-relaxed shadow-sm min-h-[200px] whitespace-pre-wrap">${response.response_content || 'No text submitted.'}</div>
+                        </div>
+                        
+                        <div class="p-6 bg-white flex flex-col">
+                            <h3 class="text-xs font-black text-indigo-400 uppercase tracking-wider mb-4 flex items-center">
+                                <i data-lucide="pen-tool" class="w-4 h-4 mr-1.5"></i> Teacher's Correction & Feedback
+                            </h3>
+                            ${response.teacher_correction 
+                                ? `<div class="correction-box bg-indigo-50 border border-indigo-100 rounded-xl p-5 text-sm text-indigo-900 leading-relaxed flex-1 shadow-inner">${response.teacher_correction}</div>`
+                                : `<div class="flex-1 border-2 border-dashed border-gray-100 rounded-xl flex items-center justify-center flex-col text-gray-400 p-8 text-center">
+                                     <i data-lucide="clock" class="w-8 h-8 mb-2 opacity-50"></i>
+                                     <p class="text-sm font-medium">Your teacher hasn't reviewed this task yet.</p>
+                                   </div>`
+                            }
+                        </div>
                     </div>
                 </div>
             `;
