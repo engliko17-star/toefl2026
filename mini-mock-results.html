@@ -154,7 +154,10 @@
                 task: tasksMap[r.task_id] || null
             }));
 
-            renderStatus(attempt);
+            // Считаем автоматический балл
+            const autoCalculatedScore = calculateOverallScore(fullResponses);
+
+            renderStatus(attempt, autoCalculatedScore);
             renderSentences(fullResponses.filter(r => r.task_type === 'sentence'));
             renderEssay(fullResponses.find(r => r.task_type === 'email'), 'emailResult', 'emailScore');
             renderEssay(fullResponses.find(r => r.task_type === 'academic'), 'academicResult', 'academicScore');
@@ -163,19 +166,42 @@
             document.getElementById('contentArea').classList.remove('hidden');
         }
 
-        function renderStatus(attempt) {
+        function calculateOverallScore(responses) {
+            let totalScore = 0;
+            
+            // 1. Баллы за Sentences (1 балл за правильное)
+            responses.filter(r => r.task_type === 'sentence').forEach(r => {
+                const correct = getCorrectSentence(r.task?.structure);
+                const user = r.response_content || r.answer || '';
+                if (user && correct && user.toLowerCase().trim() === correct.toLowerCase().trim()) {
+                    totalScore += 1;
+                }
+            });
+
+            // 2. Баллы за Essay (суммируем оценки, поставленные учителем)
+            const email = responses.find(r => r.task_type === 'email');
+            const academic = responses.find(r => r.task_type === 'academic');
+            
+            const essayScore = (parseFloat(email?.score) || 0) + (parseFloat(academic?.score) || 0);
+            
+            return (totalScore + essayScore).toFixed(1);
+        }
+
+        function renderStatus(attempt, autoScore) {
             document.getElementById('headerTitle').textContent = attempt.mockTitle;
             
             const badge = document.getElementById('statusBadge');
             badge.classList.remove('hidden');
             
+            // Если учитель выставил финальный балл в таблицу attempts, используем его, иначе показываем авто-подсчет
+            const finalScore = attempt.overall_score ? Number(attempt.overall_score).toFixed(1) : autoScore;
+            
             if (attempt.status === 'reviewed') {
-                const formattedOverall = attempt.overall_score ? Number(attempt.overall_score).toFixed(1) : '-';
                 badge.className = 'text-sm font-bold px-4 py-1.5 rounded-lg border bg-emerald-50 text-emerald-600 border-emerald-200 flex items-center';
-                badge.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 mr-1.5"></i> Reviewed (Score: ${formattedOverall} / 6.0)`;
+                badge.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 mr-1.5"></i> Reviewed (Total Score: ${finalScore})`;
             } else {
                 badge.className = 'text-sm font-bold px-4 py-1.5 rounded-lg border bg-amber-50 text-amber-600 border-amber-200 flex items-center';
-                badge.innerHTML = `<i data-lucide="clock" class="w-4 h-4 mr-1.5"></i> Pending Teacher Review`;
+                badge.innerHTML = `<i data-lucide="clock" class="w-4 h-4 mr-1.5"></i> Pending Teacher Review (Current Score: ${finalScore})`;
             }
             lucide.createIcons();
         }
@@ -187,14 +213,11 @@
                 let structure = typeof structureStr === 'string' ? JSON.parse(structureStr) : structureStr;
                 
                 let parts = structure.map(item => {
-                    // Если это просто текст, возвращаем его
                     if (item.type === 'text') return item.value;
                     
-                    // Если это пропуск (gap), ищем правильный ответ во всех возможных ключах
                     let correctWord = item.answer || item.correct || item.expected;
                     
                     if (!correctWord && Array.isArray(item.options)) {
-                         // Если ответ спрятан в массиве вариантов
                          const correctObj = item.options.find(opt => opt.isCorrect || opt.correct);
                          if (correctObj) correctWord = correctObj.text || correctObj.value;
                     }
@@ -202,7 +225,6 @@
                     return correctWord || '_____';
                 });
 
-                // Склеиваем, убираем лишние пробелы перед запятыми/точками и двойные пробелы
                 return parts.join(" ")
                     .replace(/\s+([.,?!])/g, "$1") 
                     .replace(/\s+/g, " ")
@@ -223,7 +245,10 @@
 
             container.innerHTML = sentenceResponses.map((r, i) => {
                 const correctAns = r.task ? getCorrectSentence(r.task.structure) : '';
-                const isCorrect = r.response_content && correctAns && r.response_content.toLowerCase() === correctAns.toLowerCase();
+                // Теперь мы проверяем и response_content, и answer
+                const userAns = r.response_content || r.answer || ''; 
+                // Убираем регистр и пробелы по бокам для правильного сравнения
+                const isCorrect = userAns && correctAns && userAns.toLowerCase().trim() === correctAns.toLowerCase().trim();
                 
                 return `
                     <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
@@ -236,7 +261,7 @@
                         </div>
                         <div class="mb-4">
                             <p class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">Your Answer</p>
-                            <p class="text-slate-800 font-medium ${!isCorrect ? 'text-rose-600' : ''}">${r.response_content || '-'}</p>
+                            <p class="text-slate-800 font-medium ${!isCorrect ? 'text-rose-600' : ''}">${userAns || '-'}</p>
                         </div>
                         <div class="bg-gray-50 rounded-xl p-3 border border-gray-100">
                             <p class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">Correct Structure</p>
@@ -350,7 +375,7 @@
                             <h3 class="text-xs font-black text-slate-400 uppercase tracking-wider mb-4 flex items-center">
                                 <i data-lucide="file-text" class="w-4 h-4 mr-1.5"></i> Your Response
                             </h3>
-                            <div class="bg-white border border-gray-200 rounded-xl p-5 text-sm text-slate-700 leading-relaxed shadow-sm min-h-[200px] whitespace-pre-wrap">${response.response_content || 'No text submitted.'}</div>
+                            <div class="bg-white border border-gray-200 rounded-xl p-5 text-sm text-slate-700 leading-relaxed shadow-sm min-h-[200px] whitespace-pre-wrap">${response.response_content || response.answer || 'No text submitted.'}</div>
                         </div>
                         
                         <div class="p-6 bg-white flex flex-col">
@@ -375,4 +400,3 @@
     </script>
 </body>
 </html>
-
