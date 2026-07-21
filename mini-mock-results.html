@@ -50,7 +50,7 @@
             <section>
                 <div class="flex items-center justify-between mb-4">
                     <h2 class="text-xl font-black text-slate-900 flex items-center"><i data-lucide="mail" class="w-5 h-5 mr-2 text-indigo-500"></i> Part 2: Email Writing</h2>
-                    <span id="emailScore" class="font-bold text-lg text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-100 hidden flex items-center"></span>
+                    <div id="emailScore" class="hidden inline-flex items-center justify-center bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg border border-indigo-200 font-bold text-sm shadow-sm"></div>
                 </div>
                 <div id="emailResult" class="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden"></div>
             </section>
@@ -59,7 +59,7 @@
             <section>
                 <div class="flex items-center justify-between mb-4">
                     <h2 class="text-xl font-black text-slate-900 flex items-center"><i data-lucide="graduation-cap" class="w-5 h-5 mr-2 text-emerald-500"></i> Part 3: Academic Discussion</h2>
-                    <span id="academicScore" class="font-bold text-lg text-emerald-600 bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-100 hidden flex items-center"></span>
+                    <div id="academicScore" class="hidden inline-flex items-center justify-center bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg border border-emerald-200 font-bold text-sm shadow-sm"></div>
                 </div>
                 <div id="academicResult" class="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden"></div>
             </section>
@@ -169,9 +169,9 @@
         function calculateOverallScore(responses) {
             let totalScore = 0;
             
-            // 1. Баллы за Sentences (1 балл за правильное)
+            // 1. Баллы за Sentences (1 балл за правильное, берем из sample_answer)
             responses.filter(r => r.task_type === 'sentence').forEach(r => {
-                const correct = getCorrectSentence(r.task?.structure);
+                const correct = r.task?.sample_answer || '';
                 const user = r.response_content || r.answer || '';
                 if (user && correct && user.toLowerCase().trim() === correct.toLowerCase().trim()) {
                     totalScore += 1;
@@ -206,36 +206,6 @@
             lucide.createIcons();
         }
 
-        function getCorrectSentence(structureStr) {
-            if (!structureStr) return '';
-            
-            try {
-                let structure = typeof structureStr === 'string' ? JSON.parse(structureStr) : structureStr;
-                
-                let parts = structure.map(item => {
-                    if (item.type === 'text') return item.value;
-                    
-                    let correctWord = item.answer || item.correct || item.expected;
-                    
-                    if (!correctWord && Array.isArray(item.options)) {
-                         const correctObj = item.options.find(opt => opt.isCorrect || opt.correct);
-                         if (correctObj) correctWord = correctObj.text || correctObj.value;
-                    }
-
-                    return correctWord || '_____';
-                });
-
-                return parts.join(" ")
-                    .replace(/\s+([.,?!])/g, "$1") 
-                    .replace(/\s+/g, " ")
-                    .trim() + (parts[parts.length-1].match(/[.,?!]$/) ? "" : "."); 
-                    
-            } catch (error) {
-                console.error("Ошибка парсинга структуры предложения:", error);
-                return "Error loading correct sentence.";
-            }
-        }
-
         function renderSentences(sentenceResponses) {
             const container = document.getElementById('sentencesResults');
             if (!sentenceResponses.length) {
@@ -244,8 +214,9 @@
             }
 
             container.innerHTML = sentenceResponses.map((r, i) => {
-                const correctAns = r.task ? getCorrectSentence(r.task.structure) : '';
-                // Теперь мы проверяем и response_content, и answer
+                // Правильный ответ теперь берется из колонки sample_answer
+                const correctAns = r.task?.sample_answer || '';
+                // Ответ ученика из базы
                 const userAns = r.response_content || r.answer || ''; 
                 // Убираем регистр и пробелы по бокам для правильного сравнения
                 const isCorrect = userAns && correctAns && userAns.toLowerCase().trim() === correctAns.toLowerCase().trim();
@@ -264,8 +235,8 @@
                             <p class="text-slate-800 font-medium ${!isCorrect ? 'text-rose-600' : ''}">${userAns || '-'}</p>
                         </div>
                         <div class="bg-gray-50 rounded-xl p-3 border border-gray-100">
-                            <p class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">Correct Structure</p>
-                            <p class="text-slate-600 font-medium">${correctAns || 'Not specified'}</p>
+                            <p class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">Correct Structure (Sample Answer)</p>
+                            <p class="text-slate-600 font-medium">${correctAns || 'Not specified in database'}</p>
                         </div>
                     </div>
                 `;
@@ -349,14 +320,16 @@
                 return;
             }
 
+            // Выводим балл за конкретное эссе в мини-квадратик
             if (response.score !== undefined && response.score !== null) {
                 const scoreBadge = document.getElementById(scoreId);
                 scoreBadge.classList.remove('hidden');
+                scoreBadge.classList.add('flex'); // Обеспечиваем отображение flex-элемента
                 
                 const formattedScore = Number(response.score).toFixed(1);
                 
                 if (response.raw_score !== undefined && response.raw_score !== null) {
-                    scoreBadge.innerHTML = `<span class="opacity-60 text-sm font-semibold mr-2 uppercase tracking-wide">Raw: ${response.raw_score}</span> <span class="border-l-2 border-current pl-3 py-0.5">TOEFL: ${formattedScore} / 6.0</span>`;
+                    scoreBadge.innerHTML = `<span class="opacity-60 text-xs font-semibold mr-2 pr-2 border-r border-current">Raw: ${response.raw_score}</span><span>Score: ${formattedScore} / 6.0</span>`;
                 } else {
                     scoreBadge.textContent = `Score: ${formattedScore} / 6.0`;
                 }
