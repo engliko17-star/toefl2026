@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Board — TOEFL CRM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="auth.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+    </style>
+</head>
+<body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex flex-col md:flex-row">
+
+    <!-- БОКОВОЕ МЕНЮ (Копия из index.html, но активна другая вкладка) -->
+    <aside class="hidden md:flex flex-col w-64 bg-white border-r border-gray-100 px-4 py-6 h-screen sticky top-0 shrink-0">
+        <div class="font-bold text-2xl tracking-tighter mb-8 px-2 flex items-center space-x-2">
+            <span>TOEFL</span><span class="w-1.5 h-1.5 bg-indigo-600 rounded-full mt-2"></span>
+        </div>
+        
+        <nav class="flex-1 flex flex-col justify-between">
+            <div class="space-y-1">
+                <a href="index.html" class="flex items-center space-x-3 p-3 rounded-xl text-gray-400 hover:bg-gray-50 hover:text-slate-700 transition">
+                    <i data-lucide="home" class="w-5 h-5"></i>
+                    <span class="text-sm font-medium">Dashboard</span>
+                </a>
+                
+                <div class="pt-4 pb-2 px-3 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Teacher CRM</div>
+                <a href="teacher-board.html" class="flex items-center space-x-3 p-3 rounded-xl bg-indigo-50 text-indigo-700 font-bold transition border border-indigo-200 shadow-sm">
+                    <i data-lucide="users" class="w-5 h-5"></i>
+                    <span class="text-sm">Students List</span>
+                </a>
+                <!-- Место для будущих вкладок: Проверка ДЗ, Расписание и т.д. -->
+            </div>
+
+            <button onclick="logoutUser()" class="flex items-center space-x-3 p-3 rounded-xl text-rose-500 hover:bg-rose-50/50 transition cursor-pointer mt-auto border border-dashed border-transparent hover:border-rose-100">
+                <i data-lucide="log-out" class="w-5 h-5"></i>
+                <span class="text-sm font-medium">Log Out</span>
+            </button>
+        </nav>
+    </aside>
+
+    <main class="flex-1 p-6 lg:p-10 overflow-y-auto">
+        <!-- ШАПКА -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Ученики</h1>
+                <p class="text-xs text-gray-400 mt-1">Управление подготовкой и контроль прогресса</p>
+            </div>
+            
+            <div class="flex space-x-3">
+                <div class="relative w-full sm:w-64">
+                    <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4"></i>
+                    <input type="text" id="searchInput" placeholder="Поиск по email..." class="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 transition">
+                </div>
+            </div>
+        </div>
+
+        <!-- КОНТЕЙНЕР ДЛЯ КАРТОЧЕК СТУДЕНТОВ -->
+        <div id="studentsGrid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            <!-- Сюда будут подгружаться карточки через JS -->
+            <div class="col-span-full text-center py-10 text-gray-400 text-sm">
+                Загрузка учеников...
+            </div>
+        </div>
+    </main>
+
+    <script>
+        lucide.createIcons();
+        let allStudents = [];
+
+        window.onload = async () => {
+            // 1. Вызываем СТРОГИЙ гард. Если это студент, скрипт прервется и выкинет его.
+            const currentUser = await requireTeacher();
+            
+            if (currentUser) {
+                loadStudents();
+            }
+        };
+
+        async function loadStudents() {
+            // 2. Благодаря RLS и роли 'teacher', база отдаст нам всех пользователей
+            // Мы фильтруем только тех, у кого роль student (если вдруг добавятся админы)
+            const { data: students, error } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('role', 'student')
+                .order('email', { ascending: true }); // Сортируем по алфавиту
+
+            if (error) {
+                console.error("Ошибка загрузки учеников:", error);
+                document.getElementById('studentsGrid').innerHTML = `<div class="text-red-500 col-span-full">Ошибка загрузки данных.</div>`;
+                return;
+            }
+
+            allStudents = students;
+            renderStudents(allStudents);
+        }
+
+        function renderStudents(studentsToRender) {
+            const grid = document.getElementById('studentsGrid');
+            grid.innerHTML = '';
+
+            if (studentsToRender.length === 0) {
+                grid.innerHTML = `<div class="col-span-full text-center py-10 text-gray-400 text-sm">Ученики не найдены.</div>`;
+                return;
+            }
+
+            studentsToRender.forEach(student => {
+                // Берем первую букву email для красивого аватара
+                const initial = student.email ? student.email.charAt(0).toUpperCase() : '?';
+                const emailName = student.email ? student.email.split('@')[0] : 'Без имени';
+
+                // Создаем карточку
+                const card = document.createElement('div');
+                card.className = "bg-white p-6 rounded-2xl border border-gray-100 shadow-xs hover:shadow-md hover:border-indigo-100 transition flex flex-col justify-between";
+                
+                card.innerHTML = `
+                    <div>
+                        <div class="flex justify-between items-start mb-4">
+                            <div class="flex items-center space-x-3">
+                                <div class="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 font-bold flex items-center justify-center text-lg border border-indigo-100">
+                                    ${initial}
+                                </div>
+                                <div class="min-w-0">
+                                    <h3 class="text-sm font-bold text-slate-800 truncate">${emailName}</h3>
+                                    <p class="text-[10px] text-gray-400 truncate">${student.email || 'Нет email'}</p>
+                                </div>
+                            </div>
+                            <!-- Индикатор статуса (пока заглушка, можно привязать к БД) -->
+                            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                        </div>
+
+                        <div class="space-y-3 mb-5 border-t border-gray-50 pt-4">
+                            <div class="flex justify-between text-xs">
+                                <span class="text-gray-500">Доступ к платформе:</span>
+                                <span class="font-semibold ${student.is_approved ? 'text-emerald-600' : 'text-amber-500'}">
+                                    ${student.is_approved ? 'Активен' : 'Ожидает'}
+                                </span>
+                            </div>
+                            <div class="flex justify-between text-xs">
+                                <span class="text-gray-500">Последний Mock:</span>
+                                <span class="font-semibold text-slate-700">Нет данных</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <a href="student-profile.html?id=${student.id}" class="w-full text-center py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl transition border border-gray-200/60 cursor-pointer block">
+                        Открыть профиль
+                    </a>
+                `;
+                
+                grid.appendChild(card);
+            });
+        }
+
+        // Простой живой поиск по email
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            const term = e.target.value.toLowerCase();
+            const filtered = allStudents.filter(s => 
+                (s.email && s.email.toLowerCase().includes(term))
+            );
+            renderStudents(filtered);
+        });
+    </script>
+</body>
+</html>
