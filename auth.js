@@ -5,7 +5,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // Создаем единый клиент для работы с базой
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Эта функция будет стоять охранником на страницах с тестами
+// Функция контроля доступа
 async function requireAuth() {
     // Спрашиваем у Supabase, есть ли активная сессия в браузере
     const { data: { session }, error } = await _supabase.auth.getSession();
@@ -16,16 +16,17 @@ async function requireAuth() {
         return null;
     }
     
-    // --- НАЧАЛО ПРОВЕРКИ СТАТУСА ДОСТУПА ---
-    // Делаем быстрый запрос к нашей таблице profiles, забирая роль, общий статус и доступы к разделам
+    // Получаем профиль текущего пользователя
     const { data: profile } = await _supabase
         .from('profiles')
         .select('role, is_approved, access_reading, access_listening, access_speaking, access_writing, access_tests')
         .eq('id', session.user.id)
         .maybeSingle();
 
-    // 1. Сначала проверяем глобальный доступ к платформе
-    if (!profile || !profile.is_approved) {
+    const isTeacher = profile && profile.role === 'teacher';
+
+    // 1. Проверка подтверждения аккаунта (ТОЛЬКО ДЛЯ УЧЕНИКОВ)
+    if (!isTeacher && (!profile || !profile.is_approved)) {
         document.body.innerHTML = `
             <div style="
                 position: fixed;
@@ -70,15 +71,14 @@ async function requireAuth() {
 
     const currentPath = window.location.pathname;
 
-    // 2. Проверка доступа к кабинету преподавателя Teacher Board
-    if (currentPath.includes('teacher-board.html') && profile.role !== 'teacher') {
+    // 2. Ученикам запрещен доступ в кабинет преподавателя
+    if (currentPath.includes('teacher-board.html') && !isTeacher) {
         window.location.href = 'index.html';
         return null;
     }
 
-    // 3. Проверяем точечный доступ к конкретным разделам по имени файла в URL
-    // Учителям (role === 'teacher') открыт полный доступ во все учебные разделы
-    if (profile.role !== 'teacher') {
+    // 3. Точечные проверки модулей (ТОЛЬКО ДЛЯ УЧЕНИКОВ)
+    if (!isTeacher) {
         let hasSectionAccess = true;
         let sectionName = '';
 
@@ -99,7 +99,6 @@ async function requireAuth() {
             sectionName = 'Mock Tests';
         }
 
-        // Если у ученика нет прав конкретно на этот раздел
         if (!hasSectionAccess) {
             document.body.innerHTML = `
                 <div style="
@@ -147,17 +146,16 @@ async function requireAuth() {
             return null;
         }
     }
-    // --- КОНЕЦ ПРОВЕРКИ СТАТУСА ДОСТУПА ---
     
-    // Если все ок — возвращаем данные пользователя вместе с его ролью и свойствами профиля
+    // Если всё хорошо — возвращаем объект юзера
     return {
         ...session.user,
-        role: profile.role,
+        role: profile ? profile.role : 'student',
         profile: profile
     };
 }
 
-// Функция для выхода из аккаунта
+// Функция выхода
 async function logoutUser() {
     await _supabase.auth.signOut();
     window.location.href = 'login.html';
