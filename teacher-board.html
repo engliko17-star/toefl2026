@@ -53,7 +53,7 @@
             <div class="flex items-center space-x-3">
                 <div class="relative w-full sm:w-72">
                     <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4"></i>
-                    <input type="text" id="searchInput" placeholder="Поиск по email..." class="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-100 transition shadow-xs">
+                    <input type="text" id="searchInput" placeholder="Поиск по email или имени..." class="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-100 transition shadow-xs">
                 </div>
             </div>
         </div>
@@ -95,7 +95,6 @@
         let allStudents = [];
 
         window.onload = async () => {
-            // Проверяем авторизацию преподавателя через auth.js
             const user = await requireAuth();
             if (!user) return;
             
@@ -132,7 +131,10 @@
 
         function getFilteredStudents() {
             const term = document.getElementById('searchInput').value.toLowerCase().trim();
-            return allStudents.filter(s => s.email && s.email.toLowerCase().includes(term));
+            return allStudents.filter(s => {
+                const searchStr = `${s.email || ''} ${s.full_name || ''} ${s.name || ''}`.toLowerCase();
+                return searchStr.includes(term);
+            });
         }
 
         function renderStudents(studentsToRender) {
@@ -152,8 +154,9 @@
             }
 
             studentsToRender.forEach(student => {
-                const initial = student.email ? student.email.charAt(0).toUpperCase() : '?';
-                const emailName = student.email ? student.email.split('@')[0] : 'Без имени';
+                // Обновленная логика отображения имени: сначала ищем full_name
+                const displayName = student.full_name || student.name || (student.email ? student.email.split('@')[0] : 'Без имени');
+                const initial = displayName.charAt(0).toUpperCase();
 
                 const card = document.createElement('div');
                 card.className = "bg-white p-6 rounded-3xl border border-gray-100 shadow-xs hover:shadow-md hover:border-indigo-100 transition flex flex-col justify-between space-y-5 relative";
@@ -167,8 +170,8 @@
                                     ${initial}
                                 </div>
                                 <div class="min-w-0">
-                                    <h3 class="text-sm font-bold text-slate-900 truncate">${emailName}</h3>
-                                    <p class="text-[11px] text-gray-400 truncate">${student.email || '—'}</p>
+                                    <h3 class="text-sm font-bold text-slate-900 truncate" title="${displayName}">${displayName}</h3>
+                                    <p class="text-[11px] text-gray-400 truncate" title="${student.email || ''}">${student.email || '—'}</p>
                                 </div>
                             </div>
 
@@ -235,7 +238,6 @@
         async function toggleStudentApproval(studentId, currentStatus) {
             const newStatus = !currentStatus;
             
-            // Оптимистичное обновление
             const student = allStudents.find(s => s.id === studentId);
             if (student) student.is_approved = newStatus;
             
@@ -256,11 +258,10 @@
             }
         }
 
-        // Переключение доступа к конкретным разделам (R, L, W, S, Tests)
+        // Переключение доступа к конкретным разделам
         async function toggleModuleAccess(studentId, field, currentValue) {
             const newValue = !currentValue;
 
-            // Оптимистичное обновление
             const student = allStudents.find(s => s.id === studentId);
             if (student) student[field] = newValue;
             
