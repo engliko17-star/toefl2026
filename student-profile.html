@@ -36,7 +36,6 @@
             color: #4f46e5 !important;
         }
 
-        /* Стилизация инпута даты */
         input[type="date"]::-webkit-calendar-picker-indicator {
             filter: invert(1);
             cursor: pointer;
@@ -61,8 +60,18 @@
                     U
                 </div>
                 <div>
-                    <h1 id="profileEmail" class="text-2xl md:text-3xl font-extrabold tracking-tight text-white">Загрузка...</h1>
-                    <p class="text-xs text-indigo-200/80 mt-1 font-medium"><span id="profileDate">Старт: —</span></p>
+                    <!-- Заголовок с кнопкой редактирования имени -->
+                    <div class="flex items-center space-x-3 mb-1">
+                        <h1 id="profileEmail" class="text-2xl md:text-3xl font-extrabold tracking-tight text-white">Загрузка...</h1>
+                        <button onclick="editStudentName()" class="text-indigo-300 hover:text-white transition bg-white/10 p-1.5 rounded-lg border border-white/10 hover:bg-white/20" title="Изменить имя">
+                            <i data-lucide="edit-2" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                    <!-- Дата старта и скрытая почта -->
+                    <p class="text-xs text-indigo-200/80 font-medium flex items-center flex-wrap gap-2">
+                        <span id="profileDate">Старт: —</span>
+                        <span id="originalEmail" class="hidden flex items-center before:content-['•'] before:mr-2 before:text-indigo-400/50"></span>
+                    </p>
                 </div>
             </div>
             
@@ -251,6 +260,7 @@
 
         let dbStrongAreas = [];
         let dbFocusAreas = [];
+        let currentStudentEmail = ""; // Добавили переменную для хранения оригинальной почты
 
         window.onload = async () => {
             if (typeof requireAuth === 'function') {
@@ -264,12 +274,12 @@
             if (studentId && typeof _supabase !== 'undefined') {
                 await loadStudentDataFromDB();
             } else {
-                document.getElementById('profileEmail').innerText = "Ошибка: ID ученика не найден или БД не подключена";
+                document.getElementById('profileEmail').innerText = "Ошибка: ID ученика не найден";
                 document.getElementById('profileInitial').innerText = "!";
             }
         };
 
-        // 1. ЗАГРУЗКА ВСЕХ ДАННЫХ ИЗ SUPABASE
+        // 1. ЗАГРУЗКА ДАННЫХ
         async function loadStudentDataFromDB() {
             try {
                 const { data, error } = await _supabase
@@ -281,54 +291,33 @@
                 if (error) throw error;
 
                 if (data) {
-                    const nameOrEmail = data.full_name || data.name || data.email || data.username || "Ученик TOEFL";
-                    document.getElementById('profileEmail').innerText = nameOrEmail;
-                    document.getElementById('profileInitial').innerText = nameOrEmail.charAt(0).toUpperCase();
+                    currentStudentEmail = data.email || ""; 
+                    const displayName = data.full_name || data.name || data.email || data.username || "Ученик TOEFL";
+                    
+                    document.getElementById('profileEmail').innerText = displayName;
+                    document.getElementById('profileInitial').innerText = displayName.charAt(0).toUpperCase();
+
+                    // Если имя было изменено и отличается от почты, показываем почту внизу
+                    if (currentStudentEmail && displayName !== currentStudentEmail) {
+                        const emailEl = document.getElementById('originalEmail');
+                        emailEl.innerText = currentStudentEmail;
+                        emailEl.classList.remove('hidden');
+                    }
 
                     if (data.created_at) {
                         const date = new Date(data.created_at);
                         document.getElementById('profileDate').innerText = 'Старт: ' + date.toLocaleDateString('ru-RU');
                     }
 
-                    // Дата экзамена
-                    if (data.exam_date) {
-                        updateExamDateUI(data.exam_date);
-                    }
+                    if (data.exam_date) updateExamDateUI(data.exam_date);
 
-                    // 1. Точка А
-                    setScoreVal('a_read', data.start_r);
-                    setScoreVal('a_list', data.start_l);
-                    setScoreVal('a_write', data.start_w);
-                    setScoreVal('a_speak', data.start_s);
-                    calculateTotal('a');
+                    setScoreVal('a_read', data.start_r); setScoreVal('a_list', data.start_l); setScoreVal('a_write', data.start_w); setScoreVal('a_speak', data.start_s); calculateTotal('a');
+                    setScoreVal('goal_read', data.target_r); setScoreVal('goal_list', data.target_l); setScoreVal('goal_write', data.target_w); setScoreVal('goal_speak', data.target_s); calculateTotal('goal');
+                    setScoreVal('b_read', data.mock_r); setScoreVal('b_list', data.mock_l); setScoreVal('b_write', data.mock_w); setScoreVal('b_speak', data.mock_s); calculateTotal('b');
+                    setScoreVal('ibt_read', data.ibt_r); setScoreVal('ibt_list', data.ibt_l); setScoreVal('ibt_write', data.ibt_w); setScoreVal('ibt_speak', data.ibt_s); calculateTotal('ibt');
 
-                    // 2. Цель
-                    setScoreVal('goal_read', data.target_r);
-                    setScoreVal('goal_list', data.target_l);
-                    setScoreVal('goal_write', data.target_w);
-                    setScoreVal('goal_speak', data.target_s);
-                    calculateTotal('goal');
+                    if (data.notes && data.notes !== 'EMPTY') document.getElementById('studentNotes').value = data.notes;
 
-                    // 3. Точка Б
-                    setScoreVal('b_read', data.mock_r);
-                    setScoreVal('b_list', data.mock_l);
-                    setScoreVal('b_write', data.mock_w);
-                    setScoreVal('b_speak', data.mock_s);
-                    calculateTotal('b');
-
-                    // 4. TOEFL iBT
-                    setScoreVal('ibt_read', data.ibt_r);
-                    setScoreVal('ibt_list', data.ibt_l);
-                    setScoreVal('ibt_write', data.ibt_w);
-                    setScoreVal('ibt_speak', data.ibt_s);
-                    calculateTotal('ibt');
-
-                    // Заметки
-                    if (data.notes && data.notes !== 'EMPTY') {
-                        document.getElementById('studentNotes').value = data.notes;
-                    }
-
-                    // Теги
                     dbStrongAreas = data.strong_areas || [];
                     dbFocusAreas = data.focus_areas || [];
                     renderTags();
@@ -338,7 +327,41 @@
             }
         }
 
-        // --- ЛОГИКА ДАТЫ ЭКЗАМЕНА ---
+        // --- ЛОГИКА ИЗМЕНЕНИЯ ИМЕНИ ---
+        async function editStudentName() {
+            const nameEl = document.getElementById('profileEmail');
+            const currentName = nameEl.innerText;
+            const newName = prompt("Введите имя ученика (Например: Даня ВШЭ):", currentName);
+            
+            if (newName !== null && newName.trim() !== "") {
+                const finalName = newName.trim();
+                
+                // Обновляем UI моментально
+                nameEl.innerText = finalName;
+                document.getElementById('profileInitial').innerText = finalName.charAt(0).toUpperCase();
+                
+                if (currentStudentEmail && finalName !== currentStudentEmail) {
+                    const emailEl = document.getElementById('originalEmail');
+                    emailEl.innerText = currentStudentEmail;
+                    emailEl.classList.remove('hidden');
+                }
+                
+                // Отправляем в базу
+                try {
+                    const { error } = await _supabase
+                        .from('profiles')
+                        .update({ full_name: finalName })
+                        .eq('id', studentId);
+                        
+                    if (error) throw error;
+                } catch (error) {
+                    console.error("Ошибка сохранения имени:", error);
+                    alert("Ошибка сохранения имени в базу данных!");
+                }
+            }
+        }
+
+        // --- ОСТАЛЬНАЯ ЛОГИКА (ДАТЫ, БАЛЛЫ, ЗАМЕТКИ) ---
         function updateExamDateUI(dateStr) {
             const input = document.getElementById('examDateInput');
             const badge = document.getElementById('daysRemainingBadge');
@@ -368,55 +391,35 @@
         async function saveExamDate(newDate) {
             updateExamDateUI(newDate);
             if (!studentId || typeof _supabase === 'undefined') return;
-
-            try {
-                const { error } = await _supabase
-                    .from('profiles')
-                    .update({ exam_date: newDate })
-                    .eq('id', studentId);
-
-                if (error) throw error;
-            } catch (error) {
-                console.error('Ошибка сохранения даты экзамена:', error.message);
-            }
+            try { await _supabase.from('profiles').update({ exam_date: newDate }).eq('id', studentId); } 
+            catch (err) { console.error(err.message); }
         }
 
         function setScoreVal(key, val) {
             const elem = document.querySelector(`[data-key="${key}"]`);
-            if (elem) {
-                elem.innerText = (val !== null && val !== undefined && val !== 0) ? val : '—';
-            }
+            if (elem) elem.innerText = (val !== null && val !== undefined && val !== 0) ? val : '—';
         }
 
-        // --- ЛОГИКА ОКРУГЛЕНИЯ БАЛЛОВ (в пользу ученика) ---
         function calculateTotal(prefix) {
             const r = parseFloat(document.querySelector(`[data-key="${prefix}_read"]`)?.innerText) || 0;
             const l = parseFloat(document.querySelector(`[data-key="${prefix}_list"]`)?.innerText) || 0;
             const w = parseFloat(document.querySelector(`[data-key="${prefix}_write"]`)?.innerText) || 0;
             const s = parseFloat(document.querySelector(`[data-key="${prefix}_speak"]`)?.innerText) || 0;
-            
             const totalElem = document.querySelector(`[data-key="${prefix}_total"]`);
             if (totalElem) {
                 if (r || l || w || s) {
                     const average = (r + l + w + s) / 4;
-                    const roundedScore = Math.ceil(average * 2) / 2;
-                    totalElem.innerText = roundedScore.toFixed(1);
-                } else {
-                    totalElem.innerText = '—';
-                }
+                    totalElem.innerText = (Math.ceil(average * 2) / 2).toFixed(1);
+                } else { totalElem.innerText = '—'; }
             }
         }
 
-        // --- РЕДАКТИРОВАНИЕ И СОХРАНЕНИЕ БАЛЛОВ В БАЗУ ---
         let isEditingScores = false;
 
         function setupScoreInputs() {
             document.querySelectorAll('.editable-score').forEach(el => {
                 el.addEventListener('keypress', function(e) {
-                    if (e.key === 'Enter') {
-                        e.preventDefault();
-                        el.blur();
-                    }
+                    if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
                     if (!/[0-9.\-]/.test(e.key)) e.preventDefault();
                 });
             });
@@ -432,237 +435,110 @@
             if (isEditingScores) {
                 btnText.innerText = "Сохранить баллы";
                 icon.setAttribute('data-lucide', 'save');
-                scores.forEach(el => {
-                    el.contentEditable = "true";
-                    el.classList.add('editing-mode');
-                });
+                scores.forEach(el => { el.contentEditable = "true"; el.classList.add('editing-mode'); });
             } else {
                 btnText.innerText = "Сохранение...";
-                scores.forEach(el => {
-                    el.contentEditable = "false";
-                    el.classList.remove('editing-mode');
-                });
+                scores.forEach(el => { el.contentEditable = "false"; el.classList.remove('editing-mode'); });
 
                 const parseScore = (key) => {
-                    const txt = document.querySelector(`[data-key="${key}"]`)?.innerText || '';
-                    const num = parseFloat(txt);
+                    const num = parseFloat(document.querySelector(`[data-key="${key}"]`)?.innerText || '');
                     return isNaN(num) ? 0 : num;
                 };
 
                 const updates = {
-                    start_r: parseScore('a_read'),
-                    start_l: parseScore('a_list'),
-                    start_w: parseScore('a_write'),
-                    start_s: parseScore('a_speak'),
-                    
-                    target_r: parseScore('goal_read'),
-                    target_l: parseScore('goal_list'),
-                    target_w: parseScore('goal_write'),
-                    target_s: parseScore('goal_speak'),
-                    
-                    mock_r: parseScore('b_read'),
-                    mock_l: parseScore('b_list'),
-                    mock_w: parseScore('b_write'),
-                    mock_s: parseScore('b_speak'),
-
-                    ibt_r: parseScore('ibt_read'),
-                    ibt_l: parseScore('ibt_list'),
-                    ibt_w: parseScore('ibt_write'),
-                    ibt_s: parseScore('ibt_speak')
+                    start_r: parseScore('a_read'), start_l: parseScore('a_list'), start_w: parseScore('a_write'), start_s: parseScore('a_speak'),
+                    target_r: parseScore('goal_read'), target_l: parseScore('goal_list'), target_w: parseScore('goal_write'), target_s: parseScore('goal_speak'),
+                    mock_r: parseScore('b_read'), mock_l: parseScore('b_list'), mock_w: parseScore('b_write'), mock_s: parseScore('b_speak'),
+                    ibt_r: parseScore('ibt_read'), ibt_l: parseScore('ibt_list'), ibt_w: parseScore('ibt_write'), ibt_s: parseScore('ibt_speak')
                 };
 
                 try {
-                    const { error } = await _supabase
-                        .from('profiles')
-                        .update(updates)
-                        .eq('id', studentId);
-
-                    if (error) throw error;
-                    
-                    calculateTotal('a');
-                    calculateTotal('goal');
-                    calculateTotal('b');
-                    calculateTotal('ibt');
-
-                    btnText.innerText = "Редактировать баллы";
-                    icon.setAttribute('data-lucide', 'edit-3');
-                } catch (error) {
-                    console.error('Ошибка сохранения баллов:', error.message);
-                    alert("Ошибка сохранения баллов в базу данных");
-                    btnText.innerText = "Редактировать баллы";
+                    await _supabase.from('profiles').update(updates).eq('id', studentId);
+                    calculateTotal('a'); calculateTotal('goal'); calculateTotal('b'); calculateTotal('ibt');
+                    btnText.innerText = "Редактировать баллы"; icon.setAttribute('data-lucide', 'edit-3');
+                } catch (err) {
+                    alert("Ошибка сохранения баллов в базу данных"); btnText.innerText = "Редактировать баллы";
                 }
             }
             lucide.createIcons();
         }
 
-        // --- РАБОТА С ЗАМЕТКАМИ ---
         async function saveNotes() {
             const notesValue = document.getElementById('studentNotes').value;
             const btn = document.querySelector('button[onclick="saveNotes()"] span');
             btn.innerText = "Сохранение...";
-
             try {
-                const { error } = await _supabase
-                    .from('profiles')
-                    .update({ notes: notesValue || 'EMPTY' })
-                    .eq('id', studentId);
-                
-                if (error) throw error;
-                btn.innerText = "Сохранено";
-                setTimeout(() => btn.innerText = "Сохранить", 2000);
-            } catch (error) {
-                console.error("Ошибка сохранения заметок:", error);
-                btn.innerText = "Ошибка!";
-            }
+                await _supabase.from('profiles').update({ notes: notesValue || 'EMPTY' }).eq('id', studentId);
+                btn.innerText = "Сохранено"; setTimeout(() => btn.innerText = "Сохранить", 2000);
+            } catch (err) { btn.innerText = "Ошибка!"; }
         }
 
-        // --- РАБОТА С ТЕГАМИ ---
         function renderTags() {
-            const strongContainer = document.getElementById('strongAreasList');
-            const focusContainer = document.getElementById('focusAreasList');
-            
-            strongContainer.innerHTML = dbStrongAreas.map((tag, idx) => `
-                <span class="text-xs font-semibold px-3 py-1 rounded-lg skill-tag-green flex items-center gap-1 cursor-pointer hover:bg-emerald-100" onclick="removeTag('strong', ${idx})">
-                    ${tag} <i data-lucide="x" class="w-3 h-3"></i>
-                </span>`).join('');
-                
-            focusContainer.innerHTML = dbFocusAreas.map((tag, idx) => `
-                <span class="text-xs font-semibold px-3 py-1 rounded-lg skill-tag-red flex items-center gap-1 cursor-pointer hover:bg-rose-100" onclick="removeTag('focus', ${idx})">
-                    ${tag} <i data-lucide="x" class="w-3 h-3"></i>
-                </span>`).join('');
-                
+            document.getElementById('strongAreasList').innerHTML = dbStrongAreas.map((tag, idx) => `<span class="text-xs font-semibold px-3 py-1 rounded-lg skill-tag-green flex items-center gap-1 cursor-pointer hover:bg-emerald-100" onclick="removeTag('strong', ${idx})">${tag} <i data-lucide="x" class="w-3 h-3"></i></span>`).join('');
+            document.getElementById('focusAreasList').innerHTML = dbFocusAreas.map((tag, idx) => `<span class="text-xs font-semibold px-3 py-1 rounded-lg skill-tag-red flex items-center gap-1 cursor-pointer hover:bg-rose-100" onclick="removeTag('focus', ${idx})">${tag} <i data-lucide="x" class="w-3 h-3"></i></span>`).join('');
             lucide.createIcons();
         }
 
         async function addTag(type) {
-            const inputId = type === 'strong' ? 'newStrongTag' : 'newFocusTag';
-            const input = document.getElementById(inputId);
-            const val = input.value.trim();
-            if (!val) return;
-
-            if (type === 'strong') dbStrongAreas.push(val);
-            else dbFocusAreas.push(val);
-
-            input.value = '';
-            renderTags();
-            await updateTagsInDB();
+            const input = document.getElementById(type === 'strong' ? 'newStrongTag' : 'newFocusTag');
+            if (!input.value.trim()) return;
+            if (type === 'strong') dbStrongAreas.push(input.value.trim()); else dbFocusAreas.push(input.value.trim());
+            input.value = ''; renderTags(); await updateTagsInDB();
         }
 
         async function removeTag(type, index) {
-            if (type === 'strong') dbStrongAreas.splice(index, 1);
-            else dbFocusAreas.splice(index, 1);
-            
-            renderTags();
-            await updateTagsInDB();
+            if (type === 'strong') dbStrongAreas.splice(index, 1); else dbFocusAreas.splice(index, 1);
+            renderTags(); await updateTagsInDB();
         }
 
         async function updateTagsInDB() {
-            try {
-                await _supabase
-                    .from('profiles')
-                    .update({
-                        strong_areas: dbStrongAreas,
-                        focus_areas: dbFocusAreas
-                    })
-                    .eq('id', studentId);
-            } catch (error) {
-                console.error("Ошибка сохранения тегов:", error);
-            }
+            try { await _supabase.from('profiles').update({ strong_areas: dbStrongAreas, focus_areas: dbFocusAreas }).eq('id', studentId); } catch (err) {}
         }
 
-        // --- ЧЕК-ЛИСТ И УРОКИ ---
         function renderChecklist() {
-            const container = document.getElementById('checklistContainer');
-            container.innerHTML = defaultChecklist.map((item, idx) => `
+            document.getElementById('checklistContainer').innerHTML = defaultChecklist.map((item, idx) => `
                 <label class="flex items-start space-x-2.5 cursor-pointer group py-1">
                     <input type="checkbox" id="check_${idx}" class="w-4 h-4 mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 transition" />
                     <span class="text-xs text-slate-700 group-hover:text-slate-900 font-medium leading-snug">${item}</span>
-                </label>
-            `).join('');
+                </label>`).join('');
         }
 
         function addCustomCheckItem() {
             const input = document.getElementById('customCheckItem');
             if (!input.value.trim()) return;
-            defaultChecklist.push(input.value.trim());
-            renderChecklist();
-            input.value = '';
+            defaultChecklist.push(input.value.trim()); renderChecklist(); input.value = '';
         }
 
         function addLessonRow() {
             const tbody = document.getElementById('lessonsTableBody');
             const today = new Date().toISOString().split('T')[0];
-            
             const tr = document.createElement('tr');
             tr.className = "border-b border-gray-50 bg-indigo-50/30 transition";
-            
             tr.innerHTML = `
+                <td class="py-3 px-4"><input type="date" value="${today}" class="w-full text-xs font-semibold text-slate-800 border border-gray-200 rounded-lg px-2 py-1.5 outline-none bg-white"></td>
                 <td class="py-3 px-4">
-                    <input type="date" value="${today}" class="w-full text-xs font-semibold text-slate-800 border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-indigo-400 bg-white">
-                </td>
-                <td class="py-3 px-4">
-                    <select class="w-full text-xs font-bold border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-indigo-400 bg-white text-slate-600">
-                        <option value="Reading">Reading</option>
-                        <option value="Listening">Listening</option>
-                        <option value="Writing">Writing</option>
-                        <option value="Speaking">Speaking</option>
-                        <option value="General">General</option>
+                    <select class="w-full text-xs font-bold border border-gray-200 rounded-lg px-2 py-1.5 outline-none bg-white text-slate-600">
+                        <option value="Reading">Reading</option><option value="Listening">Listening</option><option value="Writing">Writing</option><option value="Speaking">Speaking</option><option value="General">General</option>
                     </select>
                 </td>
-                <td class="py-3 px-4">
-                    <input type="text" placeholder="Укажите тему урока..." class="w-full text-xs text-slate-700 font-medium border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-indigo-400 bg-white">
-                </td>
-                <td class="py-3 px-4">
-                    <input type="text" placeholder="Задание на дом..." class="w-full text-xs text-slate-500 border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-indigo-400 bg-white">
-                </td>
+                <td class="py-3 px-4"><input type="text" placeholder="Укажите тему..." class="w-full text-xs text-slate-700 font-medium border border-gray-200 rounded-lg px-2 py-1.5 outline-none bg-white"></td>
+                <td class="py-3 px-4"><input type="text" placeholder="Задание..." class="w-full text-xs text-slate-500 border border-gray-200 rounded-lg px-2 py-1.5 outline-none bg-white"></td>
                 <td class="py-3 px-4 flex items-center justify-center space-x-2">
-                    <select class="text-[10px] font-bold uppercase tracking-wider border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-indigo-400 bg-white text-slate-600 cursor-pointer">
-                        <option value="PENDING">Pending</option>
-                        <option value="DONE">Done</option>
-                        <option value="CANCELED">Cancel</option>
-                    </select>
-                    <button onclick="saveLessonRow(this)" title="Сохранить урок" class="p-1.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition shadow-xs flex-shrink-0">
-                        <i data-lucide="check" class="w-3.5 h-3.5"></i>
-                    </button>
-                    <button onclick="this.closest('tr').remove()" title="Удалить" class="p-1.5 bg-rose-50 text-rose-500 rounded-lg hover:bg-rose-100 transition shadow-xs flex-shrink-0">
-                        <i data-lucide="x" class="w-3.5 h-3.5"></i>
-                    </button>
-                </td>
-            `;
-            
-            tbody.insertBefore(tr, tbody.firstChild);
-            lucide.createIcons();
+                    <select class="text-[10px] font-bold uppercase border border-gray-200 rounded-lg px-2 py-1.5 outline-none bg-white text-slate-600"><option value="PENDING">Pending</option><option value="DONE">Done</option><option value="CANCELED">Cancel</option></select>
+                    <button onclick="saveLessonRow(this)" class="p-1.5 bg-emerald-500 text-white rounded-lg"><i data-lucide="check" class="w-3.5 h-3.5"></i></button>
+                    <button onclick="this.closest('tr').remove()" class="p-1.5 bg-rose-50 text-rose-500 rounded-lg"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+                </td>`;
+            tbody.insertBefore(tr, tbody.firstChild); lucide.createIcons();
         }
 
         function saveLessonRow(btn) {
-            const tr = btn.closest('tr');
-            const inputs = tr.querySelectorAll('input, select');
-            
-            const dateVal = inputs[0].value;
-            const date = dateVal ? new Date(dateVal).toLocaleDateString('ru-RU') : new Date().toLocaleDateString('ru-RU');
-            const section = inputs[1].value;
-            const topic = inputs[2].value.trim() || 'Без темы';
-            const hw = inputs[3].value.trim() || '—';
-            const status = inputs[4].value;
-
-            let sectionClass = 'bg-indigo-50 text-indigo-600';
-            if(section === 'Reading') sectionClass = 'bg-blue-50 text-blue-600';
-            if(section === 'Listening') sectionClass = 'bg-purple-50 text-purple-600';
-            if(section === 'Writing') sectionClass = 'bg-rose-50 text-rose-600';
-            if(section === 'Speaking') sectionClass = 'bg-amber-50 text-amber-600';
-
-            let statusClass = 'score-tag-gray';
-            if(status === 'DONE') statusClass = 'score-tag-green';
-            if(status === 'PENDING') statusClass = 'score-tag-purple';
-
+            const tr = btn.closest('tr'); const inputs = tr.querySelectorAll('input, select');
+            const date = inputs[0].value ? new Date(inputs[0].value).toLocaleDateString('ru-RU') : new Date().toLocaleDateString('ru-RU');
+            const section = inputs[1].value; const topic = inputs[2].value.trim() || 'Без темы'; const hw = inputs[3].value.trim() || '—'; const status = inputs[4].value;
+            let sectionClass = 'bg-indigo-50 text-indigo-600'; if(section==='Reading') sectionClass='bg-blue-50 text-blue-600'; if(section==='Listening') sectionClass='bg-purple-50 text-purple-600'; if(section==='Writing') sectionClass='bg-rose-50 text-rose-600'; if(section==='Speaking') sectionClass='bg-amber-50 text-amber-600';
+            let statusClass = 'score-tag-gray'; if(status==='DONE') statusClass='score-tag-green'; if(status==='PENDING') statusClass='score-tag-purple';
             tr.className = "border-b border-gray-50 hover:bg-gray-50/50 transition";
-            tr.innerHTML = `
-                <td class="py-3.5 px-5 font-semibold text-slate-800">${date}</td>
-                <td class="py-3.5 px-5"><span class="px-2 py-1 ${sectionClass} rounded-md font-bold text-[10px]">${section}</span></td>
-                <td class="py-3.5 px-5 text-slate-700 font-medium">${topic}</td>
-                <td class="py-3.5 px-5 text-slate-500">${hw}</td>
-                <td class="py-3.5 px-5 text-center"><span class="score-tag ${statusClass}">${status}</span></td>
-            `;
+            tr.innerHTML = `<td class="py-3.5 px-5 font-semibold text-slate-800">${date}</td><td class="py-3.5 px-5"><span class="px-2 py-1 ${sectionClass} rounded-md font-bold text-[10px]">${section}</span></td><td class="py-3.5 px-5 text-slate-700 font-medium">${topic}</td><td class="py-3.5 px-5 text-slate-500">${hw}</td><td class="py-3.5 px-5 text-center"><span class="score-tag ${statusClass}">${status}</span></td>`;
         }
     </script>
 </body>
