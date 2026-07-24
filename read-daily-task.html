@@ -38,6 +38,16 @@
                 </div>
             </div>
 
+            <span class="text-slate-300 block">|</span>
+
+            <!-- Timer Display -->
+            <div class="flex items-center space-x-2">
+                <div class="text-right">
+                    <span class="text-xs text-slate-400 block font-medium">Time Left</span>
+                    <span id="timerText" class="text-xs font-bold text-slate-700 font-mono">03:00</span>
+                </div>
+            </div>
+
             <span class="text-slate-300 block" id="headerSeparator">|</span>
 
             <div class="flex items-center space-x-3" id="topNavButtons">
@@ -119,6 +129,20 @@
         </section>
     </main>
 
+    <!-- Modal: Time's Up -->
+    <div id="timeUpModal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center">
+        <div class="bg-white rounded-2xl p-6 max-w-sm w-full mx-4 shadow-xl border border-slate-200 text-center">
+            <div class="w-12 h-12 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                <i data-lucide="clock" class="w-6 h-6"></i>
+            </div>
+            <h3 class="text-base font-bold text-slate-800 mb-2">Время вышло!</h3>
+            <p class="text-xs text-slate-600 mb-6">Вы исчерпали отведенное время (3 минуты). Вы можете продолжить выполнение упражнения, таймер продолжит отсчет в отрицательную сторону.</p>
+            <button id="continueBtn" class="w-full px-4 py-2.5 bg-slate-900 hover:bg-indigo-600 text-white font-bold text-xs rounded-xl transition shadow-xs cursor-pointer">
+                Продолжить
+            </button>
+        </div>
+    </div>
+
     <script>
         lucide.createIcons();
 
@@ -128,6 +152,11 @@
         let startTime = Date.now(); 
         let currentUser = null; 
         let isReviewMode = false;
+
+        // Timer variables
+        let timeLeft = 180; // 3 minutes in seconds
+        let timerInterval = null;
+        let timeExpiredModalShown = false;
 
         const taskTitle = document.getElementById('taskTitle');
         const progressText = document.getElementById('progressText');
@@ -143,6 +172,9 @@
         const quizContainer = document.getElementById('quizContainer');
         const resultsContainer = document.getElementById('resultsContainer');
         const explanationsList = document.getElementById('explanationsList');
+        const timerText = document.getElementById('timerText');
+        const timeUpModal = document.getElementById('timeUpModal');
+        const continueBtn = document.getElementById('continueBtn');
 
         function getDatabaseClient() {
             if (typeof supabaseClient !== 'undefined') return supabaseClient;
@@ -248,6 +280,56 @@
             }
         }
 
+        function startTimer() {
+            if (isReviewMode) return;
+
+            function updateDisplay() {
+                let isNegative = timeLeft < 0;
+                let absTime = Math.abs(timeLeft);
+                let minutes = Math.floor(absTime / 60);
+                let seconds = absTime % 60;
+                let formattedTime = `${isNegative ? '-' : ''}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+                
+                if (timerText) {
+                    timerText.innerText = formattedTime;
+                    if (isNegative) {
+                        timerText.className = "text-xs font-bold text-rose-600 font-mono animate-pulse";
+                    } else {
+                        timerText.className = "text-xs font-bold text-slate-700 font-mono";
+                    }
+                }
+            }
+
+            updateDisplay();
+
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                updateDisplay();
+
+                if (timeLeft === 0 && !timeExpiredModalShown) {
+                    timeExpiredModalShown = true;
+                    clearInterval(timerInterval); // Останавливаем таймер до подтверждения пользователем
+                    if (timeUpModal) {
+                        timeUpModal.classList.remove('hidden');
+                        lucide.createIcons();
+                    }
+                }
+            }, 1000);
+
+            if (continueBtn) {
+                continueBtn.onclick = () => {
+                    if (timeUpModal) {
+                        timeUpModal.classList.add('hidden');
+                    }
+                    // Возобновляем таймер, теперь он будет уходить в отрицательные значения
+                    timerInterval = setInterval(() => {
+                        timeLeft--;
+                        updateDisplay();
+                    }, 1000);
+                };
+            }
+        }
+
         async function init() {
             try {
                 if (typeof requireAuth !== 'function') {
@@ -281,6 +363,12 @@
                     }
 
                     if (isReviewMode) {
+                        // Скрываем таймер в режиме ревью
+                        if (timerText && timerText.parentElement) {
+                            timerText.parentElement.parentElement.style.display = 'none';
+                        }
+                        if (headerSeparator) headerSeparator.style.display = 'none';
+
                         const { data: resData, error: resError } = await db
                             .from('reading_results')
                             .select('user_answers')
@@ -307,6 +395,7 @@
                         startTime = Date.now(); 
                         renderTask();
                         showQuestion(0);
+                        startTimer(); // Запуск таймера при старте теста
                     }
                 }
             } catch (error) {
@@ -384,12 +473,19 @@
 
         window.restartTest = function() {
             if (!currentTask) return;
-            // Перенаправляем на этот же таск, но без параметра mode=review
             window.location.href = `read-daily-task.html?id=${currentTask.id}`;
         };
 
         async function processResults(isReviewOnly = false) {
-            
+            // Останавливаем таймер при завершении теста
+            if (timerInterval) {
+                clearInterval(timerInterval);
+            }
+            // Скрываем таймер в шапке при завершении
+            if (timerText && timerText.parentElement) {
+                timerText.parentElement.parentElement.style.display = 'none';
+            }
+
             let correctCount = 0;
             let categoryStats = {};
             explanationsList.innerHTML = ''; 
@@ -456,10 +552,8 @@
 
             const scorePercent = Math.round((correctCount / currentTask.questions.length) * 100);
 
-            // Сохраняем в базу только если это реальное прохождение (НЕ режим ревью)
             if (!isReviewOnly && currentUser && db) {
                 try {
-                    // Вычисляем потраченное время в секундах
                     const timeSpent = Math.max(1, Math.floor((Date.now() - startTime) / 1000));
 
                     const { error } = await db
@@ -485,7 +579,6 @@
                 }
             }
 
-            // Настройка UI для результатов
             quizContainer.classList.remove('flex', 'flex-col', 'flex-1');
             quizContainer.classList.add('hidden');
             quizContainer.style.display = 'none';
