@@ -41,11 +41,9 @@
             <span class="text-slate-300 block">|</span>
 
             <!-- Timer Display -->
-            <div class="flex items-center space-x-2">
-                <div class="text-right">
-                    <span class="text-xs text-slate-400 block font-medium">Time Left</span>
-                    <span id="timerText" class="text-xs font-bold text-slate-700 font-mono">03:00</span>
-                </div>
+            <div id="timerContainer" class="flex items-center space-x-2 bg-[#f5f5ff] border border-[#e5e5ff] px-4 py-1.5 rounded-xl text-indigo-700 text-[15px] font-bold tracking-wide shadow-sm">
+                <i data-lucide="timer" class="w-4 h-4 text-indigo-700 shrink-0"></i>
+                <span id="timerText" class="font-mono">03:00</span>
             </div>
 
             <span class="text-slate-300 block" id="headerSeparator">|</span>
@@ -129,15 +127,15 @@
         </section>
     </main>
 
-    <!-- Modal: Time's Up -->
-    <div id="timeUpModal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center">
-        <div class="bg-white rounded-2xl p-6 max-w-sm w-full mx-4 shadow-xl border border-slate-200 text-center">
-            <div class="w-12 h-12 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                <i data-lucide="clock" class="w-6 h-6"></i>
-            </div>
-            <h3 class="text-base font-bold text-slate-800 mb-2">Время вышло!</h3>
-            <p class="text-xs text-slate-600 mb-6">Вы исчерпали отведенное время (3 минуты). Вы можете продолжить выполнение упражнения, таймер продолжит отсчет в отрицательную сторону.</p>
-            <button id="continueBtn" class="w-full px-4 py-2.5 bg-slate-900 hover:bg-indigo-600 text-white font-bold text-xs rounded-xl transition shadow-xs cursor-pointer">
+    <!-- Modal: Time's Up (New Design) -->
+    <div id="timeUpModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center">
+        <div class="bg-white rounded-[24px] p-8 max-w-[380px] w-full mx-4 shadow-2xl text-center">
+            <div class="text-[64px] leading-none mb-4 mx-auto flex justify-center drop-shadow-sm">⏰</div>
+            <h3 class="text-xl font-bold text-slate-900 mb-3">Время вышло!</h3>
+            <p class="text-[13px] text-slate-500 mb-8 leading-relaxed px-2 font-medium">
+                Отведенное на это задание время закончилось. Таймер продолжит идти в минус, чтобы вы увидели, сколько дополнительного времени вам потребовалось.
+            </p>
+            <button id="continueBtn" class="w-full px-4 py-3 bg-[#0f172a] hover:bg-slate-800 text-white font-semibold text-sm rounded-xl transition-colors cursor-pointer shadow-sm">
                 Продолжить
             </button>
         </div>
@@ -172,6 +170,8 @@
         const quizContainer = document.getElementById('quizContainer');
         const resultsContainer = document.getElementById('resultsContainer');
         const explanationsList = document.getElementById('explanationsList');
+        
+        const timerContainer = document.getElementById('timerContainer');
         const timerText = document.getElementById('timerText');
         const timeUpModal = document.getElementById('timeUpModal');
         const continueBtn = document.getElementById('continueBtn');
@@ -292,10 +292,14 @@
                 
                 if (timerText) {
                     timerText.innerText = formattedTime;
+                }
+                if (timerContainer) {
                     if (isNegative) {
-                        timerText.className = "text-xs font-bold text-rose-600 font-mono animate-pulse";
+                        timerContainer.className = "flex items-center space-x-2 bg-rose-50 border border-rose-200 px-4 py-1.5 rounded-xl text-rose-600 text-[15px] font-bold tracking-wide shadow-sm animate-pulse";
+                        timerContainer.querySelector('i').classList.replace('text-indigo-700', 'text-rose-600');
                     } else {
-                        timerText.className = "text-xs font-bold text-slate-700 font-mono";
+                        timerContainer.className = "flex items-center space-x-2 bg-[#f5f5ff] border border-[#e5e5ff] px-4 py-1.5 rounded-xl text-indigo-700 text-[15px] font-bold tracking-wide shadow-sm";
+                        timerContainer.querySelector('i').classList.replace('text-rose-600', 'text-indigo-700');
                     }
                 }
             }
@@ -308,10 +312,9 @@
 
                 if (timeLeft === 0 && !timeExpiredModalShown) {
                     timeExpiredModalShown = true;
-                    clearInterval(timerInterval); // Останавливаем таймер до подтверждения пользователем
+                    clearInterval(timerInterval); // Останавливаем таймер до подтверждения
                     if (timeUpModal) {
                         timeUpModal.classList.remove('hidden');
-                        lucide.createIcons();
                     }
                 }
             }, 1000);
@@ -321,7 +324,7 @@
                     if (timeUpModal) {
                         timeUpModal.classList.add('hidden');
                     }
-                    // Возобновляем таймер, теперь он будет уходить в отрицательные значения
+                    // Возобновляем таймер
                     timerInterval = setInterval(() => {
                         timeLeft--;
                         updateDisplay();
@@ -363,10 +366,7 @@
                     }
 
                     if (isReviewMode) {
-                        // Скрываем таймер в режиме ревью
-                        if (timerText && timerText.parentElement) {
-                            timerText.parentElement.parentElement.style.display = 'none';
-                        }
+                        if (timerContainer) timerContainer.style.display = 'none';
                         if (headerSeparator) headerSeparator.style.display = 'none';
 
                         const { data: resData, error: resError } = await db
@@ -395,7 +395,7 @@
                         startTime = Date.now(); 
                         renderTask();
                         showQuestion(0);
-                        startTimer(); // Запуск таймера при старте теста
+                        startTimer();
                     }
                 }
             } catch (error) {
@@ -477,13 +477,11 @@
         };
 
         async function processResults(isReviewOnly = false) {
-            // Останавливаем таймер при завершении теста
             if (timerInterval) {
                 clearInterval(timerInterval);
             }
-            // Скрываем таймер в шапке при завершении
-            if (timerText && timerText.parentElement) {
-                timerText.parentElement.parentElement.style.display = 'none';
+            if (timerContainer) {
+                timerContainer.style.display = 'none';
             }
 
             let correctCount = 0;
