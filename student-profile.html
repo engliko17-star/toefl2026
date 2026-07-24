@@ -337,6 +337,7 @@
             
             if (studentId && typeof _supabase !== 'undefined') {
                 await loadStudentDataFromDB();
+                await loadLessonsFromDB();
             } else {
                 document.getElementById('profileEmail').innerText = "Ошибка: ID ученика не найден";
                 document.getElementById('profileInitial').innerText = "!";
@@ -351,7 +352,7 @@
             document.getElementById(`tab-${tabName}`).classList.add('active');
             document.getElementById(`btn-${tabName}`).classList.add('active');
 
-            if (tabName === 'stats' && !readingChartInstance) {
+            if (tabName === 'stats') {
                 loadReadingStats();
             }
         }
@@ -400,9 +401,6 @@
                     dbFocusAreas = data.focus_areas || [];
                     renderTags();
 
-                    dbLessons = data.lessons || [];
-                    renderLessons();
-
                     renderAccessToggles();
                 }
             } catch (error) {
@@ -414,11 +412,10 @@
         async function editStudentName() {
             const nameEl = document.getElementById('profileEmail');
             const currentName = nameEl.innerText;
-            const newName = prompt("Введите имя ученика (Например: Даня ВШЭ):", currentName);
+            const newName = prompt("Введите имя ученика:", currentName);
             
             if (newName !== null && newName.trim() !== "") {
                 const finalName = newName.trim();
-                
                 nameEl.innerText = finalName;
                 document.getElementById('profileInitial').innerText = finalName.charAt(0).toUpperCase();
                 
@@ -429,15 +426,9 @@
                 }
                 
                 try {
-                    const { error } = await _supabase
-                        .from('profiles')
-                        .update({ full_name: finalName })
-                        .eq('id', studentId);
-                        
-                    if (error) throw error;
+                    await _supabase.from('profiles').update({ full_name: finalName }).eq('id', studentId);
                 } catch (error) {
                     console.error("Ошибка сохранения имени:", error);
-                    alert("Ошибка сохранения имени в базу данных!");
                 }
             }
         }
@@ -491,7 +482,6 @@
             if (totalElem) {
                 if (r || l || w || s) {
                     const average = (r + l + w + s) / 4;
-                    // Округление в пользу ученика до 0.5 (как было изначально)
                     totalElem.innerText = (Math.ceil(average * 2) / 2).toFixed(1);
                 } else { totalElem.innerText = '—'; }
             }
@@ -540,7 +530,7 @@
                     calculateTotal('a'); calculateTotal('goal'); calculateTotal('b'); calculateTotal('ibt');
                     btnText.innerText = "Редактировать баллы"; icon.setAttribute('data-lucide', 'edit-3');
                 } catch (err) {
-                    alert("Ошибка сохранения баллов в базу данных"); btnText.innerText = "Редактировать баллы";
+                    alert("Ошибка сохранения баллов"); btnText.innerText = "Редактировать баллы";
                 }
             }
             lucide.createIcons();
@@ -557,7 +547,7 @@
             } catch (err) { btn.innerText = "Ошибка!"; }
         }
 
-        // --- ТЕГИ (STRONG / FOCUS AREAS) С СОХРАНЕНИЕМ В SUPABASE ---
+        // --- ТЕГИ (STRONG / FOCUS AREAS) ---
         function renderTags() {
             document.getElementById('strongAreasList').innerHTML = dbStrongAreas.map((tag, idx) => `<span class="text-xs font-semibold px-3 py-1 rounded-lg skill-tag-green flex items-center gap-1 cursor-pointer hover:bg-emerald-100" onclick="removeTag('strong', ${idx})">${tag} <i data-lucide="x" class="w-3 h-3"></i></span>`).join('');
             document.getElementById('focusAreasList').innerHTML = dbFocusAreas.map((tag, idx) => `<span class="text-xs font-semibold px-3 py-1 rounded-lg skill-tag-red flex items-center gap-1 cursor-pointer hover:bg-rose-100" onclick="removeTag('focus', ${idx})">${tag} <i data-lucide="x" class="w-3 h-3"></i></span>`).join('');
@@ -602,34 +592,57 @@
             defaultChecklist.push(input.value.trim()); renderChecklist(); input.value = '';
         }
 
-        // --- УРОКИ (LESSONS) С ПОЛНЫМ СОХРАНЕНИЕМ В SUPABASE ---
+        // --- УРОКИ: РАБОТА С ОТДЕЛЬНОЙ ТАБЛИЦЕЙ `lessons` ---
+        async function loadLessonsFromDB() {
+            if (!studentId || typeof _supabase === 'undefined') return;
+            try {
+                const { data, error } = await _supabase
+                    .from('lessons')
+                    .select('*')
+                    .eq('student_id', studentId)
+                    .order('lesson_date', { ascending: false });
+
+                if (error) throw error;
+                dbLessons = data || [];
+                renderLessons();
+            } catch (err) {
+                console.error("Ошибка загрузки уроков из базы:", err.message);
+            }
+        }
+
         function renderLessons() {
             const tbody = document.getElementById('lessonsTableBody');
-            if (dbLessons.length === 0) {
+            if (!dbLessons || dbLessons.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="5" class="py-6 text-center text-gray-400 text-xs">Уроки ещё не добавлены</td></tr>`;
                 return;
             }
 
-            tbody.innerHTML = dbLessons.map((item, idx) => {
+            tbody.innerHTML = dbLessons.map((item) => {
                 let sectionClass = 'bg-indigo-50 text-indigo-600';
-                if(item.section==='Reading') sectionClass='bg-blue-50 text-blue-600';
-                if(item.section==='Listening') sectionClass='bg-purple-50 text-purple-600';
-                if(item.section==='Writing') sectionClass='bg-rose-50 text-rose-600';
-                if(item.section==='Speaking') sectionClass='bg-amber-50 text-amber-600';
+                if(item.section === 'Reading') sectionClass = 'bg-blue-50 text-blue-600';
+                if(item.section === 'Listening') sectionClass = 'bg-purple-50 text-purple-600';
+                if(item.section === 'Writing') sectionClass = 'bg-rose-50 text-rose-600';
+                if(item.section === 'Speaking') sectionClass = 'bg-amber-50 text-amber-600';
                 
                 let statusClass = 'score-tag-gray';
-                if(item.status==='DONE') statusClass='score-tag-green';
-                if(item.status==='PENDING') statusClass='score-tag-purple';
+                if(item.status === 'DONE') statusClass = 'score-tag-green';
+                if(item.status === 'PENDING') statusClass = 'score-tag-purple';
+
+                let displayDate = item.lesson_date || '—';
+                if (displayDate.includes('-')) {
+                    const parts = displayDate.split('-');
+                    if (parts.length === 3) displayDate = `${parts[2]}.${parts[1]}.${parts[0]}`;
+                }
 
                 return `
                     <tr class="border-b border-gray-50 hover:bg-gray-50/50 transition">
-                        <td class="py-3.5 px-5 font-semibold text-slate-800">${item.date}</td>
-                        <td class="py-3.5 px-5"><span class="px-2 py-1 ${sectionClass} rounded-md font-bold text-[10px]">${item.section}</span></td>
-                        <td class="py-3.5 px-5 text-slate-700 font-medium">${item.topic}</td>
-                        <td class="py-3.5 px-5 text-slate-500">${item.hw}</td>
+                        <td class="py-3.5 px-5 font-semibold text-slate-800">${displayDate}</td>
+                        <td class="py-3.5 px-5"><span class="px-2 py-1 ${sectionClass} rounded-md font-bold text-[10px]">${item.section || 'General'}</span></td>
+                        <td class="py-3.5 px-5 text-slate-700 font-medium">${item.topic || '—'}</td>
+                        <td class="py-3.5 px-5 text-slate-500">${item.homework || '—'}</td>
                         <td class="py-3.5 px-5 text-center flex items-center justify-center space-x-2">
-                            <span class="score-tag ${statusClass}">${item.status}</span>
-                            <button onclick="deleteLessonRow(${idx})" class="p-1 text-rose-400 hover:text-rose-600 rounded transition" title="Удалить урок">
+                            <span class="score-tag ${statusClass}">${item.status || 'PENDING'}</span>
+                            <button onclick="deleteLessonRow('${item.id}')" class="p-1 text-rose-400 hover:text-rose-600 rounded transition" title="Удалить урок">
                                 <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                             </button>
                         </td>
@@ -642,6 +655,9 @@
         function addLessonRow() {
             const tbody = document.getElementById('lessonsTableBody');
             const today = new Date().toISOString().split('T')[0];
+            
+            if (document.getElementById('newLessonRow')) return;
+
             const tr = document.createElement('tr');
             tr.id = "newLessonRow";
             tr.className = "border-b border-gray-50 bg-indigo-50/30 transition";
@@ -653,14 +669,14 @@
                     </select>
                 </td>
                 <td class="py-3 px-4"><input type="text" placeholder="Укажите тему..." class="w-full text-xs text-slate-700 font-medium border border-gray-200 rounded-lg px-2 py-1.5 outline-none bg-white"></td>
-                <td class="py-3 px-4"><input type="text" placeholder="Задание..." class="w-full text-xs text-slate-500 border border-gray-200 rounded-lg px-2 py-1.5 outline-none bg-white"></td>
+                <td class="py-3 px-4"><input type="text" placeholder="Домашнее задание..." class="w-full text-xs text-slate-500 border border-gray-200 rounded-lg px-2 py-1.5 outline-none bg-white"></td>
                 <td class="py-3 px-4 flex items-center justify-center space-x-2">
                     <select class="text-[10px] font-bold uppercase border border-gray-200 rounded-lg px-2 py-1.5 outline-none bg-white text-slate-600"><option value="PENDING">Pending</option><option value="DONE">Done</option><option value="CANCELED">Cancel</option></select>
-                    <button onclick="saveLessonRow(this)" class="p-1.5 bg-emerald-500 text-white rounded-lg"><i data-lucide="check" class="w-3.5 h-3.5"></i></button>
-                    <button onclick="this.closest('tr').remove()" class="p-1.5 bg-rose-50 text-rose-500 rounded-lg"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+                    <button onclick="saveLessonRow(this)" class="p-1.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition"><i data-lucide="check" class="w-3.5 h-3.5"></i></button>
+                    <button onclick="this.closest('tr').remove()" class="p-1.5 bg-rose-50 text-rose-500 rounded-lg hover:bg-rose-100 transition"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
                 </td>`;
             
-            if (dbLessons.length === 0) tbody.innerHTML = '';
+            if (!dbLessons || dbLessons.length === 0) tbody.innerHTML = '';
             tbody.insertBefore(tr, tbody.firstChild); 
             lucide.createIcons();
         }
@@ -669,30 +685,39 @@
             const tr = btn.closest('tr'); 
             const inputs = tr.querySelectorAll('input, select');
             const rawDate = inputs[0].value;
-            const date = rawDate ? new Date(rawDate).toLocaleDateString('ru-RU') : new Date().toLocaleDateString('ru-RU');
             const section = inputs[1].value; 
             const topic = inputs[2].value.trim() || 'Без темы'; 
-            const hw = inputs[3].value.trim() || '—'; 
+            const homework = inputs[3].value.trim() || '—'; 
             const status = inputs[4].value;
 
-            dbLessons.unshift({ date, section, topic, hw, status });
-            renderLessons();
-            await updateLessonsInDB();
-        }
+            const newLesson = {
+                student_id: studentId,
+                lesson_date: rawDate || new Date().toISOString().split('T')[0],
+                section: section,
+                topic: topic,
+                homework: homework,
+                status: status
+            };
 
-        async function deleteLessonRow(index) {
-            dbLessons.splice(index, 1);
-            renderLessons();
-            await updateLessonsInDB();
-        }
-
-        async function updateLessonsInDB() {
             try {
-                const { error } = await _supabase.from('profiles').update({ lessons: dbLessons }).eq('id', studentId);
+                const { error } = await _supabase.from('lessons').insert([newLesson]);
                 if (error) throw error;
+                await loadLessonsFromDB();
             } catch (err) {
-                console.error("Ошибка сохранения уроков в базу:", err);
-                alert("Не удалось сохранить урок в базу данных!");
+                console.error("Ошибка сохранения урока в базу:", err);
+                alert("Не удалось сохранить урок в базу данных: " + err.message);
+            }
+        }
+
+        async function deleteLessonRow(lessonId) {
+            if (!confirm("Вы уверены, что хотите удалить этот урок?")) return;
+            try {
+                const { error } = await _supabase.from('lessons').delete().eq('id', lessonId);
+                if (error) throw error;
+                await loadLessonsFromDB();
+            } catch (err) {
+                console.error("Ошибка удаления урока:", err);
+                alert("Не удалось удалить урок");
             }
         }
 
@@ -738,64 +763,99 @@
             }
         }
 
-        // --- СТАТИСТИКА И ГРАФИК (БЕЗОПАСНАЯ ЛОГИКА ОТОБРАЖЕНИЯ) ---
+        // --- УНИВЕРСАЛЬНЫЙ ПОИСК СТАТИСТИКИ (ПЕРЕБИРАЕТ ОБА ИМЕНИ КЛЮЧЕЙ: user_id И student_id) ---
+        async function fetchResultsHelper(tableName, id) {
+            let { data, error } = await _supabase.from(tableName).select('*').eq('user_id', id);
+            if (error || !data || data.length === 0) {
+                let res2 = await _supabase.from(tableName).select('*').eq('student_id', id);
+                if (!res2.error && res2.data && res2.data.length > 0) {
+                    data = res2.data;
+                }
+            }
+            return data || [];
+        }
+
         async function loadReadingStats() {
             let chartData = [];
 
             try {
-                const { data: wordsData, error: wordsError } = await _supabase
-                    .from('complete_words_results')
-                    .select('score_percent, completed_at')
-                    .eq('user_id', studentId);
-                
-                if (wordsData && !wordsError) {
-                    wordsData.forEach(item => { 
+                // 1. Из таблицы complete_words_results
+                const wordsData = await fetchResultsHelper('complete_words_results', studentId);
+                wordsData.forEach(item => { 
+                    let scoreVal = item.score_percent !== undefined ? item.score_percent : item.score;
+                    let dateVal = item.completed_at || item.created_at;
+                    if (scoreVal !== undefined && dateVal) {
                         chartData.push({ 
-                            date: new Date(item.completed_at), 
-                            score: item.score_percent, 
+                            date: new Date(dateVal), 
+                            score: parseFloat(scoreVal), 
                             taskName: 'Complete Words' 
                         }); 
-                    });
-                }
+                    }
+                });
 
-                const { data: readingData, error: readingError } = await _supabase
-                    .from('reading_results')
-                    .select('score_earned, score_total, created_at, task_type')
-                    .eq('user_id', studentId);
-                
-                if (readingData && !readingError) {
-                    readingData.forEach(item => {
-                        let percent = (item.score_total && item.score_total > 0) ? (item.score_earned / item.score_total) * 100 : 0;
+                // 2. Из таблицы reading_results
+                const readingData = await fetchResultsHelper('reading_results', studentId);
+                readingData.forEach(item => {
+                    let percent = 0;
+                    if (item.score_percent !== undefined) {
+                        percent = item.score_percent;
+                    } else if (item.score_earned !== undefined && item.score_total > 0) {
+                        percent = (item.score_earned / item.score_total) * 100;
+                    }
+                    let dateVal = item.created_at || item.completed_at;
+                    if (dateVal) {
                         let taskLabel = item.task_type === 'academic' ? 'Academic Reading' : item.task_type === 'daily' ? 'Daily Reading' : 'Reading Task';
                         chartData.push({ 
-                            date: new Date(item.created_at), 
+                            date: new Date(dateVal), 
                             score: Math.round(percent), 
                             taskName: taskLabel 
                         });
-                    });
-                }
+                    }
+                });
+
+                // 3. Из таблицы student_responses
+                const responsesData = await fetchResultsHelper('student_responses', studentId);
+                responsesData.forEach(item => {
+                    let percent = 0;
+                    if (typeof item.score === 'string' && item.score.includes('/')) {
+                        let parts = item.score.split('/');
+                        if (parseFloat(parts[1]) > 0) percent = (parseFloat(parts[0]) / parseFloat(parts[1])) * 100;
+                    } else if (item.score !== undefined) {
+                        percent = parseFloat(item.score);
+                    }
+                    let dateVal = item.created_at || item.completed_at;
+                    if (dateVal) {
+                        chartData.push({
+                            date: new Date(dateVal),
+                            score: Math.round(percent),
+                            taskName: item.task_type || 'Practice Task'
+                        });
+                    }
+                });
+
             } catch (err) {
                 console.error("Ошибка загрузки статистики:", err);
             }
 
             const container = document.getElementById('readingChartContainer');
+            if (!container) return;
 
             if (chartData.length === 0) {
-                if (container) {
-                    container.innerHTML = `<div class="flex items-center justify-center h-full min-h-[250px] text-sm text-gray-400 bg-gray-50 rounded-2xl border border-dashed border-gray-200">Нет данных о прохождении практики</div>`;
-                }
+                container.innerHTML = `<div class="flex items-center justify-center h-full min-h-[250px] text-sm text-gray-400 bg-gray-50 rounded-2xl border border-dashed border-gray-200">Нет данных о прохождении практики</div>`;
                 return;
             }
 
+            // Очищаем и создаем элемент холста
+            container.innerHTML = `<canvas id="readingChart"></canvas>`;
+            
             chartData.sort((a, b) => a.date - b.date);
             const labels = chartData.map(d => d.date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }));
             const scores = chartData.map(d => d.score);
             const taskNames = chartData.map(d => d.taskName);
 
             const canvas = document.getElementById('readingChart');
-            if (!canvas) return;
-
             const ctx = canvas.getContext('2d');
+
             if (readingChartInstance) readingChartInstance.destroy(); 
 
             readingChartInstance = new Chart(ctx, {
@@ -803,11 +863,23 @@
                 data: {
                     labels: labels,
                     datasets: [{
-                        label: 'Успеваемость (%)', data: scores, borderColor: '#4f46e5', backgroundColor: 'rgba(79, 70, 229, 0.1)', borderWidth: 3, pointBackgroundColor: '#ffffff', pointBorderColor: '#4f46e5', pointBorderWidth: 2, pointRadius: 5, pointHoverRadius: 7, fill: true, tension: 0.3
+                        label: 'Успеваемость (%)', 
+                        data: scores, 
+                        borderColor: '#4f46e5', 
+                        backgroundColor: 'rgba(79, 70, 229, 0.1)', 
+                        borderWidth: 3, 
+                        pointBackgroundColor: '#ffffff', 
+                        pointBorderColor: '#4f46e5', 
+                        pointBorderWidth: 2, 
+                        pointRadius: 5, 
+                        pointHoverRadius: 7, 
+                        fill: true, 
+                        tension: 0.3
                     }]
                 },
                 options: {
-                    responsive: true, maintainAspectRatio: false,
+                    responsive: true, 
+                    maintainAspectRatio: false,
                     scales: {
                         y: { beginAtZero: true, max: 100, ticks: { callback: function(value) { return value + '%' }, color: '#94a3b8' }, grid: { color: '#f1f5f9' } },
                         x: { ticks: { color: '#94a3b8' }, grid: { display: false } }
@@ -815,7 +887,10 @@
                     plugins: {
                         legend: { display: false },
                         tooltip: {
-                            backgroundColor: '#1e293b', padding: 12, titleFont: { family: 'Plus Jakarta Sans', size: 13 }, bodyFont: { family: 'Plus Jakarta Sans', size: 12 },
+                            backgroundColor: '#1e293b', 
+                            padding: 12, 
+                            titleFont: { family: 'Plus Jakarta Sans', size: 13 }, 
+                            bodyFont: { family: 'Plus Jakarta Sans', size: 12 },
                             callbacks: {
                                 title: function(context) { return taskNames[context[0].dataIndex]; },
                                 label: function(context) { return `Результат: ${context.parsed.y}%`; },
