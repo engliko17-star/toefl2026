@@ -763,15 +763,16 @@
             }
         }
 
-        // --- УНИВЕРСАЛЬНЫЙ ПОИСК СТАТИСТИКИ (ПЕРЕБИРАЕТ ОБА ИМЕНИ КЛЮЧЕЙ: user_id И student_id) ---
+        // --- УНИВЕРСАЛЬНЫЙ ПОИСК СТАТИСТИКИ ---
         async function fetchResultsHelper(tableName, id) {
+            // Оставляем только поиск по user_id, чтобы не провоцировать 400 Bad Request
             let { data, error } = await _supabase.from(tableName).select('*').eq('user_id', id);
-            if (error || !data || data.length === 0) {
-                let res2 = await _supabase.from(tableName).select('*').eq('student_id', id);
-                if (!res2.error && res2.data && res2.data.length > 0) {
-                    data = res2.data;
-                }
+            
+            if (error) {
+                console.warn(`Данных нет или ошибка в таблице ${tableName}:`, error);
+                return [];
             }
+            
             return data || [];
         }
 
@@ -813,8 +814,8 @@
                     }
                 });
 
-                // 3. Из таблицы student_responses
-                const responsesData = await fetchResultsHelper('student_responses', studentId);
+                // 3. Из таблицы response_results (имя таблицы исправлено)
+                const responsesData = await fetchResultsHelper('response_results', studentId);
                 responsesData.forEach(item => {
                     let percent = 0;
                     if (typeof item.score === 'string' && item.score.includes('/')) {
