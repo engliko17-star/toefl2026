@@ -589,3 +589,4 @@ async function submitWritingSimulation() {
         if(navNextText) navNextText.textContent = "Submit Simulation";
     }
 }
+
