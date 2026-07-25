@@ -199,6 +199,12 @@
             }
         });
 
+        // Безопасная функция для загрузки конкретного задания
+        async function fetchTask(table, id) {
+            if (!id) return { data: null };
+            return await db.from(table).select('*').eq('id', id).single();
+        }
+
         async function bootTest() {
             const urlParams = new URLSearchParams(window.location.search);
             const testId = urlParams.get('id');
@@ -210,19 +216,69 @@
             }
 
             try {
+                // 1. Получаем сам мок-тест
                 const { data: testData, error: testError } = await db.from('mock_tests').select('*').eq('id', testId).single();
                 if (testError) throw testError;
                 
                 testInfo = testData;
                 document.getElementById('testTitle').innerText = testInfo.title;
 
-                const { data: qData, error: qError } = await db.from('mock_questions')
-                                                .select('*')
-                                                .eq('test_id', testId)
-                                                .order('order_index', { ascending: true });
-                if (qError) throw qError;
-                
-                questions = qData;
+                // 2. Загружаем задания напрямую из практических таблиц
+                const [sentenceRes, dailyRes, academicRes] = await Promise.all([
+                    fetchTask('complete_words_tasks', testInfo.sentence_task_id),
+                    fetchTask('daily_life_tasks', testInfo.daily_task_id),
+                    fetchTask('academic_reading_tasks', testInfo.academic_task_id)
+                ]);
+
+                // 3. Формируем единый массив вопросов
+                questions = [];
+
+                if (sentenceRes.data) {
+                    questions.push({
+                        id: `sentence_${sentenceRes.data.id}`,
+                        stage: 'sentence',
+                        question_text: sentenceRes.data.passage,
+                        category: 'Complete the Words'
+                    });
+                }
+
+                if (dailyRes.data) {
+                    const dailyQuestions = typeof dailyRes.data.questions === 'string' 
+                        ? JSON.parse(dailyRes.data.questions) 
+                        : (dailyRes.data.questions || []);
+
+                    dailyQuestions.forEach((q, idx) => {
+                        questions.push({
+                            id: `daily_${dailyRes.data.id}_${idx}`,
+                            stage: 'daily',
+                            passage_text: dailyRes.data.passage,
+                            layout_type: dailyRes.data.layout_type,
+                            category: dailyRes.data.category || 'Daily Life',
+                            question_text: q.question,
+                            options: q.options,
+                            correct_answer: q.correct_answer
+                        });
+                    });
+                }
+
+                if (academicRes.data) {
+                    const academicQuestions = typeof academicRes.data.questions === 'string' 
+                        ? JSON.parse(academicRes.data.questions) 
+                        : (academicRes.data.questions || []);
+
+                    academicQuestions.forEach((q, idx) => {
+                        questions.push({
+                            id: `academic_${academicRes.data.id}_${idx}`,
+                            stage: 'academic',
+                            passage_text: academicRes.data.passage,
+                            layout_type: q.layout_type || 'multiple_choice',
+                            category: academicRes.data.category || 'Academic Reading',
+                            question_text: q.question,
+                            options: q.options,
+                            correct_answer: q.correct_answer
+                        });
+                    });
+                }
                 
                 if (questions.length === 0) {
                     document.getElementById('testTitle').innerText = "ТЕСТ ПУСТ";
@@ -943,4 +999,3 @@
     </script>
 </body>
 </html>
-
