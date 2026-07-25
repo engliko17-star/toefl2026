@@ -155,6 +155,7 @@
         lucide.createIcons();
 
         let testInfo = null;
+        let allTestsInfo = [];
         let questions = [];
         let currentIdx = 0;
         let userAnswers = {};
@@ -207,77 +208,91 @@
 
         async function bootTest() {
             const urlParams = new URLSearchParams(window.location.search);
-            const testId = urlParams.get('id');
+            const testIdParam = urlParams.get('id');
             const mode = urlParams.get('mode');
 
-            if (!testId) {
+            if (!testIdParam) {
                 document.getElementById('testTitle').innerText = "NO TEST ID";
                 return;
             }
 
             try {
-                // 1. Получаем сам мок-тест
-                const { data: testData, error: testError } = await db.from('mock_tests').select('*').eq('id', testId).single();
-                if (testError) throw testError;
+                const testIds = testIdParam.split(',').map(id => id.trim()).filter(id => id);
+
+                // 1. Получаем все мок-тесты по переданным ID
+                const { data: testsData, error: testsError } = await db.from('mock_tests').select('*').in('id', testIds);
+                if (testsError) throw testsError;
                 
-                testInfo = testData;
-                document.getElementById('testTitle').innerText = testInfo.title;
+                // Сохраняем исходный порядок, в котором тесты были запрошены в URL
+                allTestsInfo = testIds.map(id => testsData.find(t => t.id == id)).filter(Boolean);
+                
+                if (allTestsInfo.length === 0) {
+                    document.getElementById('testTitle').innerText = "ТЕСТЫ НЕ НАЙДЕНЫ";
+                    return;
+                }
 
-                // 2. Загружаем задания напрямую из практических таблиц
-                const [sentenceRes, dailyRes, academicRes] = await Promise.all([
-                    fetchTask('complete_words_tasks', testInfo.sentence_task_id),
-                    fetchTask('daily_life_tasks', testInfo.daily_task_id),
-                    fetchTask('academic_reading_tasks', testInfo.academic_task_id)
-                ]);
+                testInfo = allTestsInfo[0];
+                document.getElementById('testTitle').innerText = allTestsInfo.map(t => t.title).join(' + ');
 
-                // 3. Формируем единый массив вопросов
+                // 2. Загружаем задания для всех тестов по очереди
                 questions = [];
+                let totalTimeSeconds = 0;
 
-                if (sentenceRes.data) {
-                    questions.push({
-                        id: `sentence_${sentenceRes.data.id}`,
-                        stage: 'sentence',
-                        question_text: sentenceRes.data.passage,
-                        category: 'Complete the Words'
-                    });
-                }
+                for (const currentTest of allTestsInfo) {
+                    totalTimeSeconds += (currentTest.total_time_seconds || 3600);
 
-                if (dailyRes.data) {
-                    const dailyQuestions = typeof dailyRes.data.questions === 'string' 
-                        ? JSON.parse(dailyRes.data.questions) 
-                        : (dailyRes.data.questions || []);
+                    const [sentenceRes, dailyRes, academicRes] = await Promise.all([
+                        fetchTask('complete_words_tasks', currentTest.sentence_task_id),
+                        fetchTask('daily_life_tasks', currentTest.daily_task_id),
+                        fetchTask('academic_reading_tasks', currentTest.academic_task_id)
+                    ]);
 
-                    dailyQuestions.forEach((q, idx) => {
+                    if (sentenceRes.data) {
                         questions.push({
-                            id: `daily_${dailyRes.data.id}_${idx}`,
-                            stage: 'daily',
-                            passage_text: dailyRes.data.passage,
-                            layout_type: dailyRes.data.layout_type,
-                            category: dailyRes.data.category || 'Daily Life',
-                            question_text: q.question,
-                            options: q.options,
-                            correct_answer: q.correct_answer
+                            id: `sentence_${sentenceRes.data.id}`,
+                            stage: 'sentence',
+                            question_text: sentenceRes.data.passage,
+                            category: 'Complete the Words'
                         });
-                    });
-                }
+                    }
 
-                if (academicRes.data) {
-                    const academicQuestions = typeof academicRes.data.questions === 'string' 
-                        ? JSON.parse(academicRes.data.questions) 
-                        : (academicRes.data.questions || []);
+                    if (dailyRes.data) {
+                        const dailyQuestions = typeof dailyRes.data.questions === 'string' 
+                            ? JSON.parse(dailyRes.data.questions) 
+                            : (dailyRes.data.questions || []);
 
-                    academicQuestions.forEach((q, idx) => {
-                        questions.push({
-                            id: `academic_${academicRes.data.id}_${idx}`,
-                            stage: 'academic',
-                            passage_text: academicRes.data.passage,
-                            layout_type: q.layout_type || 'multiple_choice',
-                            category: academicRes.data.category || 'Academic Reading',
-                            question_text: q.question,
-                            options: q.options,
-                            correct_answer: q.correct_answer
+                        dailyQuestions.forEach((q, idx) => {
+                            questions.push({
+                                id: `daily_${dailyRes.data.id}_${idx}`,
+                                stage: 'daily',
+                                passage_text: dailyRes.data.passage,
+                                layout_type: dailyRes.data.layout_type,
+                                category: dailyRes.data.category || 'Daily Life',
+                                question_text: q.question,
+                                options: q.options,
+                                correct_answer: q.correct_answer
+                            });
                         });
-                    });
+                    }
+
+                    if (academicRes.data) {
+                        const academicQuestions = typeof academicRes.data.questions === 'string' 
+                            ? JSON.parse(academicRes.data.questions) 
+                            : (academicRes.data.questions || []);
+
+                        academicQuestions.forEach((q, idx) => {
+                            questions.push({
+                                id: `academic_${academicRes.data.id}_${idx}`,
+                                stage: 'academic',
+                                passage_text: academicRes.data.passage,
+                                layout_type: q.layout_type || 'multiple_choice',
+                                category: academicRes.data.category || 'Academic Reading',
+                                question_text: q.question,
+                                options: q.options,
+                                correct_answer: q.correct_answer
+                            });
+                        });
+                    }
                 }
                 
                 if (questions.length === 0) {
@@ -291,20 +306,21 @@
                     if (currentUser) {
                         const { data: resData, error: resError } = await db.from('mock_test_results')
                             .select('user_answers')
-                            .eq('test_id', testId)
+                            .in('test_id', testIds)
                             .eq('user_id', currentUser.id)
-                            .order('created_at', { ascending: false })
-                            .limit(1);
+                            .order('created_at', { ascending: false });
                         
                         if (!resError && resData && resData.length > 0) {
-                            userAnswers = resData[0].user_answers || {};
+                            resData.forEach(res => {
+                                userAnswers = { ...userAnswers, ...(res.user_answers || {}) };
+                            });
                         }
                     }
                     forceSubmitTest();
                     return;
                 }
 
-                timeRemaining = testInfo.total_time_seconds || 3600;
+                timeRemaining = totalTimeSeconds;
                 startTimer();
                 renderCurrentQuestion();
             } catch (err) {
@@ -777,6 +793,7 @@
             if (timerInterval) clearInterval(timerInterval);
             const urlParams = new URLSearchParams(window.location.search);
             const isReviewMode = urlParams.get('mode') === 'review';
+            const currentIdParam = urlParams.get('id');
 
             if (!isReviewMode) {
                 saveCurrentAnswer(); 
@@ -930,6 +947,7 @@
             const bandScore = totalQuestionsCount > 0 ? ((rawScore / totalQuestionsCount) * 6).toFixed(1) : "0.0";
 
             if (currentUser && db && testInfo && !isReviewMode) {
+                // Если мы проходили несколько тестов, сохраним общий результат в первый
                 db.from('mock_test_results').insert([{
                     user_id: currentUser.id,
                     test_id: testInfo.id,
@@ -973,7 +991,7 @@
                             </div>
                             
                             <div class="flex justify-center gap-4">
-                                <button onclick="window.location.href='take-mock-test.html?id=' + testInfo.id" class="px-6 py-2.5 bg-slate-900 hover:bg-indigo-600 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center cursor-pointer">
+                                <button onclick="window.location.href='take-mock-test.html?id=' + '${currentIdParam}'" class="px-6 py-2.5 bg-slate-900 hover:bg-indigo-600 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center cursor-pointer">
                                     <span class="mr-2 text-sm">🔄</span> Try Again
                                 </button>
                                 <a href="mini-mock-test.html" class="px-6 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center shadow-sm">
