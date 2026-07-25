@@ -39,9 +39,9 @@ async function startWritingEngine(testId, title) {
     `;
 
     try {
-        // Ищем mini_mock_writing, привязанный к данному test_id
+        // Ищем в таблице full_test_writing, привязанной к данному test_id
         const { data: mock, error: mockErr } = await supabaseClient
-            .from('mini_mock_writing')
+            .from('full_test_writing')
             .select('*')
             .eq('test_id', testId)
             .single();
@@ -49,7 +49,7 @@ async function startWritingEngine(testId, title) {
         if (mockErr || !mock) {
             // Если прямой привязки по test_id нет, пробуем взять первый доступный вариант для теста
             const { data: fallbackMock } = await supabaseClient
-                .from('mini_mock_writing')
+                .from('full_test_writing')
                 .select('*')
                 .limit(1)
                 .single();
@@ -76,11 +76,13 @@ async function startWritingSection(mockId) {
     container.innerHTML = `<div class="flex items-center justify-center w-full h-full"><span class="animate-pulse text-slate-500 font-bold">Loading Writing Section...</span></div>`;
 
     try {
-        const { data: mock } = await supabaseClient.from('mini_mock_writing').select('*').eq('id', mockId).single();
+        const { data: mock } = await supabaseClient.from('full_test_writing').select('*').eq('id', mockId).single();
         writeMockData = mock;
 
-        const { data: firstSentence } = await supabaseClient.from('writing_tasks').select('test_id').eq('id', mock.sentence_task_id).single();
-        const targetTestId = (firstSentence && firstSentence.test_id) ? firstSentence.test_id : mock.sentence_task_id;
+        const sentenceId = mock.sentence_test_id || mock.sentence_task_id;
+
+        const { data: firstSentence } = await supabaseClient.from('writing_tasks').select('test_id').eq('id', sentenceId).single();
+        const targetTestId = (firstSentence && firstSentence.test_id) ? firstSentence.test_id : sentenceId;
 
         const [sentencesRes, emailRes, academicRes] = await Promise.all([
             supabaseClient.from('writing_tasks').select('*').eq('type', 'sentence').eq('test_id', targetTestId).order('id'),
@@ -553,15 +555,15 @@ async function submitWritingSimulation() {
         if (responsesError) throw responsesError;
         
         // Показываем Success Screen
-        document.getElementById('examContainer').classList.add('hidden');
-        document.getElementById('topHeader').classList.add('hidden');
+        document.getElementById('examContainer')?.classList.add('hidden');
+        document.getElementById('topHeader')?.classList.add('hidden');
         
         let successScreen = document.getElementById('successScreen');
         if (!successScreen) {
              successScreen = document.createElement('main');
              successScreen.id = 'successScreen';
-             successScreen.className = 'flex-1 flex items-center justify-center p-4 h-full';
-             document.body.appendChild(successScreen);
+             successScreen.className = 'flex-1 flex items-center justify-center p-4 h-full absolute inset-0 z-50 bg-[#f8f9fa]';
+             document.getElementById('dynamicTaskArea').appendChild(successScreen);
         }
         
         successScreen.classList.remove('hidden');
@@ -573,9 +575,9 @@ async function submitWritingSimulation() {
                 <h2 class="text-2xl font-black text-slate-900 mb-2">Simulation Complete!</h2>
                 <p class="text-gray-500 mb-8 max-w-md mx-auto">All responses have been successfully saved to the database.</p>
                 <div class="flex flex-col sm:flex-row justify-center gap-4">
-                    <a href="mini-mock-writing-list.html" class="inline-flex justify-center bg-gray-100 hover:bg-gray-200 text-slate-700 px-6 py-3.5 rounded-xl text-sm font-bold transition shadow-sm items-center">
-                        Dashboard
-                    </a>
+                    <button onclick="exitExamEngine()" class="inline-flex justify-center bg-gray-100 hover:bg-gray-200 text-slate-700 px-6 py-3.5 rounded-xl text-sm font-bold transition shadow-sm items-center">
+                        Back to Library
+                    </button>
                     <a href="mini-mock-results.html?attempt_id=${attempt.id}" class="inline-flex justify-center bg-slate-900 hover:bg-slate-800 text-white px-8 py-3.5 rounded-xl text-sm font-bold transition shadow-sm items-center">
                         View Full Review
                     </a>
@@ -589,4 +591,3 @@ async function submitWritingSimulation() {
         if(navNextText) navNextText.textContent = "Submit Simulation";
     }
 }
-
