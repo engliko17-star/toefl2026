@@ -55,6 +55,12 @@
 
             <span class="text-gray-300 block" id="headerSeparator">|</span>
 
+            <!-- Timer Element -->
+            <div id="timerContainer" class="hidden items-center space-x-1.5 text-sm font-bold text-slate-700 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-lg shadow-sm">
+                <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Travel%20and%20places/Stopwatch.png" class="w-4 h-4" alt="Clock" />
+                <span id="timerDisplay" class="tabular-nums tracking-wide transition-colors duration-300">06:30</span>
+            </div>
+
             <div class="flex items-center space-x-3" id="topNavButtons">
                 <button id="btnPrev" class="px-4 py-2 rounded-lg border border-gray-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition flex items-center shadow-xs" disabled>
                     <i data-lucide="chevron-left" class="w-4 h-4 mr-1"></i> Back
@@ -122,7 +128,7 @@
                             <button onclick="resetAndRestartTest()" class="flex-1 px-4 py-2 bg-slate-900 hover:bg-indigo-600 text-white font-bold text-xs rounded-xl transition shadow-xs flex items-center justify-center cursor-pointer">
                                 <i data-lucide="rotate-ccw" class="w-3.5 h-3.5 mr-1.5"></i> Try Again
                             </button>
-                            <a href="read-academic.html" class="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl transition flex items-center justify-center">
+                            <a href="read-academic.html" class="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl transition flex items-center justify-center cursor-pointer">
                                 Dashboard
                             </a>
                         </div>
@@ -139,8 +145,20 @@
                 <div class="pb-8"></div>
             </div>
             
-            </div>
+        </div>
     </main>
+
+    <!-- Modal: Time's Up -->
+    <div id="timeModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-4 transition-opacity">
+        <div class="bg-white rounded-[2rem] p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center transform scale-100 transition-transform">
+            <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Travel%20and%20places/Alarm%20Clock.png" class="w-24 h-24 mb-5 drop-shadow-md" alt="Time up" />
+            <h3 class="text-2xl font-black text-slate-800 mb-2">Время вышло!</h3>
+            <p class="text-slate-500 text-sm font-medium mb-8 leading-relaxed">Отведенное на это задание время закончилось. Таймер продолжит идти в минус, чтобы вы увидели, сколько дополнительного времени вам потребовалось.</p>
+            <button onclick="continueAfterTimeUp()" class="w-full bg-slate-900 text-white font-bold py-3.5 rounded-xl hover:bg-slate-800 transition shadow-md active:scale-[0.98] cursor-pointer">
+                Продолжить
+            </button>
+        </div>
+    </div>
 
     <script>
         lucide.createIcons();
@@ -153,6 +171,11 @@
 
         const topNavButtons = document.getElementById('topNavButtons');
         const headerSeparator = document.getElementById('headerSeparator');
+
+        // Timer Variables
+        let timeRemaining = 390; // 6 mins 30 secs
+        let timerInterval = null;
+        let timeExpiredModalShown = false;
 
         function getDatabaseClient() {
             if (typeof supabaseClient !== 'undefined') return supabaseClient;
@@ -196,18 +219,25 @@
                         currentTask.questions = JSON.parse(currentTask.questions);
                     }
                     
-                    // 1. Сначала подгружаем текст задания на страницу
                     initTask();
 
-                    // 2. В зависимости от режима либо загружаем результаты, либо запускаем тест
                     if (isReviewMode) {
                         await loadAndShowReview(taskId);
                     } else {
                         startTime = Date.now();
+                        timeRemaining = 390;
+                        timeExpiredModalShown = false;
+
                         document.getElementById('quizContainer').classList.remove('hidden');
                         topNavButtons.classList.remove('hidden');
                         headerSeparator.classList.remove('hidden');
+                        
+                        const timerContainer = document.getElementById('timerContainer');
+                        timerContainer.classList.remove('hidden');
+                        timerContainer.classList.add('flex');
+                        
                         showQuestion(currentQuestionIdx);
+                        startTimer();
                     }
                 }
             } catch (err) {
@@ -216,6 +246,61 @@
                 document.getElementById('passageContent').innerHTML = `<p class='text-red-500 font-bold'>${err.message}</p>`;
             }
         });
+
+        // Timer Logic
+        function startTimer() {
+            if (timerInterval) clearInterval(timerInterval);
+            
+            const display = document.getElementById('timerDisplay');
+            if (display) display.innerText = formatTime(timeRemaining);
+            
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                if (display) {
+                    display.innerText = formatTime(timeRemaining);
+                    
+                    if (timeRemaining < 0) {
+                        display.classList.remove('text-slate-700');
+                        display.classList.add('text-red-500');
+                    }
+                }
+
+                if (timeRemaining === 0 && !timeExpiredModalShown) {
+                    stopTimer(); 
+                    showTimeExpiredModal();
+                }
+            }, 1000);
+        }
+
+        function stopTimer() {
+            if (timerInterval) clearInterval(timerInterval);
+        }
+
+        function formatTime(seconds) {
+            const isNegative = seconds < 0;
+            const absSeconds = Math.abs(seconds);
+            const m = Math.floor(absSeconds / 60).toString().padStart(2, '0');
+            const s = (absSeconds % 60).toString().padStart(2, '0');
+            return isNegative ? `-${m}:${s}` : `${m}:${s}`;
+        }
+
+        function showTimeExpiredModal() {
+            timeExpiredModalShown = true;
+            const modal = document.getElementById('timeModal');
+            if (modal) {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            }
+        }
+
+        window.continueAfterTimeUp = function() {
+            const modal = document.getElementById('timeModal');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
+            startTimer();
+        };
 
         function initTask() {
             if (!currentTask) return;
@@ -230,7 +315,6 @@
             document.getElementById('passageContent').innerHTML = parsedText;
 
             setupInteractiveClicks();
-            // Убрали отсюда автоматический вызов showQuestion(currentQuestionIdx)
         }
 
         function setupInteractiveClicks() {
@@ -338,6 +422,8 @@
             currentQuestionIdx = 0;
             userAnswers = {};
             startTime = Date.now();
+            timeRemaining = 390;
+            timeExpiredModalShown = false;
 
             document.body.classList.remove('insert-text-mode');
             document.querySelectorAll('.clickable-sentence').forEach(el => {
@@ -352,11 +438,23 @@
             
             topNavButtons.classList.remove('hidden');
             headerSeparator.classList.remove('hidden');
+            
+            const timerContainer = document.getElementById('timerContainer');
+            if (timerContainer) {
+                timerContainer.classList.remove('hidden');
+                timerContainer.classList.add('flex');
+            }
+
+            const timerDisplay = document.getElementById('timerDisplay');
+            if (timerDisplay) {
+                timerDisplay.classList.remove('text-red-500');
+                timerDisplay.classList.add('text-slate-700');
+            }
 
             showQuestion(currentQuestionIdx);
+            startTimer();
         };
 
-        // Загрузка сохранённого ранее результата из Supabase при режиме review
         async function loadAndShowReview(taskId) {
             let scoreEarned = 0;
             let scoreTotal = currentTask.questions.length;
@@ -369,7 +467,7 @@
                         .eq('user_id', currentUser.id)
                         .eq('task_id', parseInt(taskId))
                         .eq('task_type', 'academic')
-                        .order('id', { ascending: false }) // На случай, если записей несколько, берем последнюю
+                        .order('id', { ascending: false })
                         .limit(1)
                         .maybeSingle();
 
@@ -385,15 +483,12 @@
             renderReviewUI(scoreEarned, scoreTotal);
         }
 
-        // Вывод результатов и разбора ошибок
         function renderReviewUI(scoreEarned, scoreTotal) {
             const explanationsList = document.getElementById('explanationsList');
             explanationsList.innerHTML = ''; 
 
-            // Включаем отображение квадратов для правильного рендеринга текста
             document.body.classList.add('insert-text-mode');
 
-            // Проверяем, есть ли у нас детальные ответы пользователя (для режима прохождения в реальном времени)
             const hasUserAnswers = Object.keys(userAnswers).length > 0;
 
             currentTask.questions.forEach((q, idx) => {
@@ -468,7 +563,6 @@
                 const questionContent = q.question || q.text || '';
                 const qType = q.type || 'Detail';
                 
-                // Стиль статуса карточки вопроса (в зависимости от наличия ответов пользователя)
                 const statusLabel = hasUserAnswers ? (isCorrect ? 'Correct' : 'Incorrect') : 'Practice Question';
                 const statusColorClass = hasUserAnswers ? (isCorrect ? 'text-emerald-600' : 'text-rose-600') : 'text-indigo-600';
                 const cardBorderClass = hasUserAnswers ? (isCorrect ? 'border-emerald-100' : 'border-rose-100') : 'border-slate-100';
@@ -505,6 +599,12 @@
             
             topNavButtons.classList.add('hidden');
             headerSeparator.classList.add('hidden');
+            
+            const timerContainer = document.getElementById('timerContainer');
+            if (timerContainer) {
+                timerContainer.classList.add('hidden');
+                timerContainer.classList.remove('flex');
+            }
 
             document.getElementById('finalScorePercent').innerText = `${scorePercent}%`;
             document.getElementById('finalScoreRaw').innerText = `${scoreEarned} / ${scoreTotal}`;
@@ -516,6 +616,13 @@
             if (userAnswers[currentQuestionIdx] === undefined) {
                 alert("Please select an answer for the final question!");
                 return;
+            }
+
+            stopTimer(); 
+            const timerContainer = document.getElementById('timerContainer');
+            if (timerContainer) {
+                timerContainer.classList.add('hidden');
+                timerContainer.classList.remove('flex');
             }
 
             let score = 0;
@@ -546,9 +653,6 @@
                                 score_total: currentTask.questions.length,
                                 time_spent_seconds: timeSpentSeconds,
                                 category_stats: stats 
-                                // Примечание: Если в таблице Supabase появится колонка "user_answers" (JSONB),
-                                // вы сможете сохранять индивидуальные ответы пользователя:
-                                // user_answers: userAnswers
                             }
                         ]);
 
@@ -558,9 +662,9 @@
                 }
             }
 
-            // Рендерим UI разбора на основе текущего прохождения
             renderReviewUI(score, currentTask.questions.length);
         }
     </script>
 </body>
 </html>
+
