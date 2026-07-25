@@ -16,6 +16,56 @@ let writeTimerInterval;
 // и supabaseClient доступен глобально.
 
 /**
+ * Глобальная точка входа для запуска секции Writing из tests.html
+ */
+async function startWritingEngine(testId, title) {
+    window.engineType = 'writing';
+    
+    // Скрываем интерфейс библиотеки тестов и показываем движок экзамена
+    document.getElementById('view-test-detail').classList.add('hidden');
+    const engineView = document.getElementById('exam-engine-view');
+    engineView.classList.remove('hidden');
+    engineView.classList.add('flex');
+    document.getElementById('main-interface').classList.add('hidden');
+
+    document.getElementById('engine-title').textContent = title + ' — Writing Section';
+
+    // Формируем структуру контейнера внутри движка, если её нет
+    let contentArea = document.getElementById('engine-content');
+    contentArea.innerHTML = `
+        <div id="dynamicTaskArea" class="flex-1 flex flex-col h-full w-full overflow-hidden">
+            <div class="flex items-center justify-center w-full h-full"><span class="animate-pulse text-slate-500 font-bold">Loading Writing Section...</span></div>
+        </div>
+    `;
+
+    try {
+        // Ищем mini_mock_writing, привязанный к данному test_id
+        const { data: mock, error: mockErr } = await supabaseClient
+            .from('mini_mock_writing')
+            .select('*')
+            .eq('test_id', testId)
+            .single();
+
+        if (mockErr || !mock) {
+            // Если прямой привязки по test_id нет, пробуем взять первый доступный вариант для теста
+            const { data: fallbackMock } = await supabaseClient
+                .from('mini_mock_writing')
+                .select('*')
+                .limit(1)
+                .single();
+            
+            if (!fallbackMock) throw new Error("Writing mock data not found for this test.");
+            await startWritingSection(fallbackMock.id);
+        } else {
+            await startWritingSection(mock.id);
+        }
+    } catch (err) {
+        console.error("Error initializing writing engine:", err);
+        document.getElementById('dynamicTaskArea').innerHTML = `<div class="text-red-500 flex items-center justify-center w-full h-full font-bold">Error loading writing tasks for this test.</div>`;
+    }
+}
+
+/**
  * Инициализация секции Writing
  */
 async function startWritingSection(mockId) {
@@ -539,4 +589,3 @@ async function submitWritingSimulation() {
         if(navNextText) navNextText.textContent = "Submit Simulation";
     }
 }
-
