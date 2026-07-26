@@ -241,13 +241,32 @@
                 for (const currentTest of allTestsInfo) {
                     totalTimeSeconds += (currentTest.total_time_seconds || 3600);
 
-                    const [sentenceRes, dailyRes, academicRes] = await Promise.all([
-                        fetchTask('complete_words_tasks', currentTest.sentence_task_id),
-                        fetchTask('daily_life_tasks', currentTest.daily_task_id),
-                        fetchTask('academic_tasks', currentTest.academic_task_id)
+                    // ПРАВИЛЬНО ОБРАБАТЫВАЕМ DAILY_TASK_ID КАК МАССИВ ИЛИ СТРОКУ
+                    let dailyIds = [];
+                    try {
+                        if (typeof currentTest.daily_task_id === 'string' && currentTest.daily_task_id.startsWith('[')) {
+                            dailyIds = JSON.parse(currentTest.daily_task_id);
+                        } else if (Array.isArray(currentTest.daily_task_id)) {
+                            dailyIds = currentTest.daily_task_id;
+                        } else if (currentTest.daily_task_id) {
+                            dailyIds = [currentTest.daily_task_id];
+                        }
+                    } catch(e) {
+                        dailyIds = currentTest.daily_task_id ? [currentTest.daily_task_id] : [];
+                    }
+
+                    // Подготавливаем промисы для всех типов заданий
+                    const sentencePromise = fetchTask('complete_words_tasks', currentTest.sentence_task_id);
+                    const academicPromise = fetchTask('academic_tasks', currentTest.academic_task_id);
+                    const dailyPromises = dailyIds.map(id => fetchTask('daily_life_tasks', id));
+
+                    const [sentenceRes, academicRes, ...dailyResults] = await Promise.all([
+                        sentencePromise,
+                        academicPromise,
+                        ...dailyPromises
                     ]);
 
-                    if (sentenceRes.data) {
+                    if (sentenceRes && sentenceRes.data) {
                         questions.push({
                             id: `sentence_${sentenceRes.data.id}`,
                             stage: 'sentence',
@@ -256,26 +275,30 @@
                         });
                     }
 
-                    if (dailyRes.data) {
-                        const dailyQuestions = typeof dailyRes.data.questions === 'string' 
-                            ? JSON.parse(dailyRes.data.questions) 
-                            : (dailyRes.data.questions || []);
+                    // Перебираем результаты всех загруженных daily заданий
+                    for (const dRes of dailyResults) {
+                        if (dRes && dRes.data) {
+                            const dailyData = dRes.data;
+                            const dailyQuestions = typeof dailyData.questions === 'string' 
+                                ? JSON.parse(dailyData.questions) 
+                                : (dailyData.questions || []);
 
-                        dailyQuestions.forEach((q, idx) => {
-                            questions.push({
-                                id: `daily_${dailyRes.data.id}_${idx}`,
-                                stage: 'daily',
-                                passage_text: dailyRes.data.passage,
-                                layout_type: dailyRes.data.layout_type,
-                                category: dailyRes.data.category || 'Daily Life',
-                                question_text: q.question,
-                                options: q.options,
-                                correct_answer: q.correct_answer
+                            dailyQuestions.forEach((q, idx) => {
+                                questions.push({
+                                    id: `daily_${dailyData.id}_${idx}`,
+                                    stage: 'daily',
+                                    passage_text: dailyData.passage,
+                                    layout_type: dailyData.layout_type,
+                                    category: dailyData.category || 'Daily Life',
+                                    question_text: q.question,
+                                    options: q.options,
+                                    correct_answer: q.correct_answer
+                                });
                             });
-                        });
+                        }
                     }
 
-                    if (academicRes.data) {
+                    if (academicRes && academicRes.data) {
                         const academicQuestions = typeof academicRes.data.questions === 'string' 
                             ? JSON.parse(academicRes.data.questions) 
                             : (academicRes.data.questions || []);
