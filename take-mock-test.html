@@ -200,7 +200,6 @@
             }
         });
 
-        // Безопасная функция для загрузки конкретного задания
         async function fetchTask(table, id) {
             if (!id) return { data: null };
             return await db.from(table).select('*').eq('id', id).single();
@@ -219,11 +218,9 @@
             try {
                 const testIds = testIdParam.split(',').map(id => id.trim()).filter(id => id);
 
-                // 1. Получаем все мок-тесты по переданным ID
                 const { data: testsData, error: testsError } = await db.from('mock_tests').select('*').in('id', testIds);
                 if (testsError) throw testsError;
                 
-                // Сохраняем исходный порядок, в котором тесты были запрошены в URL
                 allTestsInfo = testIds.map(id => testsData.find(t => t.id == id)).filter(Boolean);
                 
                 if (allTestsInfo.length === 0) {
@@ -234,14 +231,12 @@
                 testInfo = allTestsInfo[0];
                 document.getElementById('testTitle').innerText = allTestsInfo.map(t => t.title).join(' + ');
 
-                // 2. Загружаем задания для всех тестов по очереди
                 questions = [];
                 let totalTimeSeconds = 0;
 
                 for (const currentTest of allTestsInfo) {
                     totalTimeSeconds += (currentTest.total_time_seconds || 3600);
 
-                    // ПРАВИЛЬНО ОБРАБАТЫВАЕМ DAILY_TASK_ID КАК МАССИВ ИЛИ СТРОКУ
                     let dailyIds = [];
                     try {
                         if (typeof currentTest.daily_task_id === 'string' && currentTest.daily_task_id.startsWith('[')) {
@@ -255,7 +250,6 @@
                         dailyIds = currentTest.daily_task_id ? [currentTest.daily_task_id] : [];
                     }
 
-                    // Подготавливаем промисы для всех типов заданий
                     const sentencePromise = fetchTask('complete_words_tasks', currentTest.sentence_task_id);
                     const academicPromise = fetchTask('academic_tasks', currentTest.academic_task_id);
                     const dailyPromises = dailyIds.map(id => fetchTask('daily_life_tasks', id));
@@ -275,7 +269,6 @@
                         });
                     }
 
-                    // Перебираем результаты всех загруженных daily заданий
                     for (const dRes of dailyResults) {
                         if (dRes && dRes.data) {
                             const dailyData = dRes.data;
@@ -290,9 +283,9 @@
                                     passage_text: dailyData.passage,
                                     layout_type: dailyData.layout_type,
                                     category: dailyData.category || 'Daily Life',
-                                    question_text: q.question,
+                                    question_text: q.text || q.question,
                                     options: q.options,
-                                    correct_answer: q.correct_answer
+                                    correct_answer: q.correct !== undefined ? q.correct : q.correct_answer
                                 });
                             });
                         }
@@ -308,11 +301,11 @@
                                 id: `academic_${academicRes.data.id}_${idx}`,
                                 stage: 'academic',
                                 passage_text: academicRes.data.passage,
-                                layout_type: q.layout_type || 'multiple_choice',
+                                layout_type: q.layout_type || (q.text && q.text.includes('Click on the sentence') ? 'select_sentence' : 'multiple_choice'),
                                 category: academicRes.data.category || 'Academic Reading',
-                                question_text: q.question,
+                                question_text: q.text || q.question,
                                 options: q.options,
-                                correct_answer: q.correct_answer
+                                correct_answer: q.correct !== undefined ? q.correct : q.correct_answer
                             });
                         });
                     }
@@ -446,7 +439,15 @@
             let parsed = text
                 .replace(/\[s(\d+)\](.*?)(?=\[s\d+\]|\[sq\d+\]|$)/gs, '<span class="clickable-sentence" data-id="$1">$2</span>')
                 .replace(/\[sq(\d+)\]/g, '<span class="insert-square" data-sq="$1">■</span>');
-            return parsed.split('\n\n').map(p => `<p class="mb-4">${p}</p>`).join('');
+            
+            // Надежное разбиение на абзацы по двойным или одинарным переносам строк
+            const paragraphs = parsed.split(/\r?\n\s*\r?\n/).filter(p => p.trim() !== "");
+            if (paragraphs.length <= 1) {
+                // Если двойных переносов нет, попробуем разбить по одиночным строкам, если они длинные, либо вернем как есть
+                const singleLines = parsed.split(/\r?\n/).filter(p => p.trim() !== "");
+                return singleLines.map(p => `<p class="mb-4">${p}</p>`).join('');
+            }
+            return paragraphs.map(p => `<p class="mb-4">${p.replace(/\r?\n/g, ' ')}</p>`).join('');
         }
 
         function setupAcademicClickListeners(q, container) {
@@ -811,7 +812,6 @@
             renderCurrentQuestion();
         }
 
-        // --- ОБНОВЛЕННАЯ СТРАНИЦА РЕЗУЛЬТАТОВ ---
         function forceSubmitTest() {
             if (timerInterval) clearInterval(timerInterval);
             const urlParams = new URLSearchParams(window.location.search);
@@ -970,7 +970,6 @@
             const bandScore = totalQuestionsCount > 0 ? ((rawScore / totalQuestionsCount) * 6).toFixed(1) : "0.0";
 
             if (currentUser && db && testInfo && !isReviewMode) {
-                // Если мы проходили несколько тестов, сохраним общий результат в первый
                 db.from('mock_test_results').insert([{
                     user_id: currentUser.id,
                     test_id: testInfo.id,
