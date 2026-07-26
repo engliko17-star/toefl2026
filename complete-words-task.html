@@ -97,9 +97,18 @@
                         <span id="taskCategory" class="text-[10px] font-bold text-purple-600 uppercase tracking-widest bg-purple-50 px-2 py-1 rounded-md mb-3 inline-block">Loading...</span>
                         <h2 id="taskTitle" class="text-xl font-bold text-slate-900 tracking-tight">Loading task...</h2>
                     </div>
-                    <a href="complete-words.html" class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-slate-700 transition">
-                        <i data-lucide="x" class="w-4 h-4"></i>
-                    </a>
+                    
+                    <div class="flex items-center gap-4">
+                        <!-- Timer -->
+                        <div id="timerDisplay" class="hidden items-center space-x-1.5 bg-slate-100 px-3 py-1.5 rounded-lg text-slate-700 font-bold text-sm shadow-sm transition-colors duration-300">
+                            <i data-lucide="clock" class="w-4 h-4 opacity-70"></i>
+                            <span id="timerText" class="tracking-widest tabular-nums">01:45</span>
+                        </div>
+                        
+                        <a href="complete-words.html" class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-slate-700 transition">
+                            <i data-lucide="x" class="w-4 h-4"></i>
+                        </a>
+                    </div>
                 </div>
 
                 <div id="textContent" class="text-[16px] leading-[2.3] text-slate-700 font-medium space-y-5">
@@ -140,6 +149,10 @@
         const urlParams = new URLSearchParams(window.location.search);
         const taskId = urlParams.get('id');
         let currentTaskTitle = ""; 
+        
+        // Timer Variables
+        let timeLeft = 105; // 1 minute 45 seconds
+        let timerInterval = null;
 
         function getDatabaseClient() {
             if (typeof supabaseClient !== 'undefined') return supabaseClient;
@@ -166,6 +179,53 @@
                 showError("Authorization required. Please log in.");
             }
         });
+
+        // Timer Functions
+        function formatTime(seconds) {
+            const absSec = Math.abs(seconds);
+            const m = Math.floor(absSec / 60);
+            const s = absSec % 60;
+            const timeStr = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+            return seconds < 0 ? `-${timeStr}` : timeStr;
+        }
+
+        function updateTimerUI() {
+            const timerText = document.getElementById('timerText');
+            const timerDisplay = document.getElementById('timerDisplay');
+            if (!timerText || !timerDisplay) return;
+
+            timerText.innerText = formatTime(timeLeft);
+
+            if (timeLeft < 0) {
+                timerDisplay.classList.remove('bg-slate-100', 'text-slate-700');
+                timerDisplay.classList.add('bg-rose-100', 'text-rose-700');
+            } else {
+                timerDisplay.classList.add('bg-slate-100', 'text-slate-700');
+                timerDisplay.classList.remove('bg-rose-100', 'text-rose-700');
+            }
+        }
+
+        function startTimer() {
+            const timerDisplay = document.getElementById('timerDisplay');
+            timerDisplay.classList.remove('hidden');
+            timerDisplay.classList.add('flex');
+            
+            if (timerInterval) clearInterval(timerInterval);
+            timeLeft = 105;
+            updateTimerUI();
+            
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                updateTimerUI();
+            }, 1000);
+        }
+
+        function stopTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+        }
 
         async function initTask() {
             if (!taskId) {
@@ -228,6 +288,11 @@
                     document.getElementById('scoreDisplay').innerText = `Saved Score: ${savedScore}%`;
                     document.getElementById('submitContainer').classList.add('hidden');
                     document.getElementById('resultBlock').classList.remove('hidden');
+                    
+                    // Если задание уже выполнено, таймер не запускаем (он останется скрытым)
+                } else {
+                    // Задание не выполнено - запускаем таймер
+                    startTimer();
                 }
 
                 lucide.createIcons();
@@ -264,6 +329,8 @@
         document.getElementById('submitBtn').addEventListener('click', async () => {
             const inputs = document.querySelectorAll('.letter-input');
             if (inputs.length === 0) return;
+            
+            stopTimer(); // Останавливаем таймер при проверке ответов
 
             let correctCount = 0;
             inputs.forEach(input => {
@@ -325,8 +392,10 @@
             document.getElementById('submitContainer').classList.remove('hidden');
 
             if (inputs.length > 0) inputs[0].focus();
+            
+            // Перезапускаем таймер
+            startTimer();
         };
     </script>
 </body>
 </html>
-
