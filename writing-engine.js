@@ -44,24 +44,30 @@ async function startWritingEngine(testId, title) {
             .from('full_test_writing')
             .select('*')
             .eq('test_id', testId)
-            .single();
+            .maybeSingle();
 
         if (mockErr || !mock) {
             // Если прямой привязки по test_id нет, пробуем взять первый доступный вариант для теста
-            const { data: fallbackMock } = await supabaseClient
+            const { data: fallbackMock, error: fallbackErr } = await supabaseClient
                 .from('full_test_writing')
                 .select('*')
                 .limit(1)
-                .single();
+                .maybeSingle();
             
-            if (!fallbackMock) throw new Error("Writing mock data not found for this test.");
+            if (fallbackErr) throw fallbackErr;
+            if (!fallbackMock) throw new Error("Writing mock data not found for this test in full_test_writing.");
+            
             await startWritingSection(fallbackMock.id);
         } else {
             await startWritingSection(mock.id);
         }
     } catch (err) {
         console.error("Error initializing writing engine:", err);
-        document.getElementById('dynamicTaskArea').innerHTML = `<div class="text-red-500 flex items-center justify-center w-full h-full font-bold">Error loading writing tasks for this test.</div>`;
+        document.getElementById('dynamicTaskArea').innerHTML = `
+            <div class="text-red-500 flex flex-col items-center justify-center w-full h-full p-4 text-center">
+                <span class="font-bold text-lg mb-2">Error initializing engine.</span>
+                <span class="text-xs text-gray-500 max-w-md">${err.message || JSON.stringify(err)}</span>
+            </div>`;
     }
 }
 
@@ -73,39 +79,74 @@ async function startWritingSection(mockId) {
     const container = document.getElementById('dynamicTaskArea');
     if (!container) return;
 
-    container.innerHTML = `<div class="flex items-center justify-center w-full h-full"><span class="animate-pulse text-slate-500 font-bold">Loading Writing Section...</span></div>`;
+    container.innerHTML = `<div class="flex items-center justify-center w-full h-full"><span class="animate-pulse text-slate-500 font-bold">Loading tasks...</span></div>`;
 
     try {
-        const { data: mock } = await supabaseClient.from('full_test_writing').select('*').eq('id', mockId).single();
+        const { data: mock, error: mockError } = await supabaseClient.from('full_test_writing').select('*').eq('id', mockId).maybeSingle();
+        if (mockError) throw mockError;
+        if (!mock) throw new Error(`No mock found with id: ${mockId}`);
         writeMockData = mock;
 
         const sentenceId = mock.sentence_test_id || mock.sentence_task_id;
+        let targetTestId = sentenceId;
 
-        const { data: firstSentence } = await supabaseClient.from('writing_tasks').select('test_id').eq('id', sentenceId).single();
-        const targetTestId = (firstSentence && firstSentence.test_id) ? firstSentence.test_id : sentenceId;
+        if (sentenceId) {
+            const { data: firstSentence } = await supabaseClient.from('writing_tasks').select('test_id').eq('id', sentenceId).maybeSingle();
+            if (firstSentence && firstSentence.test_id) {
+                targetTestId = firstSentence.test_id;
+            }
+        }
 
         const [sentencesRes, emailRes, academicRes] = await Promise.all([
             supabaseClient.from('writing_tasks').select('*').eq('type', 'sentence').eq('test_id', targetTestId).order('id'),
-            supabaseClient.from('writing_tasks').select('*').eq('id', mock.email_task_id).single(),
-            supabaseClient.from('writing_tasks').select('*').eq('id', mock.academic_task_id).single()
+            supabaseClient.from('writing_tasks').select('*').eq('id', mock.email_task_id).maybeSingle(),
+            supabaseClient.from('writing_tasks').select('*').eq('id', mock.academic_task_id).maybeSingle()
         ]);
 
-        writeSentencesData = sentencesRes.data || [];
-        writeEmailData = emailRes.data;
-        writeAcademicData = academicRes.data;
+        if (sentencesRes.error) throw sentencesRes.error;
+        if (emailRes.error) throw emailRes.error;
+        if (academicRes.error) throw academicRes.error;
 
-        // Парсинг JSON
+        writeSentencesData = sentencesRes.data || [];
+        writeEmailData = emailRes.data || {};
+        writeAcademicData = academicRes.data || {};
+
+        if (writeSentencesData.length === 0) {
+            console.warn("Warning: No sentence tasks found for test_id:", targetTestId);
+        }
+
+        // Парсинг JSON с защитой от ошибок
         writeSentencesData.forEach(q => {
-            if (typeof q.structure === 'string') q.structure = JSON.parse(q.structure);
-            if (typeof q.bank === 'string') q.bank = JSON.parse(q.bank);
+            try {
+                if (typeof q.structure === 'string') q.structure = JSON.parse(q.structure);
+                if (typeof q.bank === 'string') q.bank = JSON.parse(q.bank);
+            } catch (e) {
+                console.error("JSON parse error in sentences:", e, q);
+                q.structure = [];
+                q.bank = [];
+            }
         });
-        if (typeof writeEmailData.instructions === 'string') writeEmailData.instructions = JSON.parse(writeEmailData.instructions);
-        if (typeof writeAcademicData.peers === 'string') writeAcademicData.peers = JSON.parse(writeAcademicData.peers);
+        
+        try {
+            if (typeof writeEmailData.instructions === 'string') writeEmailData.instructions = JSON.parse(writeEmailData.instructions);
+        } catch (e) {
+            writeEmailData.instructions = [];
+        }
+        
+        try {
+            if (typeof writeAcademicData.peers === 'string') writeAcademicData.peers = JSON.parse(writeAcademicData.peers);
+        } catch (e) {
+            writeAcademicData.peers = [];
+        }
 
         initWritePhaseSentence();
     } catch (err) {
-        console.error("Error loading writing test data:", err);
-        container.innerHTML = `<div class="text-red-500 flex items-center justify-center w-full h-full">Error loading tasks.</div>`;
+        console.error("DETAILED ERROR loading writing test data:", err);
+        container.innerHTML = `
+            <div class="text-red-500 flex flex-col items-center justify-center w-full h-full p-4 text-center">
+                <span class="font-bold text-lg mb-2">Error loading tasks.</span>
+                <span class="text-xs text-gray-500 max-w-md">${err.message || JSON.stringify(err)}</span>
+            </div>`;
     }
 }
 
@@ -114,7 +155,7 @@ async function startWritingSection(mockId) {
 // ==========================================
 function handleWritingNextStep() {
     if (writeCurrentPhase === 'sentence') {
-        if (writeCurrentSentenceIndex === writeSentencesData.length - 1) {
+        if (writeCurrentSentenceIndex >= writeSentencesData.length - 1) {
             finishWriteSentencePhase();
         } else {
             writeCurrentSentenceIndex++;
@@ -205,49 +246,55 @@ function initWritePhaseSentence() {
         dynamicTaskArea.innerHTML = `<div id="writeSentencesWrapper" class="w-full h-full flex flex-col flex-1 overflow-y-auto"></div>`;
         wrapper = document.getElementById('writeSentencesWrapper');
         
-        writeSentencesData.forEach((q, index) => {
-            let sentenceHTML = '';
-            (q.structure || []).forEach((item, sIndex) => {
-                if (item.type === 'text') {
-                    sentenceHTML += `<div class="inline-flex px-1.5 py-2 text-sm font-bold text-slate-800">${item.value}</div>`;
-                } else if (item.type === 'slot') {
-                    sentenceHTML += `<div class="word-slot inline-flex items-center justify-center border-b-2 border-gray-300 mx-1 pb-1 align-bottom" id="write-slot-${index}-${sIndex}"></div>`;
+        if (writeSentencesData.length === 0) {
+            wrapper.innerHTML = `<div class="flex items-center justify-center w-full h-full text-slate-500">No sentence tasks available. Click Next to continue.</div>`;
+        } else {
+            writeSentencesData.forEach((q, index) => {
+                let sentenceHTML = '';
+                (q.structure || []).forEach((item, sIndex) => {
+                    if (item.type === 'text') {
+                        sentenceHTML += `<div class="inline-flex px-1.5 py-2 text-sm font-bold text-slate-800">${item.value}</div>`;
+                    } else if (item.type === 'slot') {
+                        sentenceHTML += `<div class="word-slot inline-flex items-center justify-center border-b-2 border-gray-300 mx-1 pb-1 align-bottom min-w-[3rem]" id="write-slot-${index}-${sIndex}"></div>`;
+                    }
+                });
+
+                const div = document.createElement('div');
+                div.id = `write-sentence-container-${index}`;
+                div.className = `w-full flex-1 flex flex-col items-center p-4 md:p-8`;
+                div.style.display = index === 0 ? 'flex' : 'none';
+                
+                let bankWords = [...(q.bank || [])].sort(() => Math.random() - 0.5);
+                let bankHTML = bankWords.map(word => `<div class="bg-white border border-gray-200 text-slate-700 text-sm font-bold px-4 py-2 rounded-xl shadow-sm cursor-grab select-none hover:border-indigo-300 transition">${word}</div>`).join('');
+
+                div.innerHTML = `
+                    <div class="w-full max-w-3xl space-y-8 mb-12 bg-gray-50 p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm mt-4 shrink-0">
+                        <div class="flex items-start space-x-4">
+                            <div class="w-10 h-10 bg-blue-50 border rounded-full flex items-center justify-center text-lg shrink-0">${q.avatar_left || '👨‍🏫'}</div>
+                            <div class="bg-white border rounded-2xl px-5 py-3 text-sm text-slate-700 mt-1 shadow-sm font-medium">${q.prompt_context || ''}</div>
+                        </div>
+                        <div class="flex items-start space-x-4 pt-4 border-t border-dashed border-gray-200">
+                            <div class="w-10 h-10 bg-rose-50 border rounded-full flex items-center justify-center text-lg shrink-0">${q.avatar_right || '👩‍🏫'}</div>
+                            <div class="flex-1 flex flex-wrap items-end gap-y-3 pt-1">${sentenceHTML}<span class="text-2xl font-bold text-slate-400 select-none ml-1 align-bottom leading-none">.</span></div>
+                        </div>
+                    </div>
+                    <div class="w-full max-w-2xl mx-auto shrink-0 pb-10">
+                        <div class="flex flex-wrap justify-center gap-2.5 bg-gray-50 border border-gray-200 p-5 rounded-3xl min-h-[80px]" id="write-bank-${index}">${bankHTML}</div>
+                    </div>
+                `;
+                wrapper.appendChild(div);
+
+                if (typeof Sortable !== 'undefined') {
+                    new Sortable(div.querySelector(`#write-bank-${index}`), { group: `write-shared-${index}`, animation: 150 });
+                    div.querySelectorAll(`[id^="write-slot-${index}-"]`).forEach(slot => {
+                        new Sortable(slot, { 
+                            group: { name: `write-shared-${index}`, put: (to) => to.el.children.length === 0 }, 
+                            animation: 150 
+                        });
+                    });
                 }
             });
-
-            const div = document.createElement('div');
-            div.id = `write-sentence-container-${index}`;
-            div.className = `w-full flex-1 flex flex-col items-center p-4 md:p-8`;
-            div.style.display = index === 0 ? 'flex' : 'none';
-            
-            let bankWords = [...(q.bank || [])].sort(() => Math.random() - 0.5);
-            let bankHTML = bankWords.map(word => `<div class="bg-white border border-gray-200 text-slate-700 text-sm font-bold px-4 py-2 rounded-xl shadow-sm cursor-grab select-none hover:border-indigo-300 transition">${word}</div>`).join('');
-
-            div.innerHTML = `
-                <div class="w-full max-w-3xl space-y-8 mb-12 bg-gray-50 p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm mt-4 shrink-0">
-                    <div class="flex items-start space-x-4">
-                        <div class="w-10 h-10 bg-blue-50 border rounded-full flex items-center justify-center text-lg shrink-0">${q.avatar_left || '👨‍🏫'}</div>
-                        <div class="bg-white border rounded-2xl px-5 py-3 text-sm text-slate-700 mt-1 shadow-sm font-medium">${q.prompt_context}</div>
-                    </div>
-                    <div class="flex items-start space-x-4 pt-4 border-t border-dashed border-gray-200">
-                        <div class="w-10 h-10 bg-rose-50 border rounded-full flex items-center justify-center text-lg shrink-0">${q.avatar_right || '👩‍🏫'}</div>
-                        <div class="flex-1 flex flex-wrap items-end gap-y-3 pt-1">${sentenceHTML}<span class="text-2xl font-bold text-slate-400 select-none ml-1 align-bottom leading-none">.</span></div>
-                    </div>
-                </div>
-                <div class="w-full max-w-2xl mx-auto shrink-0 pb-10">
-                    <div class="flex flex-wrap justify-center gap-2.5 bg-gray-50 border border-gray-200 p-5 rounded-3xl min-h-[80px]" id="write-bank-${index}">${bankHTML}</div>
-                </div>
-            `;
-            wrapper.appendChild(div);
-
-            new Sortable(div.querySelector(`#write-bank-${index}`), { group: `write-shared-${index}`, animation: 150 });
-            div.querySelectorAll(`[id^="write-slot-${index}-"]`).forEach(slot => {
-                new Sortable(slot, { 
-                    group: { name: `write-shared-${index}`, put: (to) => to.el.children.length === 0 }, 
-                    animation: 150 
-                });
-            });
-        });
+        }
 
         startWritePhaseTimer(10, finishWriteSentencePhase);
     }
@@ -261,7 +308,11 @@ function initWritePhaseSentence() {
 
 function updateWriteSentenceUI() {
     const taskCounter = document.getElementById('taskCounterLabel');
-    if(taskCounter) taskCounter.textContent = `Question ${writeCurrentSentenceIndex + 1} of ${writeSentencesData.length} (Sentence Build)`;
+    if(taskCounter) {
+        taskCounter.textContent = writeSentencesData.length > 0 
+            ? `Question ${writeCurrentSentenceIndex + 1} of ${writeSentencesData.length} (Sentence Build)` 
+            : `Sentence Build (No Tasks)`;
+    }
     
     writeSentencesData.forEach((_, i) => {
         const c = document.getElementById(`write-sentence-container-${i}`);
@@ -278,7 +329,7 @@ function updateWriteSentenceUI() {
         if(navBack) navBack.classList.remove('hidden');
     }
     
-    if (writeCurrentSentenceIndex === writeSentencesData.length - 1) {
+    if (writeSentencesData.length === 0 || writeCurrentSentenceIndex >= writeSentencesData.length - 1) {
         if(navNextText) navNextText.textContent = "Next Part";
     } else {
         if(navNextText) navNextText.textContent = "Next";
@@ -297,6 +348,7 @@ function isWriteSentenceComplete(index) {
 }
 
 function getWriteSentenceAnswer(index) {
+    if (!writeSentencesData[index]) return "";
     let parts = [];
     (writeSentencesData[index].structure || []).forEach((item, sIndex) => {
         if (item.type === 'text') parts.push(item.value);
@@ -342,6 +394,10 @@ function showWriteSentenceReview() {
                 : `<span class="text-rose-500 bg-rose-50 px-3 py-1 rounded-lg font-bold text-xs flex items-center">Incomplete</span>`}
         </div>
     `).join('');
+
+    if (writeSentencesData.length === 0) {
+        listHTML = `<div class="p-4 text-slate-500 text-center">No sentences to review.</div>`;
+    }
 
     reviewDiv.innerHTML = `
         <h2 class="text-2xl font-black text-slate-900 mb-6 text-center">Section 1 Review</h2>
@@ -421,11 +477,12 @@ function initWritePhaseEmail() {
     if(taskCounter) taskCounter.textContent = "Task 1 of 2 (Email)";
     
     let instr = (writeEmailData.instructions || []).map(li => `<li>${li}</li>`).join('');
+    
     document.getElementById('dynamicTaskArea').innerHTML = `
         <div class="flex flex-col md:flex-row h-full divide-y md:divide-y-0 md:divide-x divide-gray-200 w-full">
             <div class="w-full md:w-1/2 p-6 overflow-y-auto bg-white">
                 <h2 class="text-xl font-bold mb-4 text-slate-900">${writeEmailData.title || 'Email Writing'}</h2>
-                <p class="text-sm text-slate-700 leading-relaxed">${writeEmailData.prompt_context}</p>
+                <p class="text-sm text-slate-700 leading-relaxed">${writeEmailData.prompt_context || 'Read the scenario and write an email.'}</p>
                 <hr class="my-6 border-gray-100">
                 <div class="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
                     <h3 class="text-sm font-bold uppercase tracking-wide text-indigo-900">Write an email to ${writeEmailData.meta_to || 'Recipient'}. In the email:</h3>
@@ -452,12 +509,14 @@ function initWritePhaseEmail() {
 
 function finishWriteEmailPhase() {
     const ans = document.getElementById('writeEmailResponse') ? document.getElementById('writeEmailResponse').value.trim() : "";
-    writeUserResponses.push({
-        task_id: writeEmailData.id,
-        task_type: 'email',
-        response_content: ans,
-        user_id: currentUser.id
-    });
+    if (writeEmailData.id) {
+        writeUserResponses.push({
+            task_id: writeEmailData.id,
+            task_type: 'email',
+            response_content: ans,
+            user_id: currentUser.id
+        });
+    }
     initWritePhaseAcademic();
 }
 
@@ -477,8 +536,8 @@ function initWritePhaseAcademic() {
         <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex gap-4 shrink-0">
             <div class="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-lg shrink-0 border border-indigo-100">${p.avatar || '👤'}</div>
             <div>
-                <p class="text-xs font-bold text-slate-400 uppercase mb-1">${p.name}</p>
-                <p class="text-sm text-slate-700 leading-relaxed">${p.text}</p>
+                <p class="text-xs font-bold text-slate-400 uppercase mb-1">${p.name || 'Peer'}</p>
+                <p class="text-sm text-slate-700 leading-relaxed">${p.text || ''}</p>
             </div>
         </div>
     `).join('');
@@ -488,7 +547,7 @@ function initWritePhaseAcademic() {
             <div class="w-full md:w-1/2 p-6 overflow-y-auto bg-white">
                 <h2 class="text-xl font-bold mb-4 text-slate-900">${writeAcademicData.title || 'Academic Discussion'}</h2>
                 <div class="bg-teal-50 text-teal-900 p-4 rounded-xl text-sm font-medium mb-6 border border-teal-100 leading-relaxed">
-                    ${writeAcademicData.instruction_box || ''}
+                    ${writeAcademicData.instruction_box || 'Read the discussion and contribute your own ideas.'}
                 </div>
                 <div class="bg-gray-50 p-5 rounded-2xl border border-gray-200 flex gap-4 shrink-0">
                     <div class="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-2xl shrink-0 border border-gray-200 shadow-sm">${writeAcademicData.professor_avatar || '👨‍🏫'}</div>
@@ -527,14 +586,19 @@ async function submitWritingSimulation() {
     if(navNextText) navNextText.innerHTML = `<span class="animate-pulse">Submitting...</span>`;
     
     const ans = document.getElementById('writeAcademicResponse') ? document.getElementById('writeAcademicResponse').value.trim() : "";
-    writeUserResponses.push({
-        task_id: writeAcademicData.id,
-        task_type: 'academic',
-        response_content: ans,
-        user_id: currentUser.id
-    });
+    
+    if (writeAcademicData.id) {
+        writeUserResponses.push({
+            task_id: writeAcademicData.id,
+            task_type: 'academic',
+            response_content: ans,
+            user_id: currentUser.id
+        });
+    }
     
     try {
+        if (!writeMockData || !writeMockData.id) throw new Error("Mock data ID is missing. Cannot submit attempt.");
+
         const { data: attempt, error: attemptError } = await supabaseClient
             .from('mini_mock_writing_attempts')
             .insert([{ user_id: currentUser.id, mock_id: writeMockData.id }])
@@ -543,16 +607,18 @@ async function submitWritingSimulation() {
 
         if (attemptError) throw attemptError;
 
-        const responsesWithAttempt = writeUserResponses.map(resp => ({
-            ...resp,
-            attempt_id: attempt.id
-        }));
+        if (writeUserResponses.length > 0) {
+            const responsesWithAttempt = writeUserResponses.map(resp => ({
+                ...resp,
+                attempt_id: attempt.id
+            }));
 
-        const { error: responsesError } = await supabaseClient
-            .from('mini_mock_writing_responses')
-            .insert(responsesWithAttempt);
-            
-        if (responsesError) throw responsesError;
+            const { error: responsesError } = await supabaseClient
+                .from('mini_mock_writing_responses')
+                .insert(responsesWithAttempt);
+                
+            if (responsesError) throw responsesError;
+        }
         
         // Показываем Success Screen
         document.getElementById('examContainer')?.classList.add('hidden');
