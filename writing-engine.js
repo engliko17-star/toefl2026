@@ -1,659 +1,630 @@
 // ==========================================
-// WRITING ENGINE
+// 🚨 МОБИЛЬНЫЙ ОТЛАДЧИК (ЛОКАЛИЗАТОР ОШИБОК)
 // ==========================================
+window.onerror = function (message, source, lineno, colno, error) {
+    const errorDiv = document.createElement('div');
+    errorDiv.style.position = 'fixed';
+    errorDiv.style.bottom = '10px';
+    errorDiv.style.left = '10px';
+    errorDiv.style.right = '10px';
+    errorDiv.style.backgroundColor = '#fee2e2';
+    errorDiv.style.border = '2px solid #ef4444';
+    errorDiv.style.color = '#991b1b';
+    errorDiv.style.padding = '15px';
+    errorDiv.style.borderRadius = '12px';
+    errorDiv.style.zIndex = '999999';
+    errorDiv.style.fontFamily = 'monospace';
+    errorDiv.style.fontSize = '11px';
+    errorDiv.style.maxHeight = '200px';
+    errorDiv.style.overflowY = 'auto';
+    errorDiv.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
+    errorDiv.innerHTML = `<strong>JS Error:</strong> ${message}<br><small>File: ${source} (Line: ${lineno}:${colno})</small>`;
+    document.body.appendChild(errorDiv);
+    return false;
+};
 
-// 1. Изолированные переменные (Namespacing)
-let writeMockData = null;
-let writeSentencesData = [];
-let writeEmailData = null;
-let writeAcademicData = null;
-let writeCurrentPhase = 'sentence'; // 'sentence', 'sentence-review', 'transition', 'email', 'academic'
-let writeCurrentSentenceIndex = 0;
-let writeUserResponses = [];
-let writeTimerInterval;
+// ==========================================
+// ИНИЦИАЛИЗАЦИЯ SUPABASE & ГЛОБАЛЬНЫХ ПЕРЕМЕННЫХ
+// ==========================================
+const supabaseUrl = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
 
-// Предполагается, что переменная currentUser уже инициализирована в глобальном скоупе (tests.html)
-// и supabaseClient доступен глобально.
+if (!window.supabaseClient) {
+    window.supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+}
 
-/**
- * Глобальная точка входа для запуска секции Writing из tests.html
- */
-async function startWritingEngine(testId, title) {
+let writingTasks = [];
+let writingIndex = 0;
+let writingTimerInterval = null;
+let writingTimeRemaining = 29 * 60; // 29 минут по умолчанию для Writing
+let writingUserAnswers = {}; // { taskId: "text essay" }
+let currentActiveTestId = null;
+
+// Помогаем globalNext / globalPrev из tests.html правильно направлять вызовы
+window.globalNext = function() {
+    if (window.engineType === 'reading' && typeof nextTask === 'function') nextTask();
+    else if (window.engineType === 'listening' && typeof handleListeningNextStep === 'function') handleListeningNextStep();
+    else if (window.engineType === 'writing') nextWritingTask();
+};
+
+window.globalPrev = function() {
+    if (window.engineType === 'reading' && typeof prevTask === 'function') prevTask();
+    else if (window.engineType === 'writing') prevWritingTask();
+};
+
+// ==========================================
+// 1. ЗАГРУЗКА ЗАДАНИЙ СЕКЦИИ WRITING
+// ==========================================
+async function fetchAndParseWritingTasks(testId) {
+    let parsedTasks = [];
+
+    // Попытка 1: Загрузка из таблицы связей full_test_writing_tasks
+    const { data: plan, error: planErr } = await window.supabaseClient
+        .from('full_test_writing_tasks')
+        .select('*')
+        .eq('test_id', testId)
+        .order('order_num', { ascending: true });
+
+    if (!planErr && plan && plan.length > 0) {
+        for (let step of plan) {
+            const { data: taskData } = await window.supabaseClient
+                .from('writing_tasks')
+                .select('*')
+                .eq('id', step.task_id)
+                .single();
+
+            if (taskData) {
+                parsedTasks.push({
+                    taskId: taskData.id,
+                    type: taskData.task_type || step.task_type || 'academic_discussion',
+                    title: taskData.title || `Task ${parsedTasks.length + 1}`,
+                    prompt: taskData.prompt || taskData.question || '',
+                    passage: taskData.passage || taskData.reading_passage || '',
+                    audioUrl: taskData.audio_url || null,
+                    minWords: taskData.min_words || 100
+                });
+            }
+        }
+    } else {
+        // Попытка 2: Резервная загрузка из общих full_test_tasks
+        const { data: fallbackPlan } = await window.supabaseClient
+            .from('full_test_tasks')
+            .select('*')
+            .eq('test_id', testId)
+            .eq('stage', 'writing')
+            .order('order_num', { ascending: true });
+
+        if (fallbackPlan && fallbackPlan.length > 0) {
+            for (let step of fallbackPlan) {
+                const { data: taskData } = await window.supabaseClient
+                    .from('writing_tasks')
+                    .select('*')
+                    .eq('id', step.task_id)
+                    .single();
+
+                if (taskData) {
+                    parsedTasks.push({
+                        taskId: taskData.id,
+                        type: taskData.task_type || 'academic_discussion',
+                        title: taskData.title || 'Writing Task',
+                        prompt: taskData.prompt || taskData.question || '',
+                        passage: taskData.passage || '',
+                        audioUrl: taskData.audio_url || null,
+                        minWords: taskData.min_words || 100
+                    });
+                }
+            }
+        }
+    }
+    return parsedTasks;
+}
+
+// ==========================================
+// 2. СТАРТ ДВИЖКА WRITING
+// ==========================================
+async function startWritingEngine(testId, testTitle) {
     window.engineType = 'writing';
-    
-    // Скрываем интерфейс библиотеки тестов и показываем движок экзамена
-    document.getElementById('view-test-detail').classList.add('hidden');
-    const engineView = document.getElementById('exam-engine-view');
-    engineView.classList.remove('hidden');
-    engineView.classList.add('flex');
+    currentActiveTestId = testId;
+    writingUserAnswers = {};
+    writingIndex = 0;
+
+    const resultsView = document.getElementById('results-view');
+    if (resultsView) {
+        resultsView.classList.add('hidden');
+        resultsView.classList.remove('flex');
+    }
+
     document.getElementById('main-interface').classList.add('hidden');
+    document.getElementById('exam-engine-view').classList.remove('hidden');
+    document.getElementById('exam-engine-view').classList.add('flex');
 
-    document.getElementById('engine-title').textContent = title + ' — Writing Section';
-
-    // Формируем структуру контейнера внутри движка, если её нет
-    let contentArea = document.getElementById('engine-content');
-    contentArea.innerHTML = `
-        <div id="dynamicTaskArea" class="flex-1 flex flex-col h-full w-full overflow-hidden">
-            <div class="flex items-center justify-center w-full h-full"><span class="animate-pulse text-slate-500 font-bold">Loading Writing Section...</span></div>
+    document.getElementById('engine-title').innerText = `Loading Writing Section...`;
+    document.getElementById('engine-content').innerHTML = `
+        <div class="m-auto text-center">
+            <div class="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p class="text-slate-600 font-bold text-sm animate-pulse">Building writing workspace...</p>
         </div>
     `;
 
     try {
-        // Ищем в таблице full_test_writing, привязанной к данному test_id
-        const { data: mock, error: mockErr } = await supabaseClient
-            .from('full_test_writing')
-            .select('*')
-            .eq('test_id', testId)
-            .maybeSingle();
+        writingTasks = await fetchAndParseWritingTasks(testId);
 
-        if (mockErr || !mock) {
-            // Если прямой привязки по test_id нет, пробуем взять первый доступный вариант для теста
-            const { data: fallbackMock, error: fallbackErr } = await supabaseClient
-                .from('full_test_writing')
-                .select('*')
-                .limit(1)
-                .maybeSingle();
-            
-            if (fallbackErr) throw fallbackErr;
-            if (!fallbackMock) throw new Error("Writing mock data not found for this test in full_test_writing.");
-            
-            await startWritingSection(fallbackMock.id);
-        } else {
-            await startWritingSection(mock.id);
+        if (writingTasks.length === 0) {
+            alert("This Writing section has no tasks configured in Supabase!");
+            exitExamEngine();
+            return;
         }
+
+        document.getElementById('engine-title').innerText = `Writing Section — ${testTitle}`;
+        writingTimeRemaining = 29 * 60;
+        startWritingTimer();
+        renderWritingEngine();
+
     } catch (err) {
-        console.error("Error initializing writing engine:", err);
-        document.getElementById('dynamicTaskArea').innerHTML = `
-            <div class="text-red-500 flex flex-col items-center justify-center w-full h-full p-4 text-center">
-                <span class="font-bold text-lg mb-2">Error initializing engine.</span>
-                <span class="text-xs text-gray-500 max-w-md">${err.message || JSON.stringify(err)}</span>
-            </div>`;
-    }
-}
-
-/**
- * Инициализация секции Writing
- */
-async function startWritingSection(mockId) {
-    window.engineType = 'writing'; // Устанавливаем флаг для глобального роутера
-    const container = document.getElementById('dynamicTaskArea');
-    if (!container) return;
-
-    container.innerHTML = `<div class="flex items-center justify-center w-full h-full"><span class="animate-pulse text-slate-500 font-bold">Loading tasks...</span></div>`;
-
-    try {
-        const { data: mock, error: mockError } = await supabaseClient.from('full_test_writing').select('*').eq('id', mockId).maybeSingle();
-        if (mockError) throw mockError;
-        if (!mock) throw new Error(`No mock found with id: ${mockId}`);
-        writeMockData = mock;
-
-        const sentenceId = mock.sentence_test_id || mock.sentence_task_id;
-        let targetTestId = sentenceId;
-
-        if (sentenceId) {
-            const { data: firstSentence } = await supabaseClient.from('writing_tasks').select('test_id').eq('id', sentenceId).maybeSingle();
-            if (firstSentence && firstSentence.test_id) {
-                targetTestId = firstSentence.test_id;
-            }
-        }
-
-        const [sentencesRes, emailRes, academicRes] = await Promise.all([
-            supabaseClient.from('writing_tasks').select('*').eq('type', 'sentence').eq('test_id', targetTestId).order('id'),
-            supabaseClient.from('writing_tasks').select('*').eq('id', mock.email_task_id).maybeSingle(),
-            supabaseClient.from('writing_tasks').select('*').eq('id', mock.academic_task_id).maybeSingle()
-        ]);
-
-        if (sentencesRes.error) throw sentencesRes.error;
-        if (emailRes.error) throw emailRes.error;
-        if (academicRes.error) throw academicRes.error;
-
-        writeSentencesData = sentencesRes.data || [];
-        writeEmailData = emailRes.data || {};
-        writeAcademicData = academicRes.data || {};
-
-        if (writeSentencesData.length === 0) {
-            console.warn("Warning: No sentence tasks found for test_id:", targetTestId);
-        }
-
-        // Парсинг JSON с защитой от ошибок
-        writeSentencesData.forEach(q => {
-            try {
-                if (typeof q.structure === 'string') q.structure = JSON.parse(q.structure);
-                if (typeof q.bank === 'string') q.bank = JSON.parse(q.bank);
-            } catch (e) {
-                console.error("JSON parse error in sentences:", e, q);
-                q.structure = [];
-                q.bank = [];
-            }
-        });
-        
-        try {
-            if (typeof writeEmailData.instructions === 'string') writeEmailData.instructions = JSON.parse(writeEmailData.instructions);
-        } catch (e) {
-            writeEmailData.instructions = [];
-        }
-        
-        try {
-            if (typeof writeAcademicData.peers === 'string') writeAcademicData.peers = JSON.parse(writeAcademicData.peers);
-        } catch (e) {
-            writeAcademicData.peers = [];
-        }
-
-        initWritePhaseSentence();
-    } catch (err) {
-        console.error("DETAILED ERROR loading writing test data:", err);
-        container.innerHTML = `
-            <div class="text-red-500 flex flex-col items-center justify-center w-full h-full p-4 text-center">
-                <span class="font-bold text-lg mb-2">Error loading tasks.</span>
-                <span class="text-xs text-gray-500 max-w-md">${err.message || JSON.stringify(err)}</span>
-            </div>`;
+        console.error("Writing Engine crash:", err);
+        alert("Error loading Writing tasks structure.");
+        exitExamEngine();
     }
 }
 
 // ==========================================
-// ГЛОБАЛЬНЫЕ ХУКИ ДЛЯ РОУТЕРА (tests.html)
+// 3. РЕНДЕРИНГ ИНТЕРФЕЙСА ДВИЖКА
 // ==========================================
-function handleWritingNextStep() {
-    if (writeCurrentPhase === 'sentence') {
-        if (writeCurrentSentenceIndex >= writeSentencesData.length - 1) {
-            finishWriteSentencePhase();
-        } else {
-            writeCurrentSentenceIndex++;
-            updateWriteSentenceUI();
-        }
-    } else if (writeCurrentPhase === 'sentence-review') {
-        finishWriteSentencePhase();
-    } else if (writeCurrentPhase === 'transition') {
-        initWritePhaseEmail();
-    } else if (writeCurrentPhase === 'email') {
-        finishWriteEmailPhase();
-    } else if (writeCurrentPhase === 'academic') {
-        submitWritingSimulation();
-    }
-}
+function renderWritingEngine() {
+    const task = writingTasks[writingIndex];
+    if (!task) return;
 
-function handleWritingPrevStep() {
-    if (writeCurrentPhase === 'sentence') {
-        if (writeCurrentSentenceIndex > 0) {
-            writeCurrentSentenceIndex--;
-            updateWriteSentenceUI();
-        }
-    } else if (writeCurrentPhase === 'sentence-review') {
-        initWritePhaseSentence();
-    }
-}
-
-// ==========================================
-// УТИЛИТЫ И ТАЙМЕР
-// ==========================================
-function countWriteWords(text) {
-    const words = text.toLowerCase().match(/\b\w+\b/g) || [];
-    const articles = ['a', 'an', 'the'];
-    return words.filter(w => !articles.includes(w)).length;
-}
-
-function setupWriteWordCounter(textareaId, counterId) {
-    const textarea = document.getElementById(textareaId);
-    const counter = document.getElementById(counterId);
-    if (textarea && counter) {
-        textarea.addEventListener('input', () => { counter.textContent = countWriteWords(textarea.value); });
-    }
-}
-
-function startWritePhaseTimer(minutes, timeoutCallback) {
-    clearInterval(writeTimerInterval);
-    const timerBadge = document.getElementById('timerBadge');
-    if(timerBadge) timerBadge.classList.remove('hidden');
+    const contentDiv = document.getElementById('engine-content');
     
-    let seconds = minutes * 60;
-    const display = document.getElementById('timeLeft');
-    if(display) display.classList.remove('text-red-400');
+    // Обновляем счетчик прогресса и состояния кнопок управления
+    document.getElementById('engine-progress').innerText = `Task ${writingIndex + 1} / ${writingTasks.length}`;
+    
+    const prevBtn = document.getElementById('engine-prev');
+    if (prevBtn) prevBtn.disabled = (writingIndex === 0);
 
-    writeTimerInterval = setInterval(() => {
-        seconds--;
-        const m = Math.floor(seconds / 60).toString().padStart(2, '0');
-        const s = (seconds % 60).toString().padStart(2, '0');
-        if(display) display.textContent = `${m}:${s}`;
-        
-        if (seconds <= 60 && display) display.classList.add('text-red-400');
-        if (seconds <= 0) {
-            clearInterval(writeTimerInterval);
-            timeoutCallback(); 
+    const nextBtn = document.getElementById('engine-next');
+    if (nextBtn) {
+        nextBtn.disabled = false;
+        nextBtn.innerHTML = (writingIndex === writingTasks.length - 1)
+            ? 'Submit Writing <i data-lucide="check" class="w-4 h-4 ml-1"></i>'
+            : 'Next Task <i data-lucide="chevron-right" class="w-4 h-4 ml-1"></i>';
+    }
+
+    const currentSavedText = writingUserAnswers[task.taskId] || '';
+    const wordCount = countWords(currentSavedText);
+
+    let typeLabel = task.type === 'integrated' ? 'INTEGRATED TASK' : 'ACADEMIC DISCUSSION';
+
+    contentDiv.innerHTML = `
+        <div class="flex flex-col lg:flex-row w-full h-full custom-scrollbar overflow-y-auto lg:overflow-hidden bg-[#f8f9fa]">
+            
+            <!-- Левая панель: Стимул / Задание -->
+            <section class="w-full lg:w-1/2 p-6 lg:p-8 border-b lg:border-b-0 lg:border-r border-slate-200 overflow-y-auto custom-scrollbar bg-white flex flex-col">
+                <div class="flex items-center space-x-2 mb-4">
+                    <span class="px-3 py-1 bg-purple-50 text-purple-700 border border-purple-100 rounded-lg text-[11px] font-bold uppercase tracking-wider">
+                        ${typeLabel}
+                    </span>
+                    <span class="text-xs text-slate-400 font-medium">Recommended length: ${task.minWords}+ words</span>
+                </div>
+
+                <h2 class="text-xl font-bold text-slate-900 mb-4">${task.title}</h2>
+
+                ${task.audioUrl ? `
+                    <div class="mb-6 p-4 bg-purple-50/50 border border-purple-100 rounded-2xl flex items-center space-x-3">
+                        <i data-lucide="volume-2" class="w-5 h-5 text-purple-600 shrink-0"></i>
+                        <audio src="${task.audioUrl}" controls class="w-full outline-none h-8"></audio>
+                    </div>
+                ` : ''}
+
+                ${task.passage ? `
+                    <div class="bg-slate-50 border border-slate-200/80 rounded-2xl p-6 mb-6 text-sm text-slate-700 leading-relaxed font-normal whitespace-pre-wrap">
+                        ${task.passage}
+                    </div>
+                ` : ''}
+
+                <div class="bg-white border-2 border-slate-800 rounded-2xl p-6 shadow-xs mt-auto">
+                    <h3 class="text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-2">Question / Task Prompt</h3>
+                    <div class="text-slate-900 font-semibold text-base leading-relaxed">${task.prompt}</div>
+                </div>
+            </section>
+
+            <!-- Правая панель: Редактор эссе -->
+            <section class="w-full lg:w-1/2 p-6 lg:p-8 bg-[#f8f9fa] flex flex-col justify-between h-full">
+                <div class="flex-1 flex flex-col bg-white border border-slate-200 rounded-3xl p-6 shadow-xs relative">
+                    <div class="flex justify-between items-center mb-3 pb-3 border-b border-slate-100">
+                        <span class="text-xs font-bold text-slate-500 flex items-center">
+                            <i data-lucide="pen-tool" class="w-3.5 h-3.5 mr-1.5 text-purple-600"></i> Your Response
+                        </span>
+                        <div class="flex items-center space-x-3">
+                            <span id="writing-word-count" class="text-xs font-extrabold px-2.5 py-1 rounded-md ${wordCount >= task.minWords ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600'}">
+                                Words: ${wordCount}
+                            </span>
+                        </div>
+                    </div>
+
+                    <textarea 
+                        id="writing-textarea"
+                        oninput="handleEssayInput(${task.taskId}, ${task.minWords})"
+                        placeholder="Type your response here..."
+                        class="w-full flex-1 min-h-[300px] lg:min-h-0 bg-transparent text-slate-800 text-base leading-relaxed outline-none resize-none font-sans"
+                    >${currentSavedText}</textarea>
+                </div>
+            </section>
+
+        </div>
+    `;
+
+    if (typeof lucide !== 'undefined' && lucide.createIcons) {
+        lucide.createIcons();
+    }
+}
+
+// ==========================================
+// 4. ОБРАБОТКА ВВОДА И ВПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+// ==========================================
+function countWords(str) {
+    if (!str) return 0;
+    const matches = str.trim().match(/\b[\w'-]+\b/g);
+    return matches ? matches.length : 0;
+}
+
+function handleEssayInput(taskId, minWords) {
+    const textarea = document.getElementById('writing-textarea');
+    if (!textarea) return;
+
+    const text = textarea.value;
+    writingUserAnswers[taskId] = text;
+
+    const words = countWords(text);
+    const counterBadge = document.getElementById('writing-word-count');
+    if (counterBadge) {
+        counterBadge.innerText = `Words: ${words}`;
+        if (words >= minWords) {
+            counterBadge.className = 'text-xs font-extrabold px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200';
+        } else {
+            counterBadge.className = 'text-xs font-extrabold px-2.5 py-1 rounded-md bg-slate-100 text-slate-600';
+        }
+    }
+}
+
+function nextWritingTask() {
+    if (writingIndex < writingTasks.length - 1) {
+        writingIndex++;
+        renderWritingEngine();
+    } else {
+        saveWritingAttemptAndFinish();
+    }
+}
+
+function prevWritingTask() {
+    if (writingIndex > 0) {
+        writingIndex--;
+        renderWritingEngine();
+    }
+}
+
+function startWritingTimer() {
+    clearInterval(writingTimerInterval);
+    const timerEl = document.getElementById('engine-timer');
+
+    writingTimerInterval = setInterval(() => {
+        writingTimeRemaining--;
+
+        if (writingTimeRemaining <= 0) {
+            clearInterval(writingTimerInterval);
+            alert("Time is up! Submitting your Writing response...");
+            saveWritingAttemptAndFinish();
+            return;
+        }
+
+        let m = Math.floor(writingTimeRemaining / 60);
+        let s = writingTimeRemaining % 60;
+        if (timerEl) {
+            timerEl.innerText = `${m}:${s < 10 ? '0' : ''}${s}`;
         }
     }, 1000);
 }
 
 // ==========================================
-// PHASE 1: SENTENCES
+// 5. СОХРАНЕНИЕ ПОПЫТКИ И ВЫВОД РЕЗУЛЬТАТОВ
 // ==========================================
-function initWritePhaseSentence() {
-    writeCurrentPhase = 'sentence';
-    const dynamicTaskArea = document.getElementById('dynamicTaskArea');
-    const navNextText = document.getElementById('navNextText');
-    const navNextIcon = document.getElementById('navNextIcon');
-    const navReview = document.getElementById('navReview');
-    const navBack = document.getElementById('navBack');
-    const navNext = document.getElementById('navNext');
+async function saveWritingAttemptAndFinish() {
+    clearInterval(writingTimerInterval);
 
-    if(navReview) navReview.classList.remove('hidden');
-    if(navNext) navNext.classList.remove('hidden');
-    if(navNextText) navNextText.textContent = "Next";
-    if(navNextIcon) navNextIcon.classList.remove('hidden');
-    
-    let wrapper = document.getElementById('writeSentencesWrapper');
-    
-    if (!wrapper) {
-        dynamicTaskArea.innerHTML = `<div id="writeSentencesWrapper" class="w-full h-full flex flex-col flex-1 overflow-y-auto"></div>`;
-        wrapper = document.getElementById('writeSentencesWrapper');
-        
-        if (writeSentencesData.length === 0) {
-            wrapper.innerHTML = `<div class="flex items-center justify-center w-full h-full text-slate-500">No sentence tasks available. Click Next to continue.</div>`;
-        } else {
-            writeSentencesData.forEach((q, index) => {
-                let sentenceHTML = '';
-                (q.structure || []).forEach((item, sIndex) => {
-                    if (item.type === 'text') {
-                        sentenceHTML += `<div class="inline-flex px-1.5 py-2 text-sm font-bold text-slate-800">${item.value}</div>`;
-                    } else if (item.type === 'slot') {
-                        sentenceHTML += `<div class="word-slot inline-flex items-center justify-center border-b-2 border-gray-300 mx-1 pb-1 align-bottom min-w-[3rem]" id="write-slot-${index}-${sIndex}"></div>`;
-                    }
-                });
+    const contentDiv = document.getElementById('engine-content');
+    contentDiv.innerHTML = `
+        <div class="m-auto flex flex-col items-center justify-center text-slate-500">
+            <i data-lucide="loader-2" class="w-10 h-10 animate-spin mb-4 text-purple-600"></i>
+            <p class="font-bold text-slate-700 text-lg">Saving writing responses...</p>
+        </div>
+    `;
+    lucide.createIcons();
 
-                const div = document.createElement('div');
-                div.id = `write-sentence-container-${index}`;
-                div.className = `w-full flex-1 flex flex-col items-center p-4 md:p-8`;
-                div.style.display = index === 0 ? 'flex' : 'none';
-                
-                let bankWords = [...(q.bank || [])].sort(() => Math.random() - 0.5);
-                let bankHTML = bankWords.map(word => `<div class="bg-white border border-gray-200 text-slate-700 text-sm font-bold px-4 py-2 rounded-xl shadow-sm cursor-grab select-none hover:border-indigo-300 transition">${word}</div>`).join('');
-
-                div.innerHTML = `
-                    <div class="w-full max-w-3xl space-y-8 mb-12 bg-gray-50 p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm mt-4 shrink-0">
-                        <div class="flex items-start space-x-4">
-                            <div class="w-10 h-10 bg-blue-50 border rounded-full flex items-center justify-center text-lg shrink-0">${q.avatar_left || '👨‍🏫'}</div>
-                            <div class="bg-white border rounded-2xl px-5 py-3 text-sm text-slate-700 mt-1 shadow-sm font-medium">${q.prompt_context || ''}</div>
-                        </div>
-                        <div class="flex items-start space-x-4 pt-4 border-t border-dashed border-gray-200">
-                            <div class="w-10 h-10 bg-rose-50 border rounded-full flex items-center justify-center text-lg shrink-0">${q.avatar_right || '👩‍🏫'}</div>
-                            <div class="flex-1 flex flex-wrap items-end gap-y-3 pt-1">${sentenceHTML}<span class="text-2xl font-bold text-slate-400 select-none ml-1 align-bottom leading-none">.</span></div>
-                        </div>
-                    </div>
-                    <div class="w-full max-w-2xl mx-auto shrink-0 pb-10">
-                        <div class="flex flex-wrap justify-center gap-2.5 bg-gray-50 border border-gray-200 p-5 rounded-3xl min-h-[80px]" id="write-bank-${index}">${bankHTML}</div>
-                    </div>
-                `;
-                wrapper.appendChild(div);
-
-                if (typeof Sortable !== 'undefined') {
-                    new Sortable(div.querySelector(`#write-bank-${index}`), { group: `write-shared-${index}`, animation: 150 });
-                    div.querySelectorAll(`[id^="write-slot-${index}-"]`).forEach(slot => {
-                        new Sortable(slot, { 
-                            group: { name: `write-shared-${index}`, put: (to) => to.el.children.length === 0 }, 
-                            animation: 150 
-                        });
-                    });
-                }
-            });
-        }
-
-        startWritePhaseTimer(10, finishWriteSentencePhase);
-    }
-
-    const reviewWrapper = document.getElementById('writeSentenceReviewWrapper');
-    if (reviewWrapper) reviewWrapper.style.display = 'none';
-    wrapper.style.display = 'flex';
-
-    updateWriteSentenceUI();
-}
-
-function updateWriteSentenceUI() {
-    const taskCounter = document.getElementById('taskCounterLabel');
-    if(taskCounter) {
-        taskCounter.textContent = writeSentencesData.length > 0 
-            ? `Question ${writeCurrentSentenceIndex + 1} of ${writeSentencesData.length} (Sentence Build)` 
-            : `Sentence Build (No Tasks)`;
-    }
-    
-    writeSentencesData.forEach((_, i) => {
-        const c = document.getElementById(`write-sentence-container-${i}`);
-        if (c) c.style.display = i === writeCurrentSentenceIndex ? 'flex' : 'none';
+    let totalWords = 0;
+    writingTasks.forEach(task => {
+        totalWords += countWords(writingUserAnswers[task.taskId] || '');
     });
 
-    const navBack = document.getElementById('navBack');
-    const navNextText = document.getElementById('navNextText');
-    const navReview = document.getElementById('navReview');
+    let estimatedScore = totalWords > 200 ? "5.0" : totalWords > 100 ? "4.0" : "3.0";
 
-    if (writeCurrentSentenceIndex === 0) {
-        if(navBack) navBack.classList.add('hidden');
-    } else {
-        if(navBack) navBack.classList.remove('hidden');
-    }
-    
-    if (writeSentencesData.length === 0 || writeCurrentSentenceIndex >= writeSentencesData.length - 1) {
-        if(navNextText) navNextText.textContent = "Next Part";
-    } else {
-        if(navNextText) navNextText.textContent = "Next";
-    }
-    
-    // Переопределяем клик на кнопку Review (если она есть в глобальном UI)
-    if(navReview) navReview.onclick = showWriteSentenceReview;
-}
-
-function isWriteSentenceComplete(index) {
-    const slots = document.querySelectorAll(`[id^="write-slot-${index}-"]`);
-    for (let slot of slots) {
-        if (slot.children.length === 0) return false;
-    }
-    return true;
-}
-
-function getWriteSentenceAnswer(index) {
-    if (!writeSentencesData[index]) return "";
-    let parts = [];
-    (writeSentencesData[index].structure || []).forEach((item, sIndex) => {
-        if (item.type === 'text') parts.push(item.value);
-        else if (item.type === 'slot') {
-            const s = document.getElementById(`write-slot-${index}-${sIndex}`);
-            parts.push(s && s.children.length > 0 ? s.children[0].textContent.trim() : "____");
-        }
-    });
-    return parts.join(" ").replace(/\s+([.?!])/g, "$1").trim() + ".";
-}
-
-function showWriteSentenceReview() {
-    writeCurrentPhase = 'sentence-review';
-    
-    const taskCounter = document.getElementById('taskCounterLabel');
-    const navReview = document.getElementById('navReview');
-    const navBack = document.getElementById('navBack');
-    const navNextText = document.getElementById('navNextText');
-    
-    if(taskCounter) taskCounter.textContent = "Review Sentences";
-    if(navReview) navReview.classList.add('hidden');
-    if(navBack) navBack.classList.remove('hidden');
-    if(navNextText) navNextText.textContent = "Next Part";
-
-    document.getElementById('writeSentencesWrapper').style.display = 'none';
-
-    let reviewDiv = document.getElementById('writeSentenceReviewWrapper');
-    if (!reviewDiv) {
-        reviewDiv = document.createElement('div');
-        reviewDiv.id = 'writeSentenceReviewWrapper';
-        reviewDiv.className = 'p-4 md:p-8 max-w-3xl mx-auto w-full h-full flex flex-col flex-1 overflow-y-auto';
-        document.getElementById('dynamicTaskArea').appendChild(reviewDiv);
-    }
-
-    let listHTML = writeSentencesData.map((s, i) => `
-        <div class="flex justify-between items-center p-4 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0 transition" onclick="returnToWriteSentence(${i})">
-            <div class="flex items-center gap-3">
-                <span class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">${i+1}</span>
-                <span class="font-bold text-slate-700">Sentence ${i + 1}</span>
-            </div>
-            ${isWriteSentenceComplete(i) 
-                ? `<span class="text-emerald-500 bg-emerald-50 px-3 py-1 rounded-lg font-bold text-xs flex items-center">Complete</span>` 
-                : `<span class="text-rose-500 bg-rose-50 px-3 py-1 rounded-lg font-bold text-xs flex items-center">Incomplete</span>`}
-        </div>
-    `).join('');
-
-    if (writeSentencesData.length === 0) {
-        listHTML = `<div class="p-4 text-slate-500 text-center">No sentences to review.</div>`;
-    }
-
-    reviewDiv.innerHTML = `
-        <h2 class="text-2xl font-black text-slate-900 mb-6 text-center">Section 1 Review</h2>
-        <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex-1 shrink-0">
-            ${listHTML}
-        </div>
-    `;
-    reviewDiv.style.display = 'flex';
-}
-
-window.returnToWriteSentence = function(i) {
-    writeCurrentSentenceIndex = i;
-    initWritePhaseSentence(); 
-};
-
-function finishWriteSentencePhase() {
-    writeSentencesData.forEach((q, i) => {
-        writeUserResponses.push({
-            task_id: q.id,
-            task_type: 'sentence',
-            response_content: getWriteSentenceAnswer(i),
-            user_id: currentUser.id
-        });
-    });
-    showWritePhaseTransition();
-}
-
-// ==========================================
-// TRANSITION SCREEN
-// ==========================================
-function showWritePhaseTransition() {
-    writeCurrentPhase = 'transition';
-    
-    const navReview = document.getElementById('navReview');
-    const navBack = document.getElementById('navBack');
-    const navNext = document.getElementById('navNext');
-    const navNextText = document.getElementById('navNextText');
-    const timerBadge = document.getElementById('timerBadge');
-    
-    if(navReview) navReview.classList.add('hidden');
-    if(navBack) navBack.classList.add('hidden');
-    if(navNext) navNext.classList.remove('hidden');
-    if(navNextText) navNextText.textContent = "Start Tasks";
-    if(timerBadge) timerBadge.classList.add('hidden');
-    
-    clearInterval(writeTimerInterval);
-
-    const taskCounter = document.getElementById('taskCounterLabel');
-    if(taskCounter) taskCounter.textContent = "Section Transition";
-
-    document.getElementById('dynamicTaskArea').innerHTML = `
-        <div class="flex-1 flex items-center justify-center p-6 bg-slate-50 w-full h-full">
-            <div class="w-full max-w-xl bg-white rounded-3xl p-10 text-center border border-gray-200 shadow-sm">
-                <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-indigo-100 shadow-inner">
-                    📝
-                </div>
-                <h2 class="text-3xl font-black text-slate-900 mb-3">Writing Section</h2>
-                <p class="text-slate-500 mb-8 max-w-md mx-auto text-[15px] leading-relaxed">
-                    You have successfully completed the <b>Sentence Building</b> tasks. <br><br>
-                    Next, you will write an <b>Email</b> and participate in an <b>Academic Discussion</b>. Each of these tasks will have its own time limit.
-                </p>
-            </div>
-        </div>
-    `;
-}
-
-// ==========================================
-// PHASE 2: EMAIL
-// ==========================================
-function initWritePhaseEmail() {
-    writeCurrentPhase = 'email';
-    
-    const navNextText = document.getElementById('navNextText');
-    const taskCounter = document.getElementById('taskCounterLabel');
-    
-    if(navNextText) navNextText.textContent = "Next Task";
-    if(taskCounter) taskCounter.textContent = "Task 1 of 2 (Email)";
-    
-    let instr = (writeEmailData.instructions || []).map(li => `<li>${li}</li>`).join('');
-    
-    document.getElementById('dynamicTaskArea').innerHTML = `
-        <div class="flex flex-col md:flex-row h-full divide-y md:divide-y-0 md:divide-x divide-gray-200 w-full">
-            <div class="w-full md:w-1/2 p-6 overflow-y-auto bg-white">
-                <h2 class="text-xl font-bold mb-4 text-slate-900">${writeEmailData.title || 'Email Writing'}</h2>
-                <p class="text-sm text-slate-700 leading-relaxed">${writeEmailData.prompt_context || 'Read the scenario and write an email.'}</p>
-                <hr class="my-6 border-gray-100">
-                <div class="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
-                    <h3 class="text-sm font-bold uppercase tracking-wide text-indigo-900">Write an email to ${writeEmailData.meta_to || 'Recipient'}. In the email:</h3>
-                    <ul class="list-disc pl-5 text-sm text-indigo-800 mt-3 space-y-1.5">${instr}</ul>
-                </div>
-            </div>
-            <div class="w-full md:w-1/2 p-6 bg-slate-50 flex flex-col">
-                <div class="bg-white border border-gray-200 rounded-2xl flex flex-col h-full shadow-sm overflow-hidden min-h-[300px]">
-                    <div class="bg-gray-50 border-b border-gray-200 px-5 py-4 text-sm flex justify-between items-center shrink-0">
-                        <div>
-                            <p><span class="font-bold text-gray-400">To:</span> <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-semibold ml-1">${writeEmailData.meta_to || 'Recipient'}</span></p>
-                            <p class="mt-2"><span class="font-bold text-gray-400">Subject:</span> <span class="font-semibold text-slate-700 ml-1">${writeEmailData.meta_subject || 'Topic'}</span></p>
-                        </div>
-                        <span class="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">Words: <span id="writeEmailWordCount">0</span></span>
-                    </div>
-                    <textarea id="writeEmailResponse" placeholder="Write your email here..." class="exam-textarea flex-1 p-5 text-sm text-slate-700 w-full h-full resize-none outline-none"></textarea>
-                </div>
-            </div>
-        </div>
-    `;
-    setupWriteWordCounter('writeEmailResponse', 'writeEmailWordCount');
-    startWritePhaseTimer(7, finishWriteEmailPhase); 
-}
-
-function finishWriteEmailPhase() {
-    const ans = document.getElementById('writeEmailResponse') ? document.getElementById('writeEmailResponse').value.trim() : "";
-    if (writeEmailData.id) {
-        writeUserResponses.push({
-            task_id: writeEmailData.id,
-            task_type: 'email',
-            response_content: ans,
-            user_id: currentUser.id
-        });
-    }
-    initWritePhaseAcademic();
-}
-
-// ==========================================
-// PHASE 3: ACADEMIC
-// ==========================================
-function initWritePhaseAcademic() {
-    writeCurrentPhase = 'academic';
-    
-    const navNextText = document.getElementById('navNextText');
-    const taskCounter = document.getElementById('taskCounterLabel');
-    
-    if(navNextText) navNextText.textContent = "Submit Simulation";
-    if(taskCounter) taskCounter.textContent = "Task 2 of 2 (Academic Discussion)";
-
-    let peersHTML = (writeAcademicData.peers || []).map(p => `
-        <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex gap-4 shrink-0">
-            <div class="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-lg shrink-0 border border-indigo-100">${p.avatar || '👤'}</div>
-            <div>
-                <p class="text-xs font-bold text-slate-400 uppercase mb-1">${p.name || 'Peer'}</p>
-                <p class="text-sm text-slate-700 leading-relaxed">${p.text || ''}</p>
-            </div>
-        </div>
-    `).join('');
-
-    document.getElementById('dynamicTaskArea').innerHTML = `
-        <div class="flex flex-col md:flex-row h-full divide-y md:divide-y-0 md:divide-x divide-gray-200 w-full">
-            <div class="w-full md:w-1/2 p-6 overflow-y-auto bg-white">
-                <h2 class="text-xl font-bold mb-4 text-slate-900">${writeAcademicData.title || 'Academic Discussion'}</h2>
-                <div class="bg-teal-50 text-teal-900 p-4 rounded-xl text-sm font-medium mb-6 border border-teal-100 leading-relaxed">
-                    ${writeAcademicData.instruction_box || 'Read the discussion and contribute your own ideas.'}
-                </div>
-                <div class="bg-gray-50 p-5 rounded-2xl border border-gray-200 flex gap-4 shrink-0">
-                    <div class="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-2xl shrink-0 border border-gray-200 shadow-sm">${writeAcademicData.professor_avatar || '👨‍🏫'}</div>
-                    <div>
-                        <p class="text-xs font-black text-slate-500 uppercase tracking-wide mb-1.5">${writeAcademicData.professor_name || 'Professor'}</p>
-                        <div class="text-sm text-slate-800 leading-relaxed font-medium">${writeAcademicData.professor_prompt || ''}</div>
-                    </div>
-                </div>
-            </div>
-            <div class="w-full md:w-1/2 p-6 bg-slate-50 flex flex-col gap-4 overflow-y-auto">
-                <div class="flex flex-col gap-4 shrink-0">
-                    ${peersHTML}
-                </div>
-                <div class="bg-white border border-gray-200 rounded-2xl flex flex-col mt-4 flex-1 min-h-[300px] shadow-sm overflow-hidden">
-                    <div class="flex justify-between items-center bg-gray-50 px-4 py-3 border-b border-gray-200 shrink-0">
-                        <span class="text-xs font-black text-slate-400 uppercase tracking-wide">TOEFL Editor</span>
-                        <span class="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">Words: <span id="writeAcademicWordCount">0</span></span>
-                    </div>
-                    <textarea id="writeAcademicResponse" placeholder="Write your contribution here..." class="exam-textarea flex-1 p-5 text-sm text-slate-700 w-full h-full resize-none outline-none"></textarea>
-                </div>
-            </div>
-        </div>
-    `;
-    setupWriteWordCounter('writeAcademicResponse', 'writeAcademicWordCount');
-    startWritePhaseTimer(10, submitWritingSimulation); 
-}
-
-// ==========================================
-// SUBMIT LOGIC
-// ==========================================
-async function submitWritingSimulation() {
-    const navNext = document.getElementById('navNext');
-    const navNextText = document.getElementById('navNextText');
-    
-    if(navNext) navNext.disabled = true;
-    if(navNextText) navNextText.innerHTML = `<span class="animate-pulse">Submitting...</span>`;
-    
-    const ans = document.getElementById('writeAcademicResponse') ? document.getElementById('writeAcademicResponse').value.trim() : "";
-    
-    if (writeAcademicData.id) {
-        writeUserResponses.push({
-            task_id: writeAcademicData.id,
-            task_type: 'academic',
-            response_content: ans,
-            user_id: currentUser.id
-        });
-    }
-    
     try {
-        if (!writeMockData || !writeMockData.id) throw new Error("Mock data ID is missing. Cannot submit attempt.");
+        let attemptId = null;
 
-        const { data: attempt, error: attemptError } = await supabaseClient
-            .from('mini_mock_writing_attempts')
-            .insert([{ user_id: currentUser.id, mock_id: writeMockData.id }])
+        // 1. Сохраняем попытку в базу
+        const { data: attempt, error: attErr } = await window.supabaseClient
+            .from('big_mock_writing_attempts')
+            .insert([{
+                test_id: currentActiveTestId,
+                total_score: parseFloat(estimatedScore),
+                status: 'completed',
+                completed_at: new Date().toISOString()
+            }])
             .select()
             .single();
 
-        if (attemptError) throw attemptError;
+        if (!attErr && attempt) {
+            attemptId = attempt.id;
+        } else {
+            // Резервный вариант сохранение в общую таблицу big_mock_attempts
+            const { data: fallbackAttempt } = await window.supabaseClient
+                .from('big_mock_attempts')
+                .insert([{
+                    test_id: currentActiveTestId,
+                    section_name: 'writing',
+                    total_score: parseFloat(estimatedScore),
+                    status: 'completed',
+                    completed_at: new Date().toISOString()
+                }])
+                .select()
+                .single();
+            if (fallbackAttempt) attemptId = fallbackAttempt.id;
+        }
 
-        if (writeUserResponses.length > 0) {
-            const responsesWithAttempt = writeUserResponses.map(resp => ({
-                ...resp,
-                attempt_id: attempt.id
+        // 2. Сохраняем индивидуальные тексты ответов
+        if (attemptId) {
+            const answersToSave = writingTasks.map(task => ({
+                attempt_id: attemptId,
+                task_id: task.taskId,
+                task_type: task.type,
+                essay_text: writingUserAnswers[task.taskId] || '',
+                word_count: countWords(writingUserAnswers[task.taskId] || '')
             }));
 
-            const { error: responsesError } = await supabaseClient
-                .from('mini_mock_writing_responses')
-                .insert(responsesWithAttempt);
-                
-            if (responsesError) throw responsesError;
+            const { error: ansErr } = await window.supabaseClient.from('big_mock_writing_answers').insert(answersToSave);
+            if (ansErr) {
+                await window.supabaseClient.from('big_mock_answers').insert(answersToSave.map(a => ({
+                    attempt_id: a.attempt_id,
+                    task_id: a.task_id,
+                    task_type: a.task_type,
+                    answer_text: a.essay_text,
+                    answer_json: { word_count: a.word_count }
+                })));
+            }
         }
-        
-        // Показываем Success Screen
-        document.getElementById('examContainer')?.classList.add('hidden');
-        document.getElementById('topHeader')?.classList.add('hidden');
-        
-        let successScreen = document.getElementById('successScreen');
-        if (!successScreen) {
-             successScreen = document.createElement('main');
-             successScreen.id = 'successScreen';
-             successScreen.className = 'flex-1 flex items-center justify-center p-4 h-full absolute inset-0 z-50 bg-[#f8f9fa]';
-             document.getElementById('dynamicTaskArea').appendChild(successScreen);
+
+    } catch (e) {
+        console.error("Error saving Writing attempt:", e);
+    }
+
+    renderWritingReviewUI(estimatedScore, totalWords);
+}
+
+// ==========================================
+// 6. РЕЖИМ РЕВЬЮ / ПРОСМОТРА РЕЗУЛЬТАТОВ
+// ==========================================
+async function loadWritingReviewMode(attemptId, testId, testTitle) {
+    window.engineType = 'writing';
+
+    const mainInterface = document.getElementById('main-interface');
+    if (mainInterface) mainInterface.classList.add('hidden');
+
+    const resultsView = document.getElementById('results-view');
+    resultsView.classList.remove('hidden');
+    resultsView.className = 'fixed inset-0 z-50 bg-[#f8f9fa] flex flex-col w-screen h-screen overflow-hidden';
+    resultsView.innerHTML = `<div class="m-auto flex flex-col items-center justify-center text-slate-500"><i data-lucide="loader-2" class="w-10 h-10 animate-spin mb-4 text-purple-600"></i><p class="font-bold">Reconstructing Writing attempt...</p></div>`;
+    lucide.createIcons();
+
+    try {
+        currentActiveTestId = testId;
+        writingTasks = await fetchAndParseWritingTasks(testId);
+
+        let savedAnswers = [];
+        const { data: ans1 } = await window.supabaseClient.from('big_mock_writing_answers').select('*').eq('attempt_id', attemptId);
+        if (ans1) savedAnswers = ans1;
+        else {
+            const { data: ans2 } = await window.supabaseClient.from('big_mock_answers').select('*').eq('attempt_id', attemptId);
+            if (ans2) savedAnswers = ans2;
         }
-        
-        successScreen.classList.remove('hidden');
-        successScreen.innerHTML = `
-            <div class="w-full max-w-2xl bg-white rounded-3xl p-10 text-center border border-gray-100 shadow-lg">
-                <div class="w-20 h-20 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                    ✅
+
+        let totalWords = 0;
+        writingTasks.forEach(task => {
+            const match = savedAnswers.find(a => a.task_id === task.taskId);
+            const text = match ? (match.essay_text || match.answer_text || '') : '';
+            writingUserAnswers[task.taskId] = text;
+            totalWords += countWords(text);
+        });
+
+        renderWritingReviewUI("Submitted", totalWords);
+
+    } catch (err) {
+        console.error("Error loading writing review:", err);
+        alert("Could not load review mode.");
+        exitExamEngine();
+    }
+}
+
+function renderWritingReviewUI(score, totalWords) {
+    const examView = document.getElementById('exam-engine-view');
+    if (examView) {
+        examView.classList.add('hidden');
+        examView.classList.remove('flex');
+    }
+
+    const mainInterface = document.getElementById('main-interface');
+    if (mainInterface) mainInterface.classList.add('hidden');
+
+    const resultsView = document.getElementById('results-view');
+    resultsView.classList.remove('hidden');
+    resultsView.className = 'fixed inset-0 z-50 bg-[#f8f9fa] flex flex-col w-screen h-screen overflow-hidden';
+
+    let tasksHtml = writingTasks.map((task, idx) => {
+        const essay = writingUserAnswers[task.taskId] || 'No response submitted.';
+        const words = countWords(essay);
+
+        return `
+            <div class="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm mb-8">
+                <div class="flex items-center justify-between mb-4 pb-4 border-b border-gray-100">
+                    <span class="text-xs font-bold uppercase tracking-wider text-purple-600 bg-purple-50 px-3 py-1 rounded-lg">
+                        Task ${idx + 1}: ${task.type.toUpperCase()}
+                    </span>
+                    <span class="text-xs font-extrabold text-slate-500">
+                        Words written: ${words}
+                    </span>
                 </div>
-                <h2 class="text-2xl font-black text-slate-900 mb-2">Simulation Complete!</h2>
-                <p class="text-gray-500 mb-8 max-w-md mx-auto">All responses have been successfully saved to the database.</p>
-                <div class="flex flex-col sm:flex-row justify-center gap-4">
-                    <button onclick="exitExamEngine()" class="inline-flex justify-center bg-gray-100 hover:bg-gray-200 text-slate-700 px-6 py-3.5 rounded-xl text-sm font-bold transition shadow-sm items-center">
-                        Back to Library
-                    </button>
-                    <a href="mini-mock-results.html?attempt_id=${attempt.id}" class="inline-flex justify-center bg-slate-900 hover:bg-slate-800 text-white px-8 py-3.5 rounded-xl text-sm font-bold transition shadow-sm items-center">
-                        View Full Review
-                    </a>
+
+                <h3 class="text-lg font-bold text-slate-900 mb-3">${task.title}</h3>
+                <div class="bg-slate-50 p-4 rounded-xl border border-slate-200/80 text-sm text-slate-700 mb-6 font-medium">
+                    ${task.prompt}
+                </div>
+
+                <div class="mt-4">
+                    <h4 class="text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-2">Submitted Response</h4>
+                    <div class="p-6 bg-white border border-slate-200 rounded-2xl text-slate-800 leading-relaxed font-normal whitespace-pre-wrap text-sm">
+                        ${essay}
+                    </div>
                 </div>
             </div>
         `;
-    } catch (err) {
-        console.error("Full error object:", err);
-        alert("Error submitting. Please try again.\n" + (err.message || JSON.stringify(err)));
-        if(navNext) navNext.disabled = false;
-        if(navNextText) navNextText.textContent = "Submit Simulation";
+    }).join('');
+
+    resultsView.innerHTML = `
+        <div class="w-full h-full overflow-y-auto custom-scrollbar p-6 md:p-10 bg-[#f8f9fa]">
+            <div class="max-w-5xl mx-auto">
+                <div class="bg-white rounded-[2rem] p-8 border border-purple-100 shadow-sm text-center mb-10 relative overflow-hidden max-w-2xl mx-auto">
+                    <div class="w-16 h-16 bg-purple-50 text-purple-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl shadow-inner">
+                        ✍️
+                    </div>
+                    <h2 class="text-2xl font-bold text-slate-900 mb-2">Writing Section Completed</h2>
+                    <p class="text-xs text-slate-400 mb-6 font-medium">Response saved for review</p>
+
+                    <div class="flex justify-center items-center mb-8">
+                        <div class="px-8 text-center border-r border-gray-100">
+                            <div class="text-5xl font-extrabold text-purple-600 mb-1">${score}</div>
+                            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Status / Est. Score</div>
+                        </div>
+                        <div class="px-8 text-center">
+                            <div class="text-3xl font-bold text-slate-700 mb-1 mt-1">${totalWords}</div>
+                            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Words</div>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-center space-x-3">
+                        <button onclick="startWritingEngine(currentActiveTestId, document.getElementById('dynamic-test-title').innerText)" class="px-6 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-purple-600 transition shadow-md text-sm flex items-center cursor-pointer">
+                            <i data-lucide="rotate-ccw" class="w-4 h-4 mr-2"></i> Retake Writing
+                        </button>
+                        <button onclick="exitExamEngine()" class="px-6 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition shadow-sm text-sm cursor-pointer">
+                            Back to Dashboard
+                        </button>
+                    </div>
+                </div>
+
+                <div class="space-y-6">${tasksHtml}</div>
+            </div>
+        </div>
+    `;
+    lucide.createIcons();
+}
+
+// ==========================================
+// 7. УНИВЕРСАЛЬНЫЙ OPEN TEST VIEW DEDICATED FOR TESTS.HTML
+// ==========================================
+async function openTestView(testId, title, emoji) {
+    currentActiveTestId = testId;
+    document.getElementById('view-tests-grid').classList.add('hidden');
+    document.getElementById('view-test-detail').classList.remove('hidden');
+
+    document.getElementById('dynamic-test-title').innerText = title;
+    document.getElementById('dynamic-emoji-container').innerText = emoji || '📝';
+
+    const sections = [
+        { name: 'reading', scoreId: 'reading-score-container', actionId: 'reading-action-buttons', startFn: 'startExamEngine', reviewFn: 'loadReviewMode', table: 'big_mock_attempts' },
+        { name: 'listening', scoreId: 'listening-score-container', actionId: 'listening-action-buttons', startFn: 'startListeningEngine', reviewFn: 'loadListeningReviewMode', table: 'big_mock_listening_attempts' },
+        { name: 'writing', scoreId: 'writing-score-container', actionId: 'writing-action-buttons', startFn: 'startWritingEngine', reviewFn: 'loadWritingReviewMode', table: 'big_mock_writing_attempts' }
+    ];
+
+    for (let sec of sections) {
+        const scoreEl = document.getElementById(sec.scoreId);
+        const actionEl = document.getElementById(sec.actionId);
+
+        if (scoreEl) scoreEl.innerHTML = '<div class="text-xs text-gray-400 flex items-center"><i data-lucide="loader-2" class="w-3 h-3 mr-1 animate-spin"></i> Checking...</div>';
+        if (actionEl) actionEl.innerHTML = '';
+
+        try {
+            let attempt = null;
+
+            // Сначала пробуем специфичную таблицу
+            const { data: specificData } = await window.supabaseClient
+                .from(sec.table)
+                .select('*')
+                .eq('test_id', testId)
+                .order('completed_at', { ascending: false })
+                .limit(1);
+
+            if (specificData && specificData.length > 0) {
+                attempt = specificData[0];
+            } else {
+                // Иначе проверяем общую таблицу big_mock_attempts
+                const { data: commonData } = await window.supabaseClient
+                    .from('big_mock_attempts')
+                    .select('*')
+                    .eq('test_id', testId)
+                    .eq('section_name', sec.name)
+                    .order('completed_at', { ascending: false })
+                    .limit(1);
+
+                if (commonData && commonData.length > 0) attempt = commonData[0];
+            }
+
+            if (attempt && attempt.status === 'completed') {
+                if (scoreEl) {
+                    scoreEl.innerHTML = `
+                        <div class="inline-flex items-center bg-green-50 border border-green-200 px-3 py-1.5 rounded-lg shadow-xs">
+                            <span class="text-[10px] font-bold text-green-800 uppercase tracking-wider mr-2">Est. Score</span>
+                            <span class="text-lg font-extrabold text-green-600">${attempt.total_score}</span>
+                        </div>
+                    `;
+                }
+                if (actionEl) {
+                    actionEl.innerHTML = `
+                        <button onclick="${sec.reviewFn}('${attempt.id}', ${testId}, '${title}')" class="flex-1 py-2.5 bg-white border border-gray-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition text-sm flex items-center justify-center shadow-xs">
+                            <i data-lucide="search" class="w-4 h-4 mr-1.5"></i> Review
+                        </button>
+                        <button onclick="${sec.startFn}(${testId}, '${title}')" class="flex-1 py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition text-sm flex items-center justify-center shadow-xs">
+                            Retake <i data-lucide="rotate-cw" class="w-4 h-4 ml-1.5"></i>
+                        </button>
+                    `;
+                }
+            } else {
+                if (scoreEl) scoreEl.innerHTML = '';
+                if (actionEl) {
+                    actionEl.innerHTML = `
+                        <button onclick="${sec.startFn}(${testId}, '${title}')" class="w-full text-center py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition text-sm flex items-center justify-center shadow-xs">
+                            Start Section <i data-lucide="arrow-right" class="w-4 h-4 ml-1.5"></i>
+                        </button>
+                    `;
+                }
+            }
+        } catch (e) {
+            console.error(`Error checking attempt for section ${sec.name}:`, e);
+            if (scoreEl) scoreEl.innerHTML = '';
+            if (actionEl) {
+                actionEl.innerHTML = `
+                    <button onclick="${sec.startFn}(${testId}, '${title}')" class="w-full text-center py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition text-sm flex items-center justify-center shadow-xs">
+                        Start Section <i data-lucide="arrow-right" class="w-4 h-4 ml-1.5"></i>
+                    </button>
+                `;
+            }
+        }
     }
+    lucide.createIcons();
 }
