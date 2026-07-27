@@ -26,22 +26,21 @@ window.onerror = function (message, source, lineno, colno, error) {
 // ==========================================
 // ИНИЦИАЛИЗАЦИЯ SUPABASE & ГЛОБАЛЬНЫХ ПЕРЕМЕННЫХ
 // ==========================================
-const supabaseUrl = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
-
 function getSupabaseClient() {
-    if (!window.supabaseClient) {
-        if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
-            window.supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
-        } else {
-            console.warn("Supabase SDK is not loaded yet.");
-        }
+    if (window.supabaseClient) {
+        return window.supabaseClient;
     }
-    return window.supabaseClient;
+    if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
+        // Резервная инициализация, если вдруг клиент еще не создан в auth.js
+        window.supabaseClient = window.supabase.createClient(
+            'https://gmsdixqjhlycovsgwbzq.supabase.co',
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ'
+        );
+        return window.supabaseClient;
+    }
+    console.warn("Supabase SDK is not loaded yet.");
+    return null;
 }
-
-// Запускаем безопасную проверку при старте
-getSupabaseClient();
 
 let writingTasks = [];
 let writingIndex = 0;
