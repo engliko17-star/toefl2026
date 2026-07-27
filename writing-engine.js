@@ -29,9 +29,19 @@ window.onerror = function (message, source, lineno, colno, error) {
 const supabaseUrl = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
 
-if (!window.supabaseClient) {
-    window.supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+function getSupabaseClient() {
+    if (!window.supabaseClient) {
+        if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
+            window.supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+        } else {
+            console.warn("Supabase SDK is not loaded yet.");
+        }
+    }
+    return window.supabaseClient;
 }
+
+// Запускаем безопасную проверку при старте
+getSupabaseClient();
 
 let writingTasks = [];
 let writingIndex = 0;
@@ -57,9 +67,11 @@ window.globalPrev = function() {
 // ==========================================
 async function fetchAndParseWritingTasks(testId) {
     let parsedTasks = [];
+    const client = getSupabaseClient();
+    if (!client) return parsedTasks;
 
     // Попытка 1: Загрузка из таблицы связей full_test_writing_tasks
-    const { data: plan, error: planErr } = await window.supabaseClient
+    const { data: plan, error: planErr } = await client
         .from('full_test_writing_tasks')
         .select('*')
         .eq('test_id', testId)
@@ -67,7 +79,7 @@ async function fetchAndParseWritingTasks(testId) {
 
     if (!planErr && plan && plan.length > 0) {
         for (let step of plan) {
-            const { data: taskData } = await window.supabaseClient
+            const { data: taskData } = await client
                 .from('writing_tasks')
                 .select('*')
                 .eq('id', step.task_id)
@@ -87,7 +99,7 @@ async function fetchAndParseWritingTasks(testId) {
         }
     } else {
         // Попытка 2: Резервная загрузка из общих full_test_tasks
-        const { data: fallbackPlan } = await window.supabaseClient
+        const { data: fallbackPlan } = await client
             .from('full_test_tasks')
             .select('*')
             .eq('test_id', testId)
@@ -96,7 +108,7 @@ async function fetchAndParseWritingTasks(testId) {
 
         if (fallbackPlan && fallbackPlan.length > 0) {
             for (let step of fallbackPlan) {
-                const { data: taskData } = await window.supabaseClient
+                const { data: taskData } = await client
                     .from('writing_tasks')
                     .select('*')
                     .eq('id', step.task_id)
@@ -176,7 +188,6 @@ function renderWritingEngine() {
 
     const contentDiv = document.getElementById('engine-content');
     
-    // Обновляем счетчик прогресса и состояния кнопок управления
     document.getElementById('engine-progress').innerText = `Task ${writingIndex + 1} / ${writingTasks.length}`;
     
     const prevBtn = document.getElementById('engine-prev');
@@ -198,7 +209,6 @@ function renderWritingEngine() {
     contentDiv.innerHTML = `
         <div class="flex flex-col lg:flex-row w-full h-full custom-scrollbar overflow-y-auto lg:overflow-hidden bg-[#f8f9fa]">
             
-            <!-- Левая панель: Стимул / Задание -->
             <section class="w-full lg:w-1/2 p-6 lg:p-8 border-b lg:border-b-0 lg:border-r border-slate-200 overflow-y-auto custom-scrollbar bg-white flex flex-col">
                 <div class="flex items-center space-x-2 mb-4">
                     <span class="px-3 py-1 bg-purple-50 text-purple-700 border border-purple-100 rounded-lg text-[11px] font-bold uppercase tracking-wider">
@@ -228,7 +238,6 @@ function renderWritingEngine() {
                 </div>
             </section>
 
-            <!-- Правая панель: Редактор эссе -->
             <section class="w-full lg:w-1/2 p-6 lg:p-8 bg-[#f8f9fa] flex flex-col justify-between h-full">
                 <div class="flex-1 flex flex-col bg-white border border-slate-200 rounded-3xl p-6 shadow-xs relative">
                     <div class="flex justify-between items-center mb-3 pb-3 border-b border-slate-100">
@@ -260,7 +269,7 @@ function renderWritingEngine() {
 }
 
 // ==========================================
-// 4. ОБРАБОТКА ВВОДА И ВПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+// 4. ОБРАБОТКА ВВОДА И ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 // ==========================================
 function countWords(str) {
     if (!str) return 0;
@@ -330,6 +339,7 @@ function startWritingTimer() {
 // ==========================================
 async function saveWritingAttemptAndFinish() {
     clearInterval(writingTimerInterval);
+    const client = getSupabaseClient();
 
     const contentDiv = document.getElementById('engine-content');
     contentDiv.innerHTML = `
@@ -338,7 +348,7 @@ async function saveWritingAttemptAndFinish() {
             <p class="font-bold text-slate-700 text-lg">Saving writing responses...</p>
         </div>
     `;
-    lucide.createIcons();
+    if (typeof lucide !== 'undefined') lucide.createIcons();
 
     let totalWords = 0;
     writingTasks.forEach(task => {
@@ -347,63 +357,61 @@ async function saveWritingAttemptAndFinish() {
 
     let estimatedScore = totalWords > 200 ? "5.0" : totalWords > 100 ? "4.0" : "3.0";
 
-    try {
-        let attemptId = null;
+    if (client) {
+        try {
+            let attemptId = null;
 
-        // 1. Сохраняем попытку в базу
-        const { data: attempt, error: attErr } = await window.supabaseClient
-            .from('big_mock_writing_attempts')
-            .insert([{
-                test_id: currentActiveTestId,
-                total_score: parseFloat(estimatedScore),
-                status: 'completed',
-                completed_at: new Date().toISOString()
-            }])
-            .select()
-            .single();
-
-        if (!attErr && attempt) {
-            attemptId = attempt.id;
-        } else {
-            // Резервный вариант сохранение в общую таблицу big_mock_attempts
-            const { data: fallbackAttempt } = await window.supabaseClient
-                .from('big_mock_attempts')
+            const { data: attempt, error: attErr } = await client
+                .from('big_mock_writing_attempts')
                 .insert([{
                     test_id: currentActiveTestId,
-                    section_name: 'writing',
                     total_score: parseFloat(estimatedScore),
                     status: 'completed',
                     completed_at: new Date().toISOString()
                 }])
                 .select()
                 .single();
-            if (fallbackAttempt) attemptId = fallbackAttempt.id;
-        }
 
-        // 2. Сохраняем индивидуальные тексты ответов
-        if (attemptId) {
-            const answersToSave = writingTasks.map(task => ({
-                attempt_id: attemptId,
-                task_id: task.taskId,
-                task_type: task.type,
-                essay_text: writingUserAnswers[task.taskId] || '',
-                word_count: countWords(writingUserAnswers[task.taskId] || '')
-            }));
-
-            const { error: ansErr } = await window.supabaseClient.from('big_mock_writing_answers').insert(answersToSave);
-            if (ansErr) {
-                await window.supabaseClient.from('big_mock_answers').insert(answersToSave.map(a => ({
-                    attempt_id: a.attempt_id,
-                    task_id: a.task_id,
-                    task_type: a.task_type,
-                    answer_text: a.essay_text,
-                    answer_json: { word_count: a.word_count }
-                })));
+            if (!attErr && attempt) {
+                attemptId = attempt.id;
+            } else {
+                const { data: fallbackAttempt } = await client
+                    .from('big_mock_attempts')
+                    .insert([{
+                        test_id: currentActiveTestId,
+                        section_name: 'writing',
+                        total_score: parseFloat(estimatedScore),
+                        status: 'completed',
+                        completed_at: new Date().toISOString()
+                    }])
+                    .select()
+                    .single();
+                if (fallbackAttempt) attemptId = fallbackAttempt.id;
             }
-        }
 
-    } catch (e) {
-        console.error("Error saving Writing attempt:", e);
+            if (attemptId) {
+                const answersToSave = writingTasks.map(task => ({
+                    attempt_id: attemptId,
+                    task_id: task.taskId,
+                    task_type: task.type,
+                    essay_text: writingUserAnswers[task.taskId] || '',
+                    word_count: countWords(writingUserAnswers[task.taskId] || '')
+                }));
+
+                const { error: ansErr } = await client.from('big_mock_writing_answers').insert(answersToSave);
+                if (ansErr) {
+                    await client.from('big_mock_answers').insert(answersToSave.map(a => ({
+                        attempt_id: a.attempt_id,
+                        task_id: a.task_id,
+                        task_type: a.task_type,
+                        answer_text: a.essay_text,
+                        answer_json: { word_count: a.word_count }
+                    })));
+                }
+            }
+        } catch (e) {
+            console.error("Error saving Writing attempt:", e);
+        }
     }
 
     renderWritingReviewUI(estimatedScore, totalWords);
@@ -414,6 +422,7 @@ async function saveWritingAttemptAndFinish() {
 // ==========================================
 async function loadWritingReviewMode(attemptId, testId, testTitle) {
     window.engineType = 'writing';
+    const client = getSupabaseClient();
 
     const mainInterface = document.getElementById('main-interface');
     if (mainInterface) mainInterface.classList.add('hidden');
@@ -422,18 +431,20 @@ async function loadWritingReviewMode(attemptId, testId, testTitle) {
     resultsView.classList.remove('hidden');
     resultsView.className = 'fixed inset-0 z-50 bg-[#f8f9fa] flex flex-col w-screen h-screen overflow-hidden';
     resultsView.innerHTML = `<div class="m-auto flex flex-col items-center justify-center text-slate-500"><i data-lucide="loader-2" class="w-10 h-10 animate-spin mb-4 text-purple-600"></i><p class="font-bold">Reconstructing Writing attempt...</p></div>`;
-    lucide.createIcons();
+    if (typeof lucide !== 'undefined') lucide.createIcons();
 
     try {
         currentActiveTestId = testId;
         writingTasks = await fetchAndParseWritingTasks(testId);
 
         let savedAnswers = [];
-        const { data: ans1 } = await window.supabaseClient.from('big_mock_writing_answers').select('*').eq('attempt_id', attemptId);
-        if (ans1) savedAnswers = ans1;
-        else {
-            const { data: ans2 } = await window.supabaseClient.from('big_mock_answers').select('*').eq('attempt_id', attemptId);
-            if (ans2) savedAnswers = ans2;
+        if (client) {
+            const { data: ans1 } = await client.from('big_mock_writing_answers').select('*').eq('attempt_id', attemptId);
+            if (ans1) savedAnswers = ans1;
+            else {
+                const { data: ans2 } = await client.from('big_mock_answers').select('*').eq('attempt_id', attemptId);
+                if (ans2) savedAnswers = ans2;
+            }
         }
 
         let totalWords = 0;
@@ -532,7 +543,7 @@ function renderWritingReviewUI(score, totalWords) {
             </div>
         </div>
     `;
-    lucide.createIcons();
+    if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 // ==========================================
@@ -540,6 +551,8 @@ function renderWritingReviewUI(score, totalWords) {
 // ==========================================
 async function openTestView(testId, title, emoji) {
     currentActiveTestId = testId;
+    const client = getSupabaseClient(); // Используем безопасный клиент
+
     document.getElementById('view-tests-grid').classList.add('hidden');
     document.getElementById('view-test-detail').classList.remove('hidden');
 
@@ -562,27 +575,29 @@ async function openTestView(testId, title, emoji) {
         try {
             let attempt = null;
 
-            // Сначала пробуем специфичную таблицу
-            const { data: specificData } = await window.supabaseClient
-                .from(sec.table)
-                .select('*')
-                .eq('test_id', testId)
-                .order('completed_at', { ascending: false })
-                .limit(1);
-
-            if (specificData && specificData.length > 0) {
-                attempt = specificData[0];
-            } else {
-                // Иначе проверяем общую таблицу big_mock_attempts
-                const { data: commonData } = await window.supabaseClient
-                    .from('big_mock_attempts')
+            if (client) {
+                // Сначала пробуем специфичную таблицу
+                const { data: specificData } = await client
+                    .from(sec.table)
                     .select('*')
                     .eq('test_id', testId)
-                    .eq('section_name', sec.name)
                     .order('completed_at', { ascending: false })
                     .limit(1);
 
-                if (commonData && commonData.length > 0) attempt = commonData[0];
+                if (specificData && specificData.length > 0) {
+                    attempt = specificData[0];
+                } else {
+                    // Иначе проверяем общую таблицу big_mock_attempts
+                    const { data: commonData } = await client
+                        .from('big_mock_attempts')
+                        .select('*')
+                        .eq('test_id', testId)
+                        .eq('section_name', sec.name)
+                        .order('completed_at', { ascending: false })
+                        .limit(1);
+
+                    if (commonData && commonData.length > 0) attempt = commonData[0];
+                }
             }
 
             if (attempt && attempt.status === 'completed') {
@@ -626,5 +641,16 @@ async function openTestView(testId, title, emoji) {
             }
         }
     }
-    lucide.createIcons();
+    if (typeof lucide !== 'undefined') lucide.createIcons();
 }
+
+// ==========================================
+// 8. ЯВНЫЙ ЭКСПОРТ В ГЛОБАЛЬНУЮ ОБЛАСТЬ WINDOW
+// ==========================================
+window.startWritingEngine = startWritingEngine;
+window.loadWritingReviewMode = loadWritingReviewMode;
+window.handleEssayInput = handleEssayInput;
+window.nextWritingTask = nextWritingTask;
+window.prevWritingTask = prevWritingTask;
+window.fetchAndParseWritingTasks = fetchAndParseWritingTasks;
+window.openTestView = openTestView;
