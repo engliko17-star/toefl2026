@@ -40,11 +40,9 @@
         </div>
 
         <div class="w-full max-w-md mt-6 mb-auto aspect-video sm:aspect-square bg-black border border-gray-200 rounded-[2rem] overflow-hidden shadow-lg flex items-center justify-center relative group cursor-pointer" id="mediaContainer">
-            <!-- Элементы созданы заранее, а не через innerHTML -->
-            <video id="taskMedia" class="w-full h-full object-cover hidden" playsinline></video>
+            <video id="taskMedia" class="w-full h-full object-cover hidden" playsinline preload="auto"></video>
             <img id="taskImage" class="w-full h-full object-cover hidden" src="" alt="Task Image">
             
-            <!-- Оверлей для iOS Safari (блокировка автоплея) -->
             <div id="playOverlay" class="absolute inset-0 bg-black/70 flex flex-col items-center justify-center text-white hidden backdrop-blur-sm transition">
                 <i data-lucide="play-circle" class="w-16 h-16 mb-3 text-white/90 group-hover:scale-110 transition-transform"></i>
                 <span class="font-bold text-sm tracking-wide">Tap to play media</span>
@@ -82,7 +80,7 @@
         </div>
     </div>
 
-    <audio id="taskAudio" class="hidden"></audio>
+    <audio id="taskAudio" class="hidden" preload="auto"></audio>
 
     <script>
         lucide.createIcons();
@@ -96,7 +94,7 @@
         let timerInterval = null;
         let taskType = '';
         let currentAttemptId = null;
-        let audioCtx = null; // Для генерации TOEFL бипа
+        let audioCtx = null;
 
         async function init() {
             try {
@@ -111,7 +109,6 @@
 
                 if (!testId) throw new Error("No test ID provided in the URL.");
 
-                // Создаем попытку (attempt) в базе данных
                 const { data: attemptData, error: attemptError } = await _supabase
                     .from('speaking_attempts')
                     .insert([{ user_id: currentUser.id, test_id: testId }])
@@ -122,7 +119,7 @@
                     console.error("Ошибка создания попытки:", attemptError);
                     alert("Ошибка базы данных (speaking_attempts): " + attemptError.message);
                 } else if (!attemptData) {
-                    alert("Предупреждение: Попытка создалась, но база не вернула её данные. Проверь, создана ли политика SELECT для таблицы speaking_attempts!");
+                    alert("Предупреждение: Попытка создалась, но база не вернула её данные.");
                 } else {
                     currentAttemptId = attemptData.id;
                     console.log("Текущий ID попытки успешно получен:", currentAttemptId);
@@ -154,7 +151,6 @@
         }
 
         document.getElementById('startBtn').onclick = async () => {
-            // 1. Проверка HTTPS соединения
             if (!window.isSecureContext && location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
                 alert(`ОШИБКА БЕЗОПАСНОСТИ:
 Браузеры блокируют микрофон на сайтах без HTTPS!
@@ -163,13 +159,8 @@
                 return;
             }
 
-            // "Разогрев" медиа-элементов для обхода Autoplay Policy (iOS Safari)
+            // Инициализируем Web Audio API при клике пользователя
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const audioEl = document.getElementById('taskAudio');
-            const videoEl = document.getElementById('taskMedia');
-            
-            audioEl.play().catch(()=>{}); audioEl.pause();
-            videoEl.play().catch(()=>{}); videoEl.pause();
 
             try {
                 mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -204,7 +195,6 @@
             }
         };
 
-        // Генерация громкого классического звука TOEFL (beep) перед записью
         function playBeep() {
             return new Promise((resolve) => {
                 if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
@@ -213,9 +203,8 @@
                 const gainNode = audioCtx.createGain();
                 
                 oscillator.type = 'sine';
-                oscillator.frequency.setValueAtTime(800, audioCtx.currentTime); // Чёткий сигнал 800 Гц
+                oscillator.frequency.setValueAtTime(800, audioCtx.currentTime); 
                 
-                // Громкость поднята с 0.1 до 0.8 (80% громкости)
                 gainNode.gain.setValueAtTime(0.8, audioCtx.currentTime); 
                 gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.4);
                 
@@ -225,7 +214,6 @@
                 oscillator.start();
                 oscillator.stop(audioCtx.currentTime + 0.4);
                 
-                // Ждем пока звук полностью проиграется перед стартом
                 setTimeout(resolve, 400);
             });
         }
@@ -243,60 +231,90 @@
             const overlay = document.getElementById('playOverlay');
             const mediaContainer = document.getElementById('mediaContainer');
             
-            // Сброс видимости
             video.classList.add('hidden');
             img.classList.add('hidden');
             overlay.classList.add('hidden');
             mediaContainer.onclick = null;
             
             if (taskType === 'interview') {
+                if (!q.media_url) {
+                    alert("Ошибка: В базе данных не заполнена ссылка на видео (media_url) для этого вопроса!");
+                    return;
+                }
+
                 video.src = q.media_url;
+                video.load();
                 video.classList.remove('hidden');
                 
                 setStatus('Listening to Question...', 'bg-sky-100 text-sky-700 border-sky-200');
                 
+                video.onerror = (e) => {
+                    console.error("Video load error:", e);
+                    alert("Ошибка загрузки видеофайла по ссылке:\n" + q.media_url + "\n\nПроверьте доступность файла в Supabase Storage.");
+                };
+
                 video.onended = async () => {
                     setStatus('Get Ready...', 'bg-amber-100 text-amber-700 border-amber-200');
                     await playBeep();
                     startRecording(q.time_limit || 45);
                 };
                 
-                video.play().catch(e => {
-                    console.error("Video play error:", e);
-                    setStatus('Waiting for you to start', 'bg-amber-100 text-amber-700');
-                    overlay.classList.remove('hidden');
-                    
-                    mediaContainer.onclick = () => {
-                        overlay.classList.add('hidden');
-                        setStatus('Listening to Question...', 'bg-sky-100 text-sky-700 border-sky-200');
-                        video.play();
-                    };
-                });
+                const playPromise = video.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(e => {
+                        console.error("Video play error:", e);
+                        setStatus('Waiting for you to start', 'bg-amber-100 text-amber-700');
+                        overlay.classList.remove('hidden');
+                        
+                        mediaContainer.onclick = () => {
+                            overlay.classList.add('hidden');
+                            setStatus('Listening to Question...', 'bg-sky-100 text-sky-700 border-sky-200');
+                            video.play().catch(err => alert("Не удалось проиграть видео: " + err.message));
+                        };
+                    });
+                }
 
             } else {
-                img.src = q.media_url;
-                img.classList.remove('hidden');
-                audio.src = q.audio_prompt_url;
+                if (q.media_url) {
+                    img.src = q.media_url;
+                    img.classList.remove('hidden');
+                }
                 
+                if (q.audio_prompt_url) {
+                    audio.src = q.audio_prompt_url;
+                    audio.load();
+                } else {
+                    alert("Ошибка: Отсутствует ссылка на аудиофайле (audio_prompt_url) для этого задания.");
+                    return;
+                }
+
                 setStatus('Listening to Phrase...', 'bg-sky-100 text-sky-700 border-sky-200');
                 
+                audio.onerror = (e) => {
+                    console.error("Audio load error:", e);
+                    alert("Ошибка загрузки аудио по ссылке:\n" + q.audio_prompt_url);
+                };
+
                 audio.onended = async () => {
                     setStatus('Get Ready...', 'bg-amber-100 text-amber-700 border-amber-200');
                     await playBeep();
                     startRecording(q.time_limit || 8);
                 };
 
-                audio.play().catch(e => {
-                    console.error("Audio play error:", e);
-                    setStatus('Waiting for you to start', 'bg-amber-100 text-amber-700');
-                    overlay.classList.remove('hidden');
-                    
-                    mediaContainer.onclick = () => {
-                        overlay.classList.add('hidden');
-                        setStatus('Listening to Phrase...', 'bg-sky-100 text-sky-700 border-sky-200');
-                        audio.play();
-                    };
-                });
+                const playPromise = audio.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(e => {
+                        console.error("Audio play error:", e);
+                        setStatus('Waiting for you to start', 'bg-amber-100 text-amber-700');
+                        overlay.classList.remove('hidden');
+                        
+                        mediaContainer.onclick = () => {
+                            overlay.classList.add('hidden');
+                            setStatus('Listening to Phrase...', 'bg-sky-100 text-sky-700 border-sky-200');
+                            audio.play().catch(err => alert("Не удалось проиграть аудио: " + err.message));
+                        };
+                    });
+                }
             }
         }
 
@@ -362,7 +380,6 @@
                         const blob = new Blob(audioChunks, { type: 'audio/webm' });
                         const fileName = `${currentUser.id}/${taskType}_q${questions[currentIndex].id}_${Date.now()}.webm`;
                         
-                        // Сохраняем в Storage
                         const { error: uploadError } = await _supabase.storage
                             .from('student_recordings')
                             .upload(fileName, blob);
@@ -372,9 +389,8 @@
                             alert("Ошибка загрузки файла в Storage: " + uploadError.message);
                         } else {
                             if (!currentAttemptId) {
-                                alert("Ошибка: Невозможно сохранить ответ, так как ID попытки пустой (currentAttemptId = null).");
+                                alert("Ошибка: Невозможно сохранить ответ, так как ID попытки пустой.");
                             } else {
-                                // Связываем файл с таблицей ответов
                                 const { error: dbError } = await _supabase
                                     .from('speaking_responses')
                                     .insert([{
@@ -386,8 +402,6 @@
                                 if (dbError) {
                                     console.error("Database save error:", dbError);
                                     alert("Ошибка записи в speaking_responses: " + dbError.message);
-                                } else {
-                                    console.log("Ответ успешно записан в таблицу!");
                                 }
                             }
                         }
@@ -422,8 +436,8 @@
             }
         }
 
-        // Запуск инициализации после загрузки DOM
         document.addEventListener('DOMContentLoaded', init);
     </script>
 </body>
 </html>
+
