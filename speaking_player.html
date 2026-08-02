@@ -154,6 +154,15 @@
         }
 
         document.getElementById('startBtn').onclick = async () => {
+            // 1. Проверка HTTPS соединения
+            if (!window.isSecureContext && location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+                alert(`ОШИБКА БЕЗОПАСНОСТИ:
+Браузеры блокируют микрофон на сайтах без HTTPS!
+
+Пожалуйста, откройте сайт по безопасному адресу https:// (не http://).`);
+                return;
+            }
+
             // "Разогрев" медиа-элементов для обхода Autoplay Policy (iOS Safari)
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             const audioEl = document.getElementById('taskAudio');
@@ -171,17 +180,31 @@
                 
                 loadQuestion(0);
             } catch (err) {
-                // Использованы обратные кавычки для предотвращения синтаксической ошибки многострочного текста
-                alert(`Не удалось получить доступ к микрофону!
+                console.error("Media access error:", err);
+                
+                let details = "";
+                if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                    details = `Доступ к микрофону заблокирован браузером.
 
-1. Убедитесь, что ссылка начинается с https://
-2. Откройте сайт в обычном браузере (Safari, Chrome), а не внутри мессенджера.
-3. Проверьте разрешения микрофона в настройках телефона.`);
-                console.error(err);
+Как исправить:
+1. Нажмите на иконку "Замок" или "Настройки сайта" слева в адресной строке.
+2. Переключите доступ к Микрофону в состояние "Разрешить".
+3. Перезагрузите страницу.`;
+                } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+                    details = "Микрофон не обнаружен на вашем устройстве.";
+                } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+                    details = "Микрофон занят другим приложением (запись голосового, звонок в мессенджере). Закройте фоновые приложения.";
+                } else if (err.name === 'SecurityError') {
+                    details = "Доступ заблокирован политикой безопасности браузера (требуется SSL-сертификат HTTPS).";
+                } else {
+                    details = `Код ошибки браузера: ${err.name}\n${err.message}`;
+                }
+
+                alert(`Не удалось включить микрофон!\n\n${details}`);
             }
         };
 
-        // Генерация классического звука TOEFL (beep) перед записью
+        // Генерация громкого классического звука TOEFL (beep) перед записью
         function playBeep() {
             return new Promise((resolve) => {
                 if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
@@ -190,10 +213,11 @@
                 const gainNode = audioCtx.createGain();
                 
                 oscillator.type = 'sine';
-                oscillator.frequency.setValueAtTime(800, audioCtx.currentTime); 
+                oscillator.frequency.setValueAtTime(800, audioCtx.currentTime); // Чёткий сигнал 800 Гц
                 
-                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); // 10% громкость
-                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+                // Громкость поднята с 0.1 до 0.8 (80% громкости)
+                gainNode.gain.setValueAtTime(0.8, audioCtx.currentTime); 
+                gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.4);
                 
                 oscillator.connect(gainNode);
                 gainNode.connect(audioCtx.destination);
@@ -201,7 +225,7 @@
                 oscillator.start();
                 oscillator.stop(audioCtx.currentTime + 0.4);
                 
-                // Ждем пока звук проиграется перед стартом
+                // Ждем пока звук полностью проиграется перед стартом
                 setTimeout(resolve, 400);
             });
         }
