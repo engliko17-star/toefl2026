@@ -39,8 +39,17 @@
             <div class="text-sm font-semibold text-gray-400 w-16 text-right"><span id="currentTaskNum">1</span> / <span id="totalTasks">...</span></div>
         </div>
 
-        <div class="w-full max-w-md mt-6 mb-auto aspect-video sm:aspect-square bg-black border border-gray-200 rounded-[2rem] overflow-hidden shadow-lg flex items-center justify-center relative" id="mediaContainer">
+        <div class="w-full max-w-md mt-6 mb-auto aspect-video sm:aspect-square bg-black border border-gray-200 rounded-[2rem] overflow-hidden shadow-lg flex items-center justify-center relative group cursor-pointer" id="mediaContainer">
+            <!-- Элементы созданы заранее, а не через innerHTML -->
+            <video id="taskMedia" class="w-full h-full object-cover hidden" playsinline></video>
+            <img id="taskImage" class="w-full h-full object-cover hidden" src="" alt="Task Image">
+            
+            <!-- Оверлей для iOS Safari (блокировка автоплея) -->
+            <div id="playOverlay" class="absolute inset-0 bg-black/70 flex flex-col items-center justify-center text-white hidden backdrop-blur-sm transition">
+                <i data-lucide="play-circle" class="w-16 h-16 mb-3 text-white/90 group-hover:scale-110 transition-transform"></i>
+                <span class="font-bold text-sm tracking-wide">Tap to play media</span>
             </div>
+        </div>
 
         <div class="w-full max-w-md bg-white border border-gray-200 rounded-[2rem] shadow-md flex flex-col items-center p-6 shrink-0 mt-8 mb-6">
             <div id="statusBanner" class="text-[10px] font-bold uppercase mb-4 tracking-widest text-slate-400 px-4 py-1.5 rounded-full bg-slate-50 border border-slate-100 transition-colors">Ready</div>
@@ -87,6 +96,7 @@
         let timerInterval = null;
         let taskType = '';
         let currentAttemptId = null;
+        let audioCtx = null; // Для генерации TOEFL бипа
 
         async function init() {
             try {
@@ -144,6 +154,14 @@
         }
 
         document.getElementById('startBtn').onclick = async () => {
+            // "Разогрев" медиа-элементов для обхода Autoplay Policy (iOS Safari)
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const audioEl = document.getElementById('taskAudio');
+            const videoEl = document.getElementById('taskMedia');
+            
+            audioEl.play().catch(()=>{}); audioEl.pause();
+            videoEl.play().catch(()=>{}); videoEl.pause();
+
             try {
                 mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 
@@ -153,10 +171,40 @@
                 
                 loadQuestion(0);
             } catch (err) {
-                alert("We need microphone access to record your answers. Please allow it in your browser settings.");
+                // Понятный текст ошибки при проблемах с микрофоном
+                alert("Не удалось получить доступ к микрофону!
+
+1. Убедитесь, что ссылка начинается с https://
+2. Откройте сайт в обычном браузере (Safari, Chrome), а не внутри мессенджера.
+3. Проверьте разрешения микрофона в настройках телефона.");
                 console.error(err);
             }
         };
+
+        // Генерация классического звука TOEFL (beep) перед записью
+        function playBeep() {
+            return new Promise((resolve) => {
+                if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+                
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(800, audioCtx.currentTime); 
+                
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); // 10% громкость
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.4);
+                
+                // Ждем пока звук проиграется перед стартом
+                setTimeout(resolve, 400);
+            });
+        }
 
         function loadQuestion(i) {
             currentIndex = i;
@@ -165,39 +213,65 @@
             document.getElementById('currentTaskNum').innerText = i + 1;
             resetUI();
 
+            const video = document.getElementById('taskMedia');
+            const img = document.getElementById('taskImage');
+            const audio = document.getElementById('taskAudio');
+            const overlay = document.getElementById('playOverlay');
             const mediaContainer = document.getElementById('mediaContainer');
             
+            // Сброс видимости
+            video.classList.add('hidden');
+            img.classList.add('hidden');
+            overlay.classList.add('hidden');
+            mediaContainer.onclick = null;
+            
             if (taskType === 'interview') {
-                mediaContainer.innerHTML = `<video id="taskMedia" src="${q.media_url}" class="w-full h-full object-cover" playsinline></video>`;
-                const video = document.getElementById('taskMedia');
+                video.src = q.media_url;
+                video.classList.remove('hidden');
                 
                 setStatus('Listening to Question...', 'bg-sky-100 text-sky-700 border-sky-200');
                 
-                video.onended = () => {
+                video.onended = async () => {
+                    setStatus('Get Ready...', 'bg-amber-100 text-amber-700 border-amber-200');
+                    await playBeep();
                     startRecording(q.time_limit || 45);
                 };
                 
                 video.play().catch(e => {
                     console.error("Video play error:", e);
-                    setStatus('Click video to play', 'bg-rose-100 text-rose-700');
-                    video.onclick = () => video.play();
+                    setStatus('Waiting for you to start', 'bg-amber-100 text-amber-700');
+                    overlay.classList.remove('hidden');
+                    
+                    mediaContainer.onclick = () => {
+                        overlay.classList.add('hidden');
+                        setStatus('Listening to Question...', 'bg-sky-100 text-sky-700 border-sky-200');
+                        video.play();
+                    };
                 });
 
             } else {
-                mediaContainer.innerHTML = `<img src="${q.media_url}" class="w-full h-full object-cover">`;
-                const audio = document.getElementById('taskAudio');
+                img.src = q.media_url;
+                img.classList.remove('hidden');
                 audio.src = q.audio_prompt_url;
                 
                 setStatus('Listening to Phrase...', 'bg-sky-100 text-sky-700 border-sky-200');
                 
-                audio.onended = () => {
+                audio.onended = async () => {
+                    setStatus('Get Ready...', 'bg-amber-100 text-amber-700 border-amber-200');
+                    await playBeep();
                     startRecording(q.time_limit || 8);
                 };
 
                 audio.play().catch(e => {
                     console.error("Audio play error:", e);
-                    setStatus('Click to play audio', 'bg-rose-100 text-rose-700');
-                    mediaContainer.onclick = () => audio.play();
+                    setStatus('Waiting for you to start', 'bg-amber-100 text-amber-700');
+                    overlay.classList.remove('hidden');
+                    
+                    mediaContainer.onclick = () => {
+                        overlay.classList.add('hidden');
+                        setStatus('Listening to Phrase...', 'bg-sky-100 text-sky-700 border-sky-200');
+                        audio.play();
+                    };
                 });
             }
         }
@@ -328,3 +402,4 @@
     </script>
 </body>
 </html>
+
