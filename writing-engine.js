@@ -47,8 +47,6 @@ let writingIndex = 0;
 let writingTimerInterval = null;
 let writingTimeRemaining = 29 * 60; // 29 минут по умолчанию для Writing
 let writingUserAnswers = {}; // { taskId: "text essay" }
-let currentActiveTestId = null;
-let currentActiveTestTitle = 'Writing Section';
 
 // Помогаем globalNext / globalPrev из tests.html правильно направлять вызовы
 window.globalNext = function() {
@@ -136,8 +134,8 @@ async function fetchAndParseWritingTasks(testId) {
 // ==========================================
 async function startWritingEngine(testId, testTitle) {
     window.engineType = 'writing';
-    currentActiveTestId = testId;
-    currentActiveTestTitle = testTitle || 'Writing Section';
+    window.currentActiveTestId = testId;
+    window.currentActiveTestTitle = testTitle || 'Writing Section';
     writingUserAnswers = {};
     writingIndex = 0;
 
@@ -164,11 +162,11 @@ async function startWritingEngine(testId, testTitle) {
 
         if (writingTasks.length === 0) {
             alert("This Writing section has no tasks configured in Supabase!");
-            exitExamEngine();
+            if (typeof exitExamEngine === 'function') exitExamEngine();
             return;
         }
 
-        document.getElementById('engine-title').innerText = `Writing Section — ${currentActiveTestTitle}`;
+        document.getElementById('engine-title').innerText = `Writing Section — ${window.currentActiveTestTitle}`;
         writingTimeRemaining = 29 * 60;
         startWritingTimer();
         renderWritingEngine();
@@ -176,7 +174,7 @@ async function startWritingEngine(testId, testTitle) {
     } catch (err) {
         console.error("Writing Engine crash:", err);
         alert("Error loading Writing tasks structure.");
-        exitExamEngine();
+        if (typeof exitExamEngine === 'function') exitExamEngine();
     }
 }
 
@@ -365,7 +363,7 @@ async function saveWritingAttemptAndFinish() {
             const { data: attempt, error: attErr } = await client
                 .from('big_mock_writing_attempts')
                 .insert([{
-                    test_id: currentActiveTestId,
+                    test_id: window.currentActiveTestId,
                     total_score: parseFloat(estimatedScore),
                     status: 'completed',
                     completed_at: new Date().toISOString()
@@ -379,7 +377,7 @@ async function saveWritingAttemptAndFinish() {
                 const { data: fallbackAttempt } = await client
                     .from('big_mock_attempts')
                     .insert([{
-                        test_id: currentActiveTestId,
+                        test_id: window.currentActiveTestId,
                         section_name: 'writing',
                         total_score: parseFloat(estimatedScore),
                         status: 'completed',
@@ -435,7 +433,7 @@ async function loadWritingReviewMode(attemptId, testId, testTitle) {
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
     try {
-        currentActiveTestId = testId;
+        window.currentActiveTestId = testId;
         writingTasks = await fetchAndParseWritingTasks(testId);
 
         let savedAnswers = [];
@@ -461,7 +459,7 @@ async function loadWritingReviewMode(attemptId, testId, testTitle) {
     } catch (err) {
         console.error("Error loading writing review:", err);
         alert("Could not load review mode.");
-        exitExamEngine();
+        if (typeof exitExamEngine === 'function') exitExamEngine();
     }
 }
 
@@ -531,10 +529,10 @@ function renderWritingReviewUI(score, totalWords) {
                     </div>
 
                     <div class="flex justify-center space-x-3">
-                        <button onclick="startWritingEngine('${currentActiveTestId}', document.getElementById('dynamic-test-title').innerText)" class="px-6 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-purple-600 transition shadow-md text-sm flex items-center cursor-pointer">
+                        <button onclick="startWritingEngine('${window.currentActiveTestId}', document.getElementById('dynamic-test-title').innerText)" class="px-6 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-purple-600 transition shadow-md text-sm flex items-center cursor-pointer">
                             <i data-lucide="rotate-ccw" class="w-4 h-4 mr-2"></i> Retake Writing
                         </button>
-                        <button onclick="exitExamEngine()" class="px-6 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition shadow-sm text-sm cursor-pointer">
+                        <button onclick="typeof exitExamEngine === 'function' ? exitExamEngine() : console.log('Exit requested')" class="px-6 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition shadow-sm text-sm cursor-pointer">
                             Back to Dashboard
                         </button>
                     </div>
@@ -551,7 +549,7 @@ function renderWritingReviewUI(score, totalWords) {
 // 7. УНИВЕРСАЛЬНЫЙ OPEN TEST VIEW DEDICATED FOR TESTS.HTML
 // ==========================================
 async function openTestView(testId, title, emoji) {
-    currentActiveTestId = testId;
+    window.currentActiveTestId = testId;
     const client = getSupabaseClient(); // Используем безопасный клиент
 
     document.getElementById('view-tests-grid').classList.add('hidden');
