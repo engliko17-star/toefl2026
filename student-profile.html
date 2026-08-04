@@ -94,7 +94,7 @@
         </div>
 
         <!-- НАВИГАЦИЯ ПО ВКЛАДКАМ -->
-        <div class="border-b border-gray-200 mb-8 flex space-x-8">
+        <div class="border-b border-gray-200 mb-8 flex space-x-8 overflow-x-auto whitespace-nowrap">
             <button onclick="switchTab('crm')" id="btn-crm" class="tab-btn active pb-4 text-sm font-bold text-gray-400 border-b-2 border-transparent hover:text-slate-800 transition">
                 CRM и План
             </button>
@@ -103,6 +103,9 @@
             </button>
             <button onclick="switchTab('stats')" id="btn-stats" class="tab-btn pb-4 text-sm font-bold text-gray-400 border-b-2 border-transparent hover:text-slate-800 transition">
                 Статистика и Прогресс
+            </button>
+            <button onclick="switchTab('writing')" id="btn-writing" class="tab-btn pb-4 text-sm font-bold text-gray-400 border-b-2 border-transparent hover:text-slate-800 transition">
+                Writing / Эссе
             </button>
         </div>
 
@@ -306,6 +309,63 @@
             </div>
         </div>
 
+        <!-- ========================================== -->
+        <!-- ВКЛАДКА 4: WRITING (ПРОВЕРКА ЭССЕ)         -->
+        <!-- ========================================== -->
+        <div id="tab-writing" class="tab-content">
+            <div class="bg-white p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm">
+                <div class="flex items-center justify-between mb-6">
+                    <div class="flex items-center space-x-3">
+                        <div class="p-2.5 bg-rose-50 text-rose-600 rounded-xl"><i data-lucide="pen-tool" class="w-5 h-5"></i></div>
+                        <h2 class="text-lg font-bold text-slate-900">Проверка эссе (Writing)</h2>
+                    </div>
+                </div>
+                <p class="text-xs text-gray-400 mb-6">Здесь подтягиваются все работы ученика из базы <b>student_responses</b>. Выставляйте оценки, пишите corrections и explanations.</p>
+                
+                <!-- Список всех эссе -->
+                <div id="writingList" class="space-y-4">
+                    <div class="text-center py-10 text-gray-400 text-sm">Загрузка эссе...</div>
+                </div>
+
+                <!-- Редактор эссе (по умолчанию скрыт) -->
+                <div id="writingEditor" class="hidden flex-col gap-4 border border-indigo-100 bg-indigo-50/20 rounded-2xl p-6 shadow-sm">
+                    <div class="flex justify-between items-center pb-4 border-b border-indigo-100">
+                        <h3 class="text-sm font-bold text-indigo-900" id="editorTitle">Проверка работы</h3>
+                        <button onclick="closeWritingEditor()" class="text-gray-400 hover:text-gray-600 transition p-1 bg-white rounded-md shadow-xs"><i data-lucide="x" class="w-4 h-4"></i></button>
+                    </div>
+                    
+                    <div class="space-y-5">
+                        <div>
+                            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Текст студента</label>
+                            <div id="editorOriginalText" class="p-4 bg-white border border-gray-200 rounded-xl text-sm text-slate-700 whitespace-pre-wrap max-h-[300px] overflow-y-auto"></div>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Corrections (Ошибки и правки)</label>
+                                <textarea id="editorCorrections" rows="7" class="w-full border border-gray-200 rounded-xl p-3 text-xs text-slate-700 focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 outline-none transition" placeholder="Укажите грамматические и лексические ошибки..."></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Teacher Corrections (Объяснение)</label>
+                                <textarea id="editorExplanations" rows="7" class="w-full border border-gray-200 rounded-xl p-3 text-xs text-slate-700 focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 outline-none transition" placeholder="Объясните, как улучшить работу..."></textarea>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-between pt-4 border-t border-indigo-100">
+                            <div class="flex items-center space-x-3">
+                                <label class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Оценка:</label>
+                                <input type="number" step="0.5" min="1.0" max="6.0" id="editorScore" class="w-32 border border-gray-200 rounded-xl p-2 text-sm text-center font-bold focus:ring-2 focus:ring-indigo-200 outline-none text-slate-800" placeholder="От 1.0 до 6.0">
+                            </div>
+                            <button onclick="saveWritingReview()" id="saveWritingBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 shadow-sm cursor-pointer">
+                                <i data-lucide="save" class="w-4 h-4"></i>
+                                <span>Сохранить проверку</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <script>
@@ -325,6 +385,7 @@
         let currentStudentEmail = ""; 
         let studentProfile = null;
         let readingChartInstance = null;
+        let currentWritingId = null; // Для вкладки Writing
 
         window.onload = async () => {
             if (typeof requireAuth === 'function') {
@@ -354,6 +415,8 @@
 
             if (tabName === 'stats') {
                 loadReadingStats();
+            } else if (tabName === 'writing') {
+                loadWritingTasks();
             }
         }
 
@@ -765,14 +828,11 @@
 
         // --- УНИВЕРСАЛЬНЫЙ ПОИСК СТАТИСТИКИ ---
         async function fetchResultsHelper(tableName, id) {
-            // Оставляем только поиск по user_id, чтобы не провоцировать 400 Bad Request
             let { data, error } = await _supabase.from(tableName).select('*').eq('user_id', id);
-            
             if (error) {
                 console.warn(`Данных нет или ошибка в таблице ${tableName}:`, error);
                 return [];
             }
-            
             return data || [];
         }
 
@@ -814,7 +874,7 @@
                     }
                 });
 
-                // 3. Из таблицы response_results (имя таблицы исправлено)
+                // 3. Из таблицы response_results
                 const responsesData = await fetchResultsHelper('response_results', studentId);
                 responsesData.forEach(item => {
                     let percent = 0;
@@ -846,7 +906,6 @@
                 return;
             }
 
-            // Очищаем и создаем элемент холста
             container.innerHTML = `<canvas id="readingChart"></canvas>`;
             
             chartData.sort((a, b) => a.date - b.date);
@@ -901,6 +960,132 @@
                     }
                 }
             });
+        }
+
+        // === ЛОГИКА WRITING / ЭССЕ (ПОД СТРУКТУРУ STUDENT_RESPONSES) ===
+        async function loadWritingTasks() {
+            if (!studentId || typeof _supabase === 'undefined') return;
+            
+            try {
+                const { data, error } = await _supabase
+                    .from('student_responses')
+                    .select('*')
+                    .eq('user_id', studentId) 
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+                renderWritingList(data || []);
+            } catch (err) {
+                console.error("Ошибка загрузки Writing:", err);
+                document.getElementById('writingList').innerHTML = `<div class="text-rose-500 text-center py-10 text-sm font-bold">Ошибка загрузки ответов.</div>`;
+            }
+        }
+
+        function renderWritingList(tasks) {
+            const list = document.getElementById('writingList');
+            
+            // Фильтруем эссе / письменные задания, либо выводим все
+            const writingTasks = tasks.filter(t => {
+                const type = (t.task_type || '').toLowerCase();
+                return type.includes('writing') || type.includes('academic') || type.includes('email') || type.includes('essay');
+            });
+
+            // Если специфичных тасков нет, берем все ответы ученика
+            const displayTasks = writingTasks.length > 0 ? writingTasks : tasks;
+
+            if (displayTasks.length === 0) {
+                list.innerHTML = `<div class="text-center py-10 text-gray-400 text-sm bg-gray-50 rounded-2xl border border-dashed border-gray-200">Ученик еще не отправлял ответов</div>`;
+                return;
+            }
+
+            list.innerHTML = displayTasks.map(task => {
+                const date = task.created_at ? new Date(task.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute:'2-digit'}) : '—';
+                
+                // Проверяем, проверено ли задание
+                const isChecked = task.correction || task.teacher_correction;
+                
+                const statusBadge = isChecked 
+                    ? `<span class="bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-lg text-[10px] font-extrabold flex items-center space-x-1"><i data-lucide="check" class="w-3 h-3"></i><span>Проверено (${task.score || '✔'})</span></span>`
+                    : `<span class="bg-amber-100 text-amber-700 px-2.5 py-1 rounded-lg text-[10px] font-extrabold flex items-center space-x-1"><i data-lucide="clock" class="w-3 h-3"></i><span>Ожидает проверки</span></span>`;
+                
+                const taskTitle = task.task_type ? `Task: ${task.task_type}` : `Task #${task.task_id || ''}`;
+                const snippet = (task.response_content || 'Без текста').substring(0, 90) + '...';
+
+                return `
+                    <div class="border border-gray-100 bg-white rounded-2xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:shadow-md transition cursor-pointer" onclick='openWritingEditor(${JSON.stringify(task).replace(/'/g, "&#39;")})'>
+                        <div>
+                            <div class="flex items-center space-x-3 mb-1.5">
+                                <span class="font-bold text-sm text-slate-900">${taskTitle}</span>
+                                ${statusBadge}
+                            </div>
+                            <p class="text-[11px] text-gray-500 mb-1 leading-relaxed">${snippet}</p>
+                            <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">${date}</div>
+                        </div>
+                        <button class="shrink-0 text-indigo-600 hover:text-white bg-indigo-50 hover:bg-indigo-600 p-2.5 rounded-xl transition flex items-center space-x-2 text-xs font-bold cursor-pointer">
+                            <i data-lucide="edit-3" class="w-4 h-4"></i><span class="hidden sm:inline">Проверить</span>
+                        </button>
+                    </div>
+                `;
+            }).join('');
+            lucide.createIcons();
+        }
+
+        function openWritingEditor(task) {
+            currentWritingId = task.id;
+            document.getElementById('editorTitle').innerText = `Проверка: ${task.task_type ? task.task_type : 'Task #' + task.task_id}`;
+            
+            // Подставляем response_content
+            document.getElementById('editorOriginalText').innerText = task.response_content || 'Текст ответа отсутствует';
+            
+            // Подставляем correction, teacher_correction и score
+            document.getElementById('editorCorrections').value = task.correction || '';
+            document.getElementById('editorExplanations').value = task.teacher_correction || '';
+            document.getElementById('editorScore').value = task.score || '';
+
+            document.getElementById('writingList').classList.add('hidden');
+            document.getElementById('writingEditor').classList.remove('hidden');
+            document.getElementById('writingEditor').classList.add('flex');
+        }
+
+        function closeWritingEditor() {
+            currentWritingId = null;
+            document.getElementById('writingEditor').classList.add('hidden');
+            document.getElementById('writingEditor').classList.remove('flex');
+            document.getElementById('writingList').classList.remove('hidden');
+        }
+
+        async function saveWritingReview() {
+            if (!currentWritingId) return;
+            
+            const btn = document.getElementById('saveWritingBtn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>Сохранение...</span>`;
+            
+            const correctionVal = document.getElementById('editorCorrections').value.trim();
+            const teacherCorrectionVal = document.getElementById('editorExplanations').value.trim();
+            const scoreVal = document.getElementById('editorScore').value.trim();
+
+            try {
+                const { error } = await _supabase
+                    .from('student_responses')
+                    .update({
+                        correction: correctionVal,
+                        teacher_correction: teacherCorrectionVal,
+                        score: scoreVal
+                    })
+                    .eq('id', currentWritingId);
+
+                if (error) throw error;
+                
+                closeWritingEditor();
+                await loadWritingTasks();
+            } catch (err) {
+                console.error("Ошибка сохранения проверки:", err);
+                alert("Не удалось сохранить проверку: " + err.message);
+            } finally {
+                btn.innerHTML = originalText;
+                lucide.createIcons();
+            }
         }
     </script>
 </body>
