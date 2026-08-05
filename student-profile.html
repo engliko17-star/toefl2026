@@ -382,10 +382,11 @@
         let dbStrongAreas = [];
         let dbFocusAreas = [];
         let dbLessons = [];
+        let globalWritingTasks = []; // ДОБАВЛЕНО: Глобальный массив для безопасной работы с эссе
         let currentStudentEmail = ""; 
         let studentProfile = null;
         let readingChartInstance = null;
-        let currentWritingId = null; // Для вкладки Writing
+        let currentWritingId = null; 
 
         window.onload = async () => {
             if (typeof requireAuth === 'function') {
@@ -982,6 +983,7 @@
         }
 
         function renderWritingList(tasks) {
+            globalWritingTasks = tasks; // ДОБАВЛЕНО: Сохраняем все таски глобально
             const list = document.getElementById('writingList');
             
             // Фильтруем эссе / письменные задания, либо выводим все
@@ -1011,8 +1013,9 @@
                 const taskTitle = task.task_type ? `Task: ${task.task_type}` : `Task #${task.task_id || ''}`;
                 const snippet = (task.response_content || 'Без текста').substring(0, 90) + '...';
 
+                // ДОБАВЛЕНО: Теперь передаем только ID в функцию (избавляемся от JSON.stringify бага)
                 return `
-                    <div class="border border-gray-100 bg-white rounded-2xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:shadow-md transition cursor-pointer" onclick='openWritingEditor(${JSON.stringify(task).replace(/'/g, "&#39;")})'>
+                    <div class="border border-gray-100 bg-white rounded-2xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:shadow-md transition cursor-pointer" onclick="openWritingEditor('${task.id}')">
                         <div>
                             <div class="flex items-center space-x-3 mb-1.5">
                                 <span class="font-bold text-sm text-slate-900">${taskTitle}</span>
@@ -1030,7 +1033,11 @@
             lucide.createIcons();
         }
 
-        function openWritingEditor(task) {
+        // ДОБАВЛЕНО: Новая логика открытия эссе с привязкой по ID
+        function openWritingEditor(taskId) {
+            const task = globalWritingTasks.find(t => String(t.id) === String(taskId));
+            if (!task) return;
+
             currentWritingId = task.id;
             document.getElementById('editorTitle').innerText = `Проверка: ${task.task_type ? task.task_type : 'Task #' + task.task_id}`;
             
