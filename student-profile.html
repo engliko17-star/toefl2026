@@ -320,7 +320,7 @@
                         <h2 class="text-lg font-bold text-slate-900">Проверка эссе (Writing)</h2>
                     </div>
                 </div>
-                <p class="text-xs text-gray-400 mb-6">Здесь подтягиваются все работы ученика из базы <b>student_responses</b>. Выставляйте оценки, пишите corrections и explanations.</p>
+                <p class="text-xs text-gray-400 mb-6">Здесь подтягиваются все работы ученика из базы <b>student_responses</b> и формулировки заданий из <b>writing_tasks</b>.</p>
                 
                 <!-- Список всех эссе -->
                 <div id="writingList" class="space-y-4">
@@ -328,16 +328,31 @@
                 </div>
 
                 <!-- Редактор эссе (по умолчанию скрыт) -->
-                <div id="writingEditor" class="hidden flex-col gap-4 border border-indigo-100 bg-indigo-50/20 rounded-2xl p-6 shadow-sm">
+                <div id="writingEditor" class="hidden flex-col gap-5 border border-indigo-100 bg-indigo-50/20 rounded-2xl p-6 shadow-sm">
                     <div class="flex justify-between items-center pb-4 border-b border-indigo-100">
                         <h3 class="text-sm font-bold text-indigo-900" id="editorTitle">Проверка работы</h3>
                         <button onclick="closeWritingEditor()" class="text-gray-400 hover:text-gray-600 transition p-1 bg-white rounded-md shadow-xs"><i data-lucide="x" class="w-4 h-4"></i></button>
                     </div>
                     
                     <div class="space-y-5">
+                        <!-- НОВЫЙ БЛОК: ТЕКСТ ЗАДАНИЯ -->
                         <div>
-                            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Текст студента</label>
-                            <div id="editorOriginalText" class="p-4 bg-white border border-gray-200 rounded-xl text-sm text-slate-700 whitespace-pre-wrap max-h-[300px] overflow-y-auto"></div>
+                            <label class="block text-[10px] font-bold text-indigo-600 uppercase tracking-wider mb-2 flex items-center space-x-1">
+                                <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
+                                <span>Задание (Prompt)</span>
+                            </label>
+                            <div id="editorTaskPrompt" class="p-4 bg-indigo-50/60 border border-indigo-100/80 rounded-xl text-xs text-slate-800 font-medium whitespace-pre-wrap max-h-[220px] overflow-y-auto leading-relaxed shadow-inner">
+                                —
+                            </div>
+                        </div>
+
+                        <!-- ТЕКСТ СТУДЕНТА -->
+                        <div>
+                            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center space-x-1">
+                                <i data-lucide="user" class="w-3.5 h-3.5"></i>
+                                <span>Текст студента</span>
+                            </label>
+                            <div id="editorOriginalText" class="p-4 bg-white border border-gray-200 rounded-xl text-sm text-slate-700 whitespace-pre-wrap max-h-[300px] overflow-y-auto leading-relaxed"></div>
                         </div>
                         
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -382,7 +397,8 @@
         let dbStrongAreas = [];
         let dbFocusAreas = [];
         let dbLessons = [];
-        let globalWritingTasks = []; // ДОБАВЛЕНО: Глобальный массив для безопасной работы с эссе
+        let globalWritingTasks = []; 
+        let writingTasksMap = {}; // Карта формулировок заданий (writing_tasks) по id
         let currentStudentEmail = ""; 
         let studentProfile = null;
         let readingChartInstance = null;
@@ -453,7 +469,6 @@
 
                     if (data.exam_date) updateExamDateUI(data.exam_date);
 
-                    // Установка баллов и пересчет по оригинальной формуле округления до 6.0
                     setScoreVal('a_read', data.start_r); setScoreVal('a_list', data.start_l); setScoreVal('a_write', data.start_w); setScoreVal('a_speak', data.start_s); calculateTotal('a');
                     setScoreVal('goal_read', data.target_r); setScoreVal('goal_list', data.target_l); setScoreVal('goal_write', data.target_w); setScoreVal('goal_speak', data.target_s); calculateTotal('goal');
                     setScoreVal('b_read', data.mock_r); setScoreVal('b_list', data.mock_l); setScoreVal('b_write', data.mock_w); setScoreVal('b_speak', data.mock_s); calculateTotal('b');
@@ -531,7 +546,7 @@
             catch (err) { console.error(err.message); }
         }
 
-        // --- ЛОГИКА И ПОДСЧЕТ БАЛЛОВ (ДО 6.0 C ОКРУГЛЕНИЕМ В ПОЛЬЗУ УЧЕНИКА) ---
+        // --- ЛОГИКА И ПОДСЧЕТ БАЛЛОВ ---
         function setScoreVal(key, val) {
             const elem = document.querySelector(`[data-key="${key}"]`);
             if (elem) elem.innerText = (val !== null && val !== undefined && val !== 0) ? val : '—';
@@ -656,7 +671,7 @@
             defaultChecklist.push(input.value.trim()); renderChecklist(); input.value = '';
         }
 
-        // --- УРОКИ: РАБОТА С ОТДЕЛЬНОЙ ТАБЛИЦЕЙ `lessons` ---
+        // --- УРОКИ ---
         async function loadLessonsFromDB() {
             if (!studentId || typeof _supabase === 'undefined') return;
             try {
@@ -827,7 +842,7 @@
             }
         }
 
-        // --- УНИВЕРСАЛЬНЫЙ ПОИСК СТАТИСТИКИ ---
+        // --- СТАТИСТИКА READING ---
         async function fetchResultsHelper(tableName, id) {
             let { data, error } = await _supabase.from(tableName).select('*').eq('user_id', id);
             if (error) {
@@ -841,21 +856,15 @@
             let chartData = [];
 
             try {
-                // 1. Из таблицы complete_words_results
                 const wordsData = await fetchResultsHelper('complete_words_results', studentId);
                 wordsData.forEach(item => { 
                     let scoreVal = item.score_percent !== undefined ? item.score_percent : item.score;
                     let dateVal = item.completed_at || item.created_at;
                     if (scoreVal !== undefined && dateVal) {
-                        chartData.push({ 
-                            date: new Date(dateVal), 
-                            score: parseFloat(scoreVal), 
-                            taskName: 'Complete Words' 
-                        }); 
+                        chartData.push({ date: new Date(dateVal), score: parseFloat(scoreVal), taskName: 'Complete Words' }); 
                     }
                 });
 
-                // 2. Из таблицы reading_results
                 const readingData = await fetchResultsHelper('reading_results', studentId);
                 readingData.forEach(item => {
                     let percent = 0;
@@ -867,15 +876,10 @@
                     let dateVal = item.created_at || item.completed_at;
                     if (dateVal) {
                         let taskLabel = item.task_type === 'academic' ? 'Academic Reading' : item.task_type === 'daily' ? 'Daily Reading' : 'Reading Task';
-                        chartData.push({ 
-                            date: new Date(dateVal), 
-                            score: Math.round(percent), 
-                            taskName: taskLabel 
-                        });
+                        chartData.push({ date: new Date(dateVal), score: Math.round(percent), taskName: taskLabel });
                     }
                 });
 
-                // 3. Из таблицы response_results
                 const responsesData = await fetchResultsHelper('response_results', studentId);
                 responsesData.forEach(item => {
                     let percent = 0;
@@ -887,11 +891,7 @@
                     }
                     let dateVal = item.created_at || item.completed_at;
                     if (dateVal) {
-                        chartData.push({
-                            date: new Date(dateVal),
-                            score: Math.round(percent),
-                            taskName: item.task_type || 'Practice Task'
-                        });
+                        chartData.push({ date: new Date(dateVal), score: Math.round(percent), taskName: item.task_type || 'Practice Task' });
                     }
                 });
 
@@ -963,19 +963,38 @@
             });
         }
 
-        // === ЛОГИКА WRITING / ЭССЕ (ПОД СТРУКТУРУ STUDENT_RESPONSES) ===
+        // === ЛОГИКА WRITING (С ЗАГРУЗКОЙ ЗАДАНИЙ ИЗ writing_tasks) ===
         async function loadWritingTasks() {
             if (!studentId || typeof _supabase === 'undefined') return;
             
             try {
-                const { data, error } = await _supabase
+                // 1. Получаем все ответы студента
+                const { data: responses, error: respError } = await _supabase
                     .from('student_responses')
                     .select('*')
                     .eq('user_id', studentId) 
                     .order('created_at', { ascending: false });
 
-                if (error) throw error;
-                renderWritingList(data || []);
+                if (respError) throw respError;
+
+                // 2. Собираем уникальные ID заданий и запрашиваем тексты из writing_tasks
+                const taskIds = [...new Set((responses || []).map(r => r.task_id).filter(Boolean))];
+                
+                if (taskIds.length > 0) {
+                    const { data: tasksData, error: tasksError } = await _supabase
+                        .from('writing_tasks')
+                        .select('*')
+                        .in('id', taskIds);
+
+                    if (!tasksError && tasksData) {
+                        writingTasksMap = {};
+                        tasksData.forEach(t => {
+                            writingTasksMap[t.id] = t;
+                        });
+                    }
+                }
+
+                renderWritingList(responses || []);
             } catch (err) {
                 console.error("Ошибка загрузки Writing:", err);
                 document.getElementById('writingList').innerHTML = `<div class="text-rose-500 text-center py-10 text-sm font-bold">Ошибка загрузки ответов.</div>`;
@@ -983,16 +1002,14 @@
         }
 
         function renderWritingList(tasks) {
-            globalWritingTasks = tasks; // ДОБАВЛЕНО: Сохраняем все таски глобально
+            globalWritingTasks = tasks;
             const list = document.getElementById('writingList');
             
-            // Фильтруем эссе / письменные задания, либо выводим все
             const writingTasks = tasks.filter(t => {
                 const type = (t.task_type || '').toLowerCase();
                 return type.includes('writing') || type.includes('academic') || type.includes('email') || type.includes('essay');
             });
 
-            // Если специфичных тасков нет, берем все ответы ученика
             const displayTasks = writingTasks.length > 0 ? writingTasks : tasks;
 
             if (displayTasks.length === 0) {
@@ -1003,17 +1020,19 @@
             list.innerHTML = displayTasks.map(task => {
                 const date = task.created_at ? new Date(task.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute:'2-digit'}) : '—';
                 
-                // Проверяем, проверено ли задание
                 const isChecked = task.correction || task.teacher_correction;
                 
                 const statusBadge = isChecked 
                     ? `<span class="bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-lg text-[10px] font-extrabold flex items-center space-x-1"><i data-lucide="check" class="w-3 h-3"></i><span>Проверено (${task.score || '✔'})</span></span>`
                     : `<span class="bg-amber-100 text-amber-700 px-2.5 py-1 rounded-lg text-[10px] font-extrabold flex items-center space-x-1"><i data-lucide="clock" class="w-3 h-3"></i><span>Ожидает проверки</span></span>`;
                 
-                const taskTitle = task.task_type ? `Task: ${task.task_type}` : `Task #${task.task_id || ''}`;
+                const taskInfo = writingTasksMap[task.task_id];
+                const taskTitle = (taskInfo && (taskInfo.title || taskInfo.task_type)) 
+                    ? (taskInfo.title || taskInfo.task_type) 
+                    : (task.task_type ? `Task: ${task.task_type}` : `Task #${task.task_id || ''}`);
+                    
                 const snippet = (task.response_content || 'Без текста').substring(0, 90) + '...';
 
-                // ДОБАВЛЕНО: Теперь передаем только ID в функцию (избавляемся от JSON.stringify бага)
                 return `
                     <div class="border border-gray-100 bg-white rounded-2xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:shadow-md transition cursor-pointer" onclick="openWritingEditor('${task.id}')">
                         <div>
@@ -1033,18 +1052,29 @@
             lucide.createIcons();
         }
 
-        // ДОБАВЛЕНО: Новая логика открытия эссе с привязкой по ID
         function openWritingEditor(taskId) {
             const task = globalWritingTasks.find(t => String(t.id) === String(taskId));
             if (!task) return;
 
             currentWritingId = task.id;
-            document.getElementById('editorTitle').innerText = `Проверка: ${task.task_type ? task.task_type : 'Task #' + task.task_id}`;
             
-            // Подставляем response_content
+            // Находим формулировку из таблицы writing_tasks
+            const taskInfo = writingTasksMap[task.task_id];
+            let promptText = "Текст задания не найден в базе writing_tasks";
+
+            if (taskInfo) {
+                promptText = taskInfo.prompt || taskInfo.question || taskInfo.task_prompt || taskInfo.text || taskInfo.description || taskInfo.title || JSON.stringify(taskInfo);
+            } else if (task.task_prompt || task.prompt || task.question) {
+                promptText = task.task_prompt || task.prompt || task.question;
+            }
+
+            document.getElementById('editorTitle').innerText = `Проверка: ${task.task_type ? task.task_type : 'Task #' + (task.task_id || '')}`;
+            
+            // Заполняем задание и ответ
+            document.getElementById('editorTaskPrompt').innerText = promptText;
             document.getElementById('editorOriginalText').innerText = task.response_content || 'Текст ответа отсутствует';
             
-            // Подставляем correction, teacher_correction и score
+            // Заполняем фидбек
             document.getElementById('editorCorrections').value = task.correction || '';
             document.getElementById('editorExplanations').value = task.teacher_correction || '';
             document.getElementById('editorScore').value = task.score || '';
@@ -1052,6 +1082,7 @@
             document.getElementById('writingList').classList.add('hidden');
             document.getElementById('writingEditor').classList.remove('hidden');
             document.getElementById('writingEditor').classList.add('flex');
+            lucide.createIcons();
         }
 
         function closeWritingEditor() {
@@ -1097,4 +1128,3 @@
     </script>
 </body>
 </html>
-
