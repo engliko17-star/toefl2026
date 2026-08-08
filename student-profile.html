@@ -335,7 +335,7 @@
                     </div>
                     
                     <div class="space-y-5">
-                        <!-- НОВЫЙ БЛОК: ТЕКСТ ЗАДАНИЯ -->
+                        <!-- БЛОК: ТЕКСТ ЗАДАНИЯ -->
                         <div>
                             <label class="block text-[10px] font-bold text-indigo-600 uppercase tracking-wider mb-2 flex items-center space-x-1">
                                 <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
@@ -1020,7 +1020,7 @@
             list.innerHTML = displayTasks.map(task => {
                 const date = task.created_at ? new Date(task.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute:'2-digit'}) : '—';
                 
-                const isChecked = task.correction || task.teacher_correction;
+                const isChecked = task.correction || task.teacher_correction || task.score;
                 
                 const statusBadge = isChecked 
                     ? `<span class="bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-lg text-[10px] font-extrabold flex items-center space-x-1"><i data-lucide="check" class="w-3 h-3"></i><span>Проверено (${task.score || '✔'})</span></span>`
@@ -1058,23 +1058,65 @@
 
             currentWritingId = task.id;
             
-            // Находим формулировку из таблицы writing_tasks
             const taskInfo = writingTasksMap[task.task_id];
-            let promptText = "Текст задания не найден в базе writing_tasks";
+            let promptText = "Текст задания не найден";
 
             if (taskInfo) {
-                promptText = taskInfo.prompt || taskInfo.question || taskInfo.task_prompt || taskInfo.text || taskInfo.description || taskInfo.title || JSON.stringify(taskInfo);
+                const parts = [];
+                
+                // 1. ИНСТРУКЦИЯ 
+                const instructionsText = taskInfo.instructions || taskInfo.instruction_box;
+                if (instructionsText) {
+                    const cleanInstructions = instructionsText.replace(/<[^>]+>/g, '');
+                    parts.push("📋 ИНСТРУКЦИЯ:\n" + cleanInstructions);
+                }
+
+                // 2. КОНТЕКСТ ЗАДАНИЯ
+                if (taskInfo.prompt_context) {
+                    parts.push("✉️ СИТУАЦИЯ / КОНТЕКСТ:\n" + taskInfo.prompt_context);
+                }
+                
+                // 3. ТЕКСТ ПРОФЕССОРА
+                if (taskInfo.professor_prompt) {
+                    parts.push("👨‍🏫 PROFESSOR:\n" + taskInfo.professor_prompt);
+                }
+
+                // 4. ДРУГИЕ СТУДЕНТЫ (PEERS)
+                if (taskInfo.peers) {
+                    let peersArray = [];
+                    
+                    if (typeof taskInfo.peers === 'string') {
+                        try { peersArray = JSON.parse(taskInfo.peers); } catch (e) { console.error("Ошибка парсинга peers", e); }
+                    } else if (Array.isArray(taskInfo.peers)) {
+                        peersArray = taskInfo.peers;
+                    }
+
+                    if (peersArray.length > 0) {
+                        let peersText = "👥 СТУДЕНТЫ (PEERS):";
+                        peersArray.forEach(peer => {
+                            peersText += `\n\n🧑‍🎓 ${peer.name || 'Студент'}:\n${peer.text || ''}`;
+                        });
+                        parts.push(peersText);
+                    }
+                }
+
+                // 5. РЕЗЕРВНЫЕ ПОЛЯ
+                if (taskInfo.reading_text) parts.push("📚 READING:\n" + taskInfo.reading_text);
+                if (taskInfo.prompt) parts.push("❓ ВОПРОС:\n" + taskInfo.prompt);
+                if (!taskInfo.prompt && taskInfo.question) parts.push("❓ ВОПРОС:\n" + taskInfo.question);
+
+                if (parts.length > 0) {
+                    promptText = parts.join('\n\n-------------------\n\n');
+                }
             } else if (task.task_prompt || task.prompt || task.question) {
                 promptText = task.task_prompt || task.prompt || task.question;
             }
 
             document.getElementById('editorTitle').innerText = `Проверка: ${task.task_type ? task.task_type : 'Task #' + (task.task_id || '')}`;
             
-            // Заполняем задание и ответ
             document.getElementById('editorTaskPrompt').innerText = promptText;
             document.getElementById('editorOriginalText').innerText = task.response_content || 'Текст ответа отсутствует';
             
-            // Заполняем фидбек
             document.getElementById('editorCorrections').value = task.correction || '';
             document.getElementById('editorExplanations').value = task.teacher_correction || '';
             document.getElementById('editorScore').value = task.score || '';
@@ -1101,7 +1143,10 @@
             
             const correctionVal = document.getElementById('editorCorrections').value.trim();
             const teacherCorrectionVal = document.getElementById('editorExplanations').value.trim();
+            
+            // Фикс бага: если поле score пустое, отправляем null, иначе parseFloat падает или ломает сохранение
             const scoreVal = document.getElementById('editorScore').value.trim();
+            const finalScore = scoreVal === "" ? null : parseFloat(scoreVal);
 
             try {
                 const { error } = await _supabase
@@ -1109,7 +1154,7 @@
                     .update({
                         correction: correctionVal,
                         teacher_correction: teacherCorrectionVal,
-                        score: scoreVal
+                        score: finalScore
                     })
                     .eq('id', currentWritingId);
 
@@ -1128,3 +1173,4 @@
     </script>
 </body>
 </html>
+
