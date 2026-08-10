@@ -403,6 +403,7 @@
         let studentProfile = null;
         let readingChartInstance = null;
         let currentWritingId = null; 
+        let editingLessonId = null; // Переменная для отслеживания редактируемой строки урока
 
         window.onload = async () => {
             if (typeof requireAuth === 'function') {
@@ -561,7 +562,6 @@
             if (totalElem) {
                 if (r || l || w || s) {
                     const average = (r + l + w + s) / 4;
-                    // Исправлено с Math.ceil на Math.round для правильного округления в пользу ученика: 5.125 -> 5.0, 5.25 -> 5.5
                     totalElem.innerText = (Math.round(average * 2) / 2).toFixed(1);
                 } else { totalElem.innerText = '—'; }
             }
@@ -690,7 +690,7 @@
             }
         }
 
-        // Обновленная функция рендера с возможностью редактирования даты и статуса
+        // Обновленный рендер уроков с поддержкой режима редактирования строки (тема, дз, дата, секция, статус)
         function renderLessons() {
             const tbody = document.getElementById('lessonsTableBody');
             if (!dbLessons || dbLessons.length === 0) {
@@ -699,56 +699,115 @@
             }
 
             tbody.innerHTML = dbLessons.map((item) => {
-                let sectionClass = 'bg-indigo-50 text-indigo-600';
-                if(item.section === 'Reading') sectionClass = 'bg-blue-50 text-blue-600';
-                if(item.section === 'Listening') sectionClass = 'bg-purple-50 text-purple-600';
-                if(item.section === 'Writing') sectionClass = 'bg-rose-50 text-rose-600';
-                if(item.section === 'Speaking') sectionClass = 'bg-amber-50 text-amber-600';
+                // Режим редактирования строки
+                if (item.id === editingLessonId) {
+                    return `
+                        <tr class="border-b border-indigo-100 bg-indigo-50/40 transition">
+                            <td class="py-3 px-3">
+                                <input type="date" id="edit_date_${item.id}" value="${item.lesson_date || ''}" class="w-full text-xs font-semibold text-slate-800 border border-indigo-200 rounded-lg px-2 py-1.5 outline-none bg-white focus:ring-2 focus:ring-indigo-300">
+                            </td>
+                            <td class="py-3 px-3">
+                                <select id="edit_section_${item.id}" class="w-full text-xs font-bold border border-indigo-200 rounded-lg px-2 py-1.5 outline-none bg-white text-slate-600 focus:ring-2 focus:ring-indigo-300">
+                                    <option value="Reading" ${item.section === 'Reading' ? 'selected' : ''}>Reading</option>
+                                    <option value="Listening" ${item.section === 'Listening' ? 'selected' : ''}>Listening</option>
+                                    <option value="Writing" ${item.section === 'Writing' ? 'selected' : ''}>Writing</option>
+                                    <option value="Speaking" ${item.section === 'Speaking' ? 'selected' : ''}>Speaking</option>
+                                    <option value="General" ${item.section === 'General' || !item.section ? 'selected' : ''}>General</option>
+                                </select>
+                            </td>
+                            <td class="py-3 px-3">
+                                <input type="text" id="edit_topic_${item.id}" value="${item.topic || ''}" class="w-full text-xs text-slate-700 font-medium border border-indigo-200 rounded-lg px-2 py-1.5 outline-none bg-white focus:ring-2 focus:ring-indigo-300">
+                            </td>
+                            <td class="py-3 px-3">
+                                <input type="text" id="edit_hw_${item.id}" value="${item.homework || ''}" class="w-full text-xs text-slate-500 border border-indigo-200 rounded-lg px-2 py-1.5 outline-none bg-white focus:ring-2 focus:ring-indigo-300">
+                            </td>
+                            <td class="py-3 px-3 flex items-center justify-center space-x-1.5 min-w-[120px]">
+                                <select id="edit_status_${item.id}" class="text-[10px] font-bold uppercase border border-indigo-200 rounded-lg px-1.5 py-1.5 outline-none bg-white text-slate-600 focus:ring-2 focus:ring-indigo-300">
+                                    <option value="PENDING" ${item.status === 'PENDING' ? 'selected' : ''}>Pending</option>
+                                    <option value="DONE" ${item.status === 'DONE' ? 'selected' : ''}>Done</option>
+                                    <option value="CANCELED" ${item.status === 'CANCELED' ? 'selected' : ''}>Cancel</option>
+                                </select>
+                                <button onclick="saveEditingLesson('${item.id}')" class="p-1.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition shadow-sm" title="Сохранить"><i data-lucide="check" class="w-3.5 h-3.5"></i></button>
+                                <button onclick="cancelEditingLesson()" class="p-1.5 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition shadow-sm" title="Отмена"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+                            </td>
+                        </tr>
+                    `;
+                } 
                 
-                let statusClass = 'score-tag-gray';
-                if(item.status === 'DONE') statusClass = 'score-tag-green';
-                if(item.status === 'PENDING') statusClass = 'score-tag-purple';
+                // Обычный режим (просмотр)
+                else {
+                    let sectionClass = 'bg-indigo-50 text-indigo-600';
+                    if(item.section === 'Reading') sectionClass = 'bg-blue-50 text-blue-600';
+                    if(item.section === 'Listening') sectionClass = 'bg-purple-50 text-purple-600';
+                    if(item.section === 'Writing') sectionClass = 'bg-rose-50 text-rose-600';
+                    if(item.section === 'Speaking') sectionClass = 'bg-amber-50 text-amber-600';
+                    
+                    let statusClass = 'score-tag-gray';
+                    if(item.status === 'DONE') statusClass = 'score-tag-green';
+                    if(item.status === 'PENDING') statusClass = 'score-tag-purple';
 
-                let rawDate = item.lesson_date || '';
+                    let displayDate = '—';
+                    if (item.lesson_date) {
+                        const parts = item.lesson_date.split('-');
+                        if (parts.length === 3) displayDate = `${parts[2]}.${parts[1]}.${parts[0]}`;
+                        else displayDate = item.lesson_date;
+                    }
 
-                return `
-                    <tr class="border-b border-gray-50 hover:bg-gray-50/50 transition">
-                        <td class="py-3.5 px-3">
-                            <input type="date" value="${rawDate}" onchange="updateLessonField('${item.id}', 'lesson_date', this.value)" class="bg-transparent font-semibold text-slate-800 text-xs outline-none cursor-pointer w-[120px] focus:ring-2 focus:ring-indigo-100 rounded">
-                        </td>
-                        <td class="py-3.5 px-5"><span class="px-2 py-1 ${sectionClass} rounded-md font-bold text-[10px]">${item.section || 'General'}</span></td>
-                        <td class="py-3.5 px-5 text-slate-700 font-medium">${item.topic || '—'}</td>
-                        <td class="py-3.5 px-5 text-slate-500">${item.homework || '—'}</td>
-                        <td class="py-3.5 px-5 text-center flex items-center justify-center space-x-2">
-                            <select onchange="updateLessonField('${item.id}', 'status', this.value)" class="score-tag ${statusClass} bg-transparent outline-none cursor-pointer appearance-none text-center pr-2 focus:ring-2 focus:ring-indigo-100">
-                                <option value="PENDING" ${item.status === 'PENDING' ? 'selected' : ''} class="text-slate-800 bg-white">PENDING</option>
-                                <option value="DONE" ${item.status === 'DONE' ? 'selected' : ''} class="text-slate-800 bg-white">DONE</option>
-                                <option value="CANCELED" ${item.status === 'CANCELED' ? 'selected' : ''} class="text-slate-800 bg-white">CANCELED</option>
-                            </select>
-                            <button onclick="deleteLessonRow('${item.id}')" class="p-1 text-rose-400 hover:text-rose-600 rounded transition" title="Удалить урок">
-                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                            </button>
-                        </td>
-                    </tr>
-                `;
+                    return `
+                        <tr class="border-b border-gray-50 hover:bg-gray-50/50 transition">
+                            <td class="py-3.5 px-5 font-semibold text-slate-800 text-xs">${displayDate}</td>
+                            <td class="py-3.5 px-5"><span class="px-2 py-1 ${sectionClass} rounded-md font-bold text-[10px]">${item.section || 'General'}</span></td>
+                            <td class="py-3.5 px-5 text-slate-700 font-medium">${item.topic || '—'}</td>
+                            <td class="py-3.5 px-5 text-slate-500">${item.homework || '—'}</td>
+                            <td class="py-3.5 px-5 text-center flex items-center justify-center space-x-2">
+                                <span class="score-tag ${statusClass} inline-block text-center w-[70px]">${item.status || 'PENDING'}</span>
+                                <button onclick="startEditingLesson('${item.id}')" class="p-1 text-indigo-400 hover:text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded transition" title="Редактировать">
+                                    <i data-lucide="edit-2" class="w-3.5 h-3.5"></i>
+                                </button>
+                                <button onclick="deleteLessonRow('${item.id}')" class="p-1 text-rose-400 hover:text-rose-600 bg-rose-50 hover:bg-rose-100 rounded transition" title="Удалить урок">
+                                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }
             }).join('');
             lucide.createIcons();
         }
 
-        // Новая функция для сохранения изменений прямо из таблицы
-        async function updateLessonField(lessonId, field, value) {
+        function startEditingLesson(id) {
+            editingLessonId = id;
+            renderLessons();
+        }
+
+        function cancelEditingLesson() {
+            editingLessonId = null;
+            renderLessons();
+        }
+
+        async function saveEditingLesson(id) {
+            const newDate = document.getElementById(`edit_date_${id}`).value;
+            const newSection = document.getElementById(`edit_section_${id}`).value;
+            const newTopic = document.getElementById(`edit_topic_${id}`).value.trim();
+            const newHw = document.getElementById(`edit_hw_${id}`).value.trim();
+            const newStatus = document.getElementById(`edit_status_${id}`).value;
+
             try {
-                const { error } = await _supabase.from('lessons').update({ [field]: value }).eq('id', lessonId);
+                const { error } = await _supabase.from('lessons').update({
+                    lesson_date: newDate,
+                    section: newSection,
+                    topic: newTopic,
+                    homework: newHw,
+                    status: newStatus
+                }).eq('id', id);
+                
                 if (error) throw error;
                 
-                // Если изменили статус, перезагрузим чтобы обновить цвета, 
-                // если дату — просто оставляем новое значение.
-                if (field === 'status') {
-                    await loadLessonsFromDB();
-                }
+                editingLessonId = null;
+                await loadLessonsFromDB(); 
             } catch (err) {
-                console.error(`Ошибка обновления ${field}:`, err);
-                alert("Не удалось обновить данные урока");
+                console.error("Ошибка обновления урока:", err);
+                alert("Не удалось сохранить изменения");
             }
         }
 
@@ -989,7 +1048,6 @@
             if (!studentId || typeof _supabase === 'undefined') return;
             
             try {
-                // 1. Получаем все ответы студента
                 const { data: responses, error: respError } = await _supabase
                     .from('student_responses')
                     .select('*')
@@ -998,7 +1056,6 @@
 
                 if (respError) throw respError;
 
-                // 2. Собираем уникальные ID заданий и запрашиваем тексты из writing_tasks
                 const taskIds = [...new Set((responses || []).map(r => r.task_id).filter(Boolean))];
                 
                 if (taskIds.length > 0) {
@@ -1085,24 +1142,20 @@
             if (taskInfo) {
                 const parts = [];
                 
-                // 1. ИНСТРУКЦИЯ 
                 const instructionsText = taskInfo.instructions || taskInfo.instruction_box;
                 if (instructionsText) {
                     const cleanInstructions = instructionsText.replace(/<[^>]+>/g, '');
                     parts.push("📋 ИНСТРУКЦИЯ:\n" + cleanInstructions);
                 }
 
-                // 2. КОНТЕКСТ ЗАДАНИЯ
                 if (taskInfo.prompt_context) {
                     parts.push("✉️ СИТУАЦИЯ / КОНТЕКСТ:\n" + taskInfo.prompt_context);
                 }
                 
-                // 3. ТЕКСТ ПРОФЕССОРА
                 if (taskInfo.professor_prompt) {
                     parts.push("👨‍🏫 PROFESSOR:\n" + taskInfo.professor_prompt);
                 }
 
-                // 4. ДРУГИЕ СТУДЕНТЫ (PEERS)
                 if (taskInfo.peers) {
                     let peersArray = [];
                     
@@ -1121,7 +1174,6 @@
                     }
                 }
 
-                // 5. РЕЗЕРВНЫЕ ПОЛЯ
                 if (taskInfo.reading_text) parts.push("📚 READING:\n" + taskInfo.reading_text);
                 if (taskInfo.prompt) parts.push("❓ ВОПРОС:\n" + taskInfo.prompt);
                 if (!taskInfo.prompt && taskInfo.question) parts.push("❓ ВОПРОС:\n" + taskInfo.question);
@@ -1165,7 +1217,6 @@
             const correctionVal = document.getElementById('editorCorrections').value.trim();
             const teacherCorrectionVal = document.getElementById('editorExplanations').value.trim();
             
-            // Фикс бага: если поле score пустое, отправляем null, иначе parseFloat падает или ломает сохранение
             const scoreVal = document.getElementById('editorScore').value.trim();
             const finalScore = scoreVal === "" ? null : parseFloat(scoreVal);
 
@@ -1194,4 +1245,3 @@
     </script>
 </body>
 </html>
-
