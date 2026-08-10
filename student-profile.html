@@ -259,11 +259,11 @@
                     <table class="w-full text-left text-xs border-collapse min-w-[650px]">
                         <thead>
                             <tr class="border-b border-gray-100 text-gray-400 bg-gray-50/50">
-                                <th class="py-3 px-5 font-bold uppercase tracking-wider w-28">Дата</th>
+                                <th class="py-3 px-5 font-bold uppercase tracking-wider w-36">Дата</th>
                                 <th class="py-3 px-5 font-bold uppercase tracking-wider w-36">Секция</th>
                                 <th class="py-3 px-5 font-bold uppercase tracking-wider">Тема / Фокус</th>
                                 <th class="py-3 px-5 font-bold uppercase tracking-wider">Домашнее задание</th>
-                                <th class="py-3 px-5 font-bold uppercase tracking-wider w-32 text-center">Действия</th>
+                                <th class="py-3 px-5 font-bold uppercase tracking-wider w-36 text-center">Действия</th>
                             </tr>
                         </thead>
                         <tbody id="lessonsTableBody">
@@ -561,7 +561,8 @@
             if (totalElem) {
                 if (r || l || w || s) {
                     const average = (r + l + w + s) / 4;
-                    totalElem.innerText = (Math.ceil(average * 2) / 2).toFixed(1);
+                    // Исправлено с Math.ceil на Math.round для правильного округления в пользу ученика: 5.125 -> 5.0, 5.25 -> 5.5
+                    totalElem.innerText = (Math.round(average * 2) / 2).toFixed(1);
                 } else { totalElem.innerText = '—'; }
             }
         }
@@ -689,6 +690,7 @@
             }
         }
 
+        // Обновленная функция рендера с возможностью редактирования даты и статуса
         function renderLessons() {
             const tbody = document.getElementById('lessonsTableBody');
             if (!dbLessons || dbLessons.length === 0) {
@@ -707,20 +709,22 @@
                 if(item.status === 'DONE') statusClass = 'score-tag-green';
                 if(item.status === 'PENDING') statusClass = 'score-tag-purple';
 
-                let displayDate = item.lesson_date || '—';
-                if (displayDate.includes('-')) {
-                    const parts = displayDate.split('-');
-                    if (parts.length === 3) displayDate = `${parts[2]}.${parts[1]}.${parts[0]}`;
-                }
+                let rawDate = item.lesson_date || '';
 
                 return `
                     <tr class="border-b border-gray-50 hover:bg-gray-50/50 transition">
-                        <td class="py-3.5 px-5 font-semibold text-slate-800">${displayDate}</td>
+                        <td class="py-3.5 px-3">
+                            <input type="date" value="${rawDate}" onchange="updateLessonField('${item.id}', 'lesson_date', this.value)" class="bg-transparent font-semibold text-slate-800 text-xs outline-none cursor-pointer w-[120px] focus:ring-2 focus:ring-indigo-100 rounded">
+                        </td>
                         <td class="py-3.5 px-5"><span class="px-2 py-1 ${sectionClass} rounded-md font-bold text-[10px]">${item.section || 'General'}</span></td>
                         <td class="py-3.5 px-5 text-slate-700 font-medium">${item.topic || '—'}</td>
                         <td class="py-3.5 px-5 text-slate-500">${item.homework || '—'}</td>
                         <td class="py-3.5 px-5 text-center flex items-center justify-center space-x-2">
-                            <span class="score-tag ${statusClass}">${item.status || 'PENDING'}</span>
+                            <select onchange="updateLessonField('${item.id}', 'status', this.value)" class="score-tag ${statusClass} bg-transparent outline-none cursor-pointer appearance-none text-center pr-2 focus:ring-2 focus:ring-indigo-100">
+                                <option value="PENDING" ${item.status === 'PENDING' ? 'selected' : ''} class="text-slate-800 bg-white">PENDING</option>
+                                <option value="DONE" ${item.status === 'DONE' ? 'selected' : ''} class="text-slate-800 bg-white">DONE</option>
+                                <option value="CANCELED" ${item.status === 'CANCELED' ? 'selected' : ''} class="text-slate-800 bg-white">CANCELED</option>
+                            </select>
                             <button onclick="deleteLessonRow('${item.id}')" class="p-1 text-rose-400 hover:text-rose-600 rounded transition" title="Удалить урок">
                                 <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                             </button>
@@ -729,6 +733,23 @@
                 `;
             }).join('');
             lucide.createIcons();
+        }
+
+        // Новая функция для сохранения изменений прямо из таблицы
+        async function updateLessonField(lessonId, field, value) {
+            try {
+                const { error } = await _supabase.from('lessons').update({ [field]: value }).eq('id', lessonId);
+                if (error) throw error;
+                
+                // Если изменили статус, перезагрузим чтобы обновить цвета, 
+                // если дату — просто оставляем новое значение.
+                if (field === 'status') {
+                    await loadLessonsFromDB();
+                }
+            } catch (err) {
+                console.error(`Ошибка обновления ${field}:`, err);
+                alert("Не удалось обновить данные урока");
+            }
         }
 
         function addLessonRow() {
