@@ -206,9 +206,18 @@
 
                     if (currentUserId) {
                         const questionIds = testQuestions.map(q => q.id);
-                        const { data: resps } = await db.from('student_responses').select('*').eq('user_id', currentUserId).in('task_id', questionIds);
+                        const { data: resps } = await db.from('student_responses')
+                            .select('*')
+                            .eq('user_id', currentUserId)
+                            .in('task_id', questionIds)
+                            .order('id', { ascending: false });
+                            
                         studentResponses = resps || [];
-                        isTestCompleted = studentResponses.length === testQuestions.length && testQuestions.length > 0;
+                        
+                        // Проверяем, что для каждого вопроса теста найден хотя бы один ответ
+                        isTestCompleted = testQuestions.length > 0 && testQuestions.every(q => 
+                            studentResponses.some(r => String(r.task_id) === String(q.id))
+                        );
                     }
                 }
 
@@ -697,6 +706,12 @@
         async function submitEntireTest() {
             if (!currentUserId) return alert("Please log in first.");
 
+            const submitBtn = document.getElementById('btn-submit');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+
             stopTimer();
 
             let payloads = [];
@@ -709,6 +724,11 @@
                     alert(`Question ${i + 1} is incomplete. Please finish it before submitting the test.`);
                     showSlide(i); 
                     
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                    }
+
                     startTimer();
                     return;
                 }
@@ -731,6 +751,10 @@
                 window.location.reload();
             } catch (err) {
                 alert("Error saving test: " + err.message);
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
                 startTimer();
             } finally {
                 document.body.style.cursor = 'default';
