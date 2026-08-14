@@ -93,6 +93,13 @@
                     </div>
                     
                     <div id="toeflTopbarControls" class="invisible flex items-center justify-between md:justify-end gap-6 w-full md:w-auto">
+                        
+                        <!-- UI Таймера -->
+                        <div class="flex items-center space-x-1.5 text-sm font-bold text-slate-700 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm">
+                            <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Travel%20and%20places/Stopwatch.png" class="w-4 h-4" alt="Clock" />
+                            <span id="timerDisplay" class="tabular-nums tracking-wide transition-colors duration-300">00:00</span>
+                        </div>
+
                         <div class="flex items-center gap-3">
                             <span class="text-xs text-gray-400 font-bold uppercase tracking-wider">Progress</span>
                             <span id="progress-text" class="text-sm font-bold text-slate-800">1 / 4</span>
@@ -183,6 +190,18 @@
         <a href="tests.html" class="flex flex-col items-center text-gray-400"><i data-lucide="file-check" class="w-5 h-5"></i><span class="text-[9px] mt-1 font-medium">Tests</span></a>
     </nav>
 
+    <!-- Модальное окно при окончании времени -->
+    <div id="timeModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-4 transition-opacity">
+        <div class="bg-white rounded-[2rem] p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center transform scale-100 transition-transform">
+            <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Travel%20and%20places/Alarm%20Clock.png" class="w-24 h-24 mb-5 drop-shadow-md" alt="Time up" />
+            <h3 class="text-2xl font-black text-slate-800 mb-2">Время вышло!</h3>
+            <p class="text-slate-500 text-sm font-medium mb-8 leading-relaxed">Отведенное на это задание время закончилось. Таймер продолжит идти в минус, чтобы вы увидели, сколько дополнительного времени вам потребовалось.</p>
+            <button onclick="continueAfterTimeUp()" class="w-full bg-slate-900 text-white font-bold py-3.5 rounded-xl hover:bg-slate-800 transition shadow-md active:scale-[0.98]">
+                Продолжить
+            </button>
+        </div>
+    </div>
+
     <script>
         lucide.createIcons();
 
@@ -195,6 +214,76 @@
         let currentTest = null;
         let currentQuestionIndex = 0;
         let userAnswers = {};
+
+        // --- ЛОГИКА ТАЙМЕРА ---
+        let timerInterval = null;
+        let timeRemaining = 0; 
+        let timeExpiredModalShown = false;
+
+        function initTimer() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const currentType = urlParams.get('type') || 'conversation';
+            
+            // 30 секунд для academic, 20 секунд для остальных
+            if (currentType === 'academic') {
+                timeRemaining = 30;
+            } else {
+                timeRemaining = 20; 
+            }
+            timeExpiredModalShown = false;
+        }
+
+        function startTimer() {
+            if (timerInterval) clearInterval(timerInterval);
+            
+            const display = document.getElementById('timerDisplay');
+            display.innerText = formatTime(timeRemaining);
+            display.classList.remove('text-red-500');
+            display.classList.add('text-slate-700');
+            
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                display.innerText = formatTime(timeRemaining);
+                
+                if (timeRemaining < 0) {
+                    display.classList.remove('text-slate-700');
+                    display.classList.add('text-red-500');
+                }
+
+                if (timeRemaining === 0 && !timeExpiredModalShown) {
+                    stopTimer(); 
+                    showTimeExpiredModal();
+                }
+            }, 1000);
+        }
+
+        function stopTimer() {
+            if (timerInterval) clearInterval(timerInterval);
+        }
+
+        function formatTime(seconds) {
+            const isNegative = seconds < 0;
+            const absSeconds = Math.abs(seconds);
+            const m = Math.floor(absSeconds / 60).toString().padStart(2, '0');
+            const s = (absSeconds % 60).toString().padStart(2, '0');
+            return isNegative ? `-${m}:${s}` : `${m}:${s}`;
+        }
+
+        function showTimeExpiredModal() {
+            timeExpiredModalShown = true;
+            const modal = document.getElementById('timeModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function continueAfterTimeUp() {
+            const modal = document.getElementById('timeModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            
+            startTimer(); 
+        }
+        // --- КОНЕЦ ЛОГИКИ ТАЙМЕРА ---
 
         window.onload = async () => { 
             await loadTestsFromSupabase();
@@ -221,7 +310,6 @@
             document.getElementById('listSubtitle').innerText = currentMeta.sub;
             document.title = `${currentMeta.page} Practice — TOEFL`;
 
-            // Обновленный запрос: исключаем тесты, предназначенные только для моков
             const { data, error } = await _supabase
                 .from('listening_tests')
                 .select('id, title, audio_url, image_url, transcript, questions, task_type')
@@ -240,6 +328,7 @@
 
         function exitTest() {
             if (confirm("Are you sure you want to exit? Your progress in this test will be lost.")) {
+                stopTimer(); // Останавливаем таймер при выходе
                 const audioPlayer = document.getElementById('activeAudioPlayer');
                 if (audioPlayer) {
                     audioPlayer.pause();
@@ -250,6 +339,7 @@
         }
 
         function hideAllViews() {
+            stopTimer(); // Останавливаем таймер при переключении видов для безопасности
             document.getElementById('view-list').classList.add('hidden');
             document.getElementById('view-test').classList.add('hidden');
             document.getElementById('view-results').classList.add('hidden');
@@ -393,6 +483,11 @@
             const totalQ = currentTest.questions.length;
             const currentQNum = currentQuestionIndex + 1;
             
+            // Запуск таймера для каждого нового вопроса
+            stopTimer();
+            initTimer();
+            startTimer();
+
             document.getElementById('progress-text').innerText = `${currentQNum} / ${totalQ}`;
             document.getElementById('progress-bar').style.width = `${(currentQNum / totalQ) * 100}%`;
             
@@ -455,13 +550,15 @@
 
             if (currentQuestionIndex < currentTest.questions.length - 1) {
                 currentQuestionIndex++;
-                renderSingleQuestion();
+                renderSingleQuestion(); // При вызове таймер сбрасывается и стартует заново
             } else {
                 finishTestLogic();
             }
         }
 
         async function finishTestLogic() {
+            stopTimer(); // Останавливаем таймер при завершении теста
+
             let scoreEarned = 0;
             let categoryStats = {};
 
