@@ -102,7 +102,6 @@
         let timeExpiredModalShown = false;
 
         function initTimer() {
-            // Устанавливаем время в зависимости от типа задания (в секундах)
             if (taskType === 'sentence') {
                 timeRemaining = 6 * 60;
             } else if (taskType === 'email') {
@@ -110,14 +109,13 @@
             } else if (taskType === 'academic') {
                 timeRemaining = 10 * 60;
             } else {
-                timeRemaining = 6 * 60; // fallback
+                timeRemaining = 6 * 60; 
             }
         }
 
         function startTimer() {
             if (timerInterval) clearInterval(timerInterval);
             
-            // Сразу показываем стартовое время
             const display = document.getElementById('timerDisplay');
             display.innerText = formatTime(timeRemaining);
             
@@ -125,15 +123,13 @@
                 timeRemaining--;
                 display.innerText = formatTime(timeRemaining);
                 
-                // Визуальный сигнал, если ушли в минус
                 if (timeRemaining < 0) {
                     display.classList.remove('text-slate-700');
                     display.classList.add('text-red-500');
                 }
 
-                // Показываем окно ровно на 00:00 (один раз)
                 if (timeRemaining === 0 && !timeExpiredModalShown) {
-                    stopTimer(); // Останавливаем таймер перед показом окна
+                    stopTimer(); 
                     showTimeExpiredModal();
                 }
             }, 1000);
@@ -163,7 +159,7 @@
             modal.classList.add('hidden');
             modal.classList.remove('flex');
             
-            startTimer(); // Снова запускаем таймер в минус
+            startTimer(); 
         }
         // --- КОНЕЦ ЛОГИКИ ТАЙМЕРА ---
 
@@ -214,7 +210,6 @@
                             
                         studentResponses = resps || [];
                         
-                        // Проверяем, что для каждого вопроса теста найден хотя бы один ответ
                         isTestCompleted = testQuestions.length > 0 && testQuestions.every(q => 
                             studentResponses.some(r => String(r.task_id) === String(q.id))
                         );
@@ -239,7 +234,6 @@
             } else {
                 if (topNav) topNav.classList.remove('hidden');
                 
-                // Инициализация и запуск таймера
                 initTimer();
                 startTimer();
                 
@@ -339,7 +333,6 @@
                 }
             }
 
-            // ЧТЕНИЕ СОХРАНЕННОГО ВРЕМЕНИ (теперь это time_left_seconds)
             let savedTimeStr = null;
             if (studentResponses.length > 0 && studentResponses[0].time_left_seconds !== undefined) {
                 savedTimeStr = studentResponses[0].time_left_seconds;
@@ -348,10 +341,9 @@
             let timeCardHtml = '';
             if (savedTimeStr !== null) {
                 const timeNum = parseInt(savedTimeStr, 10);
-                const isOvertime = timeNum < 0; // Проверяем, не ушел ли ученик в минус
+                const isOvertime = timeNum < 0; 
                 const formattedSavedTime = formatTime(timeNum);
                 
-                // Динамические классы для карточки времени
                 const bgColorClass = isOvertime ? 'bg-rose-50 border-rose-100' : 'bg-indigo-50 border-indigo-100';
                 const iconColorClass = isOvertime ? 'text-rose-600' : 'text-indigo-600';
                 const textColorClass = isOvertime ? 'text-rose-700' : 'text-indigo-700';
@@ -378,12 +370,63 @@
                         <p class="text-sm text-slate-500 mt-2 max-w-[250px] mx-auto leading-relaxed">You have successfully submitted answers for all questions in this set.</p>
                     </div>
                 `;
-            } else {
-                const mainPrompt = testQuestions[0].prompt_context || testQuestions[0].instruction_box || '';
+            } else if (taskType === 'email') {
+                const q = testQuestions[0];
+                let instructionsHTML = (q.instructions || []).map(li => `<li>${li}</li>`).join('');
                 leftPanelContent = `
-                    <div class="prose prose-sm prose-slate max-w-none mt-8 border-t border-gray-100 pt-6">
-                        <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Original Context</h3>
-                        <div class="text-sm text-slate-700 bg-gray-50 p-4 rounded-2xl border border-gray-100 leading-relaxed font-medium">${mainPrompt}</div>
+                    <div class="mt-8 border-t border-gray-100 pt-6 space-y-4">
+                        <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Original Context & Prompt</h3>
+                        <div class="text-xs text-slate-700 bg-gray-50 p-4 rounded-2xl border border-gray-100 leading-relaxed font-medium space-y-3">
+                            <p>${q.prompt_context || ''}</p>
+                            ${instructionsHTML ? `
+                                <div class="pt-3 border-t border-gray-200/60">
+                                    <span class="font-bold text-slate-800 block mb-1.5">Write an email to ${q.meta_to || 'Daniel'}. In the email, do each of the following:</span>
+                                    <ul class="list-disc pl-4 space-y-1.5 text-slate-600">${instructionsHTML}</ul>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            } else if (taskType === 'academic') {
+                const q = testQuestions[0];
+                let peersHTML = (q.peers || []).map(peer => `
+                    <div class="flex items-start space-x-2.5 bg-gray-50 p-3 rounded-xl border border-gray-100">
+                        <div class="flex flex-col items-center shrink-0">
+                            <div class="w-7 h-7 rounded-full bg-white border border-gray-100 flex items-center justify-center text-xs shadow-sm">${peer.avatar || '👤'}</div>
+                            <span class="text-[8px] font-bold text-gray-400 mt-0.5">${peer.name}</span>
+                        </div>
+                        <p class="text-[11px] text-slate-600 leading-relaxed mt-0.5">${peer.text}</p>
+                    </div>
+                `).join('');
+
+                leftPanelContent = `
+                    <div class="mt-8 border-t border-gray-100 pt-6 space-y-4">
+                        <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Original Context & Prompt</h3>
+                        
+                        ${q.instruction_box ? `
+                            <div class="bg-teal-50 border border-teal-100 rounded-xl px-3.5 py-2.5 text-xs font-bold text-teal-800 leading-relaxed">
+                                ${q.instruction_box}
+                            </div>
+                        ` : ''}
+
+                        ${q.professor_prompt ? `
+                            <div class="flex items-start space-x-3 bg-gray-50 p-3.5 rounded-2xl border border-gray-100">
+                                <div class="flex flex-col items-center shrink-0">
+                                    <div class="text-xl p-1.5 bg-white rounded-full shadow-sm border border-gray-100">${q.professor_avatar || '🎓'}</div>
+                                    <span class="text-[9px] font-bold text-slate-800 mt-1">${q.professor_name || 'Professor'}</span>
+                                </div>
+                                <p class="text-xs text-slate-600 leading-relaxed font-medium pt-0.5">${q.professor_prompt}</p>
+                            </div>
+                        ` : ''}
+
+                        ${peersHTML ? `
+                            <div class="space-y-2 pt-1">
+                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Student Posts</span>
+                                <div class="space-y-2">
+                                    ${peersHTML}
+                                </div>
+                            </div>
+                        ` : ''}
                     </div>
                 `;
             }
@@ -739,7 +782,7 @@
                     response_content: ans,
                     user_id: currentUserId,
                     score: calculateScore(q, ans),
-                    time_left_seconds: timeRemaining // Сохраняем оставшееся время (может быть с минусом)
+                    time_left_seconds: timeRemaining 
                 });
             }
 
@@ -763,4 +806,3 @@
     </script>
 </body>
 </html>
-
