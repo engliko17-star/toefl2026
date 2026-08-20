@@ -186,16 +186,26 @@
 
             LEVELS_DATA.forEach(level => {
                 const isDone = completedLevels.includes(level.id);
+                const savedProgress = localStorage.getItem(`toefl_progress_${level.id}`);
+                const hasProgress = savedProgress !== null && !isDone;
+
                 const card = document.createElement('div');
                 card.className = `bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between hover:border-rose-500/40 hover:shadow-md transition-all cursor-pointer group relative overflow-hidden`;
                 card.onclick = () => startLevel(level.id);
 
+                let badgeHTML = `<span class="text-[9px] font-extrabold px-2 py-0.5 rounded uppercase tracking-wider bg-slate-100 text-slate-600">${level.badge || 'Practice'}</span>`;
+                
+                if (isDone) {
+                    badgeHTML = `<span class="text-[9px] font-extrabold px-2 py-0.5 rounded uppercase tracking-wider bg-emerald-50 text-emerald-600 border border-emerald-100">✓ Completed</span>`;
+                } else if (hasProgress) {
+                    const savedIdx = parseInt(savedProgress, 10) + 1;
+                    badgeHTML = `<span class="text-[9px] font-extrabold px-2 py-0.5 rounded uppercase tracking-wider bg-amber-50 text-amber-600 border border-amber-100">In Progress (Q${savedIdx})</span>`;
+                }
+
                 card.innerHTML = `
                     <div>
                         <div class="flex items-center justify-between mb-4">
-                            <span class="text-[9px] font-extrabold px-2 py-0.5 rounded uppercase tracking-wider ${isDone ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-100 text-slate-600'}">
-                                ${isDone ? '✓ Completed' : (level.badge || 'Practice')}
-                            </span>
+                            ${badgeHTML}
                             <div class="w-8 h-8 rounded-xl bg-rose-50 text-rose-500 flex items-center justify-center group-hover:bg-rose-500 group-hover:text-white transition">
                                 <i data-lucide="${level.icon || 'layers'}" class="w-4 h-4"></i>
                             </div>
@@ -205,7 +215,7 @@
                     </div>
                     <div class="pt-6 mt-4 border-t border-gray-50 flex items-center justify-between">
                         <span class="text-xs font-bold text-rose-500 flex items-center group-hover:translate-x-1 transition-transform ml-auto">
-                            Start <i data-lucide="arrow-right" class="w-3.5 h-3.5 ml-1"></i>
+                            ${hasProgress ? 'Resume' : 'Start'} <i data-lucide="arrow-right" class="w-3.5 h-3.5 ml-1"></i>
                         </span>
                     </div>
                 `;
@@ -217,7 +227,6 @@
         // --- EXERCISE NAVIGATION & TASK FETCHING ---
         async function startLevel(levelId) {
             currentLevel = LEVELS_DATA.find(l => l.id === levelId);
-            currentQuestionIdx = 0;
 
             document.getElementById('headerTitle').innerText = "Loading...";
 
@@ -233,6 +242,19 @@
             } catch (err) {
                 console.error("Error fetching tasks:", err);
                 return;
+            }
+
+            // --- RESTORE SAVED QUESTION INDEX IF AVAILABLE ---
+            const savedIdx = localStorage.getItem(`toefl_progress_${levelId}`);
+            if (savedIdx !== null) {
+                const parsedIdx = parseInt(savedIdx, 10);
+                if (!isNaN(parsedIdx) && parsedIdx >= 0 && parsedIdx < currentTasks.length) {
+                    currentQuestionIdx = parsedIdx;
+                } else {
+                    currentQuestionIdx = 0;
+                }
+            } else {
+                currentQuestionIdx = 0;
             }
 
             document.getElementById('levelsView').classList.add('hidden');
@@ -275,6 +297,11 @@
             document.getElementById('currentQNum').innerText = idx + 1;
             document.getElementById('totalQNum').innerText = currentTasks.length;
 
+            // --- SAVE PROGRESS TO LOCALSTORAGE ---
+            if (currentLevel) {
+                localStorage.setItem(`toefl_progress_${currentLevel.id}`, idx);
+            }
+
             // Context Prompt
             document.getElementById('contextPromptText').innerText = q.prompt;
 
@@ -290,7 +317,6 @@
             const structure = parseSentenceTemplate(q.sentence_template);
             
             // --- ЛОГИКА ДЛЯ ЗНАКА ПРЕПИНАНИЯ ---
-            // Берем знак препинания из конца правильного ответа (или ставим точку по умолчанию)
             const punctuationMatch = q.correct_answer.trim().match(/[.?!]$/);
             const finalPunctuation = punctuationMatch ? punctuationMatch[0] : '.';
 
@@ -298,12 +324,10 @@
                 if (item.type === 'text') {
                     let textValue = item.value;
                     
-                    // Если это последний кусок текста в шаблоне, убираем из него знак, чтобы избежать задвоения
                     if (slotIndex === structure.length - 1) {
                         textValue = textValue.replace(/[.?!]+$/, '').trim();
                     }
                     
-                    // Отрисовываем текст (только если после обрезки он не стал пустым)
                     if (textValue) {
                         dropzone.innerHTML += `<div class="inline-flex items-center px-1.5 py-2 text-sm font-bold text-slate-800 select-none">${textValue}</div>`;
                     }
@@ -312,7 +336,7 @@
                 }
             });
 
-            // Добавляем финальный знак препинания (красным акцентным цветом в конце строки)
+            // Добавляем финальный знак препинания в конце строки
             dropzone.innerHTML += `<div class="inline-flex items-center pl-0.5 pr-2 py-2 text-xl font-black text-rose-500 select-none">${finalPunctuation}</div>`;
 
             // Render Word Bank
@@ -420,9 +444,14 @@
         }
 
         function finishLevel() {
-            if (!completedLevels.includes(currentLevel.id)) {
-                completedLevels.push(currentLevel.id);
-                localStorage.setItem('toefl_completed_levels', JSON.stringify(completedLevels));
+            // Очищаем прогресс текущего уровня, так как он пройден полностью
+            if (currentLevel) {
+                localStorage.removeItem(`toefl_progress_${currentLevel.id}`);
+                
+                if (!completedLevels.includes(currentLevel.id)) {
+                    completedLevels.push(currentLevel.id);
+                    localStorage.setItem('toefl_completed_levels', JSON.stringify(completedLevels));
+                }
             }
 
             document.getElementById('exerciseView').classList.add('hidden');
@@ -439,7 +468,10 @@
         }
 
         function retryCurrentLevel() {
-            if (currentLevel) startLevel(currentLevel.id);
+            if (currentLevel) {
+                localStorage.removeItem(`toefl_progress_${currentLevel.id}`);
+                startLevel(currentLevel.id);
+            }
         }
 
         function showLevelsView() {
@@ -450,6 +482,8 @@
 
             document.getElementById('headerTitle').innerText = 'Build a Sentence Trainer';
             document.getElementById('headerSubtitle').innerText = 'Grammar Mastery';
+            
+            renderLevelsGrid();
         }
 
         function handleBackAction() {
@@ -462,3 +496,4 @@
     </script>
 </body>
 </html>
+
