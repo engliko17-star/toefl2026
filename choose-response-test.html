@@ -256,6 +256,10 @@
             
             document.getElementById('speakerImage').src = q.speaker_image || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&q=80&w=600';
             
+            // Сбрасываем текст инструкции к стандартному
+            document.getElementById('playerInstruction').innerText = "Listen to the audio carefully. You can only answer after it finishes.";
+            document.getElementById('playerInstruction').classList.remove('text-red-500');
+
             audioEl.src = q.audio_url;
             audioEl.load();
             progressBar.style.width = '0%';
@@ -364,7 +368,7 @@
         audioEl.addEventListener('ended', () => {
             setPlayIcon('play');
             
-            // Разблокируем ответы и стартуем таймер только когда аудио завершилось
+            // Разблокируем ответы и стартуем таймер только когда аудио действительно завершилось
             optionsList.classList.remove('opacity-25', 'pointer-events-none');
             optionsList.classList.add('opacity-100');
             
@@ -380,6 +384,32 @@
             const min = Math.floor(duration / 60);
             const sec = Math.floor(duration % 60);
             durationTimeEl.innerText = `${min}:${sec < 10 ? '0' : ''}${sec}`;
+        });
+
+        // --- ОБРАБОТКА БУФЕРИЗАЦИИ И СЕТЕВЫХ ОШИБОК ---
+        audioEl.addEventListener('waiting', () => {
+            document.getElementById('playerInstruction').innerText = "Buffering audio...";
+            const container = document.getElementById('playIconContainer');
+            if (container) {
+                container.innerHTML = `<div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>`;
+            }
+        });
+
+        audioEl.addEventListener('playing', () => {
+            document.getElementById('playerInstruction').innerText = "Listen to the audio carefully. You can only answer after it finishes.";
+            document.getElementById('playerInstruction').classList.remove('text-red-500');
+            setPlayIcon('pause');
+        });
+
+        audioEl.addEventListener('error', (e) => {
+            console.error("Audio playback error:", e);
+            document.getElementById('playerInstruction').innerText = "Network error loading audio. Click Play or reload page.";
+            document.getElementById('playerInstruction').classList.add('text-red-500');
+            setPlayIcon('play');
+        });
+
+        audioEl.addEventListener('stalled', () => {
+            console.warn("Audio download stalled...");
         });
 
         nextBtn.addEventListener('click', () => {
