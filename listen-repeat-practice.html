@@ -4,9 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Listen & Repeat Simulator — TOEFL</title>
+    
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
@@ -25,11 +30,26 @@
             70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
             100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
         }
+
+        /* Анимация загрузки */
+        .loader {
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #4f46e5;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex flex-col md:flex-row antialiased">
 
-    <!-- Сайбар остается как на других страницах -->
+    <!-- Сайдбар -->
     <aside class="hidden md:flex flex-col w-64 bg-white border-r border-gray-100 px-4 py-6 h-screen sticky top-0 shrink-0">
         <div class="font-bold text-2xl tracking-tighter mb-8 px-2 flex items-center space-x-2">
             <span>TOEFL</span><span class="w-1.5 h-1.5 bg-indigo-600 rounded-full mt-2"></span>
@@ -56,8 +76,14 @@
                 </div>
             </div>
 
+            <!-- ИНДИКАТОР ЗАГРУЗКИ SUPABASE -->
+            <div id="loading-state" class="text-center py-20 block">
+                <div class="loader"></div>
+                <p class="text-gray-500 font-medium mt-4">Loading exercises from database...</p>
+            </div>
+
             <!-- ВЬЮ 1: ВЫБОР УРОВНЯ -->
-            <div id="levels-view" class="block">
+            <div id="levels-view" class="hidden">
                 <p class="text-sm text-gray-500 mb-6">Choose a difficulty level. Listen to the audio and try to repeat it exactly. The system will analyze your pronunciation and matches.</p>
                 
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" id="levels-container">
@@ -88,7 +114,7 @@
                         <button onclick="playTargetAudio()" class="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center hover:bg-indigo-600 hover:text-white transition-all shadow-md group">
                             <i data-lucide="play" class="w-8 h-8 ml-1 group-hover:scale-110 transition-transform"></i>
                         </button>
-                        <p class="text-sm text-gray-500 font-medium">Listen to the target phrase</p>
+                        <p class="text-sm text-gray-500 font-medium" id="audio-status-text">Listen to the target phrase</p>
                     </div>
 
                     <!-- Скрытый текст (Транскрипт) -->
@@ -138,37 +164,16 @@
     <script>
         lucide.createIcons();
 
-        // 1. БАЗА ДАННЫХ (Фейковая для фронтенда)
-        const db = {
-            level1: {
-                title: "Level 1: Basic Sentences",
-                desc: "Short, everyday phrases. Slow pacing.",
-                color: "emerald",
-                exercises: [
-                    { id: "L1_1", text: "I would like a cup of coffee please." },
-                    { id: "L1_2", text: "The weather is very nice today." },
-                    { id: "L1_3", text: "Where is the nearest subway station?" }
-                ]
-            },
-            level2: {
-                title: "Level 2: Compound Sentences",
-                desc: "Connecting ideas with conjunctions.",
-                color: "blue",
-                exercises: [
-                    { id: "L2_1", text: "I wanted to go for a walk, but it started raining heavily." },
-                    { id: "L2_2", text: "Because she studied hard, she passed the exam with flying colors." }
-                ]
-            },
-            level3: {
-                title: "Level 3: Academic Phrasing",
-                desc: "TOEFL-style vocabulary and formal tone.",
-                color: "indigo",
-                exercises: [
-                    { id: "L3_1", text: "The professor emphasized the importance of primary sources in historical research." },
-                    { id: "L3_2", text: "Consequently, the economic impact was much more severe than initially anticipated." }
-                ]
-            }
-        };
+        // 1. НАСТРОЙКИ SUPABASE
+        const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // Глобальная база данных (будет заполнена из Supabase)
+        let db = {};
+        
+        // Для проигрывания реальных аудиофайлов
+        let currentAudioElement = null;
 
         // Состояние приложения
         let currentLevel = null;
@@ -176,38 +181,92 @@
         let recognition = null;
         let isRecording = false;
 
-        // Инициализация Web Speech API
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (SpeechRecognition) {
-            recognition = new SpeechRecognition();
-            recognition.continuous = false;
-            recognition.lang = 'en-US';
-            recognition.interimResults = false;
-
-            recognition.onresult = function(event) {
-                const transcript = event.results[0][0].transcript;
-                processSpeechResult(transcript);
-                stopRecordingUI();
-            };
-
-            recognition.onerror = function(event) {
-                console.error("Speech Recognition Error", event.error);
-                alert("Microphone error: " + event.error);
-                stopRecordingUI();
-            };
+        // 2. ИНИЦИАЛИЗАЦИЯ И ЗАГРУЗКА ИЗ БД
+        document.addEventListener('DOMContentLoaded', async () => {
+            initSpeechRecognition();
             
-            recognition.onend = function() {
-                stopRecordingUI();
+            try {
+                const { data, error } = await supabaseClient
+                    .from('shadowing_exercises')
+                    .select('*')
+                    .order('level_name', { ascending: true })
+                    .order('created_at', { ascending: true });
+
+                if (error) throw error;
+
+                // Группируем данные для карусели
+                const colors = ['emerald', 'blue', 'indigo', 'rose', 'amber', 'purple'];
+                let colorIndex = 0;
+
+                data.forEach(item => {
+                    if (!db[item.level_name]) {
+                        db[item.level_name] = {
+                            title: item.level_name,
+                            desc: "Practice listening and pronunciation.",
+                            color: colors[colorIndex % colors.length],
+                            exercises: []
+                        };
+                        colorIndex++;
+                    }
+                    db[item.level_name].exercises.push({
+                        id: item.id,
+                        title: item.title,
+                        text: item.transcript,
+                        audioSrc: item.audio_url // Может быть null
+                    });
+                });
+
+                // Скрываем лоадер, показываем интерфейс
+                document.getElementById('loading-state').classList.replace('block', 'hidden');
+                document.getElementById('levels-view').classList.replace('hidden', 'block');
+                
+                renderLevels();
+
+            } catch (error) {
+                console.error("Error loading DB:", error);
+                document.getElementById('loading-state').innerHTML = `<p class="text-rose-500 font-bold">Failed to connect to database. Please check console.</p>`;
             }
-        } else {
-            console.warn("Speech Recognition API not supported in this browser.");
+        });
+
+        // 3. WEB SPEECH API (Микрофон)
+        function initSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (SpeechRecognition) {
+                recognition = new SpeechRecognition();
+                recognition.continuous = false;
+                recognition.lang = 'en-US';
+                recognition.interimResults = false;
+
+                recognition.onresult = function(event) {
+                    const transcript = event.results[0][0].transcript;
+                    processSpeechResult(transcript);
+                    stopRecordingUI();
+                };
+
+                recognition.onerror = function(event) {
+                    console.error("Speech Recognition Error", event.error);
+                    alert("Microphone error: " + event.error);
+                    stopRecordingUI();
+                };
+                
+                recognition.onend = function() {
+                    stopRecordingUI();
+                }
+            } else {
+                console.warn("Speech Recognition API not supported in this browser.");
+            }
         }
 
-        // Рендер карточек уровней
+        // 4. ОТРИСОВКА УРОВНЕЙ
         function renderLevels() {
             const container = document.getElementById('levels-container');
             container.innerHTML = '';
             
+            if (Object.keys(db).length === 0) {
+                container.innerHTML = '<div class="col-span-full text-center text-gray-500">No exercises found in the database.</div>';
+                return;
+            }
+
             // Загружаем сохраненные баллы из LocalStorage
             const savedScores = JSON.parse(localStorage.getItem('shadowing_scores') || '{}');
 
@@ -219,20 +278,23 @@
                 level.exercises.forEach(ex => {
                     if (savedScores[ex.id]) completed++;
                 });
-                const progress = Math.round((completed / level.exercises.length) * 100);
+                
+                // Защита от деления на ноль, если уровень пустой
+                const total = level.exercises.length;
+                const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
 
                 const card = `
-                    <div class="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col hover:border-${level.color}-400 hover:shadow-md transition cursor-pointer" onclick="openLevel('${levelKey}')">
+                    <div class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col hover:border-${level.color}-400 hover:shadow-md transition cursor-pointer" onclick="openLevel('${levelKey}')">
                         <div class="w-12 h-12 rounded-xl bg-${level.color}-50 flex items-center justify-center text-${level.color}-600 mb-4">
                             <i data-lucide="layers" class="w-6 h-6"></i>
                         </div>
                         <h3 class="font-bold text-slate-900 mb-1">${level.title}</h3>
-                        <p class="text-xs text-gray-500 mb-6 flex-1">${level.desc}</p>
+                        <p class="text-xs text-gray-500 mb-6 flex-1">${total} Audio Tracks</p>
                         
                         <div class="mt-auto">
                             <div class="flex justify-between text-[10px] font-bold text-slate-400 mb-2 uppercase tracking-wider">
                                 <span>Progress</span>
-                                <span>${completed}/${level.exercises.length}</span>
+                                <span>${completed}/${total}</span>
                             </div>
                             <div class="w-full bg-gray-100 rounded-full h-1.5">
                                 <div class="bg-${level.color}-500 h-1.5 rounded-full" style="width: ${progress}%"></div>
@@ -245,9 +307,16 @@
             lucide.createIcons();
         }
 
+        // 5. НАВИГАЦИЯ ПО ИНТЕРФЕЙСУ
         function openLevel(levelKey) {
             currentLevel = levelKey;
             currentIndex = 0;
+            
+            if (db[levelKey].exercises.length === 0) {
+                alert("This level has no exercises yet.");
+                return;
+            }
+
             document.getElementById('levels-view').classList.add('hidden');
             document.getElementById('exercise-view').classList.remove('hidden');
             document.getElementById('current-level-title').innerText = db[levelKey].title;
@@ -257,7 +326,7 @@
         function goBackToLevels() {
             document.getElementById('exercise-view').classList.add('hidden');
             document.getElementById('levels-view').classList.remove('hidden');
-            window.speechSynthesis.cancel(); // останавливаем аудио если играет
+            stopTargetAudio();
             renderLevels(); // обновляем прогресс
         }
 
@@ -265,11 +334,18 @@
             const levelData = db[currentLevel];
             const exercise = levelData.exercises[currentIndex];
             
-            document.getElementById('exercise-title').innerText = `Audio #${currentIndex + 1}`;
+            document.getElementById('exercise-title').innerText = exercise.title || `Audio #${currentIndex + 1}`;
             document.getElementById('exercise-progress').innerText = `${currentIndex + 1} / ${levelData.exercises.length}`;
             document.getElementById('transcript-box').innerText = exercise.text;
             document.getElementById('transcript-box').classList.add('hidden'); // прячем по умолчанию
             
+            // Если есть реальное аудио, подсказываем это
+            if (exercise.audioSrc) {
+                document.getElementById('audio-status-text').innerText = "Listen to the recorded phrase";
+            } else {
+                document.getElementById('audio-status-text').innerText = "Listen to the target phrase (Robot)";
+            }
+
             // Сброс UI результатов
             document.getElementById('result-box').classList.add('hidden');
             
@@ -278,6 +354,14 @@
             if (savedScores[exercise.id]) {
                 document.getElementById('result-box').classList.remove('hidden');
                 document.getElementById('score-percent').innerText = savedScores[exercise.id].percent + '%';
+                
+                // Цвет в зависимости от процента
+                const perc = savedScores[exercise.id].percent;
+                const scoreElem = document.getElementById('score-percent');
+                scoreElem.className = perc >= 80 ? "text-4xl font-black text-emerald-400" : 
+                                      perc >= 50 ? "text-4xl font-black text-amber-400" : 
+                                      "text-4xl font-black text-rose-400";
+
                 document.getElementById('analysis-text').innerHTML = savedScores[exercise.id].html;
             }
         }
@@ -287,7 +371,7 @@
             currentIndex += step;
             if (currentIndex < 0) currentIndex = levelData.exercises.length - 1;
             if (currentIndex >= levelData.exercises.length) currentIndex = 0;
-            window.speechSynthesis.cancel();
+            stopTargetAudio();
             loadExercise();
         }
 
@@ -296,21 +380,45 @@
             box.classList.toggle('hidden');
         }
 
-        // ВОСПРОИЗВЕДЕНИЕ ОРИГИНАЛА (через Web SpeechSynthesis)
+        // 6. ВОСПРОИЗВЕДЕНИЕ ОРИГИНАЛА (Аудио из БД или TTS)
+        function stopTargetAudio() {
+            window.speechSynthesis.cancel();
+            if (currentAudioElement) {
+                currentAudioElement.pause();
+                currentAudioElement.currentTime = 0;
+            }
+        }
+
         function playTargetAudio() {
+            stopTargetAudio(); // Остановить, если что-то уже играет
+
+            const exercise = db[currentLevel].exercises[currentIndex];
+
+            // Если есть URL аудио в базе данных — играем его
+            if (exercise.audioSrc && exercise.audioSrc.trim() !== '') {
+                currentAudioElement = new Audio(exercise.audioSrc);
+                currentAudioElement.play().catch(e => {
+                    console.error("Audio play failed, falling back to TTS", e);
+                    fallbackToTTS(exercise.text);
+                });
+            } else {
+                // Если ссылки нет, используем стандартного робота (как было у вас изначально)
+                fallbackToTTS(exercise.text);
+            }
+        }
+
+        function fallbackToTTS(text) {
             if (!('speechSynthesis' in window)) {
                 alert("Sorry, your browser doesn't support text to speech!");
                 return;
             }
-            window.speechSynthesis.cancel(); // сброс
-            const text = db[currentLevel].exercises[currentIndex].text;
             const utterance = new SpeechSynthesisUtterance(text);
             utterance.lang = 'en-US';
             utterance.rate = 0.9; // Чуть медленнее для Shadowing
             window.speechSynthesis.speak(utterance);
         }
 
-        // ЗАПИСЬ И РАСПОЗНАВАНИЕ
+        // 7. ЗАПИСЬ И РАСПОЗНАВАНИЕ
         function toggleRecording() {
             if (!recognition) {
                 alert("Speech Recognition API is not supported in this browser. Try Google Chrome.");
@@ -320,7 +428,8 @@
             if (isRecording) {
                 recognition.stop();
             } else {
-                window.speechSynthesis.cancel(); // Выключаем аудио оригинала, если играет
+                stopTargetAudio(); // Выключаем аудио оригинала, если играет
+                
                 recognition.start();
                 isRecording = true;
                 
@@ -328,422 +437,99 @@
                 const btn = document.getElementById('record-btn');
                 btn.classList.add('recording-pulse', 'bg-rose-600', 'text-white');
                 btn.classList.remove('bg-rose-100', 'text-rose-500');
-                document.getElementById('record-status').innerText = "Listening... Speak now";
-                document.getElementById('record-status').classList.add('text-rose-500');
+                
+                const status = document.getElementById('record-status');
+                status.innerText = "Listening... Speak now";
+                status.classList.add('text-rose-500');
+                status.classList.remove('text-gray-400');
+                
                 document.getElementById('result-box').classList.add('hidden');
             }
         }
 
+        // Восстановленная функция UI после записи
         function stopRecordingUI() {
             isRecording = false;
             const btn = document.getElementById('record-btn');
             btn.classList.remove('recording-pulse', 'bg-rose-600', 'text-white');
             btn.classList.add('bg-rose-100', 'text-rose-500');
-            document.getElementById('record-status').innerText = "Click to start speaking";
-            document.getElementById('record-status').classList.remove('text-Отличная идея. Для платформы подготовки к TOEFL такой тренажер (диктант или shadowing) — это мощный инструмент. 
-
-Поскольку мы работаем с одним файлом `listen-repeat-practice.html`, мы можем использовать подход Single Page Application (SPA) с помощью JavaScript. Все уровни и упражнения будут на одной странице, но мы будем скрывать и показывать нужные блоки динамически.
-
-Вот готовое решение в одном файле (HTML, CSS и JS). В нем реализована:
-1. **Навигация:** Главный экран с выбором уровня -> Экран с упражнениями.
-2. **Аудиоплеер:** Базовый тег для прослушивания.
-3. **Логика проверки:** Алгоритм, который очищает текст от знаков препинания, сравнивает введенные слова с оригинальным транскриптом и высчитывает процент совпадения.
-4. **Сохранение прогресса (`localStorage`):** Платформа запоминает текст ученика и его лучший результат, чтобы при возвращении на страницу он видел свой прогресс.
-
-### Код файла `listen-repeat-practice.html`
-
-Скопируйте этот код и откройте в браузере. Вы можете заменить ссылки на аудио (`audioSrc`) и тексты (`transcript`) на свои реальные материалы.
-
-```html
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Listen & Repeat | TOEFL Simulator</title>
-    <style>
-        :root {
-            --primary: #2563eb;
-            --primary-hover: #1d4ed8;
-            --bg: #f8fafc;
-            --card-bg: #ffffff;
-            --text-main: #1e293b;
-            --text-muted: #64748b;
-            --border: #e2e8f0;
-            --success: #10b981;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: var(--bg);
-            color: var(--text-main);
-            margin: 0;
-            padding: 2rem;
-            line-height: 1.5;
-        }
-
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-        }
-
-        h1, h2 {
-            color: var(--text-main);
-            margin-bottom: 1.5rem;
-        }
-
-        /* Утилиты видимости */
-        .hidden {
-            display: none !important;
-        }
-
-        /* Экран выбора уровней */
-        .levels-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1rem;
-        }
-
-        .level-card {
-            background: var(--card-bg);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 2rem;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.2s;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-
-        .level-card:hover {
-            border-color: var(--primary);
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            transform: translateY(-2px);
-        }
-
-        .level-card h3 {
-            margin: 0;
-            font-size: 1.25rem;
-            color: var(--primary);
-        }
-
-        /* Экран упражнений */
-        .back-btn {
-            background: none;
-            border: none;
-            color: var(--text-muted);
-            cursor: pointer;
-            font-size: 1rem;
-            padding: 0;
-            margin-bottom: 2rem;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .back-btn:hover {
-            color: var(--primary);
-        }
-
-        .exercise-card {
-            background: var(--card-bg);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 1.5rem;
-            margin-bottom: 1.5rem;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-        }
-
-        .exercise-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1rem;
-            border-bottom: 1px solid var(--border);
-            padding-bottom: 1rem;
-        }
-
-        .exercise-header h3 {
-            margin: 0;
-            font-size: 1.1rem;
-        }
-
-        .score-badge {
-            background: #f1f5f9;
-            color: var(--text-muted);
-            padding: 0.25rem 0.75rem;
-            border-radius: 999px;
-            font-size: 0.875rem;
-            font-weight: 500;
-        }
-
-        .score-badge.completed {
-            background: #d1fae5;
-            color: #065f46;
-        }
-
-        audio {
-            width: 100%;
-            margin-bottom: 1rem;
-        }
-
-        textarea {
-            width: 100%;
-            min-height: 100px;
-            padding: 0.75rem;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            font-family: inherit;
-            margin-bottom: 1rem;
-            resize: vertical;
-            box-sizing: border-box;
-        }
-
-        textarea:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-        }
-
-        .check-btn {
-            background: var(--primary);
-            color: white;
-            border: none;
-            padding: 0.5rem 1.25rem;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 1rem;
-            font-weight: 500;
-            transition: background 0.2s;
-        }
-
-        .check-btn:hover {
-            background: var(--primary-hover);
-        }
-
-        .result-container {
-            margin-top: 1rem;
-            padding: 1rem;
-            background: #f8fafc;
-            border-radius: 6px;
-            display: none;
-        }
-
-        .correct-transcript {
-            margin-top: 0.5rem;
-            font-style: italic;
-            color: var(--success);
-            font-size: 0.95rem;
-        }
-    </style>
-</head>
-<body>
-
-<div class="container">
-    <!-- View 1: Выбор уровня -->
-    <div id="levels-view">
-        <h1>Выберите уровень сложности</h1>
-        <p style="color: var(--text-muted); margin-bottom: 2rem;">Прослушайте аудио и запишите услышанное, чтобы тренировать навык распознавания речи для TOEFL.</p>
-        
-        <div class="levels-grid" id="levels-container">
-            <!-- Кнопки уровней генерируются через JS -->
-        </div>
-    </div>
-
-    <!-- View 2: Список упражнений -->
-    <div id="exercises-view" class="hidden">
-        <button class="back-btn" onclick="showLevels()">
-            ← Назад к уровням
-        </button>
-        <h2 id="current-level-title">Уровень</h2>
-        
-        <div id="exercises-container">
-            <!-- Упражнения генерируются через JS -->
-        </div>
-    </div>
-</div>
-
-<script>
-    // 1. БАЗА ДАННЫХ (Mock Data)
-    // В реальном проекте аудио файлы нужно положить в папку проекта.
-    // Пока здесь используются внешние ссылки или пустышки для примера.
-    const database = {
-        "Level B1 (Intermediate)": [
-            {
-                id: "b1_ex1",
-                title: "Exercise 1: Campus Life",
-                audioSrc: "[https://www.soundhelix.com/architectureplay/SoundHelix-Song-1.mp3](https://www.soundhelix.com/architectureplay/SoundHelix-Song-1.mp3)", // Замените на свое аудио
-                transcript: "The university library will be closed this weekend for renovations."
-            },
-            {
-                id: "b1_ex2",
-                title: "Exercise 2: Course Registration",
-                audioSrc: "", // Замените на свое аудио
-                transcript: "You need to submit your registration form before the deadline."
-            }
-        ],
-        "Level B2 (Upper-Intermediate)": [
-            {
-                id: "b2_ex1",
-                title: "Exercise 1: Biology Lecture",
-                audioSrc: "",
-                transcript: "Photosynthesis is the process by which green plants transform light energy into chemical energy."
-            }
-        ],
-        "Level C1 (Advanced TOEFL)": [
-            {
-                id: "c1_ex1",
-                title: "Exercise 1: Academic Discussion",
-                audioSrc: "",
-                transcript: "The professor emphasized that cognitive behavioral therapy is particularly effective when combined with prolonged exposure techniques."
-            }
-        ]
-    };
-
-    // DOM Элементы
-    const levelsView = document.getElementById('levels-view');
-    const exercisesView = document.getElementById('exercises-view');
-    const levelsContainer = document.getElementById('levels-container');
-    const exercisesContainer = document.getElementById('exercises-container');
-    const currentLevelTitle = document.getElementById('current-level-title');
-
-    // Инициализация при загрузке страницы
-    window.onload = () => {
-        renderLevels();
-    };
-
-    // 2. РЕНДЕР УРОВНЕЙ
-    function renderLevels() {
-        levelsContainer.innerHTML = '';
-        const levels = Object.keys(database);
-        
-        levels.forEach(levelName => {
-            const card = document.createElement('div');
-            card.className = 'level-card';
-            card.innerHTML = `<h3>${levelName}</h3><p style="margin-top: 0.5rem; color: var(--text-muted); font-size: 0.9rem;">Упражнений: ${database[levelName].length}</p>`;
-            card.onclick = () => showExercises(levelName);
-            levelsContainer.appendChild(card);
-        });
-    }
-
-    // 3. НАВИГАЦИЯ
-    function showExercises(levelName) {
-        levelsView.classList.add('hidden');
-        exercisesView.classList.remove('hidden');
-        currentLevelTitle.textContent = levelName;
-        renderExercises(levelName);
-    }
-
-    function showLevels() {
-        exercisesView.classList.add('hidden');
-        levelsView.classList.remove('hidden');
-    }
-
-    // 4. РЕНДЕР УПРАЖНЕНИЙ И РАБОТА С LOCALSTORAGE
-    function renderExercises(levelName) {
-        exercisesContainer.innerHTML = '';
-        const exercises = database[levelName];
-
-        exercises.forEach((ex, index) => {
-            // Достаем сохраненные данные пользователя
-            const savedData = JSON.parse(localStorage.getItem(`toefl_sim_${ex.id}`)) || { score: 0, text: '' };
-            const isCompleted = savedData.score > 0;
-
-            const exCard = document.createElement('div');
-            exCard.className = 'exercise-card';
             
-            exCard.innerHTML = `
-                <div class="exercise-header">
-                    <h3>${ex.title}</h3>
-                    <span class="score-badge ${isCompleted ? 'completed' : ''}" id="badge-${ex.id}">
-                        ${isCompleted ? `Лучший результат: ${savedData.score}%` : 'Не пройдено'}
-                    </span>
+            const status = document.getElementById('record-status');
+            status.innerText = "Click to start speaking";
+            status.classList.remove('text-rose-500');
+            status.classList.add('text-gray-400');
+        }
+
+        // 8. ОБРАБОТКА РЕЗУЛЬТАТА И ПОДСЧЕТ БАЛЛОВ
+        function processSpeechResult(transcript) {
+            const exercise = db[currentLevel].exercises[currentIndex];
+            const correctText = exercise.text;
+            
+            // Нормализация (убираем пунктуацию, к нижнему регистру)
+            const cleanText = (str) => {
+                return str.toLowerCase()
+                          .replace(/[.,!?;:"'()\-]/g, "")
+                          .trim()
+                          .split(/\s+/)
+                          .filter(w => w.length > 0);
+            };
+            
+            const correctWords = cleanText(correctText);
+            const userWords = cleanText(transcript);
+            
+            let matches = 0;
+            let analysisHtml = '';
+            
+            // Пословное сравнение (с подсветкой зелёным/красным)
+            correctWords.forEach(word => {
+                const idx = userWords.indexOf(word);
+                if (idx > -1) {
+                    matches++;
+                    analysisHtml += `<span class="text-emerald-400 font-bold mr-1">${word}</span>`;
+                    userWords.splice(idx, 1); // Убираем слово, чтобы не засчитать дважды
+                } else {
+                    analysisHtml += `<span class="text-rose-400 mr-1 line-through opacity-70">${word}</span>`;
+                }
+            });
+            
+            // Расчет процента
+            const percent = correctWords.length > 0 
+                ? Math.round((matches / correctWords.length) * 100) 
+                : 0;
+            
+            // Подготовка HTML для блока Analysis
+            const finalHtml = `
+                <div class="mb-3">
+                    <span class="text-slate-400 text-xs uppercase tracking-wider font-bold">You said:</span><br/> 
+                    <span class="italic text-slate-300">"${transcript}"</span>
                 </div>
-                
-                <audio controls>
-                    <source src="${ex.audioSrc}" type="audio/mpeg">
-                    Ваш браузер не поддерживает аудио элемент.
-                </audio>
-
-                <textarea id="input-${ex.id}" placeholder="Type exactly what you hear...">${savedData.text}</textarea>
-                
-                <button class="check-btn" onclick="checkAnswer('${ex.id}', '${ex.transcript.replace(/'/g, "\\'")}')">
-                    Проверить
-                </button>
-
-                <div id="result-${ex.id}" class="result-container">
-                    <strong>Совпадение: <span id="score-text-${ex.id}"></span>%</strong>
-                    <div class="correct-transcript">Оригинал: ${ex.transcript}</div>
+                <div>
+                    <span class="text-slate-400 text-xs uppercase tracking-wider font-bold">Word match analysis:</span><br/> 
+                    <div class="mt-1 text-lg">${analysisHtml}</div>
                 </div>
             `;
             
-            exercisesContainer.appendChild(exCard);
-        });
-    }
+            // Обновление UI
+            document.getElementById('result-box').classList.remove('hidden');
+            const scoreElem = document.getElementById('score-percent');
+            scoreElem.innerText = percent + '%';
+            
+            if (percent >= 80) scoreElem.className = "text-4xl font-black text-emerald-400";
+            else if (percent >= 50) scoreElem.className = "text-4xl font-black text-amber-400";
+            else scoreElem.className = "text-4xl font-black text-rose-400";
 
-    // 5. ЛОГИКА ПРОВЕРКИ СОВПАДЕНИЙ
-    function checkAnswer(exerciseId, correctTranscript) {
-        const userInput = document.getElementById(`input-${exerciseId}`).value;
-        const resultContainer = document.getElementById(`result-${exerciseId}`);
-        const scoreText = document.getElementById(`score-text-${exerciseId}`);
-        const badge = document.getElementById(`badge-${exerciseId}`);
-
-        // Функция для очистки текста (удаляем знаки препинания, переводим в нижний регистр)
-        const cleanText = (str) => {
-            return str.toLowerCase()
-                      .replace(/[.,!?;:"'()]/g, "") // удаляем пунктуацию
-                      .trim()
-                      .split(/\s+/) // разбиваем на массив слов
-                      .filter(word => word.length > 0);
-        };
-
-        const userWords = cleanText(userInput);
-        const correctWords = cleanText(correctTranscript);
-
-        // Алгоритм подсчета совпадений
-        let matches = 0;
-        let correctWordsCopy = [...correctWords]; // копия, чтобы не считать одно слово дважды
-
-        userWords.forEach(word => {
-            const index = correctWordsCopy.indexOf(word);
-            if (index > -1) {
-                matches++;
-                correctWordsCopy.splice(index, 1);
+            document.getElementById('analysis-text').innerHTML = finalHtml;
+            
+            // Сохранение в LocalStorage (запоминаем лучший результат)
+            let savedScores = JSON.parse(localStorage.getItem('shadowing_scores') || '{}');
+            const prevBest = savedScores[exercise.id] ? savedScores[exercise.id].percent : 0;
+            
+            if (percent >= prevBest) {
+                savedScores[exercise.id] = { percent: percent, html: finalHtml };
+                localStorage.setItem('shadowing_scores', JSON.stringify(savedScores));
             }
-        });
-
-        // Вычисляем процент
-        let percentage = 0;
-        if (correctWords.length > 0) {
-            percentage = Math.round((matches / correctWords.length) * 100);
         }
-
-        // Обновляем UI
-        scoreText.textContent = percentage;
-        resultContainer.style.display = 'block';
-
-        if (percentage >= 80) {
-            scoreText.style.color = '#10b981'; // зеленый
-        } else if (percentage >= 50) {
-            scoreText.style.color = '#f59e0b'; // желтый
-        } else {
-            scoreText.style.color = '#ef4444'; // красный
-        }
-
-        badge.textContent = `Результат: ${percentage}%`;
-        badge.classList.add('completed');
-
-        // 6. СОХРАНЕНИЕ В LOCALSTORAGE
-        // Сохраняем текущий ввод и лучший результат
-        const previousData = JSON.parse(localStorage.getItem(`toefl_sim_${exerciseId}`)) || { score: 0 };
-        const bestScore = Math.max(previousData.score, percentage);
-        
-        localStorage.setItem(`toefl_sim_${exerciseId}`, JSON.stringify({
-            score: bestScore,
-            text: userInput
-        }));
-    }
-</script>
-
+    </script>
 </body>
 </html>
+
