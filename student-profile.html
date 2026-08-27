@@ -398,12 +398,12 @@
         let dbFocusAreas = [];
         let dbLessons = [];
         let globalWritingTasks = []; 
-        let writingTasksMap = {}; // Карта формулировок заданий (writing_tasks) по id
+        let writingTasksMap = {}; 
         let currentStudentEmail = ""; 
         let studentProfile = null;
         let readingChartInstance = null;
         let currentWritingId = null; 
-        let editingLessonId = null; // Переменная для отслеживания редактируемой строки урока
+        let editingLessonId = null; 
 
         window.onload = async () => {
             if (typeof requireAuth === 'function') {
@@ -690,7 +690,6 @@
             }
         }
 
-        // Обновленный рендер уроков с поддержкой режима редактирования строки (тема, дз, дата, секция, статус)
         function renderLessons() {
             const tbody = document.getElementById('lessonsTableBody');
             if (!dbLessons || dbLessons.length === 0) {
@@ -699,7 +698,6 @@
             }
 
             tbody.innerHTML = dbLessons.map((item) => {
-                // Режим редактирования строки
                 if (item.id === editingLessonId) {
                     return `
                         <tr class="border-b border-indigo-100 bg-indigo-50/40 transition">
@@ -733,8 +731,6 @@
                         </tr>
                     `;
                 } 
-                
-                // Обычный режим (просмотр)
                 else {
                     let sectionClass = 'bg-indigo-50 text-indigo-600';
                     if(item.section === 'Reading') sectionClass = 'bg-blue-50 text-blue-600';
@@ -1131,73 +1127,81 @@
         }
 
         function openWritingEditor(taskId) {
-            const task = globalWritingTasks.find(t => String(t.id) === String(taskId));
-            if (!task) return;
+            try {
+                const task = globalWritingTasks.find(t => String(t.id) === String(taskId));
+                if (!task) return;
 
-            currentWritingId = task.id;
-            
-            const taskInfo = writingTasksMap[task.task_id];
-            let promptText = "Текст задания не найден";
+                currentWritingId = task.id;
+                const taskInfo = writingTasksMap[task.task_id];
+                let promptText = "Текст задания не найден (или не привязан ID)";
 
-            if (taskInfo) {
-                const parts = [];
-                
-                const instructionsText = taskInfo.instructions || taskInfo.instruction_box;
-                if (instructionsText) {
-                    const cleanInstructions = instructionsText.replace(/<[^>]+>/g, '');
-                    parts.push("📋 ИНСТРУКЦИЯ:\n" + cleanInstructions);
-                }
-
-                if (taskInfo.prompt_context) {
-                    parts.push("✉️ СИТУАЦИЯ / КОНТЕКСТ:\n" + taskInfo.prompt_context);
-                }
-                
-                if (taskInfo.professor_prompt) {
-                    parts.push("👨‍🏫 PROFESSOR:\n" + taskInfo.professor_prompt);
-                }
-
-                if (taskInfo.peers) {
-                    let peersArray = [];
+                if (taskInfo) {
+                    const parts = [];
                     
-                    if (typeof taskInfo.peers === 'string') {
-                        try { peersArray = JSON.parse(taskInfo.peers); } catch (e) { console.error("Ошибка парсинга peers", e); }
-                    } else if (Array.isArray(taskInfo.peers)) {
-                        peersArray = taskInfo.peers;
+                    const instructionsText = taskInfo.instructions || taskInfo.instruction_box;
+                    if (instructionsText) {
+                        const cleanInstructions = String(instructionsText).replace(/<[^>]+>/g, '');
+                        parts.push("📋 ИНСТРУКЦИЯ:\n" + cleanInstructions);
                     }
 
-                    if (peersArray.length > 0) {
-                        let peersText = "👥 СТУДЕНТЫ (PEERS):";
-                        peersArray.forEach(peer => {
-                            peersText += `\n\n🧑‍🎓 ${peer.name || 'Студент'}:\n${peer.text || ''}`;
-                        });
-                        parts.push(peersText);
+                    if (taskInfo.prompt_context) parts.push("✉️ СИТУАЦИЯ / КОНТЕКСТ:\n" + String(taskInfo.prompt_context));
+                    if (taskInfo.professor_prompt) parts.push("👨‍🏫 PROFESSOR:\n" + String(taskInfo.professor_prompt));
+
+                    if (taskInfo.peers) {
+                        let peersArray = [];
+                        if (typeof taskInfo.peers === 'string') {
+                            try { peersArray = JSON.parse(taskInfo.peers); } catch (e) {}
+                        } else if (Array.isArray(taskInfo.peers)) {
+                            peersArray = taskInfo.peers;
+                        }
+
+                        if (peersArray.length > 0) {
+                            let peersText = "👥 СТУДЕНТЫ (PEERS):";
+                            peersArray.forEach(peer => {
+                                peersText += `\n\n🧑‍🎓 ${peer.name || 'Студент'}:\n${peer.text || ''}`;
+                            });
+                            parts.push(peersText);
+                        }
                     }
+
+                    if (taskInfo.reading_text) parts.push("📚 READING:\n" + String(taskInfo.reading_text));
+                    if (taskInfo.prompt) parts.push("❓ ВОПРОС:\n" + String(taskInfo.prompt));
+                    if (!taskInfo.prompt && taskInfo.question) parts.push("❓ ВОПРОС:\n" + String(taskInfo.question));
+
+                    if (parts.length > 0) {
+                        promptText = parts.join('\n\n-------------------\n\n');
+                    }
+                } else if (task.task_prompt || task.prompt || task.question) {
+                    const fallback = task.task_prompt || task.prompt || task.question;
+                    promptText = typeof fallback === 'string' ? fallback : JSON.stringify(fallback);
                 }
 
-                if (taskInfo.reading_text) parts.push("📚 READING:\n" + taskInfo.reading_text);
-                if (taskInfo.prompt) parts.push("❓ ВОПРОС:\n" + taskInfo.prompt);
-                if (!taskInfo.prompt && taskInfo.question) parts.push("❓ ВОПРОС:\n" + taskInfo.question);
+                document.getElementById('editorTitle').innerText = `Проверка: ${task.task_type ? task.task_type : 'Task #' + (task.task_id || '')}`;
+                document.getElementById('editorTaskPrompt').innerText = promptText;
+                
+                document.getElementById('editorOriginalText').innerText = task.response_content ? String(task.response_content) : 'Текст ответа отсутствует';
+                
+                document.getElementById('editorCorrections').value = task.correction || '';
+                document.getElementById('editorExplanations').value = task.teacher_correction || '';
+                document.getElementById('editorScore').value = task.score || '';
 
-                if (parts.length > 0) {
-                    promptText = parts.join('\n\n-------------------\n\n');
-                }
-            } else if (task.task_prompt || task.prompt || task.question) {
-                promptText = task.task_prompt || task.prompt || task.question;
+                document.getElementById('writingList').classList.add('hidden');
+                document.getElementById('writingEditor').classList.remove('hidden');
+                document.getElementById('writingEditor').classList.add('flex');
+                lucide.createIcons();
+                
+            } catch (error) {
+                console.error("Ошибка открытия эссе:", error);
+                document.getElementById('editorTitle').innerText = "Проверка (Ошибка формата задания)";
+                document.getElementById('editorTaskPrompt').innerText = "Не удалось отрендерить текст задания из базы. Окно открыто в аварийном режиме.";
+                
+                const task = globalWritingTasks.find(t => String(t.id) === String(taskId));
+                document.getElementById('editorOriginalText').innerText = (task && task.response_content) ? String(task.response_content) : 'Текст ответа отсутствует';
+                
+                document.getElementById('writingList').classList.add('hidden');
+                document.getElementById('writingEditor').classList.remove('hidden');
+                document.getElementById('writingEditor').classList.add('flex');
             }
-
-            document.getElementById('editorTitle').innerText = `Проверка: ${task.task_type ? task.task_type : 'Task #' + (task.task_id || '')}`;
-            
-            document.getElementById('editorTaskPrompt').innerText = promptText;
-            document.getElementById('editorOriginalText').innerText = task.response_content || 'Текст ответа отсутствует';
-            
-            document.getElementById('editorCorrections').value = task.correction || '';
-            document.getElementById('editorExplanations').value = task.teacher_correction || '';
-            document.getElementById('editorScore').value = task.score || '';
-
-            document.getElementById('writingList').classList.add('hidden');
-            document.getElementById('writingEditor').classList.remove('hidden');
-            document.getElementById('writingEditor').classList.add('flex');
-            lucide.createIcons();
         }
 
         function closeWritingEditor() {
@@ -1245,3 +1249,4 @@
     </script>
 </body>
 </html>
+
