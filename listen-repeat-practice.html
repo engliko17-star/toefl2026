@@ -84,25 +84,42 @@
 
             <!-- ВЬЮ 1: ВЫБОР УРОВНЯ -->
             <div id="levels-view" class="hidden">
-                <p class="text-sm text-gray-500 mb-6">Choose a difficulty level. Listen to the audio and try to repeat it exactly. The system will analyze your pronunciation and matches.</p>
-                
+                <p class="text-sm text-gray-500 mb-6">Choose a difficulty level to practice your pronunciation.</p>
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" id="levels-container">
                     <!-- Уровни генерируются через JS -->
+                </div>
+            </div>
+
+            <!-- ВЬЮ 1.5: СПИСОК ЗАДАНИЙ (НОВОЕ) -->
+            <div id="tasks-view" class="hidden">
+                <div class="flex items-center justify-between mb-6">
+                    <button onclick="goBackToLevels()" class="flex items-center text-sm font-bold text-slate-500 hover:text-slate-900 transition bg-white border border-gray-200 px-4 py-2 rounded-xl shadow-sm">
+                        <i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i> Back to Levels
+                    </button>
+                    <div class="text-sm font-bold text-slate-700 bg-white px-4 py-2 rounded-xl shadow-sm border border-gray-100" id="current-tasks-title">
+                        Level 1
+                    </div>
+                </div>
+                
+                <p class="text-sm text-gray-500 mb-6">Select a phrase to practice. Cards will turn green as you master them.</p>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="tasks-container">
+                    <!-- Карточки заданий генерируются через JS -->
                 </div>
             </div>
 
             <!-- ВЬЮ 2: ТРЕНАЖЕР -->
             <div id="exercise-view" class="hidden">
                 <div class="flex items-center justify-between mb-6">
-                    <button onclick="goBackToLevels()" class="flex items-center text-sm font-bold text-slate-500 hover:text-slate-900 transition bg-white border border-gray-200 px-4 py-2 rounded-xl shadow-sm">
-                        <i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i> Back to Levels
+                    <button onclick="goBackToTasks()" class="flex items-center text-sm font-bold text-slate-500 hover:text-slate-900 transition bg-white border border-gray-200 px-4 py-2 rounded-xl shadow-sm">
+                        <i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i> Back to Tasks
                     </button>
                     <div class="text-sm font-bold text-slate-700 bg-white px-4 py-2 rounded-xl shadow-sm border border-gray-100" id="current-level-title">
                         Level 1
                     </div>
                 </div>
 
-                <!-- Навигация по аудио (карусель/список) -->
+                <!-- Навигация по аудио -->
                 <div class="bg-white rounded-3xl p-6 md:p-10 shadow-sm border border-gray-100">
                     <div class="flex justify-between items-center border-b border-gray-100 pb-4 mb-8">
                         <h2 class="text-lg font-bold text-slate-800" id="exercise-title">Audio #1</h2>
@@ -135,7 +152,7 @@
                         <p id="record-status" class="text-xs text-gray-400 mt-3 font-medium">Click to start speaking</p>
                     </div>
 
-                    <!-- Результаты (Появляются после остановки записи) -->
+                    <!-- Результаты -->
                     <div id="result-box" class="hidden mt-8 bg-slate-900 rounded-2xl p-6 text-white relative overflow-hidden shadow-lg">
                         <i data-lucide="sparkles" class="absolute -right-4 -bottom-4 w-24 h-24 text-white/5 transform rotate-12"></i>
                         <h3 class="text-sm font-bold text-slate-300 uppercase tracking-wider mb-4">Your Result</h3>
@@ -169,10 +186,8 @@
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // Глобальная база данных (будет заполнена из Supabase)
+        // Глобальная база данных
         let db = {};
-        
-        // Для проигрывания реальных аудиофайлов
         let currentAudioElement = null;
 
         // Состояние приложения
@@ -194,7 +209,6 @@
 
                 if (error) throw error;
 
-                // Группируем данные для карусели
                 const colors = ['emerald', 'blue', 'indigo', 'rose', 'amber', 'purple'];
                 let colorIndex = 0;
 
@@ -216,7 +230,6 @@
                     });
                 });
 
-                // Скрываем лоадер, показываем интерфейс
                 document.getElementById('loading-state').classList.replace('block', 'hidden');
                 document.getElementById('levels-view').classList.replace('hidden', 'block');
                 
@@ -228,7 +241,7 @@
             }
         });
 
-        // 3. WEB SPEECH API (Микрофон)
+        // 3. WEB SPEECH API
         function initSpeechRecognition() {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             if (SpeechRecognition) {
@@ -267,19 +280,16 @@
                 return;
             }
 
-            // Загружаем сохраненные баллы из LocalStorage
             const savedScores = JSON.parse(localStorage.getItem('shadowing_scores') || '{}');
 
             Object.keys(db).forEach(levelKey => {
                 const level = db[levelKey];
                 
-                // Считаем пройденные упражнения
                 let completed = 0;
                 level.exercises.forEach(ex => {
                     if (savedScores[ex.id]) completed++;
                 });
                 
-                // Защита от деления на ноль, если уровень пустой
                 const total = level.exercises.length;
                 const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
 
@@ -307,10 +317,54 @@
             lucide.createIcons();
         }
 
+        // 4.5. ОТРИСОВКА КАРТОЧЕК ЗАДАНИЙ (НОВОЕ)
+        function renderTasks() {
+            const container = document.getElementById('tasks-container');
+            container.innerHTML = '';
+            const levelData = db[currentLevel];
+            const savedScores = JSON.parse(localStorage.getItem('shadowing_scores') || '{}');
+
+            levelData.exercises.forEach((ex, index) => {
+                const scoreData = savedScores[ex.id];
+                const hasScore = !!scoreData;
+                const percent = hasScore ? scoreData.percent : 0;
+                
+                // Логика раскраски карточек в зависимости от процента
+                let bgClass = 'bg-white border-gray-100 hover:border-indigo-300';
+                let textClass = 'text-slate-900';
+                
+                if (hasScore) {
+                    if (percent >= 80) {
+                        bgClass = 'bg-emerald-50 border-emerald-200';
+                        textClass = 'text-emerald-700';
+                    } else if (percent >= 50) {
+                        bgClass = 'bg-amber-50 border-amber-200';
+                        textClass = 'text-amber-700';
+                    } else {
+                        bgClass = 'bg-rose-50 border-rose-200';
+                        textClass = 'text-rose-700';
+                    }
+                }
+
+                const card = `
+                    <div class="${bgClass} p-5 rounded-2xl border shadow-sm flex flex-col transition cursor-pointer hover:shadow-md" onclick="openExercise(${index})">
+                        <div class="flex justify-between items-start mb-3">
+                            <h3 class="font-bold text-sm ${textClass}">${ex.title || `Audio #${index + 1}`}</h3>
+                            ${hasScore 
+                                ? `<span class="text-sm font-black ${textClass}">${percent}%</span>` 
+                                : `<i data-lucide="mic" class="w-4 h-4 text-gray-400"></i>`}
+                        </div>
+                        <p class="text-xs text-gray-500 line-clamp-2 mt-auto font-medium">${ex.text}</p>
+                    </div>
+                `;
+                container.innerHTML += card;
+            });
+            lucide.createIcons();
+        }
+
         // 5. НАВИГАЦИЯ ПО ИНТЕРФЕЙСУ
         function openLevel(levelKey) {
             currentLevel = levelKey;
-            currentIndex = 0;
             
             if (db[levelKey].exercises.length === 0) {
                 alert("This level has no exercises yet.");
@@ -318,16 +372,32 @@
             }
 
             document.getElementById('levels-view').classList.add('hidden');
-            document.getElementById('exercise-view').classList.remove('hidden');
-            document.getElementById('current-level-title').innerText = db[levelKey].title;
-            loadExercise();
+            document.getElementById('tasks-view').classList.remove('hidden');
+            document.getElementById('current-tasks-title').innerText = db[levelKey].title;
+            renderTasks();
         }
 
         function goBackToLevels() {
-            document.getElementById('exercise-view').classList.add('hidden');
+            document.getElementById('tasks-view').classList.add('hidden');
             document.getElementById('levels-view').classList.remove('hidden');
-            stopTargetAudio();
             renderLevels(); // обновляем прогресс
+        }
+
+        // Новая функция: открытие конкретного задания из карточки
+        function openExercise(index) {
+            currentIndex = index;
+            document.getElementById('tasks-view').classList.add('hidden');
+            document.getElementById('exercise-view').classList.remove('hidden');
+            document.getElementById('current-level-title').innerText = db[currentLevel].title;
+            loadExercise();
+        }
+
+        // Новая функция: возврат к списку карточек
+        function goBackToTasks() {
+            document.getElementById('exercise-view').classList.add('hidden');
+            document.getElementById('tasks-view').classList.remove('hidden');
+            stopTargetAudio();
+            renderTasks(); // обновляем цвета карточек
         }
 
         function loadExercise() {
@@ -337,25 +407,21 @@
             document.getElementById('exercise-title').innerText = exercise.title || `Audio #${currentIndex + 1}`;
             document.getElementById('exercise-progress').innerText = `${currentIndex + 1} / ${levelData.exercises.length}`;
             document.getElementById('transcript-box').innerText = exercise.text;
-            document.getElementById('transcript-box').classList.add('hidden'); // прячем по умолчанию
+            document.getElementById('transcript-box').classList.add('hidden');
             
-            // Если есть реальное аудио, подсказываем это
             if (exercise.audioSrc) {
                 document.getElementById('audio-status-text').innerText = "Listen to the recorded phrase";
             } else {
                 document.getElementById('audio-status-text').innerText = "Listen to the target phrase (Robot)";
             }
 
-            // Сброс UI результатов
             document.getElementById('result-box').classList.add('hidden');
             
-            // Показываем прошлый результат, если есть
             const savedScores = JSON.parse(localStorage.getItem('shadowing_scores') || '{}');
             if (savedScores[exercise.id]) {
                 document.getElementById('result-box').classList.remove('hidden');
                 document.getElementById('score-percent').innerText = savedScores[exercise.id].percent + '%';
                 
-                // Цвет в зависимости от процента
                 const perc = savedScores[exercise.id].percent;
                 const scoreElem = document.getElementById('score-percent');
                 scoreElem.className = perc >= 80 ? "text-4xl font-black text-emerald-400" : 
@@ -380,7 +446,7 @@
             box.classList.toggle('hidden');
         }
 
-        // 6. ВОСПРОИЗВЕДЕНИЕ ОРИГИНАЛА (Аудио из БД или TTS)
+        // 6. ВОСПРОИЗВЕДЕНИЕ ОРИГИНАЛА
         function stopTargetAudio() {
             window.speechSynthesis.cancel();
             if (currentAudioElement) {
@@ -390,11 +456,10 @@
         }
 
         function playTargetAudio() {
-            stopTargetAudio(); // Остановить, если что-то уже играет
+            stopTargetAudio();
 
             const exercise = db[currentLevel].exercises[currentIndex];
 
-            // Если есть URL аудио в базе данных — играем его
             if (exercise.audioSrc && exercise.audioSrc.trim() !== '') {
                 currentAudioElement = new Audio(exercise.audioSrc);
                 currentAudioElement.play().catch(e => {
@@ -402,7 +467,6 @@
                     fallbackToTTS(exercise.text);
                 });
             } else {
-                // Если ссылки нет, используем стандартного робота (как было у вас изначально)
                 fallbackToTTS(exercise.text);
             }
         }
@@ -414,7 +478,7 @@
             }
             const utterance = new SpeechSynthesisUtterance(text);
             utterance.lang = 'en-US';
-            utterance.rate = 0.9; // Чуть медленнее для Shadowing
+            utterance.rate = 0.9;
             window.speechSynthesis.speak(utterance);
         }
 
@@ -428,12 +492,11 @@
             if (isRecording) {
                 recognition.stop();
             } else {
-                stopTargetAudio(); // Выключаем аудио оригинала, если играет
+                stopTargetAudio();
                 
                 recognition.start();
                 isRecording = true;
                 
-                // UI Changes
                 const btn = document.getElementById('record-btn');
                 btn.classList.add('recording-pulse', 'bg-rose-600', 'text-white');
                 btn.classList.remove('bg-rose-100', 'text-rose-500');
@@ -447,7 +510,6 @@
             }
         }
 
-        // Восстановленная функция UI после записи
         function stopRecordingUI() {
             isRecording = false;
             const btn = document.getElementById('record-btn');
@@ -465,7 +527,7 @@
             const exercise = db[currentLevel].exercises[currentIndex];
             const correctText = exercise.text;
             
-            // Нормализация (убираем пунктуацию, к нижнему регистру + конвертация цифр)
+            // Нормализация с перехватом числительных
             const cleanText = (str) => {
                 const numToWord = {
                     '0': 'zero', '1': 'one', '2': 'two', '3': 'three', '4': 'four',
@@ -487,24 +549,21 @@
             let matches = 0;
             let analysisHtml = '';
             
-            // Пословное сравнение (с подсветкой зелёным/красным)
             correctWords.forEach(word => {
                 const idx = userWords.indexOf(word);
                 if (idx > -1) {
                     matches++;
                     analysisHtml += `<span class="text-emerald-400 font-bold mr-1">${word}</span>`;
-                    userWords.splice(idx, 1); // Убираем слово, чтобы не засчитать дважды
+                    userWords.splice(idx, 1);
                 } else {
                     analysisHtml += `<span class="text-rose-400 mr-1 line-through opacity-70">${word}</span>`;
                 }
             });
             
-            // Расчет процента
             const percent = correctWords.length > 0 
                 ? Math.round((matches / correctWords.length) * 100) 
                 : 0;
             
-            // Подготовка HTML для блока Analysis
             const finalHtml = `
                 <div class="mb-3">
                     <span class="text-slate-400 text-xs uppercase tracking-wider font-bold">You said:</span><br/> 
@@ -516,7 +575,6 @@
                 </div>
             `;
             
-            // Обновление UI
             document.getElementById('result-box').classList.remove('hidden');
             const scoreElem = document.getElementById('score-percent');
             scoreElem.innerText = percent + '%';
@@ -527,7 +585,6 @@
 
             document.getElementById('analysis-text').innerHTML = finalHtml;
             
-            // Сохранение в LocalStorage (запоминаем лучший результат)
             let savedScores = JSON.parse(localStorage.getItem('shadowing_scores') || '{}');
             const prevBest = savedScores[exercise.id] ? savedScores[exercise.id].percent : 0;
             
@@ -539,4 +596,3 @@
     </script>
 </body>
 </html>
-
