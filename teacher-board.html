@@ -118,6 +118,41 @@
                 </div>
             </div>
 
+            <!-- КАРТОЧКА СРЕДНЕГО БАЛЛА (Отображается только в папке "Сдали") -->
+            <div id="averageStatsCard" class="hidden mb-8 bg-slate-900 rounded-3xl p-6 text-white shadow-lg flex-col md:flex-row justify-between items-center gap-6 border border-slate-800">
+                <div class="flex items-center gap-4">
+                    <div class="w-14 h-14 bg-indigo-500/20 rounded-2xl flex items-center justify-center border border-indigo-500/30">
+                        <i data-lucide="trophy" class="w-7 h-7 text-indigo-400"></i>
+                    </div>
+                    <div>
+                        <p class="text-slate-400 text-[11px] font-bold uppercase tracking-widest mb-1">Средний балл выпускников</p>
+                        <div class="text-3xl font-extrabold flex items-baseline gap-1">
+                            <span id="avgTotalText">0.0</span>
+                            <span class="text-sm font-medium text-slate-500">/ 6.0</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex gap-2 sm:gap-4 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
+                    <div class="bg-slate-800/50 px-4 py-3 rounded-2xl border border-slate-700/50 min-w-[70px] text-center">
+                        <div class="text-slate-400 text-[10px] font-bold mb-1">READING</div>
+                        <div class="text-lg font-bold" id="avgRText">-</div>
+                    </div>
+                    <div class="bg-slate-800/50 px-4 py-3 rounded-2xl border border-slate-700/50 min-w-[70px] text-center">
+                        <div class="text-slate-400 text-[10px] font-bold mb-1">LISTENING</div>
+                        <div class="text-lg font-bold" id="avgLText">-</div>
+                    </div>
+                    <div class="bg-slate-800/50 px-4 py-3 rounded-2xl border border-slate-700/50 min-w-[70px] text-center">
+                        <div class="text-slate-400 text-[10px] font-bold mb-1">WRITING</div>
+                        <div class="text-lg font-bold" id="avgWText">-</div>
+                    </div>
+                    <div class="bg-slate-800/50 px-4 py-3 rounded-2xl border border-slate-700/50 min-w-[70px] text-center">
+                        <div class="text-slate-400 text-[10px] font-bold mb-1">SPEAKING</div>
+                        <div class="text-lg font-bold" id="avgSText">-</div>
+                    </div>
+                </div>
+            </div>
+
             <!-- СЕТКА КАРТОЧЕК СТУДЕНТОВ -->
             <div id="studentsGrid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                 <div class="col-span-full text-center py-12 text-gray-400 text-sm">
@@ -239,7 +274,6 @@
 
             allStudents = students || [];
             
-            // Используем колонку status
             allStudents.forEach(s => {
                 if (!s.status) s.status = 'in_progress';
             });
@@ -251,6 +285,46 @@
             document.getElementById('statTotal').innerText = filteredStudents.length;
             document.getElementById('statActive').innerText = filteredStudents.filter(s => s.is_approved).length;
             document.getElementById('statPending').innerText = filteredStudents.filter(s => !s.is_approved).length;
+            
+            updateAverageStats(); // Обновляем глобальную статистику выпускников
+        }
+
+        function updateAverageStats() {
+            const statsCard = document.getElementById('averageStatsCard');
+            
+            if (currentFolder !== 'passed') {
+                statsCard.classList.add('hidden');
+                statsCard.classList.remove('flex', 'flex-col', 'md:flex-row');
+                return;
+            }
+
+            const passedStudents = allStudents.filter(s => s.status === 'passed');
+            
+            if (passedStudents.length === 0) {
+                statsCard.classList.add('hidden');
+                statsCard.classList.remove('flex', 'flex-col', 'md:flex-row');
+                return;
+            }
+
+            statsCard.classList.remove('hidden');
+            statsCard.classList.add('flex', 'flex-col', 'md:flex-row');
+
+            let totalScore = 0, totalR = 0, totalL = 0, totalW = 0, totalS = 0;
+            let countTotal = 0, countR = 0, countL = 0, countW = 0, countS = 0;
+
+            passedStudents.forEach(s => {
+                if (s.final_toefl_score) { totalScore += Number(s.final_toefl_score); countTotal++; }
+                if (s.final_r) { totalR += Number(s.final_r); countR++; }
+                if (s.final_l) { totalL += Number(s.final_l); countL++; }
+                if (s.final_w) { totalW += Number(s.final_w); countW++; }
+                if (s.final_s) { totalS += Number(s.final_s); countS++; }
+            });
+
+            document.getElementById('avgTotalText').innerText = countTotal > 0 ? (totalScore / countTotal).toFixed(1) : '-';
+            document.getElementById('avgRText').innerText = countR > 0 ? (totalR / countR).toFixed(1) : '-';
+            document.getElementById('avgLText').innerText = countL > 0 ? (totalL / countL).toFixed(1) : '-';
+            document.getElementById('avgWText').innerText = countW > 0 ? (totalW / countW).toFixed(1) : '-';
+            document.getElementById('avgSText').innerText = countS > 0 ? (totalS / countS).toFixed(1) : '-';
         }
 
         function renderStudents(studentsToRender) {
@@ -274,20 +348,21 @@
 
                 const examDate = student.exam_date ? new Date(student.exam_date).toLocaleDateString('ru-RU') : 'Не назначено';
                 
+                // Исправленная логика расчета целевого балла по шкале 6.0 (среднее арифметическое)
                 let targetScore = student.target_score;
                 if (!targetScore && (student.target_r || student.target_l || student.target_w || student.target_s)) {
-                    targetScore = (student.target_r || 0) + (student.target_l || 0) + (student.target_w || 0) + (student.target_s || 0);
+                    let sum = (Number(student.target_r) || 0) + (Number(student.target_l) || 0) + (Number(student.target_w) || 0) + (Number(student.target_s) || 0);
+                    targetScore = (sum / 4).toFixed(1);
                 }
-                targetScore = targetScore || 'TBD';
+                const displayTarget = targetScore ? `${targetScore} / 6.0` : 'TBD';
 
                 const card = document.createElement('div');
                 card.className = "bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-indigo-100 transition flex flex-col justify-between space-y-4 relative";
                 
-                // Бейджик итогового балла, если сдал
                 const finalScoreHtml = (student.status === 'passed' && student.final_toefl_score) 
                     ? `<div class="px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-[10px] font-bold flex items-center space-x-1 border border-emerald-100">
                            <i data-lucide="award" class="w-3 h-3"></i>
-                           <span>Итог: ${student.final_toefl_score}</span>
+                           <span>Итог: ${student.final_toefl_score} / 6.0</span>
                        </div>` 
                     : '';
 
@@ -326,7 +401,7 @@
                             </div>
                             <div class="px-2 py-1 bg-blue-50 text-blue-700 rounded-lg text-[10px] font-bold flex items-center space-x-1 border border-blue-100">
                                 <i data-lucide="target" class="w-3 h-3"></i>
-                                <span>Цель: ${targetScore}</span>
+                                <span>Цель: ${displayTarget}</span>
                             </div>
                             ${finalScoreHtml}
                         </div>
