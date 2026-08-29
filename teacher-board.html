@@ -3,18 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ученики и Расписание — TOEFL CRM</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <title>Ученики и Календарь — TOEFL CRM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
-        
-        /* Прокрутка для календаря */
-        .calendar-scroll::-webkit-scrollbar { width: 6px; }
-        .calendar-scroll::-webkit-scrollbar-thumb { background-color: #e2e8f0; border-radius: 10px; }
     </style>
 </head>
 <body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex flex-col md:flex-row">
@@ -57,20 +53,20 @@
             <div class="flex items-center space-x-3">
                 <div class="relative w-full sm:w-72" id="searchContainer">
                     <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4"></i>
-                    <input type="text" id="searchInput" placeholder="Поиск учеников..." class="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-100 transition shadow-xs">
+                    <input type="text" id="searchInput" placeholder="Поиск учеников..." class="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-100 transition shadow-sm">
                 </div>
             </div>
         </div>
 
         <!-- ВКЛАДКИ -->
         <div class="flex space-x-6 border-b border-gray-200 mb-8">
-            <button onclick="switchTab('students')" id="tab-students" class="pb-3 text-sm font-bold border-b-2 border-indigo-600 text-indigo-600 transition flex items-center space-x-2">
+            <button onclick="switchTab('students')" id="tab-students" class="pb-3 text-sm font-bold border-b-2 border-indigo-600 text-indigo-600 transition flex items-center space-x-2 cursor-pointer">
                 <i data-lucide="users" class="w-4 h-4"></i>
                 <span>Доступы и Ученики</span>
             </button>
-            <button onclick="switchTab('calendar')" id="tab-calendar" class="pb-3 text-sm font-bold border-b-2 border-transparent text-gray-400 hover:text-slate-700 transition flex items-center space-x-2">
+            <button onclick="switchTab('calendar')" id="tab-calendar" class="pb-3 text-sm font-bold border-b-2 border-transparent text-gray-400 hover:text-slate-700 transition flex items-center space-x-2 cursor-pointer">
                 <i data-lucide="calendar-days" class="w-4 h-4"></i>
-                <span>Расписание занятий</span>
+                <span>Календарь экзаменов</span>
             </button>
         </div>
 
@@ -78,23 +74,42 @@
         <!-- РАЗДЕЛ 1: УЧЕНИКИ И ДОСТУПЫ (STUDENTS VIEW) -->
         <!-- ========================================== -->
         <div id="studentsView" class="block">
+            
+            <!-- ПАПКИ КЛАССИФИКАЦИИ -->
+            <div class="flex flex-wrap gap-2 items-center justify-between mb-6">
+                <div class="flex p-1 bg-gray-100 rounded-xl space-x-1">
+                    <button id="btn-in_progress" onclick="setFolder('in_progress')" class="px-4 py-1.5 text-xs font-bold rounded-lg bg-white shadow-sm text-slate-800 transition cursor-pointer">
+                        В процессе
+                    </button>
+                    <button id="btn-passed" onclick="setFolder('passed')" class="px-4 py-1.5 text-xs font-bold rounded-lg text-gray-500 hover:text-slate-700 transition cursor-pointer">
+                        Сдали
+                    </button>
+                    <button id="btn-paused" onclick="setFolder('paused')" class="px-4 py-1.5 text-xs font-bold rounded-lg text-gray-500 hover:text-slate-700 transition cursor-pointer">
+                        Пауза
+                    </button>
+                    <button id="btn-dropped" onclick="setFolder('dropped')" class="px-4 py-1.5 text-xs font-bold rounded-lg text-gray-500 hover:text-slate-700 transition cursor-pointer">
+                        Отмена
+                    </button>
+                </div>
+            </div>
+
             <!-- СТАТИСТИЧЕСКИЕ ПЛИТКИ -->
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-                <div class="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs flex items-center space-x-3">
+                <div class="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center space-x-3">
                     <div class="p-3 bg-indigo-50 text-indigo-600 rounded-xl"><i data-lucide="users" class="w-5 h-5"></i></div>
                     <div>
-                        <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Всего учеников</span>
+                        <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider" id="statLabelTotal">Учеников в процессе</span>
                         <div id="statTotal" class="text-lg font-extrabold text-slate-900">0</div>
                     </div>
                 </div>
-                <div class="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs flex items-center space-x-3">
+                <div class="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center space-x-3">
                     <div class="p-3 bg-emerald-50 text-emerald-600 rounded-xl"><i data-lucide="check-circle-2" class="w-5 h-5"></i></div>
                     <div>
-                        <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Активные</span>
+                        <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Активные доступы</span>
                         <div id="statActive" class="text-lg font-extrabold text-slate-900">0</div>
                     </div>
                 </div>
-                <div class="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs flex items-center space-x-3">
+                <div class="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center space-x-3">
                     <div class="p-3 bg-amber-50 text-amber-600 rounded-xl"><i data-lucide="clock" class="w-5 h-5"></i></div>
                     <div>
                         <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Ожидают доступа</span>
@@ -112,22 +127,33 @@
         </div>
 
         <!-- ========================================== -->
-        <!-- РАЗДЕЛ 2: КАЛЕНДАРЬ ЗАНЯТИЙ (CALENDAR VIEW) -->
+        <!-- РАЗДЕЛ 2: КАЛЕНДАРЬ ЭКЗАМЕНОВ (CALENDAR VIEW) -->
         <!-- ========================================== -->
         <div id="calendarView" class="hidden">
-            <div class="bg-white rounded-3xl border border-gray-100 shadow-xs p-6 h-[70vh] flex flex-col">
+            <div class="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 h-auto min-h-[60vh] flex flex-col">
+                
                 <div class="flex justify-between items-center mb-6">
-                    <h2 class="text-lg font-bold text-slate-900">Предстоящие уроки</h2>
-                    <button onclick="alert('Функция добавления урока')" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition shadow-xs flex items-center space-x-2">
-                        <i data-lucide="plus" class="w-4 h-4"></i>
-                        <span>Новый урок</span>
+                    <button onclick="changeMonth(-1)" class="p-2 hover:bg-gray-100 rounded-xl transition cursor-pointer">
+                        <i data-lucide="chevron-left" class="w-5 h-5 text-slate-600"></i>
+                    </button>
+                    <h2 id="calendarMonthYear" class="text-xl font-bold text-slate-900 uppercase tracking-wide"></h2>
+                    <button onclick="changeMonth(1)" class="p-2 hover:bg-gray-100 rounded-xl transition cursor-pointer">
+                        <i data-lucide="chevron-right" class="w-5 h-5 text-slate-600"></i>
                     </button>
                 </div>
                 
-                <div class="flex-1 overflow-y-auto calendar-scroll pr-2 space-y-3" id="lessonsList">
-                    <div class="text-center py-12 text-gray-400 text-sm">
-                        Загрузка расписания...
-                    </div>
+                <div class="grid grid-cols-7 gap-2 text-center mb-2">
+                    <div class="text-xs font-bold text-gray-400 uppercase">Пн</div>
+                    <div class="text-xs font-bold text-gray-400 uppercase">Вт</div>
+                    <div class="text-xs font-bold text-gray-400 uppercase">Ср</div>
+                    <div class="text-xs font-bold text-gray-400 uppercase">Чт</div>
+                    <div class="text-xs font-bold text-gray-400 uppercase">Пт</div>
+                    <div class="text-xs font-bold text-rose-400 uppercase">Сб</div>
+                    <div class="text-xs font-bold text-rose-400 uppercase">Вс</div>
+                </div>
+
+                <div id="calendarGrid" class="grid grid-cols-7 gap-2 flex-1">
+                    <!-- Рендерится через JS -->
                 </div>
             </div>
         </div>
@@ -136,7 +162,8 @@
 
     <script>
         let allStudents = [];
-        let allLessons = [];
+        let currentFolder = 'in_progress';
+        let currentDate = new Date();
 
         window.onload = async () => {
             const user = await requireAuth();
@@ -151,7 +178,6 @@
             lucide.createIcons();
         };
 
-        // ТАБЫ: ПЕРЕКЛЮЧЕНИЕ ВИДОВ
         function switchTab(tab) {
             const studentsTab = document.getElementById('tab-students');
             const calendarTab = document.getElementById('tab-calendar');
@@ -160,24 +186,45 @@
             const searchContainer = document.getElementById('searchContainer');
 
             if (tab === 'students') {
-                // Активируем вкладку Студентов
-                studentsTab.className = "pb-3 text-sm font-bold border-b-2 border-indigo-600 text-indigo-600 transition flex items-center space-x-2";
-                calendarTab.className = "pb-3 text-sm font-bold border-b-2 border-transparent text-gray-400 hover:text-slate-700 transition flex items-center space-x-2";
+                studentsTab.className = "pb-3 text-sm font-bold border-b-2 border-indigo-600 text-indigo-600 transition flex items-center space-x-2 cursor-pointer";
+                calendarTab.className = "pb-3 text-sm font-bold border-b-2 border-transparent text-gray-400 hover:text-slate-700 transition flex items-center space-x-2 cursor-pointer";
                 studentsView.classList.remove('hidden');
                 calendarView.classList.add('hidden');
                 searchContainer.classList.remove('hidden');
             } else {
-                // Активируем вкладку Календаря
-                calendarTab.className = "pb-3 text-sm font-bold border-b-2 border-indigo-600 text-indigo-600 transition flex items-center space-x-2";
-                studentsTab.className = "pb-3 text-sm font-bold border-b-2 border-transparent text-gray-400 hover:text-slate-700 transition flex items-center space-x-2";
+                calendarTab.className = "pb-3 text-sm font-bold border-b-2 border-indigo-600 text-indigo-600 transition flex items-center space-x-2 cursor-pointer";
+                studentsTab.className = "pb-3 text-sm font-bold border-b-2 border-transparent text-gray-400 hover:text-slate-700 transition flex items-center space-x-2 cursor-pointer";
                 studentsView.classList.add('hidden');
                 calendarView.classList.remove('hidden');
                 searchContainer.classList.add('hidden');
-                loadLessons(); // Подгружаем расписание при открытии вкладки
+                renderCalendar();
             }
         }
 
-        // ЗАГРУЗКА И РЕНДЕР СТУДЕНТОВ
+        function setFolder(folder) {
+            currentFolder = folder;
+            
+            const buttons = ['in_progress', 'passed', 'paused', 'dropped'];
+            buttons.forEach(b => {
+                const btn = document.getElementById(`btn-${b}`);
+                if (b === folder) {
+                    btn.className = "px-4 py-1.5 text-xs font-bold rounded-lg bg-white shadow-sm text-slate-800 transition cursor-pointer";
+                } else {
+                    btn.className = "px-4 py-1.5 text-xs font-bold rounded-lg text-gray-500 hover:text-slate-700 transition cursor-pointer";
+                }
+            });
+
+            const labels = {
+                'in_progress': 'Учеников в процессе',
+                'passed': 'Учеников сдали',
+                'paused': 'Учеников на паузе',
+                'dropped': 'Отменили занятия'
+            };
+            document.getElementById('statLabelTotal').innerText = labels[folder];
+
+            document.getElementById('searchInput').dispatchEvent(new Event('input'));
+        }
+
         async function loadStudents() {
             const { data: students, error } = await _supabase
                 .from('profiles')
@@ -191,14 +238,19 @@
             }
 
             allStudents = students || [];
-            updateStats();
-            renderStudents(allStudents);
+            
+            // Используем колонку status
+            allStudents.forEach(s => {
+                if (!s.status) s.status = 'in_progress';
+            });
+
+            document.getElementById('searchInput').dispatchEvent(new Event('input'));
         }
 
-        function updateStats() {
-            document.getElementById('statTotal').innerText = allStudents.length;
-            document.getElementById('statActive').innerText = allStudents.filter(s => s.is_approved).length;
-            document.getElementById('statPending').innerText = allStudents.filter(s => !s.is_approved).length;
+        function updateStats(filteredStudents) {
+            document.getElementById('statTotal').innerText = filteredStudents.length;
+            document.getElementById('statActive').innerText = filteredStudents.filter(s => s.is_approved).length;
+            document.getElementById('statPending').innerText = filteredStudents.filter(s => !s.is_approved).length;
         }
 
         function renderStudents(studentsToRender) {
@@ -207,9 +259,9 @@
 
             if (studentsToRender.length === 0) {
                 grid.innerHTML = `
-                    <div class="col-span-full bg-white rounded-2xl p-10 text-center border border-gray-100 shadow-xs">
-                        <i data-lucide="user-x" class="w-10 h-10 text-gray-300 mx-auto mb-3"></i>
-                        <h3 class="text-sm font-bold text-slate-700">Ученики не найдены</h3>
+                    <div class="col-span-full bg-white rounded-2xl p-10 text-center border border-gray-100 shadow-sm">
+                        <i data-lucide="folder-open" class="w-10 h-10 text-gray-300 mx-auto mb-3"></i>
+                        <h3 class="text-sm font-bold text-slate-700">В этой папке пусто</h3>
                     </div>
                 `;
                 lucide.createIcons();
@@ -220,40 +272,54 @@
                 const displayName = student.full_name || student.name || (student.email ? student.email.split('@')[0] : 'Без имени');
                 const initial = displayName.charAt(0).toUpperCase();
 
-                // Классификация (заглушки, если полей еще нет в БД)
                 const examDate = student.exam_date ? new Date(student.exam_date).toLocaleDateString('ru-RU') : 'Не назначено';
-                const targetScore = student.target_score ? student.target_score : 'TBD';
+                
+                let targetScore = student.target_score;
+                if (!targetScore && (student.target_r || student.target_l || student.target_w || student.target_s)) {
+                    targetScore = (student.target_r || 0) + (student.target_l || 0) + (student.target_w || 0) + (student.target_s || 0);
+                }
+                targetScore = targetScore || 'TBD';
 
                 const card = document.createElement('div');
-                card.className = "bg-white p-6 rounded-3xl border border-gray-100 shadow-xs hover:shadow-md hover:border-indigo-100 transition flex flex-col justify-between space-y-4 relative";
+                card.className = "bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-indigo-100 transition flex flex-col justify-between space-y-4 relative";
                 
+                // Бейджик итогового балла, если сдал
+                const finalScoreHtml = (student.status === 'passed' && student.final_toefl_score) 
+                    ? `<div class="px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-[10px] font-bold flex items-center space-x-1 border border-emerald-100">
+                           <i data-lucide="award" class="w-3 h-3"></i>
+                           <span>Итог: ${student.final_toefl_score}</span>
+                       </div>` 
+                    : '';
+
                 card.innerHTML = `
-                    <!-- ВЕРХНЯЯ ЧАСТЬ: ИНФО О СТУДЕНТЕ -->
                     <div class="space-y-4">
                         <div class="flex justify-between items-start gap-2">
                             <div class="flex items-center space-x-3 min-w-0">
-                                <div class="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 font-extrabold flex items-center justify-center text-base border border-indigo-100 shrink-0 shadow-xs">
+                                <div class="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 font-extrabold flex items-center justify-center text-base border border-indigo-100 shrink-0 shadow-sm">
                                     ${initial}
                                 </div>
-                                <div class="min-w-0">
-                                    <h3 class="text-sm font-bold text-slate-900 truncate" title="${displayName}">${displayName}</h3>
-                                    <p class="text-[11px] text-gray-400 truncate">${student.email || '—'}</p>
+                                <div class="min-w-0 flex flex-col items-start">
+                                    <h3 class="text-sm font-bold text-slate-900 truncate w-full" title="${displayName}">${displayName}</h3>
+                                    
+                                    <select onchange="updateStudentStatus('${student.id}', this.value)" class="mt-1 text-[10px] font-medium bg-slate-50 border border-slate-200 text-slate-600 rounded-md px-1.5 py-0.5 outline-none cursor-pointer">
+                                        <option value="in_progress" ${student.status === 'in_progress' ? 'selected' : ''}>⏳ В процессе</option>
+                                        <option value="passed" ${student.status === 'passed' ? 'selected' : ''}>✅ Сдал(а)</option>
+                                        <option value="paused" ${student.status === 'paused' ? 'selected' : ''}>⏸️ Пауза</option>
+                                        <option value="dropped" ${student.status === 'dropped' ? 'selected' : ''}>❌ Отмена</option>
+                                    </select>
                                 </div>
                             </div>
 
                             <button onclick="toggleStudentApproval('${student.id}', ${student.is_approved})" 
                                 class="px-2.5 py-1 rounded-xl text-[10px] font-bold border transition cursor-pointer shrink-0 flex items-center space-x-1 ${
-                                    student.is_approved 
-                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' 
-                                    : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+                                    student.is_approved ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
                                 }">
                                 <span class="w-1.5 h-1.5 rounded-full ${student.is_approved ? 'bg-emerald-500' : 'bg-amber-500'}"></span>
                                 <span>${student.is_approved ? 'Активен' : 'В очереди'}</span>
                             </button>
                         </div>
 
-                        <!-- КЛАССИФИКАЦИЯ (ТЕГИ ФОКУСА/ЦЕЛИ) -->
-                        <div class="flex space-x-2">
+                        <div class="flex flex-wrap gap-2">
                             <div class="px-2 py-1 bg-purple-50 text-purple-700 rounded-lg text-[10px] font-bold flex items-center space-x-1 border border-purple-100">
                                 <i data-lucide="calendar-check" class="w-3 h-3"></i>
                                 <span>Экзамен: ${examDate}</span>
@@ -262,13 +328,10 @@
                                 <i data-lucide="target" class="w-3 h-3"></i>
                                 <span>Цель: ${targetScore}</span>
                             </div>
+                            ${finalScoreHtml}
                         </div>
 
-                        <!-- НАСТРОЙКА ДОСТУПА К МОДУЛЯМ (ЧИПЫ) -->
                         <div class="bg-slate-50/70 p-3 rounded-2xl border border-gray-100/80 space-y-2">
-                            <div class="flex justify-between items-center">
-                                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Доступ к модулям</span>
-                            </div>
                             <div class="grid grid-cols-5 gap-1.5 pt-0.5">
                                 ${renderModuleBadge(student.id, 'access_reading', 'Reading', 'R', student.access_reading)}
                                 ${renderModuleBadge(student.id, 'access_listening', 'Listening', 'L', student.access_listening)}
@@ -279,9 +342,8 @@
                         </div>
                     </div>
 
-                    <!-- НИЖНЯЯ ЧАСТЬ: КНОПКА ПЕРЕХОДА -->
                     <div class="pt-2 flex items-center justify-end">
-                        <a href="student-profile.html?id=${student.id}" class="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl transition shadow-xs cursor-pointer">
+                        <a href="student-profile.html?id=${student.id}" class="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl transition shadow-sm cursor-pointer">
                             <span>Карточка ученика</span>
                             <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
                         </a>
@@ -299,106 +361,106 @@
                 <button title="${fullName}: ${isEnabled ? 'Доступен' : 'Закрыт'}" 
                         onclick="toggleModuleAccess('${studentId}', '${field}', ${isEnabled})" 
                         class="py-1.5 px-1 rounded-xl text-[10px] font-extrabold border text-center transition cursor-pointer select-none ${
-                            isEnabled 
-                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs' 
-                            : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300'
+                            isEnabled ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300'
                         }">
                     ${label}
                 </button>
             `;
         }
 
-        // ЗАГРУЗКА И РЕНДЕР КАЛЕНДАРЯ
-        async function loadLessons() {
-            // Подтягиваем уроки из БД (ожидаем таблицу lessons)
-            const { data: lessons, error } = await _supabase
-                .from('lessons')
-                .select('*, profiles(full_name, email)')
-                .order('lesson_date', { ascending: true });
-
-            const list = document.getElementById('lessonsList');
-            list.innerHTML = '';
-
-            if (error || !lessons || lessons.length === 0) {
-                list.innerHTML = `
-                    <div class="text-center py-10 bg-slate-50 rounded-2xl border border-dashed border-gray-200">
-                        <i data-lucide="calendar-x" class="w-8 h-8 text-gray-300 mx-auto mb-2"></i>
-                        <p class="text-sm font-bold text-gray-500">Нет запланированных уроков</p>
-                        <p class="text-xs text-gray-400 mt-1">Добавьте уроки для учеников, чтобы они появились здесь</p>
-                    </div>
-                `;
-                lucide.createIcons();
-                return;
-            }
-
-            // Рендер списка уроков
-            lessons.forEach(lesson => {
-                const dateObj = new Date(lesson.lesson_date);
-                const dateStr = dateObj.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
-                const timeStr = dateObj.toLocaleTimeString('ru-RU', { hour: '2-digit', minute:'2-digit' });
-                
-                const studentName = lesson.profiles?.full_name || lesson.profiles?.email || 'Неизвестный ученик';
-                
-                // Цвета секций (Writing, Speaking и тд)
-                const sectionColors = {
-                    'Reading': 'bg-blue-50 text-blue-700 border-blue-100',
-                    'Listening': 'bg-emerald-50 text-emerald-700 border-emerald-100',
-                    'Speaking': 'bg-amber-50 text-amber-700 border-amber-100',
-                    'Writing': 'bg-purple-50 text-purple-700 border-purple-100',
-                    'Mock Test': 'bg-rose-50 text-rose-700 border-rose-100'
-                };
-                const badgeClass = sectionColors[lesson.section] || 'bg-gray-100 text-gray-600 border-gray-200';
-
-                const el = document.createElement('div');
-                el.className = "flex items-center justify-between p-4 bg-white border border-gray-100 rounded-2xl hover:border-indigo-100 hover:shadow-xs transition";
-                el.innerHTML = `
-                    <div class="flex items-center space-x-4">
-                        <div class="flex flex-col items-center justify-center w-14 h-14 bg-indigo-50 rounded-xl border border-indigo-100 shrink-0">
-                            <span class="text-xs text-indigo-500 font-bold uppercase">${dateObj.toLocaleDateString('ru-RU', { weekday: 'short' })}</span>
-                            <span class="text-lg font-extrabold text-indigo-700 leading-none">${dateObj.getDate()}</span>
-                        </div>
-                        <div>
-                            <h4 class="text-sm font-bold text-slate-900">${studentName}</h4>
-                            <div class="flex items-center space-x-2 mt-1">
-                                <span class="text-xs text-gray-500 flex items-center space-x-1">
-                                    <i data-lucide="clock" class="w-3 h-3"></i>
-                                    <span>${timeStr}</span>
-                                </span>
-                                <span class="px-2 py-0.5 rounded text-[10px] font-bold border ${badgeClass}">
-                                    ${lesson.section || 'General'}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="text-right">
-                        <p class="text-xs font-medium text-slate-700">${lesson.topic || 'Тема не указана'}</p>
-                        <p class="text-[10px] text-gray-400 mt-0.5">Домашка: ${lesson.homework ? 'Выдана' : 'Нет'}</p>
-                    </div>
-                `;
-                list.appendChild(el);
-            });
-            
-            lucide.createIcons();
+        function changeMonth(step) {
+            currentDate.setMonth(currentDate.getMonth() + step);
+            renderCalendar();
         }
 
-        // Поиск по студентам
+        function renderCalendar() {
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth();
+            
+            const monthNames = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
+            document.getElementById('calendarMonthYear').innerText = `${monthNames[month]} ${year}`;
+
+            const grid = document.getElementById('calendarGrid');
+            grid.innerHTML = '';
+
+            let firstDay = new Date(year, month, 1).getDay();
+            firstDay = firstDay === 0 ? 6 : firstDay - 1; 
+            
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+            for (let i = 0; i < firstDay; i++) {
+                grid.innerHTML += `<div class="bg-gray-50/50 rounded-xl border border-transparent"></div>`;
+            }
+
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                
+                const studentsWithExam = allStudents.filter(s => {
+                    if (!s.exam_date) return false;
+                    return s.exam_date.startsWith(dateString);
+                });
+
+                let badgesHtml = '';
+                studentsWithExam.forEach(s => {
+                    const name = s.full_name || s.name || (s.email ? s.email.split('@')[0] : 'Ученик');
+                    badgesHtml += `
+                        <div class="mt-1 px-1.5 py-0.5 bg-purple-100 border border-purple-200 text-purple-700 text-[9px] font-bold rounded shadow-sm truncate w-full text-center" title="${name}">
+                            ${name}
+                        </div>
+                    `;
+                });
+
+                const isToday = new Date().toDateString() === new Date(year, month, day).toDateString();
+                const todayClass = isToday ? 'ring-2 ring-indigo-500 bg-indigo-50/30' : 'bg-white hover:bg-gray-50';
+
+                grid.innerHTML += `
+                    <div class="min-h-[80px] p-2 rounded-xl border border-gray-100 flex flex-col items-center transition ${todayClass}">
+                        <span class="text-sm font-bold ${isToday ? 'text-indigo-600' : 'text-slate-700'}">${day}</span>
+                        <div class="w-full flex flex-col gap-1 mt-1">
+                            ${badgesHtml}
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
         document.getElementById('searchInput').addEventListener('input', () => {
             const term = document.getElementById('searchInput').value.toLowerCase().trim();
+            
             const filtered = allStudents.filter(s => {
+                const matchesFolder = s.status === currentFolder;
                 const searchStr = `${s.email || ''} ${s.full_name || ''}`.toLowerCase();
-                return searchStr.includes(term);
+                const matchesSearch = searchStr.includes(term);
+                return matchesFolder && matchesSearch;
             });
+            
+            updateStats(filtered);
             renderStudents(filtered);
         });
 
-        // Toggle functions (как и были, без изменений)
+        async function updateStudentStatus(studentId, newStatus) {
+            const student = allStudents.find(s => s.id === studentId);
+            if (student) {
+                student.status = newStatus;
+                document.getElementById('searchInput').dispatchEvent(new Event('input'));
+            }
+
+            const { error } = await _supabase
+                .from('profiles')
+                .update({ status: newStatus })
+                .eq('id', studentId);
+
+            if (error) {
+                console.error("Ошибка при смене статуса:", error);
+                alert("Не удалось изменить статус. Проверьте права и подключение к Supabase.");
+            }
+        }
+
         async function toggleStudentApproval(studentId, currentStatus) {
             const newStatus = !currentStatus;
             const student = allStudents.find(s => s.id === studentId);
             if (student) student.is_approved = newStatus;
             
-            updateStats();
-            // Обновляем UI без сброса поиска
             document.getElementById('searchInput').dispatchEvent(new Event('input'));
 
             const { error } = await _supabase.from('profiles').update({ is_approved: newStatus }).eq('id', studentId);
