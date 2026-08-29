@@ -290,23 +290,82 @@
         <!-- ВКЛАДКА 3: СТАТИСТИКА И ПРОГРЕСС          -->
         <!-- ========================================== -->
         <div id="tab-stats" class="tab-content">
-            <div class="grid grid-cols-1 gap-8">
-                <div class="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm">
-                    <div class="flex items-center justify-between mb-6">
-                        <div class="flex items-center space-x-3">
-                            <div class="p-2.5 bg-blue-50 text-blue-600 rounded-xl"><i data-lucide="book-open" class="w-5 h-5"></i></div>
-                            <h2 class="text-lg font-bold text-slate-900">Reading Progress</h2>
-                        </div>
-                        <span class="text-xs font-bold text-gray-400 bg-gray-50 px-3 py-1 rounded-lg border border-gray-200">
-                            Все типы заданий
-                        </span>
+            
+            <!-- Карточки со средними баллами -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <!-- Complete Words -->
+                <div class="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between">
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="text-[10px] font-extrabold text-emerald-600 uppercase tracking-wider">Complete Words</span>
+                        <div class="p-2 bg-emerald-50 text-emerald-600 rounded-xl"><i data-lucide="languages" class="w-4 h-4"></i></div>
                     </div>
-                    
-                    <div id="readingChartContainer" class="relative h-72 w-full">
-                        <canvas id="readingChart"></canvas>
+                    <div>
+                        <div class="text-3xl font-extrabold text-slate-800" id="avgComplete">—</div>
+                        <div class="text-[11px] text-gray-400 mt-1 font-medium">Средний показатель</div>
+                    </div>
+                </div>
+
+                <!-- Daily Reading -->
+                <div class="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between">
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="text-[10px] font-extrabold text-sky-600 uppercase tracking-wider">Daily Reading</span>
+                        <div class="p-2 bg-sky-50 text-sky-600 rounded-xl"><i data-lucide="book-open" class="w-4 h-4"></i></div>
+                    </div>
+                    <div>
+                        <div class="text-3xl font-extrabold text-slate-800" id="avgDaily">—</div>
+                        <div class="text-[11px] text-gray-400 mt-1 font-medium">Средний показатель</div>
+                    </div>
+                </div>
+
+                <!-- Academic Reading -->
+                <div class="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between">
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="text-[10px] font-extrabold text-purple-600 uppercase tracking-wider">Academic Reading</span>
+                        <div class="p-2 bg-purple-50 text-purple-600 rounded-xl"><i data-lucide="graduation-cap" class="w-4 h-4"></i></div>
+                    </div>
+                    <div>
+                        <div class="text-3xl font-extrabold text-slate-800" id="avgAcademic">—</div>
+                        <div class="text-[11px] text-gray-400 mt-1 font-medium">Средний показатель</div>
                     </div>
                 </div>
             </div>
+
+            <!-- Блок графиков -->
+            <div class="space-y-6">
+                <!-- График 1: Complete Words -->
+                <div class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
+                    <h3 class="text-sm font-bold text-slate-800 mb-5 flex items-center space-x-2">
+                        <i data-lucide="languages" class="w-4 h-4 text-emerald-500"></i>
+                        <span>Прогресс Complete Words</span>
+                    </h3>
+                    <div class="relative h-64 w-full" id="containerComplete">
+                        <canvas id="chartComplete"></canvas>
+                    </div>
+                </div>
+
+                <!-- График 2: Daily Reading -->
+                <div class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
+                    <h3 class="text-sm font-bold text-slate-800 mb-5 flex items-center space-x-2">
+                        <i data-lucide="book-open" class="w-4 h-4 text-sky-500"></i>
+                        <span>Прогресс Daily Reading</span>
+                    </h3>
+                    <div class="relative h-64 w-full" id="containerDaily">
+                        <canvas id="chartDaily"></canvas>
+                    </div>
+                </div>
+
+                <!-- График 3: Academic Reading -->
+                <div class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
+                    <h3 class="text-sm font-bold text-slate-800 mb-5 flex items-center space-x-2">
+                        <i data-lucide="graduation-cap" class="w-4 h-4 text-purple-500"></i>
+                        <span>Прогресс Academic Reading</span>
+                    </h3>
+                    <div class="relative h-64 w-full" id="containerAcademic">
+                        <canvas id="chartAcademic"></canvas>
+                    </div>
+                </div>
+            </div>
+            
         </div>
 
         <!-- ========================================== -->
@@ -401,7 +460,11 @@
         let writingTasksMap = {}; 
         let currentStudentEmail = ""; 
         let studentProfile = null;
-        let readingChartInstance = null;
+        
+        let chartInstComplete = null;
+        let chartInstDaily = null;
+        let chartInstAcademic = null;
+
         let currentWritingId = null; 
         let editingLessonId = null; 
 
@@ -918,7 +981,7 @@
             }
         }
 
-        // --- СТАТИСТИКА READING ---
+        // --- СТАТИСТИКА READING (Разделенная на 3 типа) ---
         async function fetchResultsHelper(tableName, id) {
             let { data, error } = await _supabase.from(tableName).select('*').eq('user_id', id);
             if (error) {
@@ -929,18 +992,22 @@
         }
 
         async function loadReadingStats() {
-            let chartData = [];
+            let dataComplete = [];
+            let dataDaily = [];
+            let dataAcademic = [];
 
             try {
+                // 1. Complete Words
                 const wordsData = await fetchResultsHelper('complete_words_results', studentId);
                 wordsData.forEach(item => { 
                     let scoreVal = item.score_percent !== undefined ? item.score_percent : item.score;
                     let dateVal = item.completed_at || item.created_at;
                     if (scoreVal !== undefined && dateVal) {
-                        chartData.push({ date: new Date(dateVal), score: parseFloat(scoreVal), taskName: 'Complete Words' }); 
+                        dataComplete.push({ date: new Date(dateVal), score: parseFloat(scoreVal) }); 
                     }
                 });
 
+                // 2. Reading Results (делим на Daily и Academic)
                 const readingData = await fetchResultsHelper('reading_results', studentId);
                 readingData.forEach(item => {
                     let percent = 0;
@@ -951,11 +1018,16 @@
                     }
                     let dateVal = item.created_at || item.completed_at;
                     if (dateVal) {
-                        let taskLabel = item.task_type === 'academic' ? 'Academic Reading' : item.task_type === 'daily' ? 'Daily Reading' : 'Reading Task';
-                        chartData.push({ date: new Date(dateVal), score: Math.round(percent), taskName: taskLabel });
+                        let entry = { date: new Date(dateVal), score: Math.round(percent) };
+                        if (item.task_type === 'academic') {
+                            dataAcademic.push(entry);
+                        } else {
+                            dataDaily.push(entry);
+                        }
                     }
                 });
 
+                // 3. Response Results (остальные практические задания, отправляем в соответствующую категорию)
                 const responsesData = await fetchResultsHelper('response_results', studentId);
                 responsesData.forEach(item => {
                     let percent = 0;
@@ -967,7 +1039,17 @@
                     }
                     let dateVal = item.created_at || item.completed_at;
                     if (dateVal) {
-                        chartData.push({ date: new Date(dateVal), score: Math.round(percent), taskName: item.task_type || 'Practice Task' });
+                        let entry = { date: new Date(dateVal), score: Math.round(percent) };
+                        let typeStr = (item.task_type || '').toLowerCase();
+                        
+                        if (typeStr.includes('academic')) {
+                            dataAcademic.push(entry);
+                        } else if (typeStr.includes('daily')) {
+                            dataDaily.push(entry);
+                        } else {
+                            // Если не указано, пусть будет в Daily (как общая практика)
+                            dataDaily.push(entry);
+                        }
                     }
                 });
 
@@ -975,41 +1057,63 @@
                 console.error("Ошибка загрузки статистики:", err);
             }
 
-            const container = document.getElementById('readingChartContainer');
-            if (!container) return;
+            // Подсчет средних баллов
+            const calculateAverage = (arr) => arr.length > 0 ? Math.round(arr.reduce((sum, item) => sum + item.score, 0) / arr.length) : null;
+            
+            const avgComplete = calculateAverage(dataComplete);
+            const avgDaily = calculateAverage(dataDaily);
+            const avgAcademic = calculateAverage(dataAcademic);
 
-            if (chartData.length === 0) {
-                container.innerHTML = `<div class="flex items-center justify-center h-full min-h-[250px] text-sm text-gray-400 bg-gray-50 rounded-2xl border border-dashed border-gray-200">Нет данных о прохождении практики</div>`;
+            // Обновление карточек
+            document.getElementById('avgComplete').innerText = avgComplete !== null ? `${avgComplete}%` : '—';
+            document.getElementById('avgDaily').innerText = avgDaily !== null ? `${avgDaily}%` : '—';
+            document.getElementById('avgAcademic').innerText = avgAcademic !== null ? `${avgAcademic}%` : '—';
+
+            // Отрисовка трех графиков
+            renderSubChart('chartComplete', 'containerComplete', dataComplete, '#10b981', 'rgba(16, 185, 129, 0.1)', chartInstComplete, (inst) => chartInstComplete = inst);
+            renderSubChart('chartDaily', 'containerDaily', dataDaily, '#0ea5e9', 'rgba(14, 165, 233, 0.1)', chartInstDaily, (inst) => chartInstDaily = inst);
+            renderSubChart('chartAcademic', 'containerAcademic', dataAcademic, '#a855f7', 'rgba(168, 85, 247, 0.1)', chartInstAcademic, (inst) => chartInstAcademic = inst);
+        }
+
+        // Вспомогательная функция для отрисовки графиков
+        function renderSubChart(canvasId, containerId, data, borderColor, bgColor, existingInstance, setInstance) {
+            const container = document.getElementById(containerId);
+            
+            if (data.length === 0) {
+                container.innerHTML = `<div class="flex items-center justify-center h-full text-xs font-bold text-gray-400 bg-gray-50/50 rounded-2xl border border-dashed border-gray-200">Нет данных для этого модуля</div>`;
                 return;
             }
 
-            container.innerHTML = `<canvas id="readingChart"></canvas>`;
-            
-            chartData.sort((a, b) => a.date - b.date);
-            const labels = chartData.map(d => d.date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }));
-            const scores = chartData.map(d => d.score);
-            const taskNames = chartData.map(d => d.taskName);
+            // Восстанавливаем canvas, если он был перезаписан заглушкой
+            if (!document.getElementById(canvasId)) {
+                container.innerHTML = `<canvas id="${canvasId}"></canvas>`;
+            }
 
-            const canvas = document.getElementById('readingChart');
+            data.sort((a, b) => a.date - b.date);
+            const labels = data.map(d => d.date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }));
+            const scores = data.map(d => d.score);
+
+            const canvas = document.getElementById(canvasId);
             const ctx = canvas.getContext('2d');
 
-            if (readingChartInstance) readingChartInstance.destroy(); 
+            if (existingInstance) {
+                existingInstance.destroy();
+            }
 
-            readingChartInstance = new Chart(ctx, {
+            const newChart = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: labels,
                     datasets: [{
-                        label: 'Успеваемость (%)', 
                         data: scores, 
-                        borderColor: '#4f46e5', 
-                        backgroundColor: 'rgba(79, 70, 229, 0.1)', 
-                        borderWidth: 3, 
+                        borderColor: borderColor, 
+                        backgroundColor: bgColor, 
+                        borderWidth: 2, 
                         pointBackgroundColor: '#ffffff', 
-                        pointBorderColor: '#4f46e5', 
+                        pointBorderColor: borderColor, 
                         pointBorderWidth: 2, 
-                        pointRadius: 5, 
-                        pointHoverRadius: 7, 
+                        pointRadius: 4, 
+                        pointHoverRadius: 6, 
                         fill: true, 
                         tension: 0.3
                     }]
@@ -1019,17 +1123,16 @@
                     maintainAspectRatio: false,
                     scales: {
                         y: { beginAtZero: true, max: 100, ticks: { callback: function(value) { return value + '%' }, color: '#94a3b8' }, grid: { color: '#f1f5f9' } },
-                        x: { ticks: { color: '#94a3b8' }, grid: { display: false } }
+                        x: { ticks: { color: '#94a3b8', maxTicksLimit: 12 }, grid: { display: false } }
                     },
                     plugins: {
                         legend: { display: false },
                         tooltip: {
                             backgroundColor: '#1e293b', 
-                            padding: 12, 
-                            titleFont: { family: 'Plus Jakarta Sans', size: 13 }, 
+                            padding: 10, 
+                            titleFont: { family: 'Plus Jakarta Sans', size: 12 }, 
                             bodyFont: { family: 'Plus Jakarta Sans', size: 12 },
                             callbacks: {
-                                title: function(context) { return taskNames[context[0].dataIndex]; },
                                 label: function(context) { return `Результат: ${context.parsed.y}%`; },
                                 afterLabel: function(context) { return `Сдано: ${labels[context.dataIndex]}`; }
                             }
@@ -1037,6 +1140,8 @@
                     }
                 }
             });
+
+            setInstance(newChart);
         }
 
         // === ЛОГИКА WRITING (С ЗАГРУЗКОЙ ЗАДАНИЙ ИЗ writing_tasks) ===
