@@ -102,7 +102,7 @@
                 Доступы платформы
             </button>
             <button onclick="switchTab('stats')" id="btn-stats" class="tab-btn pb-4 text-sm font-bold text-gray-400 border-b-2 border-transparent hover:text-slate-800 transition">
-                Статистика и Прогресс
+                Reading
             </button>
             <button onclick="switchTab('writing')" id="btn-writing" class="tab-btn pb-4 text-sm font-bold text-gray-400 border-b-2 border-transparent hover:text-slate-800 transition">
                 Writing / Эссе
@@ -381,6 +381,34 @@
                 </div>
                 <p class="text-xs text-gray-400 mb-6">Здесь подтягиваются все работы ученика из базы <b>student_responses</b> и формулировки заданий из <b>writing_tasks</b>.</p>
                 
+                <!-- NEW: Карточки статистики Writing -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                    <!-- Emails -->
+                    <div class="bg-emerald-50/20 p-5 rounded-2xl border border-emerald-100 shadow-sm flex flex-col justify-between">
+                        <div class="flex justify-between items-center mb-4">
+                            <span class="text-[10px] font-extrabold text-emerald-600 uppercase tracking-wider">Emails</span>
+                            <div class="p-2 bg-emerald-100/50 text-emerald-600 rounded-xl"><i data-lucide="mail" class="w-4 h-4"></i></div>
+                        </div>
+                        <div>
+                            <div class="text-3xl font-extrabold text-slate-800" id="avgEmails">—</div>
+                            <div class="text-[11px] text-gray-400 mt-1 font-medium">Средний балл</div>
+                        </div>
+                    </div>
+
+                    <!-- Academic -->
+                    <div class="bg-purple-50/20 p-5 rounded-2xl border border-purple-100 shadow-sm flex flex-col justify-between">
+                        <div class="flex justify-between items-center mb-4">
+                            <span class="text-[10px] font-extrabold text-purple-600 uppercase tracking-wider">Academic</span>
+                            <div class="p-2 bg-purple-100/50 text-purple-600 rounded-xl"><i data-lucide="graduation-cap" class="w-4 h-4"></i></div>
+                        </div>
+                        <div>
+                            <div class="text-3xl font-extrabold text-slate-800" id="avgWritingAcademic">—</div>
+                            <div class="text-[11px] text-gray-400 mt-1 font-medium">Средний балл</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- END NEW -->
+
                 <!-- Список всех эссе -->
                 <div id="writingList" class="space-y-4">
                     <div class="text-center py-10 text-gray-400 text-sm">Загрузка эссе...</div>
@@ -1174,10 +1202,36 @@
                 }
 
                 renderWritingList(responses || []);
+                calculateWritingStats(responses || []);
             } catch (err) {
                 console.error("Ошибка загрузки Writing:", err);
                 document.getElementById('writingList').innerHTML = `<div class="text-rose-500 text-center py-10 text-sm font-bold">Ошибка загрузки ответов.</div>`;
             }
+        }
+        
+        function calculateWritingStats(responses) {
+            let emailScores = [];
+            let academicScores = [];
+
+            responses.forEach(task => {
+                if (task.score !== null && task.score !== undefined) {
+                    const taskInfo = writingTasksMap[task.task_id];
+                    const typeStr = (task.task_type || '').toLowerCase();
+                    const titleStr = (taskInfo && (taskInfo.title || taskInfo.task_type) ? (taskInfo.title || taskInfo.task_type) : '').toLowerCase();
+                    const combined = typeStr + " " + titleStr;
+
+                    if (combined.includes('email')) {
+                        emailScores.push(parseFloat(task.score));
+                    } else if (combined.includes('academic')) {
+                        academicScores.push(parseFloat(task.score));
+                    }
+                }
+            });
+
+            const calculateAverage = (arr) => arr.length > 0 ? (arr.reduce((sum, item) => sum + item, 0) / arr.length).toFixed(1) : '—';
+
+            document.getElementById('avgEmails').innerText = calculateAverage(emailScores);
+            document.getElementById('avgWritingAcademic').innerText = calculateAverage(academicScores);
         }
 
         function renderWritingList(tasks) {
@@ -1354,4 +1408,3 @@
     </script>
 </body>
 </html>
-
