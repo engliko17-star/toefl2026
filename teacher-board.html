@@ -200,7 +200,6 @@
         let currentFolder = 'in_progress';
         let currentDate = new Date();
 
-        // Безопасный парсинг чисел (обрабатывает запятые и пустые значения)
         function parseScore(val) {
             if (val === null || val === undefined || val === '') return null;
             if (typeof val === 'string') {
@@ -210,7 +209,6 @@
             return isNaN(val) ? null : Number(val);
         }
 
-        // Умный поиск колонки (решает проблему рассинхронизации названий в БД)
         function getField(obj, keys) {
             for (let key of keys) {
                 if (obj[key] !== undefined && obj[key] !== null && obj[key] !== '') {
@@ -333,25 +331,24 @@
             let countTotal = 0, countR = 0, countL = 0, countW = 0, countS = 0;
 
             passedStudents.forEach(s => {
-                // Ищем по всем возможным названиям колонок в БД
-                const fTotal = getField(s, ['result_score', 'result_toefl', 'result_toefl_score', 'final_toefl_score', 'final_score', 'real_score']);
-                const fR = getField(s, ['result_r', 'final_r', 'real_r']);
-                const fL = getField(s, ['result_l', 'final_l', 'real_l']);
-                const fW = getField(s, ['result_w', 'final_w', 'real_w']);
-                const fS = getField(s, ['result_s', 'final_s', 'real_s']);
+                // Добавлены ключи из БД: ibt_r, ibt_l, ibt_w, ibt_s
+                const fTotal = getField(s, ['ibt_total', 'result_score', 'final_toefl_score', 'final_score', 'real_score']);
+                const fR = getField(s, ['ibt_r', 'result_r', 'final_r', 'real_r']);
+                const fL = getField(s, ['ibt_l', 'result_l', 'final_l', 'real_l']);
+                const fW = getField(s, ['ibt_w', 'result_w', 'final_w', 'real_w']);
+                const fS = getField(s, ['ibt_s', 'result_s', 'final_s', 'real_s']);
 
                 let calculatedTotal = fTotal;
 
-                // Резервный вариант: если итогового балла нет, но есть все 4 секции
                 if (calculatedTotal === null && fR !== null && fL !== null && fW !== null && fS !== null) {
                     calculatedTotal = (fR + fL + fW + fS) / 4;
                 }
 
-                if (calculatedTotal !== null) { totalScore += calculatedTotal; countTotal++; }
-                if (fR !== null) { totalR += fR; countR++; }
-                if (fL !== null) { totalL += fL; countL++; }
-                if (fW !== null) { totalW += fW; countW++; }
-                if (fS !== null) { totalS += fS; countS++; }
+                if (calculatedTotal !== null && calculatedTotal > 0) { totalScore += calculatedTotal; countTotal++; }
+                if (fR !== null && fR > 0) { totalR += fR; countR++; }
+                if (fL !== null && fL > 0) { totalL += fL; countL++; }
+                if (fW !== null && fW > 0) { totalW += fW; countW++; }
+                if (fS !== null && fS > 0) { totalS += fS; countS++; }
             });
 
             document.getElementById('avgTotalText').innerText = countTotal > 0 ? (Math.round((totalScore / countTotal) * 2) / 2).toFixed(1) : '-';
@@ -389,13 +386,13 @@
                 }
                 const displayTarget = targetScore ? `${targetScore} / 6.0` : 'TBD';
 
-                // Ищем балл для бейджа
-                let fTotalDisp = getField(student, ['result_score', 'result_toefl', 'result_toefl_score', 'final_toefl_score', 'final_score', 'real_score']);
+                // Добавлены ключи из БД: ibt_r, ibt_l, ibt_w, ibt_s
+                let fTotalDisp = getField(student, ['ibt_total', 'result_score', 'final_toefl_score', 'final_score', 'real_score']);
                 if (fTotalDisp === null) {
-                    const fR = getField(student, ['result_r', 'final_r', 'real_r']);
-                    const fL = getField(student, ['result_l', 'final_l', 'real_l']);
-                    const fW = getField(student, ['result_w', 'final_w', 'real_w']);
-                    const fS = getField(student, ['result_s', 'final_s', 'real_s']);
+                    const fR = getField(student, ['ibt_r', 'result_r', 'final_r', 'real_r']);
+                    const fL = getField(student, ['ibt_l', 'result_l', 'final_l', 'real_l']);
+                    const fW = getField(student, ['ibt_w', 'result_w', 'final_w', 'real_w']);
+                    const fS = getField(student, ['ibt_s', 'result_s', 'final_s', 'real_s']);
                     if (fR !== null && fL !== null && fW !== null && fS !== null) {
                         fTotalDisp = (Math.round(((fR + fL + fW + fS) / 4) * 2) / 2).toFixed(1);
                     }
@@ -404,7 +401,8 @@
                 const card = document.createElement('div');
                 card.className = "bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-indigo-100 transition flex flex-col justify-between space-y-4 relative";
                 
-                const finalScoreHtml = (student.status === 'passed' && fTotalDisp !== null) 
+                // Бейджик отображается только если статус "Сдал(а)" и баллы больше 0
+                const finalScoreHtml = (student.status === 'passed' && fTotalDisp !== null && fTotalDisp > 0) 
                     ? `<div class="px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-[10px] font-bold flex items-center space-x-1 border border-emerald-100">
                            <i data-lucide="award" class="w-3 h-3"></i>
                            <span>Итог: ${fTotalDisp} / 6.0</span>
