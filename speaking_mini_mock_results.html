@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mini-Mock Results — TOEFL Speaking</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="auth.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8f9fa; }
+    </style>
+</head>
+<body class="text-slate-800 min-h-screen opacity-0 transition-opacity duration-200" id="mainBody">
+
+    <header class="bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between sticky top-0 z-40">
+        <div class="flex items-center space-x-3">
+            <a href="speaking_mini_mock.html" class="text-gray-400 hover:text-slate-800 transition flex items-center text-sm font-bold">
+                <i data-lucide="arrow-left" class="w-4 h-4 mr-1"></i> Back to Dashboard
+            </a>
+            <span class="text-gray-200">|</span>
+            <span class="font-bold text-slate-900" id="headerTitle">Mini-Mock Results</span>
+        </div>
+        <div id="statusBadge" class="hidden"></div>
+    </header>
+
+    <main class="max-w-4xl mx-auto p-6">
+
+        <div id="loadingIndicator" class="py-24 text-center text-gray-400">
+            <i data-lucide="loader-2" class="w-8 h-8 animate-spin mx-auto mb-3 text-indigo-600"></i>
+            <p class="text-sm font-medium">Loading results...</p>
+        </div>
+
+        <div id="contentArea" class="hidden space-y-4 pb-12">
+            <!-- Карточки вопросов рендерятся сюда -->
+        </div>
+
+    </main>
+
+    <script>
+        lucide.createIcons();
+        let currentUser = null;
+
+        async function init() {
+            try {
+                currentUser = await requireAuth();
+                if (!currentUser) return;
+
+                document.getElementById('mainBody').classList.remove('opacity-0');
+
+                const attemptId = new URLSearchParams(window.location.search).get('attempt_id');
+                if (!attemptId) throw new Error("No attempt_id provided in the URL.");
+
+                await loadResults(attemptId);
+            } catch (err) {
+                console.error(err);
+                document.getElementById('loadingIndicator').innerHTML = `
+                    <div class="bg-red-50 text-red-600 rounded-2xl p-6 text-sm font-semibold">Failed to load results: ${err.message}</div>
+                `;
+            }
+        }
+
+        async function loadResults(attemptId) {
+            // 1. Загружаем саму попытку вместе с названием mini-mock теста
+            const { data: attempt, error: attemptError } = await _supabase
+                .from('mini_mock_speaking_attempts')
+                .select('*, test:mini_mock_speaking_tests(title)')
+                .eq('id', attemptId)
+                .single();
+
+            if (attemptError) throw attemptError;
+
+            // 2. Загружаем ответы вместе с item'ом и исходным вопросом (media/transcript)
+            const { data: responses, error: responsesError } = await _supabase
+                .from('mini_mock_speaking_responses')
+                .select('*, item:mini_mock_speaking_items(*, question:speaking_questions(*))')
+                .eq('attempt_id', attemptId);
+
+            if (responsesError) throw responsesError;
+
+            // Сортируем по порядку вопросов в тесте (item_order), а не по порядку вставки ответов
+            const sorted = (responses || []).slice().sort((a, b) => {
+                const orderA = a.item ? a.item.item_order : 0;
+                const orderB = b.item ? b.item.item_order : 0;
+                return orderA - orderB;
+            });
+
+            renderStatus(attempt);
+            renderResponses(sorted);
+
+            document.getElementById('loadingIndicator').classList.add('hidden');
+            document.getElementById('contentArea').classList.remove('hidden');
+        }
+
+        function renderStatus(attempt) {
+            document.getElementById('headerTitle').textContent = (attempt.test && attempt.test.title) || 'Mini-Mock Results';
+
+            const badge = document.getElementById('statusBadge');
+            badge.classList.remove('hidden');
+
+            const scoreText = attempt.overall_score !== null && attempt.overall_score !== undefined
+                ? Number(attempt.overall_score).toFixed(1)
+                : 'Pending';
+
+            if (attempt.status === 'reviewed') {
+                badge.className = 'text-sm font-bold px-4 py-1.5 rounded-lg border bg-emerald-50 text-emerald-600 border-emerald-200 flex items-center';
+                badge.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 mr-1.5"></i> Reviewed (Score: ${scoreText})`;
+            } else {
+                badge.className = 'text-sm font-bold px-4 py-1.5 rounded-lg border bg-amber-50 text-amber-600 border-amber-200 flex items-center';
+                badge.innerHTML = `<i data-lucide="clock" class="w-4 h-4 mr-1.5"></i> Pending Teacher Review`;
+            }
+            lucide.createIcons();
+        }
+
+        function renderResponses(responses) {
+            const container = document.getElementById('contentArea');
+
+            if (!responses.length) {
+                container.innerHTML = '<p class="text-sm text-gray-500">No responses found for this attempt.</p>';
+                return;
+            }
+
+            container.innerHTML = responses.map((r, i) => {
+                const item = r.item || {};
+                const q = item.question || {};
+                const isInterview = item.task_type === 'interview';
+
+                const audioUrl = r.audio_url
+                    ? _supabase.storage.from('student_recordings').getPublicUrl(r.audio_url).data.publicUrl
+                    : null;
+
+                const scoreHTML = (r.score !== null && r.score !== undefined)
+                    ? `<span class="text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-lg">Score: ${r.score}</span>`
+                    : `<span class="text-xs font-bold text-amber-600 bg-amber-50 border border-amber-100 px-2.5 py-1 rounded-lg">Pending Review</span>`;
+
+                const feedbackHTML = r.feedback
+                    ? `<div class="mt-3 bg-indigo-50/60 border border-indigo-100 rounded-xl p-3 text-xs text-indigo-900 leading-relaxed">
+                            <span class="font-bold uppercase tracking-wide text-indigo-500 text-[10px] block mb-1">Teacher Feedback</span>
+                            ${r.feedback}
+                       </div>`
+                    : '';
+
+                return `
+                    <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+                        <div class="flex items-start justify-between mb-3 gap-2">
+                            <div class="flex items-center gap-2">
+                                <span class="text-sm font-bold text-slate-400">Question ${i + 1}</span>
+                                <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${isInterview ? 'text-violet-600 bg-violet-50 border-violet-200' : 'text-sky-600 bg-sky-50 border-sky-200'}">
+                                    ${isInterview ? 'Interview' : 'Listen & Repeat'}
+                                </span>
+                            </div>
+                            ${scoreHTML}
+                        </div>
+
+                        ${q.transcript ? `
+                            <div class="mb-3">
+                                <p class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">${isInterview ? 'Question' : 'Target Phrase'}</p>
+                                <p class="text-sm text-slate-700 leading-relaxed">${q.transcript}</p>
+                            </div>
+                        ` : ''}
+
+                        ${audioUrl ? `
+                            <div class="mt-3">
+                                <p class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">Your Recording</p>
+                                <audio controls class="w-full h-10" src="${audioUrl}"></audio>
+                            </div>
+                        ` : `<p class="text-xs text-gray-400 italic">No recording found.</p>`}
+
+                        ${feedbackHTML}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
