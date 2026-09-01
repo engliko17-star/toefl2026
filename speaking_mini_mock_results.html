@@ -88,7 +88,7 @@
             });
 
             renderStatus(attempt);
-            renderResponses(sorted);
+            await renderResponses(sorted);
 
             document.getElementById('loadingIndicator').classList.add('hidden');
             document.getElementById('contentArea').classList.remove('hidden');
@@ -114,7 +114,7 @@
             lucide.createIcons();
         }
 
-        function renderResponses(responses) {
+        async function renderResponses(responses) {
             const container = document.getElementById('contentArea');
 
             if (!responses.length) {
@@ -122,14 +122,26 @@
                 return;
             }
 
+            // Бакет student_recordings приватный, поэтому getPublicUrl() не сработает —
+            // получаем временные подписанные ссылки (действуют 1 час) для каждой записи
+            const audioUrls = await Promise.all(responses.map(async (r) => {
+                if (!r.audio_url) return null;
+                const { data, error } = await _supabase.storage
+                    .from('student_recordings')
+                    .createSignedUrl(r.audio_url, 3600);
+                if (error) {
+                    console.error('Signed URL error for', r.audio_url, error);
+                    return null;
+                }
+                return data.signedUrl;
+            }));
+
             container.innerHTML = responses.map((r, i) => {
                 const item = r.item || {};
                 const q = item.question || {};
                 const isInterview = item.task_type === 'interview';
 
-                const audioUrl = r.audio_url
-                    ? _supabase.storage.from('student_recordings').getPublicUrl(r.audio_url).data.publicUrl
-                    : null;
+                const audioUrl = audioUrls[i];
 
                 const scoreHTML = (r.score !== null && r.score !== undefined)
                     ? `<span class="text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-lg">Score: ${r.score}</span>`
