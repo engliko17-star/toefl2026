@@ -654,7 +654,7 @@ async function saveListeningAttemptAndFinish() {
     let finalCalculatedScore = Math.min(Math.round(proportionalScore * 2) / 2, 6.0);
 
     try {
-        const client = window.supabaseClient || window.supabase || window.db || (typeof supabase !== 'undefined' ? supabase : null);
+        const client = supabaseClient;
         if (client) {
             const { data: { session } } = await client.auth.getSession();
             if (session?.user) {
@@ -700,47 +700,6 @@ async function saveListeningAttemptAndFinish() {
     renderListeningReview(finalCalculatedScore, correctAnswers, totalQuestions);
 }
 
-// 6. Выход в дашборд (возврат к карточке теста без перезагрузки страницы)
-window.exitExamEngine = function() {
-    stopQuestionTimer();
-    isProcessingNextStep = false;
-    
-    const globalAudio = document.getElementById('globalAudio');
-    if (globalAudio) {
-        globalAudio.pause();
-        globalAudio.src = '';
-        globalAudio.onended = null;
-        globalAudio.ontimeupdate = null;
-    }
-
-    const examView = document.getElementById('exam-engine-view');
-    if (examView) {
-        examView.classList.add('hidden');
-        examView.classList.remove('flex');
-    }
-
-    const resultsView = document.getElementById('results-view');
-    if (resultsView) {
-        resultsView.classList.add('hidden');
-        resultsView.classList.remove('flex');
-    }
-
-    const mainInterface = document.getElementById('main-interface');
-    if (mainInterface) {
-        mainInterface.classList.remove('hidden');
-    }
-    
-    // Обновляем карточку текущего теста, чтобы подтянулись новые баллы
-    if (typeof openTestView === 'function' && typeof currentActiveTestId !== 'undefined' && currentActiveTestId) {
-        const title = document.getElementById('dynamic-test-title')?.innerText || 'Mock Test';
-        const emoji = document.getElementById('dynamic-emoji-container')?.innerText || '📝';
-        openTestView(currentActiveTestId, title, emoji);
-    } else {
-        // Резервный вариант, если вдруг мы не на странице tests.html
-        window.location.href = 'tests.html';
-    }
-};
-
 // 7. Режим Ревью
 async function loadListeningReviewMode(attemptId, testId, testTitle) {
     window.engineType = 'listening';
@@ -759,7 +718,7 @@ async function loadListeningReviewMode(attemptId, testId, testTitle) {
 
     try {
         currentActiveTestId = testId;
-        const client = window.supabaseClient || window.supabase || window.db;
+        const client = supabaseClient;
         const { data: attempt } = await client.from('big_mock_listening_attempts').select('*').eq('id', attemptId).single();
         const { data: answers } = await client.from('big_mock_listening_answers').select('*').eq('attempt_id', attemptId);
 
