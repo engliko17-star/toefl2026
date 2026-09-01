@@ -36,127 +36,6 @@ let currentIndex = 0;
 let timerInterval;
 let timeRemaining = 35 * 60; 
 
-// Загружаем сетку тестов чистой (без оценок)
-async function loadTestsGrid() {
-    const container = document.getElementById('tests-container');
-    try {
-        container.innerHTML = `<div class="col-span-full text-slate-400 text-sm flex items-center"><i data-lucide="loader-2" class="w-4 h-4 mr-2 animate-spin"></i> Fetching tests...</div>`;
-        
-        const { data: tests, error: errTests } = await supabaseClient.from('full_tests').select('*').order('created_at', { ascending: false });
-        if (errTests) throw errTests;
-
-        if (!tests || tests.length === 0) {
-            container.innerHTML = `<div class="col-span-full text-center text-slate-500 py-10">No tests found in 'full_tests' table.</div>`;
-            return;
-        }
-
-        // Выводим только карточки-кнопки (без проверки попыток в цикле)
-        container.innerHTML = tests.map(test => {
-            return `
-                <div onclick="openTestView(${test.id}, '${test.title}', '${test.emoji}')" class="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm hover:shadow-md hover:-translate-y-1 hover:border-indigo-200 transition-all cursor-pointer group flex flex-col h-full">
-                    <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center text-3xl mb-5 group-hover:scale-110 transition-transform">${test.emoji || '📝'}</div>
-                    <h3 class="text-xl font-bold text-slate-900 mb-1">${test.title}</h3>
-                    <p class="text-xs text-gray-400 mb-6">Full Section Simulation</p>
-                    <div class="flex items-center justify-between border-t border-gray-50 pt-4 mt-auto">
-                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">35 mins</span>
-                        <span class="px-2.5 py-1 bg-indigo-50 text-indigo-600 font-bold text-[10px] rounded-lg uppercase tracking-wider">Open</span>
-                    </div>
-                </div>
-            `;
-        }).join('');
-        lucide.createIcons();
-    } catch (err) {
-        console.error("Error loading tests:", err);
-        container.innerHTML = `<div class="col-span-full text-red-500 font-bold">Error loading tests. Check console.</div>`;
-    }
-}
-
-loadTestsGrid();
-
-// Открываем детали теста и проверяем оценку ИМЕННО ТУТ
-async function openTestView(testId, title, emoji) {
-    currentActiveTestId = testId;
-    document.getElementById('view-tests-grid').classList.add('hidden');
-    document.getElementById('view-test-detail').classList.remove('hidden');
-    
-    document.getElementById('dynamic-test-title').innerText = title;
-    document.getElementById('dynamic-emoji-container').innerText = emoji || '📝';
-
-    const scoreContainer = document.getElementById('reading-score-container');
-    const actionsContainer = document.getElementById('reading-action-buttons');
-
-    if(scoreContainer) scoreContainer.innerHTML = '<div class="text-xs text-gray-400 flex items-center"><i data-lucide="loader-2" class="w-3 h-3 mr-1 animate-spin"></i> Loading results...</div>';
-    if(actionsContainer) actionsContainer.innerHTML = '';
-    lucide.createIcons();
-    
-    try {
-        // Ищем последнюю завершенную попытку конкретно по этому тесту и секции Reading
-        const { data: attempts, error } = await supabaseClient
-            .from('big_mock_attempts')
-            .select('*')
-            .eq('test_id', testId)
-            .eq('section_name', 'reading')
-            .order('completed_at', { ascending: false })
-            .limit(1);
-
-        if (error) throw error;
-
-        // Если попытка найдена - выводим оценку и кнопки Review/Retake
-        if (attempts && attempts.length > 0 && attempts[0].status === 'completed') {
-            const attempt = attempts[0];
-            
-            if (scoreContainer) {
-                scoreContainer.innerHTML = `
-                    <div class="inline-flex items-center bg-green-50 border border-green-200 px-3 py-1.5 rounded-lg shadow-sm">
-                        <span class="text-[10px] font-bold text-green-800 uppercase tracking-wider mr-2">Est. Score</span>
-                        <span class="text-lg font-extrabold text-green-600">${attempt.total_score}</span>
-                    </div>
-                `;
-            }
-            if (actionsContainer) {
-                actionsContainer.innerHTML = `
-                    <button onclick="loadReviewMode('${attempt.id}', ${testId}, '${title}')" class="flex-1 py-2.5 bg-white border border-gray-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition text-sm flex items-center justify-center shadow-xs">
-                        <i data-lucide="search" class="w-4 h-4 mr-1.5"></i> Review
-                    </button>
-                    <button onclick="startExamEngine(${testId}, '${title}')" class="flex-1 py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition text-sm flex items-center justify-center shadow-xs">
-                        Retake <i data-lucide="rotate-cw" class="w-4 h-4 ml-1.5"></i>
-                    </button>
-                `;
-            }
-        } 
-        // Если попыток не было - выводим просто кнопку Start
-        else {
-            if (scoreContainer) scoreContainer.innerHTML = '';
-            if (actionsContainer) {
-                actionsContainer.innerHTML = `
-                    <button onclick="startExamEngine(${testId}, '${title}')" class="w-full text-center py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition text-sm flex items-center justify-center shadow-xs">
-                        Start Section <i data-lucide="arrow-right" class="w-4 h-4 ml-1.5"></i>
-                    </button>
-                `;
-            }
-        }
-        lucide.createIcons();
-    } catch(e) {
-        console.error("Error checking attempt:", e);
-        // Fallback если произошла ошибка сети
-        if (scoreContainer) scoreContainer.innerHTML = '';
-        if (actionsContainer) {
-            actionsContainer.innerHTML = `
-                <button onclick="startExamEngine(${testId}, '${title}')" class="w-full text-center py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition text-sm flex items-center justify-center shadow-xs">
-                    Start Section <i data-lucide="arrow-right" class="w-4 h-4 ml-1.5"></i>
-                </button>
-            `;
-        }
-        lucide.createIcons();
-    }
-}
-
-function closeTestView() {
-    document.getElementById('view-test-detail').classList.add('hidden');
-    document.getElementById('view-tests-grid').classList.remove('hidden');
-    currentActiveTestId = null;
-}
-
 function renderDailyLifeLayout(passage, layoutType, taskTitle) {
     if (!passage) return "";
     const cleanPassage = passage.replace(/[\[\]]/g, ''); 
@@ -373,13 +252,6 @@ async function startExamEngine(testId, testTitle) {
     }
 }
 
-function exitExamEngine() {
-    clearInterval(timerInterval);
-    document.getElementById('exam-engine-view').classList.add('hidden');
-    document.getElementById('exam-engine-view').classList.remove('flex');
-    document.getElementById('main-interface').classList.remove('hidden');
-}
-
 function startTimer() {
     clearInterval(timerInterval);
     timerInterval = setInterval(() => {
@@ -478,7 +350,7 @@ function renderEngine() {
             contentDiv.innerHTML = `
                 <section class="w-1/2 bg-white p-10 overflow-y-auto custom-scrollbar border-r border-slate-200">
                     <h2 class="text-xl font-bold text-slate-900 mb-6">${task.title}</h2>
-                    <div class="text-sm text-slate-700 leading-relaxed space-y-4 whitespace-pre-wrap">${task.passage}</div>
+                    <div id="academicPassageContainer" class="text-sm text-slate-700 leading-relaxed space-y-4 whitespace-pre-wrap">${task.passage}</div>
                 </section>
                 <section class="w-1/2 bg-slate-50 p-10 overflow-y-auto custom-scrollbar">
                      <div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-xs max-w-xl mx-auto">${rightPanelContent}</div>
@@ -507,6 +379,13 @@ function renderEngine() {
                         currentTasks[currentIndex].userAnswer = squareIndexStr;
                     };
                 });
+
+                // Подсветка слова в тексте для Vocabulary-вопросов, как в реальном TOEFL
+                const passageContainer = document.getElementById('academicPassageContainer');
+                clearVocabHighlight(passageContainer);
+                if (task.qType && task.qType.toLowerCase() === 'vocabulary') {
+                    highlightVocabWord(task, passageContainer);
+                }
             }, 50);
         }
         
@@ -518,6 +397,50 @@ function renderEngine() {
         alert("Render error: " + err.message);
     }
 }
+
+// ---- Vocabulary highlight helpers ----
+
+function clearVocabHighlight(container) {
+    (container || document).querySelectorAll('.vocab-highlight').forEach(el => {
+        const parent = el.parentNode;
+        if (!parent) return;
+        parent.replaceChild(document.createTextNode(el.textContent), el);
+        parent.normalize();
+    });
+}
+
+function extractVocabWord(task) {
+    if (task.word) return task.word;
+    const src = task.question || '';
+    const match = src.match(/["“']([^"”']+)["”']/);
+    return match ? match[1].trim() : null;
+}
+
+function highlightVocabWord(task, container) {
+    if (!container) return;
+    const word = extractVocabWord(task);
+    if (!word) return;
+
+    const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`\\b(${escaped})\\b`, 'i');
+
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+    let node;
+    while ((node = walker.nextNode())) {
+        const m = node.textContent.match(regex);
+        if (m) {
+            const range = document.createRange();
+            range.setStart(node, m.index);
+            range.setEnd(node, m.index + m[0].length);
+            const mark = document.createElement('mark');
+            mark.className = 'vocab-highlight';
+            range.surroundContents(mark);
+            mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            break;
+        }
+    }
+}
+
 
 async function loadModule2Tasks() {
     document.getElementById('engine-next').innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin mr-1"></i> Loading Module 2...';
