@@ -32,6 +32,16 @@
         .review-wrong { background-color: #fee2e2 !important; color: #991b1b !important; border-radius: 4px; text-decoration: line-through; padding: 0 2px; }
         .review-square-correct { color: #10b981 !important; transform: scale(1.3); display: inline-block !important; }
         .review-square-wrong { color: #ef4444 !important; transform: scale(1.3); display: inline-block !important; }
+
+        /* Подсветка слова для Vocabulary-вопросов, как в реальном TOEFL */
+        .vocab-highlight {
+            background-color: #e0e7ff;
+            color: #312e81;
+            font-weight: 700;
+            padding: 1px 3px;
+            border-radius: 4px;
+            box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.25);
+        }
     </style>
 </head>
 <body class="bg-[#f8f9fa] text-slate-800 m-0 p-0" style="height: 100dvh; display: flex; flex-direction: column; overflow: hidden;">
@@ -350,6 +360,60 @@
             });
         }
 
+        // ---- Vocabulary highlight helpers ----
+
+        // Убирает предыдущую подсветку слова, возвращая текст на место
+        function clearVocabHighlight() {
+            document.querySelectorAll('.vocab-highlight').forEach(el => {
+                const parent = el.parentNode;
+                if (!parent) return;
+                parent.replaceChild(document.createTextNode(el.textContent), el);
+                parent.normalize();
+            });
+        }
+
+        // Достаёт целевое слово: сначала из явного поля q.word (если оно задано в базе),
+        // иначе — из текста вопроса вида: The word "emerge" in paragraph 2 is closest in meaning to...
+        function extractVocabWord(q) {
+            if (q.word) return q.word;
+            const src = q.question || q.text || '';
+            const match = src.match(/["“']([^"”']+)["”']/);
+            return match ? match[1].trim() : null;
+        }
+
+        // Подсвечивает первое вхождение слова в тексте (или конкретный абзац, если задан q.paragraph)
+        function highlightVocabWord(q) {
+            const word = extractVocabWord(q);
+            if (!word) return;
+
+            const passageContainer = document.getElementById('passageContent');
+            let scope = passageContainer;
+
+            if (q.paragraph) {
+                const paragraphs = passageContainer.querySelectorAll('p');
+                if (paragraphs[q.paragraph - 1]) scope = paragraphs[q.paragraph - 1];
+            }
+
+            const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(`\\b(${escaped})\\b`, 'i');
+
+            const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT, null);
+            let node;
+            while ((node = walker.nextNode())) {
+                const m = node.textContent.match(regex);
+                if (m) {
+                    const range = document.createRange();
+                    range.setStart(node, m.index);
+                    range.setEnd(node, m.index + m[0].length);
+                    const mark = document.createElement('mark');
+                    mark.className = 'vocab-highlight';
+                    range.surroundContents(mark);
+                    mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    break;
+                }
+            }
+        }
+
         function showQuestion(idx) {
             const q = currentTask.questions[idx];
             
@@ -373,6 +437,11 @@
             passageContainer.classList.remove('select-sentence-mode', 'insert-text-mode');
             document.querySelectorAll('.clickable-sentence').forEach(el => el.classList.remove('selected'));
             document.querySelectorAll('.insert-square').forEach(el => el.classList.remove('selected'));
+
+            clearVocabHighlight();
+            if (q.type && q.type.toLowerCase() === 'vocabulary') {
+                highlightVocabWord(q);
+            }
 
             if (q.type === "Select a Sentence" || q.type === "Insert Text") {
                 optionsContainer.innerHTML = '';
