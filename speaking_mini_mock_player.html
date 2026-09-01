@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speaking Mini-Mock — TOEFL</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <script src="auth.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8f9fa; }
+        .recording-active { animation: pulse-red 1.5s infinite; background-color: #ef4444; color: white; border-color: #ef4444;}
+        @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
+
+    <div id="startOverlay" class="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center p-6 text-center">
+        <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <i data-lucide="flask-conical" class="w-8 h-8"></i>
+        </div>
+        <h2 class="text-2xl font-bold mb-2 text-slate-800" id="overlayTitle">Loading Mini-Mock...</h2>
+        <p class="text-gray-500 mb-8 max-w-sm text-sm" id="overlayDesc">Checking authorization and fetching your practice materials.</p>
+        <button id="startBtn" class="bg-slate-900 hover:bg-indigo-600 transition text-white px-8 py-3.5 rounded-xl font-bold hidden flex items-center justify-center shadow-md cursor-pointer">
+            Allow Mic & Start Simulation <i data-lucide="play" class="w-4 h-4 ml-2 fill-current"></i>
+        </button>
+    </div>
+
+    <div id="playerUI" class="w-full flex-col items-center hidden h-screen max-h-[800px]">
+        <div class="w-full bg-[#f8f9fa] p-4 flex justify-between items-center max-w-4xl mx-auto shrink-0">
+            <button onclick="window.history.back()" class="text-slate-400 hover:text-slate-900 transition p-2 cursor-pointer bg-white rounded-full shadow-sm">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+            <div class="text-center">
+                <h1 class="font-bold text-slate-800" id="taskInstruction">Mini-Mock Simulation</h1>
+                <span id="taskTypeLabel" class="text-[10px] font-bold text-indigo-500 uppercase tracking-widest"></span>
+            </div>
+            <div class="text-sm font-semibold text-gray-400 w-16 text-right"><span id="currentTaskNum">1</span> / <span id="totalTasks">...</span></div>
+        </div>
+
+        <div class="w-full max-w-md mt-6 mb-auto aspect-video sm:aspect-square bg-black border border-gray-200 rounded-[2rem] overflow-hidden shadow-lg flex items-center justify-center relative group cursor-pointer" id="mediaContainer">
+            <video id="taskMedia" class="w-full h-full object-cover hidden" playsinline preload="auto"></video>
+            <img id="taskImage" class="w-full h-full object-cover hidden" src="" alt="Task Image">
+            
+            <div id="playOverlay" class="absolute inset-0 bg-black/70 flex flex-col items-center justify-center text-white hidden backdrop-blur-sm transition">
+                <i data-lucide="play-circle" class="w-16 h-16 mb-3 text-white/90 group-hover:scale-110 transition-transform"></i>
+                <span class="font-bold text-sm tracking-wide">Tap to play media</span>
+            </div>
+        </div>
+
+        <div class="w-full max-w-md bg-white border border-gray-200 rounded-[2rem] shadow-md flex flex-col items-center p-6 shrink-0 mt-8 mb-6">
+            <div id="statusBanner" class="text-[10px] font-bold uppercase mb-4 tracking-widest text-slate-400 px-4 py-1.5 rounded-full bg-slate-50 border border-slate-100 transition-colors">Ready</div>
+            <div class="flex items-center justify-center space-x-6 w-full">
+                <div id="micIcon" class="w-16 h-16 rounded-full bg-gray-100 text-slate-400 flex items-center justify-center transition-colors shadow-inner shrink-0">
+                    <i data-lucide="mic" class="w-6 h-6"></i>
+                </div>
+                <div id="timerDisplay" class="text-5xl font-mono font-black text-slate-800 tabular-nums">00:00</div>
+            </div>
+            
+            <div class="w-full bg-gray-100 h-2 rounded-full mt-6 overflow-hidden">
+                <div id="timeProgressBar" class="h-full bg-indigo-600 w-0 transition-all duration-1000 ease-linear"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="completionUI" class="hidden w-full max-w-md p-10 bg-white rounded-3xl text-center border border-gray-100 shadow-sm">
+        <div class="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <i data-lucide="check-check" class="w-8 h-8"></i>
+        </div>
+        <h2 class="text-2xl font-bold mb-2 text-slate-800">Simulation Complete!</h2>
+        <p class="text-sm text-slate-500 mb-8">Your speaking responses have been successfully recorded and saved.</p>
+        <div class="flex space-x-3">
+            <button onclick="window.location.reload()" class="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-slate-700 font-bold rounded-xl transition cursor-pointer">
+                Retry Set
+            </button>
+            <a href="speaking_mini_mock.html" class="flex-1 py-3 bg-slate-900 hover:bg-indigo-600 text-white font-bold rounded-xl transition flex items-center justify-center shadow-md">
+                Done
+            </a>
+        </div>
+    </div>
+
+    <audio id="taskAudio" class="hidden" preload="auto"></audio>
+
+    <script>
+        lucide.createIcons();
+        
+        let currentUser = null;
+        let items = [];           // строки mini_mock_speaking_items, каждая с вложенным .question (speaking_questions)
+        let currentIndex = 0;
+        let mediaStream = null;
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let timerInterval = null;
+        let mockTestId = null;
+        let currentAttemptId = null;
+        let audioCtx = null;
+        let recordingMimeType = '';
+
+        // Подбирает mimeType, который реально поддерживается текущим браузером.
+        // Safari (iOS/macOS) не понимает audio/webm, но понимает audio/mp4 — поэтому
+        // порядок важен: сначала пробуем варианты, максимально совместимые со всеми браузерами.
+        function getSupportedMimeType() {
+            if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') {
+                return ''; // отдадим браузеру решать самому
+            }
+            const candidates = [
+                'audio/mp4',
+                'audio/aac',
+                'audio/webm;codecs=opus',
+                'audio/webm',
+                'audio/ogg;codecs=opus'
+            ];
+            for (const type of candidates) {
+                try {
+                    if (MediaRecorder.isTypeSupported(type)) return type;
+                } catch (e) { /* игнорируем и пробуем следующий вариант */ }
+            }
+            return '';
+        }
+
+        async function init() {
+            try {
+                if (typeof requireAuth !== 'function') throw new Error("auth.js script not loaded properly.");
+                
+                currentUser = await requireAuth();
+                if (!currentUser) return;
+
+                const urlParams = new URLSearchParams(window.location.search);
+                mockTestId = urlParams.get('id');
+
+                if (!mockTestId) throw new Error("No mini-mock test ID provided in the URL.");
+
+                // Загружаем items вместе с исходным вопросом (speaking_questions) через FK source_task_id
+                const { data, error } = await _supabase
+                    .from('mini_mock_speaking_items')
+                    .select('*, question:speaking_questions(*)')
+                    .eq('mock_test_id', mockTestId)
+                    .order('item_order', { ascending: true });
+
+                if (error) throw error;
+                if (!data || data.length === 0) throw new Error("No questions found for this mini-mock test in the database.");
+
+                items = data;
+                
+                document.getElementById('totalTasks').innerText = items.length;
+
+                document.getElementById('overlayTitle').innerText = "Ready to start";
+                document.getElementById('overlayDesc').innerText = "Make sure you are in a quiet place and your microphone is working. This simulation mixes Listen & Repeat and Interview questions.";
+                document.getElementById('startBtn').classList.remove('hidden');
+                
+            } catch (err) {
+                console.error("Initialization error:", err);
+                document.getElementById('overlayTitle').innerText = "Oops!";
+                document.getElementById('overlayDesc').innerText = err.message;
+            }
+        }
+
+        document.getElementById('startBtn').onclick = async () => {
+            if (!window.isSecureContext && location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+                alert(`ОШИБКА БЕЗОПАСНОСТИ:
+Браузеры блокируют микрофон на сайтах без HTTPS!
+
+Пожалуйста, откройте сайт по безопасному адресу https:// (не http://).`);
+                return;
+            }
+
+            if (typeof window.MediaRecorder === 'undefined') {
+                alert(`Ваше устройство не поддерживает запись звука в этом браузере.
+
+На iPhone/iPad/Mac это означает, что версия iOS/iPadOS/macOS слишком старая (нужна iOS 14.3 или новее, либо Safari 14.1+).
+
+Пожалуйста, обновите систему в Настройки → Основные → Обновление ПО и попробуйте снова.`);
+                return;
+            }
+
+            recordingMimeType = getSupportedMimeType();
+
+            // Инициализируем Web Audio API при клике пользователя
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+            try {
+                mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+                // Создаём попытку прохождения mini-mock теста
+                const { data: attemptData, error: attemptError } = await _supabase
+                    .from('mini_mock_speaking_attempts')
+                    .insert([{ user_id: currentUser.id, test_id: mockTestId, status: 'in_progress' }])
+                    .select()
+                    .single();
+
+                if (attemptError) {
+                    console.error("Ошибка создания попытки:", attemptError);
+                    alert("Ошибка базы данных (mini_mock_speaking_attempts): " + attemptError.message);
+                } else if (attemptData) {
+                    currentAttemptId = attemptData.id;
+                }
+                
+                document.getElementById('startOverlay').classList.add('hidden');
+                document.getElementById('playerUI').classList.remove('hidden');
+                document.getElementById('playerUI').classList.add('flex');
+                
+                loadQuestion(0);
+            } catch (err) {
+                console.error("Media access error:", err);
+                
+                let details = "";
+                if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                    details = `Доступ к микрофону заблокирован браузером.
+
+Как исправить:
+1. Нажмите на иконку "Замок" или "Настройки сайта" слева в адресной строке.
+2. Переключите доступ к Микрофону в состояние "Разрешить".
+3. Перезагрузите страницу.`;
+                } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+                    details = "Микрофон не обнаружен на вашем устройстве.";
+                } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+                    details = "Микрофон занят другим приложением (запись голосового, звонок в мессенджере). Закройте фоновые приложения.";
+                } else if (err.name === 'SecurityError') {
+                    details = "Доступ заблокирован политикой безопасности браузера (требуется SSL-сертификат HTTPS).";
+                } else {
+                    details = `Код ошибки браузера: ${err.name}\n${err.message}`;
+                }
+
+                alert(`Не удалось включить микрофон!\n\n${details}`);
+            }
+        };
+
+        function playBeep() {
+            return new Promise((resolve) => {
+                if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+                
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(800, audioCtx.currentTime); 
+                
+                gainNode.gain.setValueAtTime(0.8, audioCtx.currentTime); 
+                gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.4);
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.4);
+                
+                setTimeout(resolve, 400);
+            });
+        }
+
+        function loadQuestion(i) {
+            currentIndex = i;
+            const item = items[i];
+            const q = item.question || {};
+            const isInterview = item.task_type === 'interview';
+            
+            document.getElementById('currentTaskNum').innerText = i + 1;
+            document.getElementById('taskInstruction').innerText = isInterview ? 'Interview Question' : 'Listen and Repeat';
+            document.getElementById('taskTypeLabel').innerText = isInterview ? 'SPONTANEOUS RESPONSE' : 'REPEAT EXACTLY';
+            resetUI();
+
+            const video = document.getElementById('taskMedia');
+            const img = document.getElementById('taskImage');
+            const audio = document.getElementById('taskAudio');
+            const overlay = document.getElementById('playOverlay');
+            const mediaContainer = document.getElementById('mediaContainer');
+            
+            video.classList.add('hidden');
+            img.classList.add('hidden');
+            overlay.classList.add('hidden');
+            mediaContainer.onclick = null;
+            
+            if (isInterview) {
+                if (!q.media_url) {
+                    alert("Ошибка: В базе данных не заполнена ссылка на видео (media_url) для этого вопроса!");
+                    return;
+                }
+
+                video.src = q.media_url;
+                video.load();
+                video.classList.remove('hidden');
+                
+                setStatus('Listening to Question...', 'bg-sky-100 text-sky-700 border-sky-200');
+                
+                video.onerror = (e) => {
+                    console.error("Video load error:", e);
+                    alert("Ошибка загрузки видеофайла по ссылке:\n" + q.media_url + "\n\nПроверьте доступность файла в Supabase Storage.");
+                };
+
+                video.onended = async () => {
+                    setStatus('Get Ready...', 'bg-amber-100 text-amber-700 border-amber-200');
+                    await playBeep();
+                    startRecording(q.time_limit || 45);
+                };
+                
+                const playPromise = video.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(e => {
+                        console.error("Video play error:", e);
+                        setStatus('Waiting for you to start', 'bg-amber-100 text-amber-700');
+                        overlay.classList.remove('hidden');
+                        
+                        mediaContainer.onclick = () => {
+                            overlay.classList.add('hidden');
+                            setStatus('Listening to Question...', 'bg-sky-100 text-sky-700 border-sky-200');
+                            video.play().catch(err => alert("Не удалось проиграть видео: " + err.message));
+                        };
+                    });
+                }
+
+            } else {
+                if (q.media_url) {
+                    img.src = q.media_url;
+                    img.classList.remove('hidden');
+                }
+                
+                if (q.audio_prompt_url) {
+                    audio.src = q.audio_prompt_url;
+                    audio.load();
+                } else {
+                    alert("Ошибка: Отсутствует ссылка на аудиофайле (audio_prompt_url) для этого задания.");
+                    return;
+                }
+
+                setStatus('Listening to Phrase...', 'bg-sky-100 text-sky-700 border-sky-200');
+                
+                audio.onerror = (e) => {
+                    console.error("Audio load error:", e);
+                    alert("Ошибка загрузки аудио по ссылке:\n" + q.audio_prompt_url);
+                };
+
+                audio.onended = async () => {
+                    setStatus('Get Ready...', 'bg-amber-100 text-amber-700 border-amber-200');
+                    await playBeep();
+                    startRecording(q.time_limit || 8);
+                };
+
+                const playPromise = audio.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(e => {
+                        console.error("Audio play error:", e);
+                        setStatus('Waiting for you to start', 'bg-amber-100 text-amber-700');
+                        overlay.classList.remove('hidden');
+                        
+                        mediaContainer.onclick = () => {
+                            overlay.classList.add('hidden');
+                            setStatus('Listening to Phrase...', 'bg-sky-100 text-sky-700 border-sky-200');
+                            audio.play().catch(err => alert("Не удалось проиграть аудио: " + err.message));
+                        };
+                    });
+                }
+            }
+        }
+
+        function setStatus(text, classes) {
+            const banner = document.getElementById('statusBanner');
+            banner.className = `text-[10px] font-bold uppercase mb-4 tracking-widest px-4 py-1.5 rounded-full border transition-colors shadow-sm ${classes}`;
+            banner.innerText = text;
+        }
+
+        function resetUI() {
+            clearInterval(timerInterval);
+            document.getElementById('timerDisplay').innerText = "00:00";
+            document.getElementById('timeProgressBar').style.width = "0%";
+            document.getElementById('micIcon').className = "w-16 h-16 rounded-full bg-gray-100 text-slate-400 flex items-center justify-center transition-colors shadow-inner shrink-0";
+        }
+
+        function startRecording(limit) {
+            setStatus('Recording...', 'recording-active');
+            
+            document.getElementById('micIcon').classList.remove('bg-gray-100', 'text-slate-400');
+            document.getElementById('micIcon').classList.add('bg-transparent', 'text-white'); 
+            
+            audioChunks = [];
+
+            try {
+                mediaRecorder = new MediaRecorder(mediaStream, recordingMimeType ? { mimeType: recordingMimeType } : undefined);
+            } catch (err) {
+                console.error("MediaRecorder init error:", err);
+                try {
+                    // Запасной вариант: пробуем создать без явного mimeType —
+                    // иногда именно указание mimeType и вызывает отказ в конкретной версии Safari.
+                    mediaRecorder = new MediaRecorder(mediaStream);
+                } catch (err2) {
+                    console.error("MediaRecorder fallback init error:", err2);
+                    setStatus('Recording failed', 'bg-red-100 text-red-700 border-red-200');
+                    alert(`Не удалось начать запись звука на этом устройстве.\n\nПопробуйте:\n1. Обновить iOS/Safari до последней версии.\n2. Перезагрузить страницу и разрешить доступ к микрофону заново.\n\nТехническая причина: ${err2.message || err2.name}`);
+                    return;
+                }
+            }
+
+            mediaRecorder.onerror = (e) => {
+                console.error("MediaRecorder runtime error:", e.error || e);
+                setStatus('Recording error', 'bg-red-100 text-red-700 border-red-200');
+            };
+
+            mediaRecorder.ondataavailable = e => {
+                if (e.data.size > 0) audioChunks.push(e.data);
+            };
+            mediaRecorder.start();
+            
+            let time = limit;
+            const progress = document.getElementById('timeProgressBar');
+            const display = document.getElementById('timerDisplay');
+            
+            progress.style.transitionDuration = '1s';
+            
+            const updateDisplay = () => {
+                display.innerText = `00:${time < 10 ? '0'+time : time}`;
+                progress.style.width = `${((limit - time) / limit) * 100}%`;
+            };
+            
+            updateDisplay();
+
+            timerInterval = setInterval(() => {
+                time--;
+                updateDisplay();
+                if (time <= 0) { 
+                    clearInterval(timerInterval); 
+                    stopRecording(); 
+                }
+            }, 1000);
+        }
+
+        async function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+                setStatus('Saving to Cloud...', 'bg-amber-100 text-amber-700 border-amber-200');
+                
+                document.getElementById('micIcon').classList.remove('bg-transparent', 'text-white');
+                document.getElementById('micIcon').classList.add('bg-amber-100', 'text-amber-500');
+
+                mediaRecorder.onstop = async () => {
+                    try {
+                        const mimeType = mediaRecorder.mimeType || recordingMimeType || 'audio/webm';
+                        let fileExt = 'webm';
+                        if (mimeType.includes('mp4')) fileExt = 'm4a';
+                        else if (mimeType.includes('aac')) fileExt = 'aac';
+                        else if (mimeType.includes('ogg')) fileExt = 'ogg';
+
+                        const currentItem = items[currentIndex];
+                        const blob = new Blob(audioChunks, { type: mimeType });
+                        const fileName = `${currentUser.id}/mini_mock_${currentItem.task_type}_item${currentItem.id}_${Date.now()}.${fileExt}`;
+
+                        const { error: uploadError } = await _supabase.storage
+                            .from('student_recordings')
+                            .upload(fileName, blob, {
+                                contentType: mimeType,
+                                upsert: true
+                            });
+                        
+                        if (uploadError) {
+                            console.error("Upload error:", uploadError);
+                            alert("Ошибка загрузки файла в Storage: " + uploadError.message);
+                        } else {
+                            if (!currentAttemptId) {
+                                alert("Ошибка: Невозможно сохранить ответ, так как ID попытки пустой.");
+                            } else {
+                                const { error: dbError } = await _supabase
+                                    .from('mini_mock_speaking_responses')
+                                    .insert([{
+                                        attempt_id: currentAttemptId,
+                                        task_id: currentItem.id,
+                                        audio_url: fileName
+                                    }]);
+                                
+                                if (dbError) {
+                                    console.error("Database save error:", dbError);
+                                    alert("Ошибка записи в mini_mock_speaking_responses: " + dbError.message);
+                                }
+                            }
+                        }
+                    } catch (err) {
+                        console.error("Save process error:", err);
+                        alert("Критическая ошибка сохранения: " + err.message);
+                    }
+
+                    currentIndex++;
+                    if (currentIndex < items.length) {
+                        loadQuestion(currentIndex);
+                    } else {
+                        finish();
+                    }
+                };
+            }
+        }
+
+        async function finish() {
+            if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
+
+            if (currentAttemptId) {
+                try {
+                    await _supabase
+                        .from('mini_mock_speaking_attempts')
+                        .update({ status: 'pending_review', completed_at: new Date().toISOString() })
+                        .eq('id', currentAttemptId);
+                } catch (err) {
+                    console.error("Ошибка обновления статуса попытки:", err);
+                }
+
+                window.location.href = `speaking_mini_mock_results.html?attempt_id=${currentAttemptId}`;
+            } else {
+                document.getElementById('playerUI').classList.add('hidden');
+                document.getElementById('playerUI').classList.remove('flex');
+                document.getElementById('completionUI').classList.remove('hidden');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
