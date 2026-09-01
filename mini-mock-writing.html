@@ -236,7 +236,7 @@
                             </div>
                             <div class="flex items-start space-x-4 pt-4 border-t border-dashed border-gray-200">
                                 <div class="w-10 h-10 bg-rose-50 border rounded-full flex items-center justify-center text-lg shrink-0">${q.avatar_right || '👩‍🏫'}</div>
-                                <div class="flex-1 flex flex-wrap items-end gap-y-3 pt-1">${sentenceHTML}<span class="text-2xl font-bold text-slate-400 select-none ml-1 align-bottom leading-none">.</span></div>
+                                <div class="flex-1 flex flex-wrap items-end gap-y-3 pt-1">${sentenceHTML}<span class="text-2xl font-bold text-slate-400 select-none ml-1 align-bottom leading-none">${getEndPunctuation(q)}</span></div>
                             </div>
                         </div>
                         <div class="w-full max-w-2xl mx-auto shrink-0 pb-10">
@@ -303,16 +303,37 @@
             return true;
         }
 
+        // Определяет верный финальный знак препинания на основе sample_answer задания
+        // (может быть "." или "?" или "!"), вместо того чтобы всегда считать, что это точка.
+        function getEndPunctuation(q) {
+            const sample = (q.sample_answer || '').trim();
+            const lastChar = sample.slice(-1);
+            return ['.', '?', '!'].includes(lastChar) ? lastChar : '.';
+        }
+
         function getSentenceAnswer(index) {
+            const q = sentencesData[index];
             let parts = [];
-            (sentencesData[index].structure || []).forEach((item, sIndex) => {
+            (q.structure || []).forEach((item, sIndex) => {
                 if (item.type === 'text') parts.push(item.value);
                 else if (item.type === 'slot') {
                     const s = document.getElementById(`slot-${index}-${sIndex}`);
                     parts.push(s && s.children.length > 0 ? s.children[0].textContent.trim() : "____");
                 }
             });
-            return parts.join(" ").replace(/\s+([.?!])/g, "$1").trim() + ".";
+            // Схлопываем случайные двойные пробелы (могут возникать, если у отдельных
+            // text-сегментов структуры уже были пробелы по краям — в браузере это незаметно,
+            // но ломает точное сравнение строк при проверке ответа) и убираем пробел перед
+            // конечной пунктуацией.
+            let sentence = parts.join(" ")
+                .replace(/\s+/g, " ")
+                .replace(/\s+([.?!])/g, "$1")
+                .trim();
+
+            if (!['.', '?', '!'].includes(sentence.slice(-1))) {
+                sentence += getEndPunctuation(q);
+            }
+            return sentence;
         }
 
         function showSentenceReview() {
