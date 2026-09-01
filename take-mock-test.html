@@ -967,7 +967,20 @@
                 }
             });
 
-            const bandScore = totalQuestionsCount > 0 ? ((rawScore / totalQuestionsCount) * 6).toFixed(1) : "0.0";
+            // Band score TOEFL: официальный диапазон 1.0–6.0 с шагом 0.5 (Technical Manual, Section III-3, Table 8).
+            // 0% правильных ответов -> band 1.0 (не 0.0 — в реальном TOEFL band ниже 1 не репортится).
+            // 100% правильных ответов -> band 6.0.
+            // Округление до ближайшего целого/половинного балла, как того требует спецификация.
+            function calcBandScore(raw, total) {
+                if (total <= 0) return "1.0";
+                const percent = raw / total;
+                let band = 1 + percent * 5; // линейное отображение 0–100% на диапазон 1.0–6.0
+                band = Math.round(band * 2) / 2; // округление до шага 0.5
+                band = Math.min(6, Math.max(1, band)); // подстраховка на выход за границы
+                return band.toFixed(1);
+            }
+
+            const bandScore = calcBandScore(rawScore, totalQuestionsCount);
 
             if (currentUser && db && testInfo && !isReviewMode) {
                 db.from('mock_test_results').insert([{
@@ -1002,15 +1015,18 @@
                             
                             <div class="flex justify-center gap-12 items-center mb-8">
                                 <div class="text-center">
-                                    <div class="text-5xl font-black text-indigo-600 mb-2 drop-shadow-sm">${bandScore}</div>
-                                    <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Est. Band Score</div>
+                                    <div class="text-5xl font-black text-indigo-600 mb-2 drop-shadow-sm">${rawScore} / ${totalQuestionsCount}</div>
+                                    <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Raw Score</div>
                                 </div>
                                 <div class="h-16 w-px bg-slate-200"></div>
                                 <div class="text-center">
-                                    <div class="text-3xl font-bold text-slate-700 mb-2">${rawScore} / ${totalQuestionsCount}</div>
-                                    <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Raw Score</div>
+                                    <div class="text-3xl font-bold text-slate-700 mb-2">${bandScore}</div>
+                                    <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Est. Band Score</div>
                                 </div>
                             </div>
+                            <p class="text-[11px] text-slate-400 -mt-4 mb-8 max-w-sm mx-auto leading-relaxed">
+                                Вопросы в этом мини-тесте подобраны случайно, без калибровки по сложности — поэтому band score здесь лишь примерный ориентир. Смотрите в первую очередь на raw score.
+                            </p>
                             
                             <div class="flex justify-center gap-4">
                                 <button onclick="window.location.href='take-mock-test.html?id=' + '${currentIdParam}'" class="px-6 py-2.5 bg-slate-900 hover:bg-indigo-600 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center cursor-pointer">
