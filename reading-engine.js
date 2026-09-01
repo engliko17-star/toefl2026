@@ -45,31 +45,30 @@ function renderDailyLifeLayout(passage, layoutType, taskTitle) {
 
     switch(safeLayout) {
         case 'email': 
-            return `<div class="max-w-xl mx-auto bg-white border border-slate-200 rounded-lg overflow-hidden shadow-xs font-sans text-sm"><div class="bg-slate-50 p-4 border-b border-slate-200 space-y-1.5 text-slate-700"><div><span class="inline-block w-14 font-semibold text-slate-400">To:</span> <span class="bg-white px-2 py-0.5 border border-slate-200 rounded text-xs">student@toeflprep.com</span></div><div><span class="inline-block w-14 font-semibold text-slate-400">From:</span> <span class="text-slate-600">admin</span></div><div><span class="inline-block w-14 font-semibold text-slate-400">Subject:</span> <span class="font-medium text-slate-900">${taskTitle}</span></div></div><div class="p-6 text-slate-800 space-y-4 leading-relaxed font-normal bg-white">${cleanPassage}</div></div>`;
+            return `<div class="max-w-xl mx-auto bg-white border border-slate-200 rounded-lg overflow-hidden shadow-xs font-sans text-sm"><div class="bg-slate-50 p-4 border-b border-slate-200 space-y-1.5 text-slate-700"><div><span class="inline-block w-14 font-semibold text-slate-400">To:</span> <span class="bg-white px-2 py-0.5 border border-slate-200 rounded text-xs">student@toeflprep.com</span></div><div><span class="inline-block w-14 font-semibold text-slate-400">From:</span> <span class="text-slate-600">admin</span></div><div><span class="inline-block w-14 font-semibold text-slate-400">Subject:</span> <span class="font-medium text-slate-900">${taskTitle}</span></div></div><div class="p-6 text-slate-800 space-y-4 leading-relaxed font-normal bg-white">${cleanPassage.replace(/\n/g, '<br>')}</div></div>`;
         case 'social_media': 
-            return `<div class="max-w-md mx-auto bg-white border border-slate-200 rounded-2xl p-5 shadow-xs font-sans"><div class="flex items-center space-x-3 mb-4"><div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-sm"><i data-lucide="user" class="w-5 h-5"></i></div><div><div class="font-bold text-sm text-slate-900">Community Board</div><div class="text-[11px] text-slate-400 font-normal">Posted recently</div></div></div><div class="text-slate-700 space-y-3 font-normal text-sm leading-relaxed mb-4">${cleanPassage}</div></div>`;
+            return `<div class="max-w-md mx-auto bg-white border border-slate-200 rounded-2xl p-5 shadow-xs font-sans"><div class="flex items-center space-x-3 mb-4"><div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-sm"><i data-lucide="user" class="w-5 h-5"></i></div><div><div class="font-bold text-sm text-slate-900">Community Board</div><div class="text-[11px] text-slate-400 font-normal">Posted recently</div></div></div><div class="text-slate-700 space-y-3 font-normal text-sm leading-relaxed mb-4">${cleanPassage.replace(/\n/g, '<br>')}</div></div>`;
         case 'notice': 
-            return `<div class="max-w-lg mx-auto bg-white border-2 border-slate-800 p-8 shadow-xs font-sans relative"><h3 class="text-lg font-bold text-slate-900 text-center tracking-tight mb-6 uppercase">${taskTitle}</h3><div class="text-slate-700 space-y-4 font-normal text-sm leading-relaxed relative z-10">${cleanPassage}</div></div>`;
+            return `<div class="max-w-lg mx-auto bg-white border-2 border-slate-800 p-8 shadow-xs font-sans relative"><h3 class="text-lg font-bold text-slate-900 text-center tracking-tight mb-6 uppercase">${taskTitle}</h3><div class="text-slate-700 space-y-4 font-normal text-sm leading-relaxed relative z-10">${cleanPassage.replace(/\n/g, '<br>')}</div></div>`;
         case 'chat': {
-            let chatHtml = '';
-            const chatParts = cleanPassage.split(/([A-Za-z0-9 ]+ \(\d{2}:\d{2}\s*[AP]M\)):/);
-            if (chatParts.length > 1) {
-                for (let i = 1; i < chatParts.length; i += 2) {
-                    let sender = chatParts[i].trim();
-                    let msg = (chatParts[i+1] || '').trim();
-                    if (sender && msg) {
-                        chatHtml += `<div class="mb-5"><div class="text-[11px] text-slate-500 mb-1.5 ml-1">${sender}</div><div class="bg-white border border-slate-100 text-slate-700 p-4 rounded-2xl rounded-tl-sm shadow-sm text-sm leading-relaxed inline-block">${msg}</div></div>`;
-                    }
+            // Разбираем построчно: "Имя (любой формат времени): текст" — не привязываемся
+            // к конкретному формату времени (09:15 AM / 9:15 A.M. / 21:15 и т.д.),
+            // иначе чат не парсится и падает в один сплошной блок текста.
+            const lines = cleanPassage.split('\n');
+            const chatHtml = lines.map(line => {
+                if (!line.trim()) return '';
+                const match = line.match(/^([^\(]+(?:\([^)]+\))?):\s*(.*)$/);
+                if (match) {
+                    return `<div class="mb-4 font-sans"><div class="text-[11px] font-bold text-slate-500 mb-0.5 px-1">${match[1].trim()}</div><div class="inline-block bg-white border border-slate-200 text-slate-800 rounded-2xl rounded-tl-none px-4 py-2.5 max-w-[90%] text-sm font-normal shadow-2xs">${match[2]}</div></div>`;
                 }
-            } else {
-                chatHtml = `<div class="bg-white border border-slate-100 text-slate-700 p-4 rounded-2xl rounded-tl-sm shadow-sm text-sm leading-relaxed">${cleanPassage}</div>`;
-            }
+                return `<p class="text-xs text-slate-400 italic my-2 text-center">${line}</p>`;
+            }).join('');
             return `<div class="max-w-sm mx-auto bg-slate-50 border border-slate-200 rounded-[24px] overflow-hidden shadow-xs font-sans flex flex-col h-[550px]"><div class="bg-[#111827] p-4 text-white text-center font-bold text-[13px] flex items-center justify-center gap-2 shadow-sm shrink-0"><span class="w-1.5 h-1.5 bg-emerald-400 rounded-full"></span> Group Chat</div><div class="p-5 overflow-y-auto flex-1 custom-scrollbar">${chatHtml}</div></div>`;
         }
         case 'advertisement': 
-            return `<div class="max-w-md mx-auto bg-gradient-to-br from-yellow-50 to-orange-50 border-2 border-dashed border-orange-200 p-8 rounded-2xl shadow-sm font-sans text-center relative overflow-hidden"><div class="absolute top-0 right-0 bg-red-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg uppercase tracking-wider">Ad</div><h3 class="text-2xl font-extrabold text-orange-600 mb-4 tracking-tight">${taskTitle}</h3><div class="text-slate-700 space-y-3 font-medium text-sm leading-relaxed mb-6">${cleanPassage}</div><button class="bg-orange-500 text-white font-bold py-2 px-6 rounded-full shadow-md text-sm cursor-default hover:bg-orange-600 transition">Learn More</button></div>`;
+            return `<div class="max-w-md mx-auto bg-gradient-to-br from-yellow-50 to-orange-50 border-2 border-dashed border-orange-200 p-8 rounded-2xl shadow-sm font-sans text-center relative overflow-hidden"><div class="absolute top-0 right-0 bg-red-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg uppercase tracking-wider">Ad</div><h3 class="text-2xl font-extrabold text-orange-600 mb-4 tracking-tight">${taskTitle}</h3><div class="text-slate-700 space-y-3 font-medium text-sm leading-relaxed mb-6">${cleanPassage.replace(/\n/g, '<br>')}</div><button class="bg-orange-500 text-white font-bold py-2 px-6 rounded-full shadow-md text-sm cursor-default hover:bg-orange-600 transition">Learn More</button></div>`;
         default: 
-            return `<div class="text-slate-700 space-y-4 font-normal leading-relaxed text-base">${cleanPassage}</div>`;
+            return `<div class="text-slate-700 space-y-4 font-normal leading-relaxed text-base">${cleanPassage.replace(/\n/g, '<br>')}</div>`;
     }
 }
 
@@ -441,7 +440,6 @@ function highlightVocabWord(task, container) {
     }
 }
 
-
 async function loadModule2Tasks() {
     document.getElementById('engine-next').innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin mr-1"></i> Loading Module 2...';
     
@@ -492,13 +490,50 @@ async function nextTask() {
         if (isModule1Finished) {
             const loaded = await loadModule2Tasks();
             if (loaded) {
-                currentIndex++;
-                renderEngine();
+                renderModuleTransition();
                 return;
             }
         }
         saveAttemptAndFinish();
     }
+}
+
+// Экран-заставка между Module 1 и Module 2 (как в Listening)
+function renderModuleTransition() {
+    const contentDiv = document.getElementById('engine-content');
+    const nextBtn = document.getElementById('engine-next');
+    const prevBtn = document.getElementById('engine-prev');
+    if (nextBtn) nextBtn.style.display = 'none';
+    if (prevBtn) prevBtn.style.display = 'none';
+
+    const progressEl = document.getElementById('engine-progress');
+    if (progressEl) progressEl.innerText = 'Module 2 Ready';
+
+    contentDiv.innerHTML = `
+        <div class="flex-1 flex flex-col items-center justify-center fade-in h-full p-8 w-full">
+            <div class="bg-white p-10 rounded-[2rem] border border-slate-200/60 w-full max-w-lg text-center shadow-sm">
+                <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+                    <i data-lucide="check-circle" class="w-8 h-8"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-slate-900 mb-3">Module 1 Completed</h2>
+                <p class="text-slate-500 mb-8 font-medium text-sm">The system has analyzed your responses and prepared the adaptive module.</p>
+                <button onclick="startReadingModuleTwo()" class="px-8 py-3.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition shadow-md w-full flex items-center justify-center cursor-pointer">
+                    Start Module 2 <i data-lucide="arrow-right" class="w-5 h-5 ml-2"></i>
+                </button>
+            </div>
+        </div>
+    `;
+    if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+}
+
+function startReadingModuleTwo() {
+    const nextBtn = document.getElementById('engine-next');
+    const prevBtn = document.getElementById('engine-prev');
+    if (nextBtn) nextBtn.style.display = 'flex';
+    if (prevBtn) prevBtn.style.display = 'flex';
+
+    currentIndex++;
+    renderEngine();
 }
 
 function prevTask() {
