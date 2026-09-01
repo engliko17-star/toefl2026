@@ -95,6 +95,29 @@
         let taskType = '';
         let currentAttemptId = null;
         let audioCtx = null;
+        let recordingMimeType = '';
+
+        // Подбирает mimeType, который реально поддерживается текущим браузером.
+        // Safari (iOS/macOS) не понимает audio/webm, но понимает audio/mp4 — поэтому
+        // порядок важен: сначала пробуем варианты, максимально совместимые со всеми браузерами.
+        function getSupportedMimeType() {
+            if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') {
+                return ''; // отдадим браузеру решать самому
+            }
+            const candidates = [
+                'audio/mp4',
+                'audio/aac',
+                'audio/webm;codecs=opus',
+                'audio/webm',
+                'audio/ogg;codecs=opus'
+            ];
+            for (const type of candidates) {
+                try {
+                    if (MediaRecorder.isTypeSupported(type)) return type;
+                } catch (e) { /* игнорируем и пробуем следующий вариант */ }
+            }
+            return '';
+        }
 
         async function init() {
             try {
@@ -158,6 +181,17 @@
 Пожалуйста, откройте сайт по безопасному адресу https:// (не http://).`);
                 return;
             }
+
+            if (typeof window.MediaRecorder === 'undefined') {
+                alert(`Ваше устройство не поддерживает запись звука в этом браузере.
+
+На iPhone/iPad/Mac это означает, что версия iOS/iPadOS/macOS слишком старая (нужна iOS 14.3 или новее, либо Safari 14.1+).
+
+Пожалуйста, обновите систему в Настройки → Основные → Обновление ПО и попробуйте снова.`);
+                return;
+            }
+
+            recordingMimeType = getSupportedMimeType();
 
             // Инициализируем Web Audio API при клике пользователя
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -338,7 +372,28 @@
             document.getElementById('micIcon').classList.add('bg-transparent', 'text-white'); 
             
             audioChunks = [];
-            mediaRecorder = new MediaRecorder(mediaStream);
+
+            try {
+                mediaRecorder = new MediaRecorder(mediaStream, recordingMimeType ? { mimeType: recordingMimeType } : undefined);
+            } catch (err) {
+                console.error("MediaRecorder init error:", err);
+                try {
+                    // Запасной вариант: пробуем создать без явного mimeType —
+                    // иногда именно указание mimeType и вызывает отказ в конкретной версии Safari.
+                    mediaRecorder = new MediaRecorder(mediaStream);
+                } catch (err2) {
+                    console.error("MediaRecorder fallback init error:", err2);
+                    setStatus('Recording failed', 'bg-red-100 text-red-700 border-red-200');
+                    alert(`Не удалось начать запись звука на этом устройстве.\n\nПопробуйте:\n1. Обновить iOS/Safari до последней версии.\n2. Перезагрузить страницу и разрешить доступ к микрофону заново.\n\nТехническая причина: ${err2.message || err2.name}`);
+                    return;
+                }
+            }
+
+            mediaRecorder.onerror = (e) => {
+                console.error("MediaRecorder runtime error:", e.error || e);
+                setStatus('Recording error', 'bg-red-100 text-red-700 border-red-200');
+            };
+
             mediaRecorder.ondataavailable = e => {
                 if (e.data.size > 0) audioChunks.push(e.data);
             };
@@ -377,8 +432,11 @@
 
                 mediaRecorder.onstop = async () => {
                     try {
-                        const mimeType = mediaRecorder.mimeType || 'audio/webm';
-                        const fileExt = mimeType.includes('mp4') ? 'm4a' : (mimeType.includes('ogg') ? 'ogg' : 'webm');
+                        const mimeType = mediaRecorder.mimeType || recordingMimeType || 'audio/webm';
+                        let fileExt = 'webm';
+                        if (mimeType.includes('mp4')) fileExt = 'm4a';
+                        else if (mimeType.includes('aac')) fileExt = 'aac';
+                        else if (mimeType.includes('ogg')) fileExt = 'ogg';
 
                         const blob = new Blob(audioChunks, { type: mimeType });
                         const fileName = `${currentUser.id}/${taskType}_q${questions[currentIndex].id}_${Date.now()}.${fileExt}`;
@@ -446,4 +504,3 @@
     </script>
 </body>
 </html>
-
