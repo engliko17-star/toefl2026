@@ -16,6 +16,11 @@ let listTimerInterval = null;
 let listSelectedOption = null;
 let listUserAnswers = {}; 
 
+// Таймер автовоспроизведения аудио — хранится отдельно, чтобы его можно было
+// гарантированно отменить при выходе из движка (иначе он стреляет уже после
+// перехода в другую секцию и падает на несуществующих элементах)
+let listAutoplayTimeout = null;
+
 window.engineType = null; // Глобальный флаг для роутинга кнопок в tests.html
 
 // Флаг для предотвращения гонки состояний при переходах
@@ -360,7 +365,11 @@ function initListResponseLogic(question) {
         optionsList.appendChild(btn);
     });
 
-    const setPlayIcon = (icon) => document.getElementById('playIconContainer').innerHTML = `<i data-lucide="${icon}" class="w-5 h-5 ${icon==='play'?'ml-1':''}"></i>`;
+    const setPlayIcon = (icon) => {
+        const el = document.getElementById('playIconContainer');
+        if (!el) return; // мы уже могли покинуть Listening — молча выходим, без падения
+        el.innerHTML = `<i data-lucide="${icon}" class="w-5 h-5 ${icon==='play'?'ml-1':''}"></i>`;
+    };
     
     playBtn.onclick = () => {
         if (audioEl.paused) { audioEl.play().then(() => setPlayIcon('pause')).catch(() => setPlayIcon('play')); } 
@@ -375,6 +384,7 @@ function initListResponseLogic(question) {
 
     audioEl.onended = () => {
         setPlayIcon('play');
+        if (!optionsList) return;
         optionsList.classList.remove('opacity-30', 'pointer-events-none');
         optionsList.classList.add('opacity-100');
         lucide.createIcons();
@@ -383,7 +393,8 @@ function initListResponseLogic(question) {
         startQuestionTimer(duration);
     };
     
-    setTimeout(() => { audioEl.play().then(() => {setPlayIcon('pause'); lucide.createIcons();}).catch(e=>console.log(e)); }, 500);
+    clearTimeout(listAutoplayTimeout);
+    listAutoplayTimeout = setTimeout(() => { audioEl.play().then(() => {setPlayIcon('pause'); lucide.createIcons();}).catch(e=>console.log(e)); }, 500);
 }
 
 function getListStandardAudioHTML(block) {
@@ -432,16 +443,19 @@ function initListStandardAudioLogic(block) {
     // АВТО-ПЕРЕХОД: Как только аудио закончилось, ждем 1.5 сек и переходим к вопросам
     audioEl.onended = () => {
         const nextBtn = document.getElementById('engine-next');
+        if (!nextBtn) return; // могли уже покинуть Listening
         nextBtn.disabled = true;
         nextBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin mr-1"></i> Loading questions...';
         lucide.createIcons();
         
-        setTimeout(() => {
+        clearTimeout(listAutoplayTimeout);
+        listAutoplayTimeout = setTimeout(() => {
             handleListeningNextStep();
         }, 1500);
     };
 
-    setTimeout(() => { audioEl.play().catch(e => { console.log(e); document.getElementById('engine-next').disabled = false; }); }, 500);
+    clearTimeout(listAutoplayTimeout);
+    listAutoplayTimeout = setTimeout(() => { audioEl.play().catch(e => { console.log(e); const btn = document.getElementById('engine-next'); if (btn) btn.disabled = false; }); }, 500);
 }
 
 function getListStandardQuestionsHTML(block, qIdx) {
