@@ -114,12 +114,12 @@
             const grid = document.getElementById('testsGrid');
             
             try {
-                // Загружаем тесты из базы Supabase с типом mini_mock
+                // Загружаем опубликованные mini-mock тесты вместе с количеством вопросов в каждом
                 const { data: tests, error } = await _supabase
-                    .from('speaking_tests')
-                    .select('*')
-                    .eq('type', 'mini_mock')
-                    .order('id', { ascending: true });
+                    .from('mini_mock_speaking_tests')
+                    .select('*, items:mini_mock_speaking_items(count)')
+                    .eq('is_published', true)
+                    .order('created_at', { ascending: true });
 
                 if (error) throw error;
 
@@ -137,9 +137,41 @@
                     return;
                 }
 
+                // Попытки текущего пользователя, чтобы знать, что уже пройдено
+                const { data: attempts, error: attemptsError } = await _supabase
+                    .from('mini_mock_speaking_attempts')
+                    .select('id, test_id, status, overall_score')
+                    .eq('user_id', currentUser.id)
+                    .order('created_at', { ascending: false });
+
+                if (attemptsError) throw attemptsError;
+
                 grid.innerHTML = '';
 
                 tests.forEach((test, index) => {
+                    const itemCount = (test.items && test.items[0] && test.items[0].count) || 0;
+                    const attempt = attempts ? attempts.find(a => a.test_id === test.id) : null;
+
+                    const statusBadge = attempt
+                        ? `<span class="text-[10px] font-bold text-teal-600 bg-teal-50 border border-teal-200 px-2.5 py-1 rounded-lg uppercase tracking-wider">Completed</span>`
+                        : `<span class="text-xs font-semibold text-slate-400 flex items-center"><i data-lucide="clock" class="w-3.5 h-3.5 mr-1"></i> ~8-10 min</span>`;
+
+                    const actionHTML = attempt
+                        ? `<div class="flex items-center space-x-2">
+                                <a href="speaking_mini_mock_results.html?attempt_id=${attempt.id}"
+                                   class="bg-teal-50 hover:bg-teal-100 text-teal-600 border border-teal-200 font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center shadow-sm">
+                                    Review
+                                </a>
+                                <a href="speaking_mini_mock_player.html?id=${test.id}"
+                                   class="bg-slate-900 hover:bg-indigo-600 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center group shadow-sm">
+                                    Retake <i data-lucide="rotate-cw" class="w-3.5 h-3.5 ml-1.5"></i>
+                                </a>
+                           </div>`
+                        : `<a href="speaking_mini_mock_player.html?id=${test.id}" 
+                                class="bg-slate-900 hover:bg-indigo-600 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition flex items-center group shadow-sm">
+                                Start Test <i data-lucide="arrow-right" class="w-3.5 h-3.5 ml-1.5 group-hover:translate-x-1 transition-transform"></i>
+                           </a>`;
+
                     const cardHTML = `
                         <div class="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm hover:shadow-md hover:border-indigo-100 transition flex flex-col justify-between">
                             <div>
@@ -147,9 +179,7 @@
                                     <span class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg uppercase tracking-wider">
                                         SET ${index + 1}
                                     </span>
-                                    <span class="text-xs font-semibold text-slate-400 flex items-center">
-                                        <i data-lucide="clock" class="w-3.5 h-3.5 mr-1"></i> ~8-10 min
-                                    </span>
+                                    ${statusBadge}
                                 </div>
                                 <h3 class="font-bold text-lg text-slate-800 mb-2">${test.title || `Mini-Mock Simulation #${index + 1}`}</h3>
                                 <p class="text-xs text-gray-500 mb-6 leading-relaxed">
@@ -160,12 +190,9 @@
                             <div class="pt-4 border-t border-gray-50 flex items-center justify-between">
                                 <div class="flex items-center space-x-2 text-xs font-semibold text-slate-500">
                                     <i data-lucide="layers" class="w-4 h-4 text-indigo-500"></i>
-                                    <span>Mixed Tasks</span>
+                                    <span>${itemCount} Questions</span>
                                 </div>
-                                <a href="speaking_player.html?id=${test.id}&type=mini_mock" 
-                                   class="bg-slate-900 hover:bg-indigo-600 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition flex items-center group shadow-sm">
-                                    Start Test <i data-lucide="arrow-right" class="w-3.5 h-3.5 ml-1.5 group-hover:translate-x-1 transition-transform"></i>
-                                </a>
+                                ${actionHTML}
                             </div>
                         </div>
                     `;
@@ -188,4 +215,3 @@
     </script>
 </body>
 </html>
-
