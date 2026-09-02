@@ -97,6 +97,7 @@ async function fetchAndParseWritingTasks(testId) {
 // ==========================================
 async function startWritingEngine(testId, testTitle) {
     window.engineType = 'writing';
+    if (typeof resetEngineHeaderButtons === 'function') resetEngineHeaderButtons();
     window.currentActiveTestId = testId;
     window.currentActiveTestTitle = testTitle || 'Writing Section';
     writingUserAnswers = {};
