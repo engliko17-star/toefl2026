@@ -89,10 +89,13 @@
                         <p class="text-sm text-gray-500 mt-1">Full Exam Simulation</p>
                     </div>
                 </div>
+                <button onclick="startFullTest(currentActiveTestId, document.getElementById('dynamic-test-title').innerText)" class="shrink-0 bg-slate-900 hover:bg-indigo-600 transition text-white px-6 py-3.5 rounded-xl font-bold flex items-center justify-center shadow-md cursor-pointer">
+                    <i data-lucide="rocket" class="w-4 h-4 mr-2"></i> Start Full Test
+                </button>
             </div>
 
-            <!-- Обновленная сетка для трех секций -->
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Обновленная сетка для четырёх секций -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 
                 <!-- 1. Reading Section -->
                 <div class="bg-white border border-gray-100 rounded-2xl p-6 hover:border-blue-200 hover:shadow-md transition group flex flex-col justify-between">
@@ -228,6 +231,98 @@
                 if (typeof showSentenceReview === 'function') showSentenceReview();
             }
             // Готово для Reading, если позже понадобится такая же кнопка Review там же
+        }
+
+        // ==========================================
+        // FULL TEST — последовательное прохождение всех 4 секций подряд
+        // ==========================================
+        window.fullTestMode = false;
+
+        function startFullTest(testId, testTitle) {
+            window.fullTestMode = true;
+            window.fullTestSequence = ['reading', 'listening', 'writing', 'speaking'];
+            window.fullTestStepIndex = 0;
+            window.currentActiveTestId = testId;
+            window.currentActiveTestTitle = testTitle;
+            runNextFullTestSection();
+        }
+
+        function runNextFullTestSection() {
+            const sequence = window.fullTestSequence || [];
+            const testId = window.currentActiveTestId;
+            const testTitle = window.currentActiveTestTitle;
+            const section = sequence[window.fullTestStepIndex];
+
+            if (section === 'reading' && typeof startExamEngine === 'function') startExamEngine(testId, testTitle);
+            else if (section === 'listening' && typeof startListeningEngine === 'function') startListeningEngine(testId, testTitle);
+            else if (section === 'writing' && typeof startWritingEngine === 'function') startWritingEngine(testId, testTitle);
+            else if (section === 'speaking' && typeof startSpeakingEngine === 'function') startSpeakingEngine(testId, testTitle);
+        }
+
+        // Вызывается ИЗ каждого движка (вместо показа собственного экрана результатов),
+        // когда идёт прохождение Full Test целиком, а не отдельной секции.
+        function continueFullTestSequence() {
+            window.fullTestStepIndex++;
+            showFullTestSectionTransition();
+        }
+
+        function showFullTestSectionTransition() {
+            const sequence = window.fullTestSequence || [];
+            const nextIndex = window.fullTestStepIndex;
+            const isDone = nextIndex >= sequence.length;
+
+            const labels = {
+                reading: { name: 'Reading' },
+                listening: { name: 'Listening' },
+                writing: { name: 'Writing' },
+                speaking: { name: 'Speaking' }
+            };
+            const justFinished = labels[sequence[nextIndex - 1]] || { name: 'Section' };
+            const upNext = isDone ? null : labels[sequence[nextIndex]];
+
+            document.getElementById('engine-title').innerText = 'Full Test';
+            const reviewBtn = document.getElementById('engine-review');
+            const prevBtn = document.getElementById('engine-prev');
+            const nextBtn = document.getElementById('engine-next');
+            const timerContainer = document.getElementById('engine-timer-container');
+            if (reviewBtn) reviewBtn.classList.add('hidden');
+            if (prevBtn) prevBtn.style.display = 'none';
+            if (nextBtn) nextBtn.style.display = 'none';
+            if (timerContainer) timerContainer.classList.add('hidden');
+            document.getElementById('engine-progress').innerText = '';
+
+            document.getElementById('exam-engine-view').classList.remove('hidden');
+            document.getElementById('exam-engine-view').classList.add('flex');
+            document.getElementById('results-view').classList.add('hidden');
+            document.getElementById('results-view').classList.remove('flex');
+            document.getElementById('main-interface').classList.add('hidden');
+
+            document.getElementById('engine-content').innerHTML = `
+                <div class="m-auto text-center max-w-md p-6">
+                    <div class="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i data-lucide="check-circle-2" class="w-8 h-8"></i>
+                    </div>
+                    <h2 class="text-2xl font-bold text-slate-900 mb-2">${justFinished.name} section complete</h2>
+                    <p class="text-sm text-slate-500 mb-8">
+                        ${isDone
+                            ? 'You have completed all sections of the Full Test.'
+                            : `Take a short breath. Next up: <b>${upNext.name}</b>.`}
+                    </p>
+                    <button id="fullTestContinueBtn" class="bg-slate-900 hover:bg-indigo-600 transition text-white px-8 py-3 rounded-xl font-bold flex items-center justify-center shadow-md mx-auto cursor-pointer">
+                        ${isDone ? 'Finish' : `Start ${upNext.name}`} <i data-lucide="arrow-right" class="w-4 h-4 ml-2"></i>
+                    </button>
+                </div>
+            `;
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+
+            document.getElementById('fullTestContinueBtn').onclick = () => {
+                if (isDone) {
+                    window.fullTestMode = false;
+                    exitExamEngine();
+                } else {
+                    runNextFullTestSection();
+                }
+            };
         }
 
         async function loadTestsGrid() {
@@ -376,6 +471,8 @@
         }
 
         function exitExamEngine() {
+            window.fullTestMode = false; // на случай выхода посреди прохождения Full Test
+
             // Очистка всех возможных таймеров
             if (typeof timerInterval !== 'undefined') clearInterval(timerInterval);
             if (typeof listTimerInterval !== 'undefined') clearInterval(listTimerInterval);
