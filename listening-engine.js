@@ -165,6 +165,7 @@ async function fetchAndParseListeningTasks(testId, stageName) {
 // 2. Старт движка
 async function startListeningEngine(testId, testTitle) {
     window.engineType = 'listening';
+    if (typeof resetEngineHeaderButtons === 'function') resetEngineHeaderButtons();
     isProcessingNextStep = false;
     
     const resultsView = document.getElementById('results-view');
