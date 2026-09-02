@@ -711,6 +711,7 @@ async function saveListeningAttemptAndFinish() {
         console.error("Error saving Listening test:", e);
     }
 
+    if (window.fullTestMode && typeof continueFullTestSequence === 'function') { continueFullTestSequence(); return; }
     renderListeningReview(finalCalculatedScore, correctAnswers, totalQuestions);
 }
 
