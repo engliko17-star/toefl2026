@@ -206,7 +206,11 @@ function initPhaseSentence() {
     let wrapper = document.getElementById('sentencesWrapper');
 
     if (!wrapper) {
-        document.getElementById('engine-content').innerHTML = `<div id="sentencesWrapper" class="w-full h-full flex flex-col flex-1 overflow-y-auto"></div>`;
+        document.getElementById('engine-content').innerHTML = `<div id="sentencesWrapper" class="w-full h-full flex flex-col flex-1 overflow-y-auto relative">
+            <button onclick="showSentenceReview()" class="absolute top-4 right-4 z-10 text-xs font-bold text-indigo-600 bg-indigo-50 px-4 py-1.5 rounded-lg hover:bg-indigo-100 transition shadow-sm border border-indigo-100 flex items-center cursor-pointer">
+                <i data-lucide="list-checks" class="w-3.5 h-3.5 mr-1.5"></i> Review
+            </button>
+        </div>`;
         wrapper = document.getElementById('sentencesWrapper');
 
         sentencesData.forEach((q, index) => {
@@ -228,17 +232,17 @@ function initPhaseSentence() {
             let bankHTML = bankWords.map(word => `<div class="bg-white border border-gray-200 text-slate-700 text-sm font-bold px-4 py-2 rounded-xl shadow-sm cursor-grab select-none hover:border-indigo-300 transition">${word}</div>`).join('');
 
             div.innerHTML = `
-                <div class="w-full max-w-3xl space-y-8 mb-12 bg-gray-50 p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm mt-4 shrink-0">
+                <div class="w-full max-w-6xl space-y-8 mb-12 bg-gray-50 p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm mt-4 shrink-0">
                     <div class="flex items-start space-x-4">
                         <div class="w-10 h-10 bg-blue-50 border rounded-full flex items-center justify-center text-lg shrink-0">${q.avatar_left || '👨‍🏫'}</div>
                         <div class="bg-white border rounded-2xl px-5 py-3 text-sm text-slate-700 mt-1 shadow-sm font-medium">${q.prompt_context || ''}</div>
                     </div>
                     <div class="flex items-start space-x-4 pt-4 border-t border-dashed border-gray-200">
                         <div class="w-10 h-10 bg-rose-50 border rounded-full flex items-center justify-center text-lg shrink-0">${q.avatar_right || '👩‍🏫'}</div>
-                        <div class="flex-1 flex flex-nowrap items-end gap-y-3 pt-1 pb-2 overflow-x-auto">${sentenceHTML}<span class="shrink-0 text-2xl font-bold text-slate-400 select-none ml-1 align-bottom leading-none">${getWritingEndPunctuation(q)}</span></div>
+                        <div class="flex-1 flex flex-wrap items-end gap-y-3 pt-1 pb-2">${sentenceHTML}<span class="shrink-0 text-2xl font-bold text-slate-400 select-none ml-1 align-bottom leading-none">${getWritingEndPunctuation(q)}</span></div>
                     </div>
                 </div>
-                <div class="w-full max-w-2xl mx-auto shrink-0 pb-10">
+                <div class="w-full max-w-3xl mx-auto shrink-0 pb-10">
                     <div class="flex flex-wrap justify-center gap-2.5 bg-gray-50 border border-gray-200 p-5 rounded-3xl min-h-[80px]" id="wbank-${index}">${bankHTML}</div>
                 </div>
             `;
@@ -316,6 +320,70 @@ function getSentenceAnswer(index) {
     return sentence;
 }
 
+function isSentenceComplete(index) {
+    const slots = document.querySelectorAll(`[id^="wslot-${index}-"]`);
+    for (let slot of slots) {
+        if (slot.children.length === 0) return false;
+    }
+    return true;
+}
+
+function showSentenceReview() {
+    writingPhase = 'sentence-review';
+    document.getElementById('engine-progress').innerText = 'Review Sentences';
+
+    const wrapper = document.getElementById('sentencesWrapper');
+    if (wrapper) wrapper.style.display = 'none';
+
+    let reviewDiv = document.getElementById('sentenceReviewWrapper');
+    if (!reviewDiv) {
+        reviewDiv = document.createElement('div');
+        reviewDiv.id = 'sentenceReviewWrapper';
+        reviewDiv.className = 'p-4 md:p-8 max-w-3xl mx-auto w-full h-full flex flex-col flex-1 overflow-y-auto';
+        document.getElementById('engine-content').appendChild(reviewDiv);
+    }
+
+    let listHTML = sentencesData.map((s, i) => `
+        <div class="flex justify-between items-center p-4 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0 transition" onclick="returnToSentence(${i})">
+            <div class="flex items-center gap-3">
+                <span class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">${i + 1}</span>
+                <span class="font-bold text-slate-700">Sentence ${i + 1}</span>
+            </div>
+            ${isSentenceComplete(i)
+                ? `<span class="text-emerald-500 bg-emerald-50 px-3 py-1 rounded-lg font-bold text-xs flex items-center"><i data-lucide="check" class="w-3 h-3 mr-1"></i> Complete</span>`
+                : `<span class="text-rose-500 bg-rose-50 px-3 py-1 rounded-lg font-bold text-xs flex items-center"><i data-lucide="alert-circle" class="w-3 h-3 mr-1"></i> Incomplete</span>`}
+        </div>
+    `).join('');
+
+    reviewDiv.innerHTML = `
+        <h2 class="text-2xl font-black text-slate-900 mb-6 text-center">Section 1 Review</h2>
+        <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex-1 shrink-0">
+            ${listHTML}
+        </div>
+    `;
+    reviewDiv.style.display = 'flex';
+
+    const prevBtn = document.getElementById('engine-prev');
+    const nextBtn = document.getElementById('engine-next');
+    if (prevBtn) prevBtn.style.display = 'none';
+    if (nextBtn) {
+        nextBtn.style.display = 'flex';
+        nextBtn.innerHTML = 'Next Part <i data-lucide="chevron-right" class="w-4 h-4 ml-1"></i>';
+    }
+
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function returnToSentence(i) {
+    currentSentenceIndex = i;
+    writingPhase = 'sentence';
+    const reviewDiv = document.getElementById('sentenceReviewWrapper');
+    const wrapper = document.getElementById('sentencesWrapper');
+    if (reviewDiv) reviewDiv.style.display = 'none';
+    if (wrapper) wrapper.style.display = 'flex';
+    updateSentenceUI();
+}
+
 async function finishSentencePhase() {
     sentencesData.forEach((q, i) => {
         userWritingResponses.push({
@@ -324,7 +392,6 @@ async function finishSentencePhase() {
             response_content: getSentenceAnswer(i)
         });
     });
-
     if (emailData || academicData) {
         showWritingPhaseTransition();
     } else {
@@ -354,13 +421,13 @@ function showWritingPhaseTransition() {
                 <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-indigo-100 shadow-inner">
                     <i data-lucide="pen-tool" class="w-8 h-8"></i>
                 </div>
-                <h2 class="text-3xl font-black text-slate-900 mb-3">Writing Section</h2>
+                <h2 class="text-3xl font-black text-slate-900 mb-3">Email Task</h2>
                 <p class="text-slate-500 mb-8 max-w-md mx-auto text-[15px] leading-relaxed">
                     You have successfully completed the <b>Sentence Building</b> tasks. <br><br>
-                    Next, you will write an <b>Email</b> and participate in an <b>Academic Discussion</b>. Each of these tasks has its own time limit.
+                    Next, you will write an <b>Email</b> response. This task has its own time limit.
                 </p>
                 <button onclick="startWritingTasksAfterTransition()" class="inline-flex bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3.5 rounded-xl text-sm font-bold transition shadow-sm items-center cursor-pointer">
-                    Start Writing Tasks <i data-lucide="arrow-right" class="w-4 h-4 ml-2"></i>
+                    Start Email Task <i data-lucide="arrow-right" class="w-4 h-4 ml-2"></i>
                 </button>
             </div>
         </div>
@@ -437,8 +504,53 @@ async function finishEmailPhase() {
         response_content: ans
     });
 
-    if (academicData) initPhaseAcademic();
-    else saveWritingAttemptAndFinish();
+    if (academicData) {
+        showEmailToAcademicTransition();
+    } else {
+        saveWritingAttemptAndFinish();
+    }
+}
+
+// Заставка перед Academic Discussion (после Email)
+function showEmailToAcademicTransition() {
+    writingPhase = 'transition';
+
+    const prevBtn = document.getElementById('engine-prev');
+    const nextBtn = document.getElementById('engine-next');
+    const timerContainer = document.getElementById('engine-timer-container');
+    if (prevBtn) prevBtn.style.display = 'none';
+    if (nextBtn) nextBtn.style.display = 'none';
+    if (timerContainer) timerContainer.classList.add('hidden');
+    clearInterval(writingTimerInterval);
+
+    document.getElementById('engine-progress').innerText = 'Section Transition';
+
+    document.getElementById('engine-content').innerHTML = `
+        <div class="flex-1 flex items-center justify-center p-6 bg-slate-50 w-full h-full">
+            <div class="w-full max-w-xl bg-white rounded-3xl p-10 text-center border border-gray-200 shadow-sm">
+                <div class="w-16 h-16 bg-teal-50 text-teal-600 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-teal-100 shadow-inner">
+                    <i data-lucide="users" class="w-8 h-8"></i>
+                </div>
+                <h2 class="text-3xl font-black text-slate-900 mb-3">Academic Discussion</h2>
+                <p class="text-slate-500 mb-8 max-w-md mx-auto text-[15px] leading-relaxed">
+                    You have completed the <b>Email</b> task. <br><br>
+                    Next, you will read a professor's post and classmates' replies, then write your own contribution to the discussion.
+                </p>
+                <button onclick="startAcademicAfterTransition()" class="inline-flex bg-teal-600 hover:bg-teal-700 text-white px-8 py-3.5 rounded-xl text-sm font-bold transition shadow-sm items-center cursor-pointer">
+                    Start Academic Discussion <i data-lucide="arrow-right" class="w-4 h-4 ml-2"></i>
+                </button>
+            </div>
+        </div>
+    `;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function startAcademicAfterTransition() {
+    const prevBtn = document.getElementById('engine-prev');
+    const nextBtn = document.getElementById('engine-next');
+    if (prevBtn) prevBtn.style.display = 'flex';
+    if (nextBtn) nextBtn.style.display = 'flex';
+    initPhaseAcademic();
 }
 
 // ==========================================
@@ -514,6 +626,8 @@ function nextWritingTask() {
         } else {
             finishSentencePhase();
         }
+    } else if (writingPhase === 'sentence-review') {
+        finishSentencePhase();
     } else if (writingPhase === 'email') {
         finishEmailPhase();
     } else if (writingPhase === 'academic') {
@@ -526,6 +640,8 @@ function prevWritingTask() {
     if (writingPhase === 'sentence' && currentSentenceIndex > 0) {
         currentSentenceIndex--;
         updateSentenceUI();
+    } else if (writingPhase === 'sentence-review') {
+        returnToSentence(currentSentenceIndex);
     }
 }
 
@@ -782,5 +898,7 @@ window.startWritingEngine = startWritingEngine;
 window.loadWritingReviewMode = loadWritingReviewMode;
 window.nextWritingTask = nextWritingTask;
 window.prevWritingTask = prevWritingTask;
+window.handleWritingNextStep = nextWritingTask;  // алиас — именно это имя вызывает globalNext() из tests.html
+window.handleWritingPrevStep = prevWritingTask;  // алиас — именно это имя вызывает globalPrev() из tests.html
 window.fetchAndParseWritingTasks = fetchAndParseWritingTasks;
 window.startWritingTasksAfterTransition = startWritingTasksAfterTransition;
