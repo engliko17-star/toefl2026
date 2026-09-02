@@ -206,11 +206,7 @@ function initPhaseSentence() {
     let wrapper = document.getElementById('sentencesWrapper');
 
     if (!wrapper) {
-        document.getElementById('engine-content').innerHTML = `<div id="sentencesWrapper" class="w-full h-full flex flex-col flex-1 overflow-y-auto relative">
-            <button onclick="showSentenceReview()" class="absolute top-4 right-4 z-10 text-xs font-bold text-indigo-600 bg-indigo-50 px-4 py-1.5 rounded-lg hover:bg-indigo-100 transition shadow-sm border border-indigo-100 flex items-center cursor-pointer">
-                <i data-lucide="list-checks" class="w-3.5 h-3.5 mr-1.5"></i> Review
-            </button>
-        </div>`;
+        document.getElementById('engine-content').innerHTML = `<div id="sentencesWrapper" class="w-full h-full flex flex-col flex-1 overflow-y-auto"></div>`;
         wrapper = document.getElementById('sentencesWrapper');
 
         sentencesData.forEach((q, index) => {
@@ -275,8 +271,12 @@ function updateSentenceUI() {
         if (c) c.style.display = i === currentSentenceIndex ? 'flex' : 'none';
     });
 
+    // Review — виден в Build a Sentence; Back есть, но неактивен на первом
+    // предложении (возвращаться некуда), активен на остальных.
+    const reviewBtn = document.getElementById('engine-review');
     const prevBtn = document.getElementById('engine-prev');
     const nextBtn = document.getElementById('engine-next');
+    if (reviewBtn) reviewBtn.classList.remove('hidden');
     if (prevBtn) {
         prevBtn.style.display = 'flex';
         prevBtn.disabled = (currentSentenceIndex === 0);
@@ -405,9 +405,11 @@ async function finishSentencePhase() {
 function showWritingPhaseTransition() {
     writingPhase = 'transition';
 
+    const reviewBtn = document.getElementById('engine-review');
     const prevBtn = document.getElementById('engine-prev');
     const nextBtn = document.getElementById('engine-next');
     const timerContainer = document.getElementById('engine-timer-container');
+    if (reviewBtn) reviewBtn.classList.add('hidden');
     if (prevBtn) prevBtn.style.display = 'none';
     if (nextBtn) nextBtn.style.display = 'none';
     if (timerContainer) timerContainer.classList.add('hidden');
@@ -452,8 +454,10 @@ function startWritingTasksAfterTransition() {
 function initPhaseEmail() {
     writingPhase = 'email';
 
+    const reviewBtn = document.getElementById('engine-review');
     const prevBtn = document.getElementById('engine-prev');
     const nextBtn = document.getElementById('engine-next');
+    if (reviewBtn) reviewBtn.classList.add('hidden');
     if (prevBtn) prevBtn.style.display = 'none';
     if (nextBtn) {
         nextBtn.style.display = 'flex';
