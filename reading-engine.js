@@ -609,11 +609,13 @@ async function saveAttemptAndFinish() {
         const { error: answersErr } = await supabaseClient.from('big_mock_answers').insert(answersToSave);
         if (answersErr) throw answersErr;
 
+        if (window.fullTestMode && typeof continueFullTestSequence === 'function') { continueFullTestSequence(); return; }
         renderResultsUI(currentTasks, finalScore, correctAnswers, totalQuestions);
 
     } catch(e) {
         console.error("Error saving test:", e);
         alert("Could not save results to database, but we will show your score.");
+        if (window.fullTestMode && typeof continueFullTestSequence === 'function') { continueFullTestSequence(); return; }
         renderResultsUI(currentTasks, finalScore, correctAnswers, totalQuestions);
     }
 }
