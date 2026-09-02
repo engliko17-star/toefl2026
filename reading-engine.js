@@ -573,6 +573,7 @@ async function saveAttemptAndFinish() {
             .insert([{ 
                 test_id: currentActiveTestId, 
                 section_name: 'reading', 
+                user_id: window.currentUser.id,
                 total_score: parseFloat(finalScore), 
                 status: 'completed',
                 completed_at: new Date().toISOString()
