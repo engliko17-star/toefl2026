@@ -36,6 +36,15 @@ let currentIndex = 0;
 let timerInterval;
 let timeRemaining = 35 * 60; 
 
+// Раздельные таймеры на Module 1 и Module 2 (в минутах) — поменяйте эти два
+// числа под нужные значения, они независимы друг от друга.
+let module1TimeMinutes = 18;
+let module2TimeMinutes = 17;
+
+// Индекс, с которого начинается Module 2 в currentTasks — нужен для кнопки Review,
+// чтобы не давать перепрыгивать обратно в Module 1 (как и на настоящем TOEFL)
+let module2StartIndex = null;
+
 function renderDailyLifeLayout(passage, layoutType, taskTitle) {
     if (!passage) return "";
     const cleanPassage = passage.replace(/[\[\]]/g, ''); 
@@ -211,6 +220,8 @@ async function fetchAndParseTasks(testId, stageName) {
 async function startExamEngine(testId, testTitle) {
     window.engineType = 'reading';
     if (typeof resetEngineHeaderButtons === 'function') resetEngineHeaderButtons();
+    const reviewBtn = document.getElementById('engine-review');
+    if (reviewBtn) reviewBtn.classList.remove('hidden'); // в Reading Review доступна всегда (кроме заставки)
     document.getElementById('results-view').classList.add('hidden');
     document.getElementById('results-view').classList.remove('flex');
 
@@ -239,9 +250,10 @@ async function startExamEngine(testId, testTitle) {
         }
 
         currentIndex = 0;
+        module2StartIndex = null;
         document.getElementById('engine-title').innerText = testTitle;
         
-        timeRemaining = 35 * 60;
+        timeRemaining = module1TimeMinutes * 60;
         startTimer();
         renderEngine();
 
@@ -294,6 +306,7 @@ function renderEngine() {
 
         const nextEl = document.getElementById('engine-next');
         if (nextEl) {
+            nextEl.style.display = 'flex';
             nextEl.innerHTML = (currentIndex === currentTasks.length - 1) 
                 ? 'Finish <i data-lucide="check" class="w-4 h-4 ml-1"></i>' 
                 : 'Next <i data-lucide="chevron-right" class="w-4 h-4 ml-1"></i>';
@@ -501,11 +514,17 @@ async function nextTask() {
 
 // Экран-заставка между Module 1 и Module 2 (как в Listening)
 function renderModuleTransition() {
+    clearInterval(timerInterval); // таймер Module 1 больше не должен тикать на заставке
+    const timerContainer = document.getElementById('engine-timer-container');
+    if (timerContainer) timerContainer.classList.add('hidden');
+
     const contentDiv = document.getElementById('engine-content');
     const nextBtn = document.getElementById('engine-next');
     const prevBtn = document.getElementById('engine-prev');
+    const reviewBtn = document.getElementById('engine-review');
     if (nextBtn) nextBtn.style.display = 'none';
     if (prevBtn) prevBtn.style.display = 'none';
+    if (reviewBtn) reviewBtn.classList.add('hidden');
 
     const progressEl = document.getElementById('engine-progress');
     if (progressEl) progressEl.innerText = 'Module 2 Ready';
@@ -530,10 +549,71 @@ function renderModuleTransition() {
 function startReadingModuleTwo() {
     const nextBtn = document.getElementById('engine-next');
     const prevBtn = document.getElementById('engine-prev');
+    const reviewBtn = document.getElementById('engine-review');
+    const timerContainer = document.getElementById('engine-timer-container');
     if (nextBtn) nextBtn.style.display = 'flex';
     if (prevBtn) prevBtn.style.display = 'flex';
+    if (reviewBtn) reviewBtn.classList.remove('hidden');
+    if (timerContainer) timerContainer.classList.remove('hidden');
 
     currentIndex++;
+    module2StartIndex = currentIndex; // с этого индекса начинается Module 2 — Review не пустит раньше
+
+    // Отдельный, свежий таймер именно для Module 2
+    timeRemaining = module2TimeMinutes * 60;
+    startTimer();
+
+    renderEngine();
+}
+
+// ---- Review в рамках текущего модуля (как в реальном TOEFL Reading) ----
+function isReadingTaskAnswered(t) {
+    if (t.type === 'complete_words') {
+        return !!(t.userWords && t.userWords.some(w => w && w.length > 0));
+    }
+    return t.userAnswer !== null && t.userAnswer !== undefined && t.userAnswer !== '';
+}
+
+function showReadingReview() {
+    const startIdx = module2StartIndex !== null ? module2StartIndex : 0;
+    const endIdx = currentTasks.length;
+
+    const progressEl = document.getElementById('engine-progress');
+    if (progressEl) progressEl.innerText = 'Review';
+    const nextBtn = document.getElementById('engine-next');
+    if (nextBtn) nextBtn.style.display = 'none';
+
+    let listHTML = '';
+    for (let i = startIdx; i < endIdx; i++) {
+        const t = currentTasks[i];
+        const displayNum = i - startIdx + 1;
+        const answered = isReadingTaskAnswered(t);
+        listHTML += `
+            <div class="flex justify-between items-center p-4 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0 transition" onclick="returnToReadingTask(${i})">
+                <div class="flex items-center gap-3">
+                    <span class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">${displayNum}</span>
+                    <span class="font-bold text-slate-700">Question ${displayNum}</span>
+                </div>
+                ${answered
+                    ? `<span class="text-emerald-500 bg-emerald-50 px-3 py-1 rounded-lg font-bold text-xs flex items-center"><i data-lucide="check" class="w-3 h-3 mr-1"></i> Answered</span>`
+                    : `<span class="text-rose-500 bg-rose-50 px-3 py-1 rounded-lg font-bold text-xs flex items-center"><i data-lucide="alert-circle" class="w-3 h-3 mr-1"></i> Skipped</span>`}
+            </div>
+        `;
+    }
+
+    document.getElementById('engine-content').innerHTML = `
+        <div class="p-4 md:p-8 max-w-3xl mx-auto w-full h-full flex flex-col flex-1 overflow-y-auto">
+            <h2 class="text-2xl font-black text-slate-900 mb-6 text-center">Module Review</h2>
+            <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex-1 shrink-0">
+                ${listHTML}
+            </div>
+        </div>
+    `;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function returnToReadingTask(i) {
+    currentIndex = i;
     renderEngine();
 }
 
@@ -629,7 +709,7 @@ async function loadReviewMode(attemptId, testId, testTitle) {
 
     const resultsView = document.getElementById('results-view');
     resultsView.classList.remove('hidden');
-    resultsView.className = 'fixed inset-0 z-50 bg-[#f8f9fa] flex flex-col w-screen h-screen overflow-hidden';
+    resultsView.className = 'fixed inset-0 z-50 bg-[#f8f9fa] overflow-y-auto';
     
     resultsView.innerHTML = `<div class="m-auto flex flex-col items-center justify-center text-slate-500"><i data-lucide="loader-2" class="w-8 h-8 animate-spin mb-4 text-indigo-600"></i><p class="font-bold">Reconstructing your past attempt...</p></div>`;
     lucide.createIcons();
@@ -692,7 +772,7 @@ function renderResultsUI(tasksArray, finalScore, correctAnswers, totalQuestions)
     
     const resultsView = document.getElementById('results-view');
     resultsView.classList.remove('hidden');
-    resultsView.className = 'fixed inset-0 z-50 bg-[#f8f9fa] flex flex-col w-screen h-screen overflow-hidden';
+    resultsView.className = 'fixed inset-0 z-50 bg-[#f8f9fa] overflow-y-auto';
 
     const modules = {};
 
@@ -813,7 +893,7 @@ function renderResultsUI(tasksArray, finalScore, correctAnswers, totalQuestions)
     });
 
     resultsView.innerHTML = `
-        <div class="w-full h-full overflow-y-auto custom-scrollbar p-6 md:p-10 bg-[#f8f9fa]">
+        <div class="w-full min-h-full p-6 md:p-10 bg-[#f8f9fa]">
             <div class="max-w-7xl mx-auto">
                 <div class="bg-white rounded-[2rem] p-8 border border-gray-100 shadow-sm text-center mb-10 relative overflow-hidden max-w-2xl mx-auto">
                     <div class="w-16 h-16 bg-yellow-50 text-yellow-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl shadow-inner">🏆</div>
