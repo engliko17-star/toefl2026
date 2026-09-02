@@ -41,6 +41,7 @@ async function fetchAndParseSpeakingTasks(testId) {
 // ==========================================
 async function startSpeakingEngine(testId, testTitle) {
     window.engineType = 'speaking';
+    if (typeof resetEngineHeaderButtons === 'function') resetEngineHeaderButtons();
     window.currentActiveTestId = testId;
     window.currentActiveTestTitle = testTitle || 'Speaking Section';
 
