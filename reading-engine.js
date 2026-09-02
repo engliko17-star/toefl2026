@@ -210,6 +210,7 @@ async function fetchAndParseTasks(testId, stageName) {
 
 async function startExamEngine(testId, testTitle) {
     window.engineType = 'reading';
+    if (typeof resetEngineHeaderButtons === 'function') resetEngineHeaderButtons();
     document.getElementById('results-view').classList.add('hidden');
     document.getElementById('results-view').classList.remove('flex');
 
