@@ -385,6 +385,7 @@ async function finishSpeakingSection() {
         }
     }
 
+    if (window.fullTestMode && typeof continueFullTestSequence === 'function') { continueFullTestSequence(); return; }
     await loadSpeakingReviewMode(speakingAttemptId, window.currentActiveTestId, window.currentActiveTestTitle);
 }
 
