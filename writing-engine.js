@@ -691,6 +691,7 @@ async function saveWritingAttemptAndFinish() {
                 .from('big_mock_writing_attempts')
                 .insert([{
                     test_id: window.currentActiveTestId,
+                    user_id: window.currentUser.id,
                     total_score: null,
                     status: 'pending_review',
                     completed_at: new Date().toISOString()
@@ -706,6 +707,7 @@ async function saveWritingAttemptAndFinish() {
                     .insert([{
                         test_id: window.currentActiveTestId,
                         section_name: 'writing',
+                        user_id: window.currentUser.id,
                         total_score: null,
                         status: 'pending_review',
                         completed_at: new Date().toISOString()
