@@ -233,8 +233,9 @@
         function globalReview() {
             if (window.engineType === 'writing') {
                 if (typeof showSentenceReview === 'function') showSentenceReview();
+            } else if (window.engineType === 'reading') {
+                if (typeof showReadingReview === 'function') showReadingReview();
             }
-            // Готово для Reading, если позже понадобится такая же кнопка Review там же
         }
 
         // Приводит кнопки хедера (Review/Back/Next/таймер) к дефолтному видимому
@@ -273,8 +274,10 @@
                 { name: 'speaking', table: 'big_mock_speaking_attempts' }
             ];
 
-            const scores = {};
-            for (const sec of sectionTables) {
+            // Все 4 запроса идут ПАРАЛЛЕЛЬНО (Promise.all), а не по очереди —
+            // иначе общее время ожидания складывается из всех четырёх задержек сети,
+            // и бейдж кажется "зависшим", пока не помогает только перезагрузка страницы.
+            const results = await Promise.all(sectionTables.map(async (sec) => {
                 try {
                     let query = supabaseClient.from(sec.table).select('total_score, status')
                         .eq('test_id', testId).eq('user_id', window.currentUser.id)
@@ -283,11 +286,14 @@
                         Object.entries(sec.extraFilter).forEach(([k, v]) => { query = query.eq(k, v); });
                     }
                     const { data } = await query;
-                    scores[sec.name] = (data && data.length > 0) ? data[0] : null;
+                    return { name: sec.name, value: (data && data.length > 0) ? data[0] : null };
                 } catch (e) {
-                    scores[sec.name] = null;
+                    return { name: sec.name, value: null };
                 }
-            }
+            }));
+
+            const scores = {};
+            results.forEach(r => { scores[r.name] = r.value; });
 
             const attempted = Object.values(scores).filter(s => s !== null);
             const graded = attempted.filter(s => s.total_score !== null && s.total_score !== undefined);
