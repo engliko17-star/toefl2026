@@ -728,7 +728,7 @@ async function loadListeningReviewMode(attemptId, testId, testTitle) {
 
     const resultsView = document.getElementById('results-view');
     resultsView.classList.remove('hidden');
-    resultsView.className = 'fixed inset-0 z-50 bg-[#f8f9fa] flex flex-col w-screen h-screen overflow-hidden';
+    resultsView.className = 'fixed inset-0 z-50 bg-[#f8f9fa] overflow-y-auto';
     resultsView.innerHTML = `<div class="m-auto flex flex-col items-center justify-center text-slate-500"><i data-lucide="loader-2" class="w-10 h-10 animate-spin mb-4 text-emerald-600"></i><p class="font-bold">Reconstructing Listening attempt...</p></div>`;
     lucide.createIcons();
 
@@ -779,7 +779,7 @@ function renderListeningReview(finalScore, correctAnswers, totalQuestions) {
     
     const resultsView = document.getElementById('results-view');
     resultsView.classList.remove('hidden');
-    resultsView.className = 'fixed inset-0 z-50 bg-[#f8f9fa] flex flex-col w-screen h-screen overflow-hidden';
+    resultsView.className = 'fixed inset-0 z-50 bg-[#f8f9fa] overflow-y-auto';
 
     let blocksHtml = '';
 
@@ -845,7 +845,7 @@ function renderListeningReview(finalScore, correctAnswers, totalQuestions) {
     });
 
     resultsView.innerHTML = `
-        <div class="w-full h-full overflow-y-auto custom-scrollbar p-6 md:p-10 bg-[#f8f9fa]">
+        <div class="w-full min-h-full p-6 md:p-10 bg-[#f8f9fa]">
             <div class="max-w-7xl mx-auto">
                 <div class="bg-white rounded-[2rem] p-8 border border-emerald-100 shadow-sm text-center mb-10 relative overflow-hidden max-w-2xl mx-auto">
                     <div class="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl shadow-inner"><i data-lucide="headphones" class="w-8 h-8"></i></div>
