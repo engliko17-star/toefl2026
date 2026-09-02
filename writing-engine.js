@@ -740,6 +740,7 @@ async function saveWritingAttemptAndFinish() {
         }
     }
 
+    if (window.fullTestMode && typeof continueFullTestSequence === 'function') { continueFullTestSequence(); return; }
     renderWritingReviewUI();
 }
 
