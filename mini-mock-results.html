@@ -27,8 +27,9 @@
             <h1 class="text-sm font-bold text-slate-900" id="headerTitle">Simulation Results</h1>
         </div>
         
-        <div id="statusBadge" class="hidden text-sm font-bold px-4 py-1.5 rounded-lg border">
-            <!-- Статус проверки -->
+        <div id="statusBadgeWrap" class="hidden flex items-center gap-3">
+            <div id="rawScoreBadge" class="text-xs font-bold px-3 py-1.5 rounded-lg border bg-slate-50 text-slate-600 border-slate-200"></div>
+            <div id="statusBadge" class="text-sm font-bold px-4 py-1.5 rounded-lg border"></div>
         </div>
     </header>
 
@@ -175,41 +176,88 @@
         }
 
         function calculateOverallScore(responses) {
-            let totalScore = 0;
-            
-            // 1. Баллы за Sentences (1 балл за правильное, берем из sample_answer)
-            responses.filter(r => r.task_type === 'sentence').forEach(r => {
+            // 1. Build a Sentence — считается автоматически (точное совпадение) и
+            // переводится в диапазон 1.0–6.0 линейно — так же, как это уже сделано
+            // для Reading/Listening мини-моков на этой платформе.
+            const sentenceResponses = responses.filter(r => r.task_type === 'sentence');
+            let correctSentences = 0;
+            sentenceResponses.forEach(r => {
                 const correct = r.task?.sample_answer || '';
                 const user = r.response_content || r.answer || '';
                 if (user && correct && normalizeForCompare(user) === normalizeForCompare(correct)) {
-                    totalScore += 1;
+                    correctSentences += 1;
                 }
             });
+            const totalSentences = sentenceResponses.length;
 
-            // 2. Баллы за Essay (суммируем оценки, поставленные учителем)
+            let sentenceBand = null;
+            if (totalSentences > 0) {
+                const ratio = correctSentences / totalSentences;
+                sentenceBand = Math.min(6, Math.max(1, Math.round((1 + ratio * 5) * 2) / 2));
+            }
+
+            // 2. Email + Academic — балл выставляет учитель вручную по шкале 1.0–6.0
+            // за каждое задание (та же шкала, что и для обычных эссе на платформе).
+            // Берём среднее из того, что уже проверено.
             const email = responses.find(r => r.task_type === 'email');
             const academic = responses.find(r => r.task_type === 'academic');
-            
-            const essayScore = (parseFloat(email?.score) || 0) + (parseFloat(academic?.score) || 0);
-            
-            return (totalScore + essayScore).toFixed(1);
+            const essayScores = [email, academic]
+                .map(r => (r && r.score !== null && r.score !== undefined && r.score !== '') ? parseFloat(r.score) : null)
+                .filter(s => s !== null && !isNaN(s));
+            const essayBand = essayScores.length > 0
+                ? essayScores.reduce((sum, s) => sum + s, 0) / essayScores.length
+                : null;
+
+            // 3. Итог: Build a Sentence весит 50%, Email+Academic — 50%.
+            // Если какая-то из половин ещё не оценена — показываем то, что уже есть,
+            // а не занижаем балл искусственным нулём за непроверенную часть.
+            let overallBand = null;
+            if (sentenceBand !== null && essayBand !== null) {
+                overallBand = sentenceBand * 0.5 + essayBand * 0.5;
+            } else if (sentenceBand !== null) {
+                overallBand = sentenceBand;
+            } else if (essayBand !== null) {
+                overallBand = essayBand;
+            }
+            if (overallBand !== null) {
+                overallBand = Math.min(6, Math.max(1, Math.round(overallBand * 2) / 2));
+            }
+
+            return {
+                sentenceRawLabel: `${correctSentences}/${totalSentences}`,
+                sentenceBand,
+                essayBand,
+                overallBand,
+                fullyGraded: sentenceBand !== null && essayBand !== null
+            };
         }
 
-        function renderStatus(attempt, autoScore) {
+        function renderStatus(attempt, autoResult) {
             document.getElementById('headerTitle').textContent = attempt.mockTitle;
-            
+
+            const badgeWrap = document.getElementById('statusBadgeWrap');
+            const rawBadge = document.getElementById('rawScoreBadge');
             const badge = document.getElementById('statusBadge');
-            badge.classList.remove('hidden');
-            
-            // Если учитель выставил финальный балл в таблицу attempts, используем его, иначе показываем авто-подсчет
-            const finalScore = attempt.overall_score ? Number(attempt.overall_score).toFixed(1) : autoScore;
-            
+            badgeWrap.classList.remove('hidden');
+            badgeWrap.classList.add('flex');
+
+            // Raw-балл по Build a Sentence — всегда показываем отдельно, он объективный
+            rawBadge.innerHTML = `<i data-lucide="list-checks" class="w-3.5 h-3.5 inline mr-1 -mt-0.5"></i> Sentence: ${autoResult.sentenceRawLabel}`;
+
+            // Если учитель выставил финальный балл вручную в attempts — используем его,
+            // иначе показываем расчёт по формуле 50% Sentence + 50% Email/Academic
+            const hasManualOverall = attempt.overall_score !== null && attempt.overall_score !== undefined;
+            const displayBand = hasManualOverall
+                ? Number(attempt.overall_score).toFixed(1)
+                : (autoResult.overallBand !== null ? autoResult.overallBand.toFixed(1) : '—');
+
             if (attempt.status === 'reviewed') {
                 badge.className = 'text-sm font-bold px-4 py-1.5 rounded-lg border bg-emerald-50 text-emerald-600 border-emerald-200 flex items-center';
-                badge.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 mr-1.5"></i> Reviewed (Total Score: ${finalScore})`;
+                badge.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 mr-1.5"></i> Reviewed (Overall: ${displayBand} / 6.0)`;
             } else {
+                const label = autoResult.fullyGraded ? 'Current Score' : 'Est. Score (partial)';
                 badge.className = 'text-sm font-bold px-4 py-1.5 rounded-lg border bg-amber-50 text-amber-600 border-amber-200 flex items-center';
-                badge.innerHTML = `<i data-lucide="clock" class="w-4 h-4 mr-1.5"></i> Pending Teacher Review (Current Score: ${finalScore})`;
+                badge.innerHTML = `<i data-lucide="clock" class="w-4 h-4 mr-1.5"></i> Pending Teacher Review (${label}: ${displayBand} / 6.0)`;
             }
             lucide.createIcons();
         }
