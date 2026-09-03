@@ -290,6 +290,27 @@
         <!-- ВКЛАДКА 3: СТАТИСТИКА И ПРОГРЕСС          -->
         <!-- ========================================== -->
         <div id="tab-stats" class="tab-content">
+
+            <!-- NEW: Мок-тесты Reading (mini-mock + большой мок), чтобы не лазить в базу вручную -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                <div class="bg-white border border-gray-100 rounded-2xl p-5 shadow-xs">
+                    <h3 class="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-4 flex items-center space-x-2">
+                        <i data-lucide="flask-conical" class="w-3.5 h-3.5 text-indigo-500"></i><span>Mini-Mock Reading</span>
+                    </h3>
+                    <div id="miniMockReadingList" class="space-y-2 max-h-[280px] overflow-y-auto pr-1">
+                        <p class="text-xs text-gray-400 text-center py-6">Загрузка...</p>
+                    </div>
+                </div>
+                <div class="bg-white border border-gray-100 rounded-2xl p-5 shadow-xs">
+                    <h3 class="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-4 flex items-center space-x-2">
+                        <i data-lucide="rocket" class="w-3.5 h-3.5 text-purple-500"></i><span>Full Mock Test — Reading</span>
+                    </h3>
+                    <div id="fullMockReadingList" class="space-y-2 max-h-[280px] overflow-y-auto pr-1">
+                        <p class="text-xs text-gray-400 text-center py-6">Загрузка...</p>
+                    </div>
+                </div>
+            </div>
+            <!-- END NEW -->
             
             <!-- Карточки со средними баллами -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -372,6 +393,28 @@
         <!-- ВКЛАДКА 4: WRITING (ПРОВЕРКА ЭССЕ)         -->
         <!-- ========================================== -->
         <div id="tab-writing" class="tab-content">
+
+            <!-- NEW: Мок-тесты Writing (mini-mock + большой мок), чтобы не лазить в базу вручную -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                <div class="bg-white border border-gray-100 rounded-2xl p-5 shadow-xs">
+                    <h3 class="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-4 flex items-center space-x-2">
+                        <i data-lucide="flask-conical" class="w-3.5 h-3.5 text-indigo-500"></i><span>Mini-Mock Writing</span>
+                    </h3>
+                    <div id="miniMockWritingList" class="space-y-2 max-h-[280px] overflow-y-auto pr-1">
+                        <p class="text-xs text-gray-400 text-center py-6">Загрузка...</p>
+                    </div>
+                </div>
+                <div class="bg-white border border-gray-100 rounded-2xl p-5 shadow-xs">
+                    <h3 class="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-4 flex items-center space-x-2">
+                        <i data-lucide="rocket" class="w-3.5 h-3.5 text-purple-500"></i><span>Full Mock Test — Writing</span>
+                    </h3>
+                    <div id="fullMockWritingList" class="space-y-2 max-h-[280px] overflow-y-auto pr-1">
+                        <p class="text-xs text-gray-400 text-center py-6">Загрузка...</p>
+                    </div>
+                </div>
+            </div>
+            <!-- END NEW -->
+
             <div class="bg-white p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm">
                 <div class="flex items-center justify-between mb-6">
                     <div class="flex items-center space-x-3">
@@ -524,8 +567,10 @@
 
             if (tabName === 'stats') {
                 loadReadingStats();
+                loadReadingMockData();
             } else if (tabName === 'writing') {
                 loadWritingTasks();
+                loadWritingMockData();
             }
         }
 
@@ -1403,6 +1448,179 @@
             } finally {
                 btn.innerHTML = originalText;
                 lucide.createIcons();
+            }
+        }
+
+        // ==========================================
+        // NEW: Данные по MINI-MOCK и FULL MOCK тестам (Reading + Writing),
+        // чтобы не проверять их вручную через Supabase. Только чтение —
+        // ничего не сохраняет и не трогает существующую логику страницы.
+        // ==========================================
+
+        // --- READING: mini-mock (mock_tests/mock_test_results) + full mock (big_mock_attempts) ---
+        async function loadReadingMockData() {
+            const miniEl = document.getElementById('miniMockReadingList');
+            const fullEl = document.getElementById('fullMockReadingList');
+            if (!miniEl || !fullEl || !studentId || typeof _supabase === 'undefined') return;
+
+            try {
+                // Mini-Mock Reading
+                const { data: miniResults, error: miniErr } = await _supabase
+                    .from('mock_test_results')
+                    .select('id, test_id, raw_score, total_questions, band_score, created_at')
+                    .eq('user_id', studentId)
+                    .order('created_at', { ascending: false })
+                    .limit(10);
+
+                if (miniErr) throw miniErr;
+
+                if (!miniResults || miniResults.length === 0) {
+                    miniEl.innerHTML = `<p class="text-xs text-gray-400 text-center py-6">Нет попыток пока</p>`;
+                } else {
+                    const testIds = [...new Set(miniResults.map(r => r.test_id).filter(v => v !== null && v !== undefined))];
+                    let titleMap = {};
+                    if (testIds.length > 0) {
+                        const { data: testsData } = await _supabase.from('mock_tests').select('id, title').in('id', testIds);
+                        (testsData || []).forEach(t => { titleMap[t.id] = t.title; });
+                    }
+
+                    miniEl.innerHTML = miniResults.map(r => `
+                        <div class="flex items-center justify-between p-3 bg-gray-50/60 rounded-xl border border-gray-100">
+                            <div class="min-w-0">
+                                <p class="text-xs font-bold text-slate-800 truncate">${titleMap[r.test_id] || 'Mini-Mock Test'}</p>
+                                <p class="text-[10px] text-gray-400">${r.created_at ? new Date(r.created_at).toLocaleDateString('ru-RU') : '—'} • ${r.raw_score}/${r.total_questions} raw</p>
+                            </div>
+                            <span class="text-xs font-black text-indigo-600 shrink-0 ml-3">${r.band_score !== null && r.band_score !== undefined ? parseFloat(r.band_score).toFixed(1) : '—'}</span>
+                        </div>
+                    `).join('');
+                }
+
+                // Full Mock Test — Reading
+                const { data: fullResults, error: fullErr } = await _supabase
+                    .from('big_mock_attempts')
+                    .select('id, test_id, total_score, status, completed_at')
+                    .eq('user_id', studentId)
+                    .eq('section_name', 'reading')
+                    .order('completed_at', { ascending: false })
+                    .limit(10);
+
+                if (fullErr) throw fullErr;
+
+                if (!fullResults || fullResults.length === 0) {
+                    fullEl.innerHTML = `<p class="text-xs text-gray-400 text-center py-6">Нет попыток пока</p>`;
+                } else {
+                    const ftestIds = [...new Set(fullResults.map(r => r.test_id).filter(v => v !== null && v !== undefined))];
+                    let ftitleMap = {};
+                    if (ftestIds.length > 0) {
+                        const { data: fullTestsData } = await _supabase.from('full_tests').select('id, title').in('id', ftestIds);
+                        (fullTestsData || []).forEach(t => { ftitleMap[t.id] = t.title; });
+                    }
+
+                    fullEl.innerHTML = fullResults.map(r => {
+                        const hasScore = r.total_score !== null && r.total_score !== undefined;
+                        return `
+                            <div class="flex items-center justify-between p-3 bg-gray-50/60 rounded-xl border border-gray-100">
+                                <div class="min-w-0">
+                                    <p class="text-xs font-bold text-slate-800 truncate">${ftitleMap[r.test_id] || 'Full Mock Test'}</p>
+                                    <p class="text-[10px] text-gray-400">${r.completed_at ? new Date(r.completed_at).toLocaleDateString('ru-RU') : '—'}</p>
+                                </div>
+                                ${hasScore
+                                    ? `<span class="text-xs font-black text-emerald-600 shrink-0 ml-3">${parseFloat(r.total_score).toFixed(1)}</span>`
+                                    : `<span class="text-[10px] font-bold text-amber-600 uppercase shrink-0 ml-3">Pending</span>`}
+                            </div>
+                        `;
+                    }).join('');
+                }
+            } catch (err) {
+                console.error("Ошибка загрузки Reading mock-данных:", err);
+                if (miniEl) miniEl.innerHTML = `<p class="text-xs text-rose-500 text-center py-6">Ошибка загрузки</p>`;
+                if (fullEl) fullEl.innerHTML = `<p class="text-xs text-rose-500 text-center py-6">Ошибка загрузки</p>`;
+            }
+        }
+
+        // --- WRITING: mini-mock (mini_mock_writing_attempts) + full mock (big_mock_writing_attempts) ---
+        async function loadWritingMockData() {
+            const miniEl = document.getElementById('miniMockWritingList');
+            const fullEl = document.getElementById('fullMockWritingList');
+            if (!miniEl || !fullEl || !studentId || typeof _supabase === 'undefined') return;
+
+            try {
+                // Mini-Mock Writing
+                const { data: miniAttempts, error: miniErr } = await _supabase
+                    .from('mini_mock_writing_attempts')
+                    .select('id, mock_id, overall_score, status, created_at')
+                    .eq('user_id', studentId)
+                    .order('created_at', { ascending: false })
+                    .limit(10);
+
+                if (miniErr) throw miniErr;
+
+                if (!miniAttempts || miniAttempts.length === 0) {
+                    miniEl.innerHTML = `<p class="text-xs text-gray-400 text-center py-6">Нет попыток пока</p>`;
+                } else {
+                    const mockIds = [...new Set(miniAttempts.map(a => a.mock_id).filter(v => v !== null && v !== undefined))];
+                    let titleMap = {};
+                    if (mockIds.length > 0) {
+                        const { data: mocksData } = await _supabase.from('mini_mock_writing').select('id, title').in('id', mockIds);
+                        (mocksData || []).forEach(m => { titleMap[m.id] = m.title; });
+                    }
+
+                    miniEl.innerHTML = miniAttempts.map(a => {
+                        const isReviewed = a.status === 'reviewed';
+                        const scoreLabel = (isReviewed && a.overall_score !== null && a.overall_score !== undefined)
+                            ? `<span class="text-xs font-black text-emerald-600">${Number(a.overall_score).toFixed(1)}</span>`
+                            : `<span class="text-[10px] font-bold text-amber-600 uppercase">Pending</span>`;
+                        return `
+                            <a href="mini-mock-results.html?attempt_id=${a.id}" class="flex items-center justify-between p-3 bg-gray-50/60 hover:bg-indigo-50/60 rounded-xl border border-gray-100 transition">
+                                <div class="min-w-0">
+                                    <p class="text-xs font-bold text-slate-800 truncate">${titleMap[a.mock_id] || 'Mini-Mock Writing'}</p>
+                                    <p class="text-[10px] text-gray-400">${a.created_at ? new Date(a.created_at).toLocaleDateString('ru-RU') : '—'}</p>
+                                </div>
+                                <div class="shrink-0 ml-3">${scoreLabel}</div>
+                            </a>
+                        `;
+                    }).join('');
+                }
+
+                // Full Mock Test — Writing (обзор без ручного клика — проверка идёт через tests.html)
+                const { data: fullAttempts, error: fullErr } = await _supabase
+                    .from('big_mock_writing_attempts')
+                    .select('id, test_id, total_score, status, completed_at')
+                    .eq('user_id', studentId)
+                    .order('completed_at', { ascending: false })
+                    .limit(10);
+
+                if (fullErr) throw fullErr;
+
+                if (!fullAttempts || fullAttempts.length === 0) {
+                    fullEl.innerHTML = `<p class="text-xs text-gray-400 text-center py-6">Нет попыток пока</p>`;
+                } else {
+                    const ftestIds = [...new Set(fullAttempts.map(a => a.test_id).filter(v => v !== null && v !== undefined))];
+                    let ftitleMap = {};
+                    if (ftestIds.length > 0) {
+                        const { data: fullTestsData } = await _supabase.from('full_tests').select('id, title').in('id', ftestIds);
+                        (fullTestsData || []).forEach(t => { ftitleMap[t.id] = t.title; });
+                    }
+
+                    fullEl.innerHTML = fullAttempts.map(a => {
+                        const hasScore = a.total_score !== null && a.total_score !== undefined;
+                        return `
+                            <div class="flex items-center justify-between p-3 bg-gray-50/60 rounded-xl border border-gray-100">
+                                <div class="min-w-0">
+                                    <p class="text-xs font-bold text-slate-800 truncate">${ftitleMap[a.test_id] || 'Full Mock Test'}</p>
+                                    <p class="text-[10px] text-gray-400">${a.completed_at ? new Date(a.completed_at).toLocaleDateString('ru-RU') : '—'}</p>
+                                </div>
+                                ${hasScore
+                                    ? `<span class="text-xs font-black text-emerald-600 shrink-0 ml-3">${Number(a.total_score).toFixed(1)}</span>`
+                                    : `<span class="text-[10px] font-bold text-amber-600 uppercase shrink-0 ml-3">Pending</span>`}
+                            </div>
+                        `;
+                    }).join('');
+                }
+            } catch (err) {
+                console.error("Ошибка загрузки Writing mock-данных:", err);
+                if (miniEl) miniEl.innerHTML = `<p class="text-xs text-rose-500 text-center py-6">Ошибка загрузки</p>`;
+                if (fullEl) fullEl.innerHTML = `<p class="text-xs text-rose-500 text-center py-6">Ошибка загрузки</p>`;
             }
         }
     </script>
