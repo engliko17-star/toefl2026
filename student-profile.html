@@ -1712,10 +1712,67 @@
                         (mocksData || []).forEach(m => { titleMap[m.id] = m.title; });
                     }
 
+                    // Подтягиваем ВСЕ ответы по этим попыткам одним запросом, чтобы
+                    // посчитать реальный балл (50% Sentence + 50% Email/Academic) —
+                    // attempts.overall_score никем и никогда не заполняется автоматически,
+                    // расчёт всегда идёт от фактических ответов, как на mini-mock-results.html.
+                    const attemptIds = miniAttempts.map(a => a.id);
+                    const { data: allResponses } = await _supabase
+                        .from('mini_mock_writing_responses')
+                        .select('attempt_id, task_id, task_type, response_content, score')
+                        .in('attempt_id', attemptIds);
+
+                    const taskIds = [...new Set((allResponses || []).map(r => r.task_id).filter(Boolean))];
+                    let tasksMap = {};
+                    if (taskIds.length > 0) {
+                        const { data: tasksData } = await _supabase.from('writing_tasks').select('id, sample_answer').in('id', taskIds);
+                        (tasksData || []).forEach(t => { tasksMap[t.id] = t; });
+                    }
+
+                    const normalizeLocal = (text) => (text || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+                    const bandByAttempt = {};
+                    attemptIds.forEach(id => {
+                        const responses = (allResponses || []).filter(r => r.attempt_id === id);
+
+                        const sentenceResponses = responses.filter(r => r.task_type === 'sentence');
+                        let correctSentences = 0;
+                        sentenceResponses.forEach(r => {
+                            const correct = tasksMap[r.task_id]?.sample_answer || '';
+                            const user = r.response_content || '';
+                            if (user && correct && normalizeLocal(user) === normalizeLocal(correct)) correctSentences++;
+                        });
+                        const totalSentences = sentenceResponses.length;
+                        let sentenceBand = null;
+                        if (totalSentences > 0) {
+                            const ratio = correctSentences / totalSentences;
+                            sentenceBand = Math.min(6, Math.max(1, Math.round((1 + ratio * 5) * 2) / 2));
+                        }
+
+                        const email = responses.find(r => r.task_type === 'email');
+                        const academic = responses.find(r => r.task_type === 'academic');
+                        const essayScores = [email, academic]
+                            .map(r => (r && r.score !== null && r.score !== undefined && r.score !== '') ? parseFloat(r.score) : null)
+                            .filter(s => s !== null && !isNaN(s));
+                        const essayBand = essayScores.length > 0 ? essayScores.reduce((s, v) => s + v, 0) / essayScores.length : null;
+
+                        let overallBand = null;
+                        if (sentenceBand !== null && essayBand !== null) overallBand = sentenceBand * 0.5 + essayBand * 0.5;
+                        else if (sentenceBand !== null) overallBand = sentenceBand;
+                        else if (essayBand !== null) overallBand = essayBand;
+                        if (overallBand !== null) overallBand = Math.min(6, Math.max(1, Math.round(overallBand * 2) / 2));
+
+                        bandByAttempt[id] = { overallBand, fullyGraded: sentenceBand !== null && essayBand !== null };
+                    });
+
                     miniEl.innerHTML = miniAttempts.map(a => {
-                        const isReviewed = a.status === 'reviewed';
-                        const scoreLabel = (isReviewed && a.overall_score !== null && a.overall_score !== undefined)
-                            ? `<span class="text-xs font-black text-emerald-600">${Number(a.overall_score).toFixed(1)}</span>`
+                        const computed = bandByAttempt[a.id] || { overallBand: null, fullyGraded: false };
+                        const isReviewed = a.status === 'reviewed' || computed.fullyGraded;
+                        const displayScore = (a.overall_score !== null && a.overall_score !== undefined)
+                            ? Number(a.overall_score)
+                            : computed.overallBand;
+                        const scoreLabel = (isReviewed && displayScore !== null)
+                            ? `<span class="text-xs font-black text-emerald-600">${displayScore.toFixed(1)}</span>`
                             : `<span class="text-[10px] font-bold text-amber-600 uppercase">Pending</span>`;
                         return `
                             <a href="mini-mock-results.html?attempt_id=${a.id}" class="flex items-center justify-between p-3 bg-gray-50/60 hover:bg-indigo-50/60 rounded-xl border border-gray-100 transition">
