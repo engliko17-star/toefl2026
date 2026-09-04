@@ -431,7 +431,19 @@
                 <p class="text-xs text-gray-400 mb-6">Здесь подтягиваются все работы ученика из базы <b>student_responses</b> и формулировки заданий из <b>writing_tasks</b>.</p>
                 
                 <!-- NEW: Карточки статистики Writing -->
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <!-- Build a Sentence -->
+                    <div class="bg-sky-50/20 p-5 rounded-2xl border border-sky-100 shadow-sm flex flex-col justify-between">
+                        <div class="flex justify-between items-center mb-4">
+                            <span class="text-[10px] font-extrabold text-sky-600 uppercase tracking-wider">Build a Sentence</span>
+                            <div class="p-2 bg-sky-100/50 text-sky-600 rounded-xl"><i data-lucide="list-checks" class="w-4 h-4"></i></div>
+                        </div>
+                        <div>
+                            <div class="text-3xl font-extrabold text-slate-800" id="avgSentence">—</div>
+                            <div class="text-[11px] text-gray-400 mt-1 font-medium">Средний % правильных</div>
+                        </div>
+                    </div>
+
                     <!-- Emails -->
                     <div class="bg-emerald-50/20 p-5 rounded-2xl border border-emerald-100 shadow-sm flex flex-col justify-between">
                         <div class="flex justify-between items-center mb-4">
@@ -1375,26 +1387,41 @@
         }
         
         function calculateWritingStats(responses) {
+            let sentenceScores = [];
             let emailScores = [];
             let academicScores = [];
 
             responses.forEach(task => {
-                if (task.score !== null && task.score !== undefined) {
-                    const taskInfo = writingTasksMap[task.task_id];
-                    const typeStr = (task.task_type || '').toLowerCase();
-                    const titleStr = (taskInfo && (taskInfo.title || taskInfo.task_type) ? (taskInfo.title || taskInfo.task_type) : '').toLowerCase();
-                    const combined = typeStr + " " + titleStr;
+                if (task.score === null || task.score === undefined) return;
+                const typeStr = (task.task_type || '').toLowerCase();
 
-                    if (combined.includes('email')) {
-                        emailScores.push(parseFloat(task.score));
-                    } else if (combined.includes('academic')) {
-                        academicScores.push(parseFloat(task.score));
+                // Build a Sentence: score хранится строкой вида "N/M" (например "1/1"),
+                // а не баллом 1.0–6.0 — считаем процент правильных.
+                if (typeStr === 'sentence') {
+                    if (typeof task.score === 'string' && task.score.includes('/')) {
+                        const parts = task.score.split('/');
+                        const earned = parseFloat(parts[0]);
+                        const total = parseFloat(parts[1]);
+                        if (total > 0) sentenceScores.push((earned / total) * 100);
                     }
+                    return;
+                }
+
+                const taskInfo = writingTasksMap[task.task_id];
+                const titleStr = (taskInfo && (taskInfo.title || taskInfo.task_type) ? (taskInfo.title || taskInfo.task_type) : '').toLowerCase();
+                const combined = typeStr + " " + titleStr;
+
+                if (combined.includes('email')) {
+                    emailScores.push(parseFloat(task.score));
+                } else if (combined.includes('academic')) {
+                    academicScores.push(parseFloat(task.score));
                 }
             });
 
             const calculateAverage = (arr) => arr.length > 0 ? (arr.reduce((sum, item) => sum + item, 0) / arr.length).toFixed(1) : '—';
+            const calculateAveragePercent = (arr) => arr.length > 0 ? Math.round(arr.reduce((sum, item) => sum + item, 0) / arr.length) + '%' : '—';
 
+            document.getElementById('avgSentence').innerText = calculateAveragePercent(sentenceScores);
             document.getElementById('avgEmails').innerText = calculateAverage(emailScores);
             document.getElementById('avgWritingAcademic').innerText = calculateAverage(academicScores);
         }
