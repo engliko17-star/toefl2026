@@ -587,6 +587,16 @@
                 </div>
             </div>
 
+            <!-- Обычная практика Speaking (Interview / Listen & Repeat) — без оценки, только прослушать -->
+            <div class="bg-white border border-gray-100 rounded-2xl p-5 shadow-xs mb-8">
+                <h3 class="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-4 flex items-center space-x-2">
+                    <i data-lucide="mic" class="w-3.5 h-3.5 text-sky-500"></i><span>Speaking Practice (Interview / Listen &amp; Repeat)</span>
+                </h3>
+                <div id="speakingPracticeList" class="space-y-2 max-h-[280px] overflow-y-auto pr-1">
+                    <p class="text-xs text-gray-400 text-center py-6">Загрузка...</p>
+                </div>
+            </div>
+
             <!-- Панель прослушивания и выставления балла — появляется при клике на попытку выше -->
             <div id="speakingGradingPanel" class="hidden bg-white p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm">
                 <div class="flex items-center justify-between mb-6">
@@ -1983,6 +1993,50 @@
                 console.error("Ошибка загрузки Speaking full-mock данных:", err);
                 if (fullEl) fullEl.innerHTML = `<p class="text-xs text-rose-500 text-center py-6 px-2">Ошибка: ${err.message || err}</p>`;
             }
+
+            // --- Обычная практика Speaking (Interview / Listen & Repeat) ---
+            const practEl = document.getElementById('speakingPracticeList');
+            try {
+                const { data: practAttempts, error: practErr } = await _supabase
+                    .from('speaking_attempts')
+                    .select('id, test_id, score, status, created_at')
+                    .eq('user_id', studentId)
+                    .order('created_at', { ascending: false })
+                    .limit(10);
+
+                if (practErr) throw practErr;
+
+                if (!practAttempts || practAttempts.length === 0) {
+                    practEl.innerHTML = `<p class="text-xs text-gray-400 text-center py-6">Нет попыток пока</p>`;
+                } else {
+                    const testIds = [...new Set(practAttempts.map(a => a.test_id).filter(v => v !== null && v !== undefined))];
+                    let titleMap = {};
+                    if (testIds.length > 0) {
+                        const { data: testsData } = await _supabase.from('speaking_tests').select('id, title, type').in('id', testIds);
+                        (testsData || []).forEach(t => { titleMap[t.id] = t; });
+                    }
+
+                    practEl.innerHTML = practAttempts.map(a => {
+                        const testInfo = titleMap[a.test_id];
+                        const hasScore = a.score !== null && a.score !== undefined;
+                        const scoreLabel = hasScore
+                            ? `<span class="text-xs font-black text-emerald-600">${Number(a.score).toFixed(1)}</span>`
+                            : `<span class="text-[10px] font-bold text-amber-600 uppercase">Pending</span>`;
+                        return `
+                            <div onclick="openSpeakingGrading('practice', '${a.id}')" class="flex items-center justify-between p-3 bg-gray-50/60 hover:bg-indigo-50/60 rounded-xl border border-gray-100 transition cursor-pointer">
+                                <div class="min-w-0">
+                                    <p class="text-xs font-bold text-slate-800 truncate">${testInfo ? testInfo.title : 'Speaking Practice'}</p>
+                                    <p class="text-[10px] text-gray-400">${testInfo ? (testInfo.type === 'interview' ? 'Interview' : 'Listen & Repeat') : ''} • ${a.created_at ? new Date(a.created_at).toLocaleDateString('ru-RU') : '—'}</p>
+                                </div>
+                                <div class="shrink-0 ml-3">${scoreLabel}</div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            } catch (err) {
+                console.error("Ошибка загрузки Speaking practice данных:", err);
+                if (practEl) practEl.innerHTML = `<p class="text-xs text-rose-500 text-center py-6 px-2">Ошибка: ${err.message || err}</p>`;
+            }
         }
 
         async function openSpeakingGrading(source, attemptId) {
@@ -1995,7 +2049,9 @@
             const title = document.getElementById('speakingGradingTitle');
 
             panel.classList.remove('hidden');
-            title.innerText = source === 'mini' ? 'Проверка Speaking — Mini-Mock' : 'Проверка Speaking — Full Mock Test';
+            title.innerText = source === 'mini' ? 'Проверка Speaking — Mini-Mock'
+                : source === 'full' ? 'Проверка Speaking — Full Mock Test'
+                : 'Проверка Speaking — Practice';
             listEl.innerHTML = `<p class="text-xs text-gray-400 text-center py-6"><i data-lucide="loader-2" class="w-4 h-4 animate-spin inline mr-2"></i>Загрузка записей...</p>`;
             if (typeof lucide !== 'undefined') lucide.createIcons();
             scoreInput.value = '';
@@ -2024,7 +2080,7 @@
                         task_type: r.item ? r.item.task_type : '',
                         transcript: r.item && r.item.question ? r.item.question.transcript : ''
                     })));
-                } else {
+                } else if (source === 'full') {
                     const { data: attempt } = await _supabase.from('big_mock_speaking_attempts').select('*').eq('id', attemptId).single();
                     const { data: answers } = await _supabase.from('big_mock_speaking_answers').select('*').eq('attempt_id', attemptId);
 
@@ -2044,6 +2100,29 @@
                         audio_url: a.audio_url,
                         task_type: a.task_type,
                         transcript: transcriptMap[a.task_id] || ''
+                    })));
+                } else {
+                    // source === 'practice' — обычная практика (speaking_attempts/speaking_responses)
+                    const { data: attempt } = await _supabase.from('speaking_attempts').select('*').eq('id', attemptId).single();
+                    const { data: responses } = await _supabase
+                        .from('speaking_responses')
+                        .select('*, question:speaking_questions(*)')
+                        .eq('attempt_id', attemptId);
+
+                    if (attempt && attempt.score !== null && attempt.score !== undefined) {
+                        scoreInput.value = attempt.score;
+                    }
+
+                    const items = (responses || []).slice().sort((a, b) => {
+                        const oa = a.question ? (a.question.order_num || 0) : 0;
+                        const ob = b.question ? (b.question.order_num || 0) : 0;
+                        return oa - ob;
+                    });
+
+                    await renderSpeakingRecordings(items.map(r => ({
+                        audio_url: r.user_audio_url,
+                        task_type: '',
+                        transcript: r.question ? r.question.transcript : ''
                     })));
                 }
             } catch (err) {
@@ -2117,10 +2196,16 @@
                         .update({ overall_score: scoreVal, status: 'reviewed' })
                         .eq('id', currentSpeakingAttemptId);
                     if (error) throw error;
-                } else {
+                } else if (currentSpeakingSource === 'full') {
                     const { error } = await _supabase
                         .from('big_mock_speaking_attempts')
                         .update({ total_score: scoreVal, status: 'reviewed' })
+                        .eq('id', currentSpeakingAttemptId);
+                    if (error) throw error;
+                } else {
+                    const { error } = await _supabase
+                        .from('speaking_attempts')
+                        .update({ score: scoreVal, status: 'reviewed' })
                         .eq('id', currentSpeakingAttemptId);
                     if (error) throw error;
                 }
