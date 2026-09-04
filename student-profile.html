@@ -107,6 +107,9 @@
             <button onclick="switchTab('writing')" id="btn-writing" class="tab-btn pb-4 text-sm font-bold text-gray-400 border-b-2 border-transparent hover:text-slate-800 transition">
                 Writing / Эссе
             </button>
+            <button onclick="switchTab('listening')" id="btn-listening" class="tab-btn pb-4 text-sm font-bold text-gray-400 border-b-2 border-transparent hover:text-slate-800 transition">
+                Listening
+            </button>
         </div>
 
         <!-- ========================================== -->
@@ -511,6 +514,52 @@
             </div>
         </div>
 
+        <!-- ========================================== -->
+        <!-- ВКЛАДКА 5: LISTENING -->
+        <!-- ========================================== -->
+        <div id="tab-listening" class="tab-content">
+
+            <!-- Мок-тесты Listening (mini-mock + большой мок) -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                <div class="bg-white border border-gray-100 rounded-2xl p-5 shadow-xs">
+                    <h3 class="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-4 flex items-center space-x-2">
+                        <i data-lucide="flask-conical" class="w-3.5 h-3.5 text-indigo-500"></i><span>Mini-Mock Listening</span>
+                    </h3>
+                    <div id="miniMockListeningList" class="space-y-2 max-h-[280px] overflow-y-auto pr-1">
+                        <p class="text-xs text-gray-400 text-center py-6">Загрузка...</p>
+                    </div>
+                </div>
+                <div class="bg-white border border-gray-100 rounded-2xl p-5 shadow-xs">
+                    <h3 class="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-4 flex items-center space-x-2">
+                        <i data-lucide="rocket" class="w-3.5 h-3.5 text-purple-500"></i><span>Full Mock Test — Listening</span>
+                    </h3>
+                    <div id="fullMockListeningList" class="space-y-2 max-h-[280px] overflow-y-auto pr-1">
+                        <p class="text-xs text-gray-400 text-center py-6">Загрузка...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Обычная практика Listening -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="bg-white border border-gray-100 rounded-2xl p-5 shadow-xs">
+                    <h3 class="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-4 flex items-center space-x-2">
+                        <i data-lucide="message-square" class="w-3.5 h-3.5 text-sky-500"></i><span>Listen &amp; Choose a Response</span>
+                    </h3>
+                    <div id="responsePracticeList" class="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+                        <p class="text-xs text-gray-400 text-center py-6">Загрузка...</p>
+                    </div>
+                </div>
+                <div class="bg-white border border-gray-100 rounded-2xl p-5 shadow-xs">
+                    <h3 class="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-4 flex items-center space-x-2">
+                        <i data-lucide="headphones" class="w-3.5 h-3.5 text-emerald-500"></i><span>Listening Practice (Conversations / Talks)</span>
+                    </h3>
+                    <div id="listeningPracticeList" class="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+                        <p class="text-xs text-gray-400 text-center py-6">Загрузка...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <script>
@@ -571,6 +620,8 @@
             } else if (tabName === 'writing') {
                 loadWritingTasks();
                 loadWritingMockData();
+            } else if (tabName === 'listening') {
+                loadListeningMockData();
             }
         }
 
@@ -1621,6 +1672,159 @@
                 console.error("Ошибка загрузки Writing mock-данных:", err);
                 if (miniEl) miniEl.innerHTML = `<p class="text-xs text-rose-500 text-center py-6">Ошибка загрузки</p>`;
                 if (fullEl) fullEl.innerHTML = `<p class="text-xs text-rose-500 text-center py-6">Ошибка загрузки</p>`;
+            }
+        }
+
+        // ==========================================
+        // NEW: Данные по Listening — mini-mock, full-mock и обычная практика.
+        // Только чтение, ничего не сохраняет.
+        // ==========================================
+        async function loadListeningMockData() {
+            const miniEl = document.getElementById('miniMockListeningList');
+            const fullEl = document.getElementById('fullMockListeningList');
+            const respEl = document.getElementById('responsePracticeList');
+            const practEl = document.getElementById('listeningPracticeList');
+            if (!studentId || typeof _supabase === 'undefined') return;
+
+            // --- Mini-Mock Listening ---
+            try {
+                const { data: miniResults, error: miniErr } = await _supabase
+                    .from('listening_mini_mock_results')
+                    .select('id, mock_test_id, score_earned, score_total, final_calculated_score, created_at')
+                    .eq('user_id', studentId)
+                    .order('created_at', { ascending: false })
+                    .limit(10);
+
+                if (miniErr) throw miniErr;
+
+                if (!miniResults || miniResults.length === 0) {
+                    miniEl.innerHTML = `<p class="text-xs text-gray-400 text-center py-6">Нет попыток пока</p>`;
+                } else {
+                    const testIds = [...new Set(miniResults.map(r => r.mock_test_id).filter(v => v !== null && v !== undefined))];
+                    let titleMap = {};
+                    if (testIds.length > 0) {
+                        const { data: testsData } = await _supabase.from('listening_mock_tests').select('id, title').in('id', testIds);
+                        (testsData || []).forEach(t => { titleMap[t.id] = t.title; });
+                    }
+
+                    miniEl.innerHTML = miniResults.map(r => `
+                        <div class="flex items-center justify-between p-3 bg-gray-50/60 rounded-xl border border-gray-100">
+                            <div class="min-w-0">
+                                <p class="text-xs font-bold text-slate-800 truncate">${titleMap[r.mock_test_id] || 'Mini-Mock Test'}</p>
+                                <p class="text-[10px] text-gray-400">${r.created_at ? new Date(r.created_at).toLocaleDateString('ru-RU') : '—'} • ${r.score_earned}/${r.score_total} raw</p>
+                            </div>
+                            <span class="text-xs font-black text-indigo-600 shrink-0 ml-3">${r.final_calculated_score !== null && r.final_calculated_score !== undefined ? parseFloat(r.final_calculated_score).toFixed(1) : '—'}</span>
+                        </div>
+                    `).join('');
+                }
+            } catch (err) {
+                console.error("Ошибка загрузки Listening mini-mock данных:", err);
+                if (miniEl) miniEl.innerHTML = `<p class="text-xs text-rose-500 text-center py-6">Ошибка загрузки</p>`;
+            }
+
+            // --- Full Mock Test — Listening ---
+            try {
+                const { data: fullResults, error: fullErr } = await _supabase
+                    .from('big_mock_listening_attempts')
+                    .select('id, test_id, total_score, status, completed_at')
+                    .eq('user_id', studentId)
+                    .order('completed_at', { ascending: false })
+                    .limit(10);
+
+                if (fullErr) throw fullErr;
+
+                if (!fullResults || fullResults.length === 0) {
+                    fullEl.innerHTML = `<p class="text-xs text-gray-400 text-center py-6">Нет попыток пока</p>`;
+                } else {
+                    const ftestIds = [...new Set(fullResults.map(r => r.test_id).filter(v => v !== null && v !== undefined))];
+                    let ftitleMap = {};
+                    if (ftestIds.length > 0) {
+                        const { data: fullTestsData } = await _supabase.from('full_tests').select('id, title').in('id', ftestIds);
+                        (fullTestsData || []).forEach(t => { ftitleMap[t.id] = t.title; });
+                    }
+
+                    fullEl.innerHTML = fullResults.map(r => {
+                        const hasScore = r.total_score !== null && r.total_score !== undefined;
+                        return `
+                            <div class="flex items-center justify-between p-3 bg-gray-50/60 rounded-xl border border-gray-100">
+                                <div class="min-w-0">
+                                    <p class="text-xs font-bold text-slate-800 truncate">${ftitleMap[r.test_id] || 'Full Mock Test'}</p>
+                                    <p class="text-[10px] text-gray-400">${r.completed_at ? new Date(r.completed_at).toLocaleDateString('ru-RU') : '—'}</p>
+                                </div>
+                                ${hasScore
+                                    ? `<span class="text-xs font-black text-emerald-600 shrink-0 ml-3">${parseFloat(r.total_score).toFixed(1)}</span>`
+                                    : `<span class="text-[10px] font-bold text-amber-600 uppercase shrink-0 ml-3">Pending</span>`}
+                            </div>
+                        `;
+                    }).join('');
+                }
+            } catch (err) {
+                console.error("Ошибка загрузки Listening full-mock данных:", err);
+                if (fullEl) fullEl.innerHTML = `<p class="text-xs text-rose-500 text-center py-6">Ошибка загрузки</p>`;
+            }
+
+            // --- Listen & Choose a Response (обычная практика) ---
+            try {
+                const { data: respData, error: respErr } = await _supabase
+                    .from('response_results')
+                    .select('id, set_number, score_earned, score_total, created_at')
+                    .eq('user_id', studentId)
+                    .order('created_at', { ascending: false })
+                    .limit(10);
+
+                if (respErr) throw respErr;
+
+                if (!respData || respData.length === 0) {
+                    respEl.innerHTML = `<p class="text-xs text-gray-400 text-center py-6">Нет попыток пока</p>`;
+                } else {
+                    respEl.innerHTML = respData.map(r => {
+                        const percent = r.score_total > 0 ? Math.round((r.score_earned / r.score_total) * 100) : null;
+                        return `
+                            <div class="flex items-center justify-between p-3 bg-gray-50/60 rounded-xl border border-gray-100">
+                                <div class="min-w-0">
+                                    <p class="text-xs font-bold text-slate-800 truncate">Set ${r.set_number ?? '—'}</p>
+                                    <p class="text-[10px] text-gray-400">${r.created_at ? new Date(r.created_at).toLocaleDateString('ru-RU') : '—'} • ${r.score_earned}/${r.score_total}</p>
+                                </div>
+                                <span class="text-xs font-black text-sky-600 shrink-0 ml-3">${percent !== null ? percent + '%' : '—'}</span>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            } catch (err) {
+                console.error("Ошибка загрузки response_results:", err);
+                if (respEl) respEl.innerHTML = `<p class="text-xs text-rose-500 text-center py-6">Ошибка загрузки</p>`;
+            }
+
+            // --- Listening Practice (Conversations / Announcements / Academic Talks) ---
+            try {
+                const { data: practData, error: practErr } = await _supabase
+                    .from('listening_results')
+                    .select('id, task_id, score_earned, score_total, task_type, created_at')
+                    .eq('user_id', studentId)
+                    .order('created_at', { ascending: false })
+                    .limit(10);
+
+                if (practErr) throw practErr;
+
+                if (!practData || practData.length === 0) {
+                    practEl.innerHTML = `<p class="text-xs text-gray-400 text-center py-6">Нет попыток пока</p>`;
+                } else {
+                    practEl.innerHTML = practData.map(r => {
+                        const percent = r.score_total > 0 ? Math.round((r.score_earned / r.score_total) * 100) : null;
+                        return `
+                            <div class="flex items-center justify-between p-3 bg-gray-50/60 rounded-xl border border-gray-100">
+                                <div class="min-w-0">
+                                    <p class="text-xs font-bold text-slate-800 truncate">${r.task_type || 'Listening Task'}</p>
+                                    <p class="text-[10px] text-gray-400">${r.created_at ? new Date(r.created_at).toLocaleDateString('ru-RU') : '—'} • ${r.score_earned}/${r.score_total}</p>
+                                </div>
+                                <span class="text-xs font-black text-emerald-600 shrink-0 ml-3">${percent !== null ? percent + '%' : '—'}</span>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            } catch (err) {
+                console.error("Ошибка загрузки listening_results:", err);
+                if (practEl) practEl.innerHTML = `<p class="text-xs text-rose-500 text-center py-6">Ошибка загрузки</p>`;
             }
         }
     </script>
