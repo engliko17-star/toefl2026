@@ -30,6 +30,18 @@
         </button>
     </div>
 
+    <!-- Directions — как на реальном TOEFL: сценарий показывается ОДИН раз перед
+         всем набором Listen & Repeat, а не разбросан по отдельным вопросам. -->
+    <div id="directionsOverlay" class="hidden fixed inset-0 bg-white z-50 flex-col items-center justify-center p-6 text-center">
+        <div class="max-w-lg w-full">
+            <span class="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-3 inline-block">Directions</span>
+            <div class="bg-slate-50 border border-slate-100 rounded-2xl p-6 text-left text-sm text-slate-700 leading-relaxed mb-8" id="directionsText"></div>
+            <button id="directionsBeginBtn" class="bg-slate-900 hover:bg-indigo-600 transition text-white px-8 py-3.5 rounded-xl font-bold flex items-center justify-center shadow-md mx-auto cursor-pointer">
+                Begin <i data-lucide="arrow-right" class="w-4 h-4 ml-2"></i>
+            </button>
+        </div>
+    </div>
+
     <div id="playerUI" class="w-full flex-col items-center hidden h-screen max-h-[800px]">
         <div class="w-full bg-[#f8f9fa] p-4 flex justify-between items-center max-w-4xl mx-auto shrink-0">
             <button onclick="window.history.back()" class="text-slate-400 hover:text-slate-900 transition p-2 cursor-pointer bg-white rounded-full shadow-sm">
@@ -96,6 +108,7 @@
         let currentAttemptId = null;
         let audioCtx = null;
         let recordingMimeType = '';
+        let testScenario = ''; // описание/сценарий сета Listen & Repeat, из speaking_tests.description
 
         // Подбирает mimeType, который реально поддерживается текущим браузером.
         // Safari (iOS/macOS) не понимает audio/webm, но понимает audio/mp4 — поэтому
@@ -131,6 +144,14 @@
                 taskType = urlParams.get('type') || 'listen_repeat';
 
                 if (!testId) throw new Error("No test ID provided in the URL.");
+
+                // Подтягиваем сценарий/description набора (для Directions-экрана)
+                const { data: testMeta } = await _supabase
+                    .from('speaking_tests')
+                    .select('description')
+                    .eq('id', testId)
+                    .single();
+                testScenario = (testMeta && testMeta.description) ? testMeta.description.trim() : '';
 
                 const { data: attemptData, error: attemptError } = await _supabase
                     .from('speaking_attempts')
@@ -200,10 +221,14 @@
                 mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 
                 document.getElementById('startOverlay').classList.add('hidden');
-                document.getElementById('playerUI').classList.remove('hidden');
-                document.getElementById('playerUI').classList.add('flex');
-                
-                loadQuestion(0);
+
+                if (taskType === 'listen_repeat' && testScenario) {
+                    showDirectionsScreen();
+                } else {
+                    document.getElementById('playerUI').classList.remove('hidden');
+                    document.getElementById('playerUI').classList.add('flex');
+                    loadQuestion(0);
+                }
             } catch (err) {
                 console.error("Media access error:", err);
                 
@@ -228,6 +253,21 @@
                 alert(`Не удалось включить микрофон!\n\n${details}`);
             }
         };
+
+        function showDirectionsScreen() {
+            const overlay = document.getElementById('directionsOverlay');
+            document.getElementById('directionsText').innerText = testScenario;
+            overlay.classList.remove('hidden');
+            overlay.classList.add('flex');
+
+            document.getElementById('directionsBeginBtn').onclick = () => {
+                overlay.classList.add('hidden');
+                overlay.classList.remove('flex');
+                document.getElementById('playerUI').classList.remove('hidden');
+                document.getElementById('playerUI').classList.add('flex');
+                loadQuestion(0);
+            };
+        }
 
         function playBeep() {
             return new Promise((resolve) => {
