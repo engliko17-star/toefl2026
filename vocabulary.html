@@ -563,12 +563,29 @@
             lucide.createIcons();
         }
 
+        function normalizeWord(w) {
+            return (w || '').trim().toLowerCase();
+        }
+
+        // Возвращает { matched: [...словари слов], missingCount: N }
+        // Сопоставление нечувствительно к регистру и лишним пробелам,
+        // т.к. слово могло быть переименовано/исправлено в общей базе words
+        // после того, как его сохранили в личный список.
+        function resolveListWords(savedWordNames) {
+            const normalizedSet = new Set(savedWordNames.map(normalizeWord));
+            const matched = allWords.filter(w => normalizedSet.has(normalizeWord(w.word)));
+            const matchedNormalized = new Set(matched.map(w => normalizeWord(w.word)));
+            const missingCount = savedWordNames.filter(name => !matchedNormalized.has(normalizeWord(name))).length;
+            return { matched, missingCount };
+        }
+
         function renderCustomLists() {
             const grid = document.getElementById('customListsGrid');
             grid.innerHTML = '';
             
             Object.keys(studentLists).forEach(listName => {
                 const count = studentLists[listName].length;
+                const { missingCount } = resolveListWords(studentLists[listName]);
                 const isSelected = selectedCustomList === listName;
                 const activeClass = isSelected ? 'border-indigo-600 ring-4 ring-indigo-50/80 bg-indigo-50/20' : 'bg-white border-gray-100 hover:bg-gray-50/80';
                 
@@ -583,7 +600,7 @@
                     </div>
                     <div>
                         <h4 class="font-bold text-sm text-slate-900 tracking-tight">${listName}</h4>
-                        <p class="text-[10px] text-gray-400 font-semibold">${count} слов</p>
+                        <p class="text-[10px] text-gray-400 font-semibold">${count} слов${missingCount > 0 ? ` <span class="text-amber-500">(${missingCount} не найдено в базе)</span>` : ''}</p>
                     </div>
                 `;
                 grid.appendChild(card);
@@ -592,8 +609,8 @@
 
             if (selectedCustomList) {
                 const savedWordNames = studentLists[selectedCustomList] || [];
-                const displayWords = allWords.filter(w => savedWordNames.includes(w.word));
-                renderWordsTable(displayWords);
+                const { matched } = resolveListWords(savedWordNames);
+                renderWordsTable(matched);
             } else {
                 renderWordsTable([]);
             }
@@ -722,7 +739,7 @@
                     return;
                 }
                 const savedWordNames = studentLists[selectedCustomList] || [];
-                baseWords = allWords.filter(w => savedWordNames.includes(w.word));
+                baseWords = resolveListWords(savedWordNames).matched;
             }
 
             const filtered = baseWords.filter(w =>
