@@ -205,9 +205,10 @@
             (data || []).forEach(row => { wordProgressMap[row.word] = row.correct_count; });
         }
 
-        function recordWordProgress(word, wasCorrect) {
+        function recordWordProgress(word, wasCorrect, increment) {
             if (!wasCorrect) return; // ошибки не увеличивают и не обнуляют счётчик
-            const newCount = (wordProgressMap[word] || 0) + 1;
+            const inc = increment || 1;
+            const newCount = Math.round(((wordProgressMap[word] || 0) + inc) * 10) / 10; // округляем до 1 знака, избегаем 0.1+0.2 проблем float
             wordProgressMap[word] = newCount;
 
             // Пишем в базу в фоне, не блокируя интерфейс
@@ -264,10 +265,32 @@
             // Получаем чистый список уникальных объектов слов для этой сессии
             let baseWords = wordsTableData.filter(w => uniqueWordNames.has(w.word));
 
-            // Приоритет: сначала невыученные слова (correct_count < LEARNED_THRESHOLD), затем уже выученные
-            const learningWords = shuffle(baseWords.filter(w => (wordProgressMap[w.word] || 0) < LEARNED_THRESHOLD));
-            const masteredWords = shuffle(baseWords.filter(w => (wordProgressMap[w.word] || 0) >= LEARNED_THRESHOLD));
-            baseWords = [...learningWords, ...masteredWords];
+            // Приоритет и область повторения задаются настройкой practiceScope
+            const scope = sessionSettings.practiceScope || 'all';
+            let baseWordsScoped;
+            if (scope === 'new') {
+                // Только слова, которые ученик ещё не начинал (прогресс = 0)
+                baseWordsScoped = shuffle(baseWords.filter(w => !(wordProgressMap[w.word] > 0)));
+            } else if (scope === 'in_progress') {
+                // Только слова "в процессе": уже что-то отвечал правильно, но ещё не выучил до конца
+                baseWordsScoped = shuffle(baseWords.filter(w => {
+                    const p = wordProgressMap[w.word] || 0;
+                    return p > 0 && p < LEARNED_THRESHOLD;
+                }));
+            } else {
+                // 'all': сначала невыученные слова (correct_count < LEARNED_THRESHOLD), затем уже выученные
+                const learningWords = shuffle(baseWords.filter(w => (wordProgressMap[w.word] || 0) < LEARNED_THRESHOLD));
+                const masteredWords = shuffle(baseWords.filter(w => (wordProgressMap[w.word] || 0) >= LEARNED_THRESHOLD));
+                baseWordsScoped = [...learningWords, ...masteredWords];
+            }
+            baseWords = baseWordsScoped;
+
+            if (baseWords.length === 0) {
+                const scopeLabels = { new: 'новых', in_progress: 'слов "в процессе"', all: 'подходящих' };
+                alert(`В выбранных списках нет ${scopeLabels[scope] || ''} слов для этой сессии. Попробуйте выбрать другую область повторения.`);
+                window.location.href = 'vocabulary.html';
+                return;
+            }
 
             // Ограничиваем количество слов в сессии (если выбрано не "all")
             const wordLimit = sessionSettings.wordLimit;
@@ -467,7 +490,7 @@
             feedback.classList.remove('hidden');
 
             const isCorrect = (userAnswer === correctAnswer);
-            recordWordProgress(currentWordObj.word, isCorrect);
+            recordWordProgress(currentWordObj.word, isCorrect, mode === 'typing' ? 2 : 1);
 
             if (isCorrect) {
                 input.className = `w-full px-4 py-3 bg-green-50 border border-green-300 rounded-xl text-sm font-bold tracking-wide text-green-700 ${mode === 'dictation' ? 'text-center' : ''}`;
@@ -493,7 +516,7 @@
         function nextWord(wasCorrect) {
             const currentWordObj = reviewWords[currentIndex];
             if (currentMode === 'flashcards' && currentWordObj) {
-                recordWordProgress(currentWordObj.word, wasCorrect);
+                recordWordProgress(currentWordObj.word, wasCorrect, 1); // самооценка весит меньше, чем typing (2)
                 if (wasCorrect) correctAnswers++;
             }
             currentIndex++;
