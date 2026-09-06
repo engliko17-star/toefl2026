@@ -242,14 +242,23 @@
                 return;
             }
 
-            const { data: wordsTableData, error: wordsError } = await supabaseClient
-                .from('words')
-                .select('*');
+            // Загружаем только нужные слова (постранично, чтобы не упереться в лимит Supabase на .in())
+            const wordNamesArray = Array.from(uniqueWordNames);
+            let wordsTableData = [];
+            const chunkSize = 200;
+            for (let i = 0; i < wordNamesArray.length; i += chunkSize) {
+                const chunk = wordNamesArray.slice(i, i + chunkSize);
+                const { data, error: wordsError } = await supabaseClient
+                    .from('words')
+                    .select('*')
+                    .in('word', chunk);
 
-            if (wordsError) {
-                console.error("Ошибка таблицы words:", wordsError);
-                alert("Ошибка загрузки данных из основной базы слов.");
-                return;
+                if (wordsError) {
+                    console.error("Ошибка таблицы words:", wordsError);
+                    alert("Ошибка загрузки данных из основной базы слов.");
+                    return;
+                }
+                wordsTableData = wordsTableData.concat(data || []);
             }
 
             // Получаем чистый список уникальных объектов слов для этой сессии
