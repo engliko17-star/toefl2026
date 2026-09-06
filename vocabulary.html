@@ -398,11 +398,43 @@
             document.getElementById('globalListsCount').innerText = Object.keys(studentLists).length;
         }
 
+        // Supabase caps every response at max_rows (1000 by default), so the
+        // whole table has to be pulled page by page. .order('id') is required:
+        // without a stable sort, .range() can repeat or skip rows between calls.
+        let wordsLoaded = false;
+
+        async function loadAllWords() {
+            const PAGE_SIZE = 1000;
+            let from = 0;
+            const all = [];
+
+            while (true) {
+                const { data, error } = await supabaseClient
+                    .from('words')
+                    .select('*')
+                    .order('id', { ascending: true })
+                    .range(from, from + PAGE_SIZE - 1);
+
+                if (error) throw error;
+                if (!data || data.length === 0) break;
+
+                all.push(...data);
+                if (data.length < PAGE_SIZE) break;
+                from += PAGE_SIZE;
+            }
+
+            return all;
+        }
+
         async function applyFilters() {
-            if (allWords.length === 0) {
-                const { data, error } = await supabaseClient.from('words').select('*');
-                if(error) { console.error(error); return; }
-                allWords = data || [];
+            if (!wordsLoaded) {
+                try {
+                    allWords = await loadAllWords();
+                    wordsLoaded = true;
+                } catch (error) {
+                    console.error('Failed to load words:', error);
+                    return;
+                }
             }
 
             let filteredWords = allWords;
@@ -750,4 +782,3 @@
     </script>
 </body>
 </html>
-
