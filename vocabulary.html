@@ -567,7 +567,7 @@
             return (w || '').trim().toLowerCase();
         }
 
-        // Возвращает { matched: [...словари слов], missingCount: N }
+        // Возвращает { matched: [...словари слов], missingCount: N, missingNames: [...исходный текст непойманных слов] }
         // Сопоставление нечувствительно к регистру и лишним пробелам,
         // т.к. слово могло быть переименовано/исправлено в общей базе words
         // после того, как его сохранили в личный список.
@@ -575,8 +575,8 @@
             const normalizedSet = new Set(savedWordNames.map(normalizeWord));
             const matched = allWords.filter(w => normalizedSet.has(normalizeWord(w.word)));
             const matchedNormalized = new Set(matched.map(w => normalizeWord(w.word)));
-            const missingCount = savedWordNames.filter(name => !matchedNormalized.has(normalizeWord(name))).length;
-            return { matched, missingCount };
+            const missingNames = savedWordNames.filter(name => !matchedNormalized.has(normalizeWord(name)));
+            return { matched, missingCount: missingNames.length, missingNames };
         }
 
         function renderCustomLists() {
@@ -607,10 +607,24 @@
             });
             lucide.createIcons();
 
+            const missingBox = document.getElementById('missingWordsBox');
+            if (missingBox) missingBox.remove();
+
             if (selectedCustomList) {
                 const savedWordNames = studentLists[selectedCustomList] || [];
-                const { matched } = resolveListWords(savedWordNames);
+                const { matched, missingNames } = resolveListWords(savedWordNames);
                 renderWordsTable(matched);
+
+                if (missingNames.length > 0) {
+                    const box = document.createElement('div');
+                    box.id = 'missingWordsBox';
+                    box.className = 'bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800 mt-4';
+                    box.innerHTML = `
+                        <p class="font-bold mb-2">Эти слова сохранены в списке «${selectedCustomList}», но не найдены в общей базе Vocabulary (${missingNames.length}):</p>
+                        <p class="font-mono leading-relaxed">${missingNames.map(n => `"${n}"`).join(', ')}</p>
+                    `;
+                    document.getElementById('listsSection').appendChild(box);
+                }
             } else {
                 renderWordsTable([]);
             }
