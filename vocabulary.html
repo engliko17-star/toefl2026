@@ -205,6 +205,7 @@
                             <th class="p-4 w-48">Word</th>
                             <th class="p-4">Definition</th>
                             <th class="p-4 w-24">Part</th>
+                            <th class="p-4 w-32">Progress</th>
                         </tr>
                     </thead>
                     <tbody id="wordsTableBody" class="divide-y divide-gray-50">
@@ -222,6 +223,15 @@
                 <button onclick="speakWord()" class="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-xl text-indigo-600"><i data-lucide="volume-2" class="w-4 h-4"></i></button>
             </div>
             <p id="modalPart" class="text-xs font-bold text-gray-400 uppercase tracking-wider mt-[-8px]"></p>
+            <div id="modalProgress" class="hidden">
+                <div class="flex items-center justify-between mb-1">
+                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Progress</span>
+                    <span id="modalProgressLabel" class="text-[10px] font-bold text-gray-500"></span>
+                </div>
+                <div class="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div id="modalProgressBar" class="h-full bg-indigo-500 rounded-full transition-all"></div>
+                </div>
+            </div>
             <p id="modalDefinition" class="text-sm text-slate-700 leading-relaxed font-medium"></p>
             <div class="space-y-1.5">
                 <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Synonyms</span>
@@ -395,7 +405,9 @@
         let allWords = [];
         let wordsLoaded = false;
         let currentUser = null;
-        let studentLists = { "Избранное ❤️": [] }; 
+        let studentLists = { "Избранное ❤️": [] };
+        let wordProgressMap = {}; // { normalizedWord: correct_count }
+        const LEARNED_THRESHOLD = 10;
 
         const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co'; 
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ'; 
@@ -408,12 +420,28 @@
                 currentUser = session.user;
                 console.log("Ученик авторизован:", currentUser.email);
                 await loadUserListsFromSupabase();
+                await loadWordProgress();
             } else {
                 console.log("Пользователь не авторизован. Списки работают в демо-режиме.");
             }
             
             await applyFilters();
             updateGlobalListsCount();
+        }
+
+        async function loadWordProgress() {
+            if (!currentUser) return;
+            const { data, error } = await supabaseClient
+                .from('user_word_progress')
+                .select('word, correct_count')
+                .eq('user_id', currentUser.id);
+
+            if (error) {
+                console.error("Ошибка загрузки прогресса слов:", error);
+                return;
+            }
+            wordProgressMap = {};
+            (data || []).forEach(row => { wordProgressMap[normalizeWord(row.word)] = row.correct_count; });
         }
 
         async function loadUserListsFromSupabase() {
@@ -555,7 +583,7 @@
             tableBody.innerHTML = '';
 
             if(!words || words.length === 0) {
-                tableBody.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-gray-400">Слова для этого фильтра пока не добавлены.</td></tr>`;
+                tableBody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-gray-400">Слова для этого фильтра пока не добавлены.</td></tr>`;
                 return;
             }
 
@@ -566,6 +594,8 @@
                 const row = document.createElement('tr');
                 row.className = "hover:bg-slate-50/80 cursor-pointer transition";
                 row.onclick = () => openModal(w.word, w.part, w.definition, w.synonyms, w.antonyms, w.example, w.mnemonic);
+
+                const progressCell = currentUser ? renderProgressCell(w.word) : `<span class="text-gray-300 text-[10px]">—</span>`;
                 
                 row.innerHTML = `
                     <td class="p-4 text-center" onclick="event.stopPropagation();">
@@ -576,10 +606,26 @@
                     <td class="p-4 font-bold text-slate-900 text-sm">${w.word}</td>
                     <td class="p-4 text-gray-500 italic text-sm">${w.definition}</td>
                     <td class="p-4 text-gray-400 text-sm">${w.part}</td>
+                    <td class="p-4">${progressCell}</td>
                 `;
                 tableBody.appendChild(row);
             });
             lucide.createIcons();
+        }
+
+        function renderProgressCell(word) {
+            const count = wordProgressMap[normalizeWord(word)] || 0;
+            const percent = Math.min(100, Math.round((count / LEARNED_THRESHOLD) * 100));
+            const isMastered = count >= LEARNED_THRESHOLD;
+            const barColor = isMastered ? 'bg-emerald-500' : 'bg-indigo-500';
+            return `
+                <div class="flex items-center gap-2">
+                    <div class="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden min-w-12">
+                        <div class="h-full ${barColor} rounded-full transition-all" style="width: ${percent}%"></div>
+                    </div>
+                    <span class="text-[10px] font-bold ${isMastered ? 'text-emerald-600' : 'text-gray-400'} w-8 text-right">${percent}%</span>
+                </div>
+            `;
         }
 
         function normalizeWord(w) {
@@ -789,6 +835,19 @@
             document.getElementById('modalDefinition').innerText = def || '';
             document.getElementById('modalExample').innerText = example || '';
             document.getElementById('modalMnemonic').innerText = mnemonic || '';
+
+            const progressBlock = document.getElementById('modalProgress');
+            if (currentUser) {
+                const count = wordProgressMap[normalizeWord(word)] || 0;
+                const percent = Math.min(100, Math.round((count / LEARNED_THRESHOLD) * 100));
+                const isMastered = count >= LEARNED_THRESHOLD;
+                document.getElementById('modalProgressBar').style.width = percent + '%';
+                document.getElementById('modalProgressBar').className = `h-full rounded-full transition-all ${isMastered ? 'bg-emerald-500' : 'bg-indigo-500'}`;
+                document.getElementById('modalProgressLabel').innerText = isMastered ? 'Learned ✓' : `${percent}%`;
+                progressBlock.classList.remove('hidden');
+            } else {
+                progressBlock.classList.add('hidden');
+            }
 
             const synContainer = document.getElementById('modalSynonyms');
             synContainer.innerHTML = '';
