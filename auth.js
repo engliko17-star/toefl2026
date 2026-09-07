@@ -24,6 +24,23 @@ async function requireAuth() {
         .maybeSingle();
 
     const isTeacher = profile && profile.role === 'teacher';
+    const isGuest = profile && profile.role === 'guest';
+
+    // 0. Гость: пропускаем проверку is_approved (она для этого и не задумана —
+    // гость подтверждается сразу при регистрации на guest.html) и разрешаем
+    // ему только tests.html — с любой другой страницы сразу уводим обратно.
+    if (isGuest) {
+        const currentPath = window.location.pathname;
+        if (!currentPath.includes('tests.html')) {
+            window.location.href = 'tests.html';
+            return null;
+        }
+        return {
+            ...session.user,
+            role: 'guest',
+            profile: profile
+        };
+    }
 
     // 1. Проверка подтверждения аккаунта (ТОЛЬКО ДЛЯ УЧЕНИКОВ)
     if (!isTeacher && (!profile || !profile.is_approved)) {
