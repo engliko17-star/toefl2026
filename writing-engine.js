@@ -787,7 +787,9 @@ async function loadWritingReviewMode(attemptId, testId, testTitle) {
         userWritingResponses = savedAnswers.map(a => ({
             task_id: a.task_id,
             task_type: a.task_type,
-            response_content: a.essay_text || a.answer_text || ''
+            response_content: a.essay_text || a.answer_text || '',
+            score: a.score !== undefined ? a.score : null,
+            feedback: a.feedback || ''
         }));
 
         renderWritingReviewUI(attemptRow);
@@ -817,6 +819,7 @@ function renderWritingReviewUI(attemptRow) {
         const r = userWritingResponses.find(x => x.task_id === taskId);
         return r ? r.response_content : '';
     };
+    const findFullResponse = (taskId) => userWritingResponses.find(x => x.task_id === taskId) || null;
 
     let sentencesHtml = sentencesData.map((q, i) => {
         const userSentence = findResponse(q.id) || 'No response submitted.';
@@ -846,18 +849,31 @@ function renderWritingReviewUI(attemptRow) {
     const renderEssayCard = (taskLabel, taskData, colorClass) => {
         if (!taskData) return '';
         const text = findResponse(taskData.id) || 'No response submitted.';
+        const full = findFullResponse(taskData.id);
         const words = countWords(text);
+        const hasScore = full && full.score !== null && full.score !== undefined;
         return `
             <div class="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm mb-8">
                 <div class="flex items-center justify-between mb-4 pb-4 border-b border-gray-100">
                     <span class="text-xs font-bold uppercase tracking-wider ${colorClass} px-3 py-1 rounded-lg">${taskLabel}</span>
-                    <span class="text-xs font-extrabold text-slate-500">Words written: ${words}</span>
+                    <div class="flex items-center gap-3">
+                        <span class="text-xs font-extrabold text-slate-500">Words written: ${words}</span>
+                        ${hasScore
+                            ? `<span class="text-xs font-black text-emerald-600 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-lg">Score: ${Number(full.score).toFixed(1)} / 6.0</span>`
+                            : `<span class="text-[10px] font-bold text-amber-600 uppercase bg-amber-50 border border-amber-100 px-2.5 py-1 rounded-lg">Pending Review</span>`}
+                    </div>
                 </div>
                 <h3 class="text-lg font-bold text-slate-900 mb-3">${taskData.title || taskLabel}</h3>
                 <div class="mt-4">
                     <h4 class="text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-2">Submitted Response</h4>
                     <div class="p-6 bg-white border border-slate-200 rounded-2xl text-slate-800 leading-relaxed font-normal whitespace-pre-wrap text-sm">${text}</div>
                 </div>
+                ${full && full.feedback ? `
+                    <div class="mt-4">
+                        <h4 class="text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-2">Teacher's Feedback</h4>
+                        <div class="p-6 bg-indigo-50/50 border border-indigo-100 rounded-2xl text-slate-800 leading-relaxed font-normal whitespace-pre-wrap text-sm">${full.feedback}</div>
+                    </div>
+                ` : ''}
             </div>
         `;
     };
