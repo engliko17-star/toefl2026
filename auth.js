@@ -27,14 +27,13 @@ async function requireAuth() {
     const isGuest = profile && profile.role === 'guest';
 
     // 0. Гость: пропускаем проверку is_approved (гость подтверждается сразу
-    // при регистрации на guest.html) и пускаем его гулять по демо-режиму —
-    // на все страницы практики, но не на учительские инструменты. Сами
-    // ограничения "сколько заданий видно" применяются на каждой странице
-    // отдельно через applyGuestDemoLimit()/renderGuestLockedCard().
+    // при регистрации на guest.html) и разрешаем ему только tests.html —
+    // с любой другой страницы сразу уводим обратно. (Демо-режим "гулять по
+    // всем разделам" пока отложен — когда будем его доделывать, здесь нужно
+    // будет заменить на блок-лист вместо allow-листа из одной страницы.)
     if (isGuest) {
         const currentPath = window.location.pathname;
-        const blockedForGuest = ['teacher-board.html', 'student-profile.html'];
-        if (blockedForGuest.some(p => currentPath.includes(p))) {
+        if (!currentPath.includes('tests.html')) {
             window.location.href = 'tests.html';
             return null;
         }
