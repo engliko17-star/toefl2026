@@ -149,6 +149,7 @@
         let currentMode = ''; 
         let currentUser = null;
         let wordProgressMap = {}; // { word: correct_count }
+        let sessionStartProgressMap = {}; // снимок прогресса на момент начала сессии (для правила "первый раз не считается")
         const LEARNED_THRESHOLD = 10;
 
         function applyDyslexiaMode() {
@@ -203,10 +204,31 @@
             }
             wordProgressMap = {};
             (data || []).forEach(row => { wordProgressMap[row.word] = row.correct_count; });
+            // Снимок состояния ДО начала этой сессии — по нему определяем,
+            // встречает ли ученик слово впервые (тогда сессия не даёт прогресса,
+            // а только "регистрирует" слово — реальный счёт пойдёт со следующего раза)
+            sessionStartProgressMap = { ...wordProgressMap };
         }
 
         function recordWordProgress(word, wasCorrect, increment) {
             if (!wasCorrect) return; // ошибки не увеличивают и не обнуляют счётчик
+
+            const isFirstEverEncounter = !(word in sessionStartProgressMap);
+
+            if (isFirstEverEncounter) {
+                // Первое знакомство со словом в принципе (до этой сессии прогресса не было).
+                // Не начисляем очки за сам факт первого прохода — только "регистрируем" слово,
+                // чтобы со следующей review-сессии по нему уже считался реальный прогресс.
+                if (wordProgressMap[word] === undefined) {
+                    wordProgressMap[word] = 0;
+                    supabaseClient
+                        .from('user_word_progress')
+                        .upsert({ user_id: currentUser.id, word: word, correct_count: 0, last_reviewed_at: new Date().toISOString() }, { onConflict: 'user_id,word' })
+                        .then(({ error }) => { if (error) console.error("Ошибка регистрации слова:", error); });
+                }
+                return;
+            }
+
             const inc = increment || 1;
             const newCount = Math.round(((wordProgressMap[word] || 0) + inc) * 10) / 10; // округляем до 1 знака, избегаем 0.1+0.2 проблем float
             wordProgressMap[word] = newCount;
