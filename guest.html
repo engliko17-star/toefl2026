@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Free TOEFL Mock Test — Try It Now</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="auth.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8f9fa; }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-6">
+
+    <div class="w-full max-w-md">
+        <div class="text-center mb-8">
+            <div class="font-bold text-3xl tracking-tighter mb-2 flex items-center justify-center space-x-2">
+                <span>TOEFL</span><span class="w-2 h-2 bg-indigo-600 rounded-full mt-2.5"></span>
+            </div>
+            <p class="text-sm text-gray-500">Пройдите один бесплатный полный мок-тест — Reading, Listening, Writing и Speaking — и получите результат сразу после завершения.</p>
+        </div>
+
+        <!-- Форма -->
+        <div id="formCard" class="bg-white rounded-3xl border border-gray-100 shadow-sm p-8">
+            <h1 class="text-lg font-bold text-slate-900 mb-1">Начать бесплатный тест</h1>
+            <p class="text-xs text-gray-400 mb-6">Займёт около 1 часа 20 минут — можно проходить по частям.</p>
+
+            <div class="space-y-4 mb-6">
+                <div>
+                    <label class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Имя</label>
+                    <input type="text" id="guestName" class="w-full border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-200 outline-none" placeholder="Как к вам обращаться">
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Email</label>
+                    <input type="email" id="guestEmail" class="w-full border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-200 outline-none" placeholder="your@email.com">
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Telegram <span class="text-gray-300 normal-case font-medium">(необязательно)</span></label>
+                    <input type="text" id="guestTelegram" class="w-full border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-200 outline-none" placeholder="@username">
+                </div>
+            </div>
+
+            <p id="formError" class="hidden text-xs text-rose-500 font-medium mb-4"></p>
+
+            <button id="startBtn" class="w-full bg-slate-900 hover:bg-indigo-600 transition text-white py-3.5 rounded-xl font-bold flex items-center justify-center shadow-md cursor-pointer">
+                Начать бесплатный тест <i data-lucide="arrow-right" class="w-4 h-4 ml-2"></i>
+            </button>
+            <p class="text-[11px] text-gray-400 text-center mt-4">Доступна только 1 бесплатная попытка на этом устройстве.</p>
+        </div>
+
+        <!-- Экран "уже использовал попытку" -->
+        <div id="usedCard" class="hidden bg-white rounded-3xl border border-gray-100 shadow-sm p-8 text-center">
+            <div class="w-14 h-14 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i data-lucide="clock" class="w-7 h-7"></i>
+            </div>
+            <h2 class="text-lg font-bold text-slate-900 mb-2">Бесплатная попытка уже использована</h2>
+            <p class="text-sm text-gray-500 mb-6">На этом устройстве уже пройден один бесплатный мок-тест. Чтобы получить полный доступ к платформе, свяжитесь с преподавателем.</p>
+            <a href="https://t.me/" target="_blank" class="inline-flex items-center justify-center w-full bg-slate-900 hover:bg-indigo-600 transition text-white py-3 rounded-xl font-bold shadow-md">
+                Написать в Telegram
+            </a>
+        </div>
+
+        <!-- Загрузка -->
+        <div id="loadingCard" class="hidden bg-white rounded-3xl border border-gray-100 shadow-sm p-8 text-center">
+            <i data-lucide="loader-2" class="w-8 h-8 animate-spin text-indigo-600 mx-auto mb-3"></i>
+            <p class="text-sm text-gray-500">Проверяем...</p>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        function showCard(id) {
+            ['formCard', 'usedCard', 'loadingCard'].forEach(cardId => {
+                document.getElementById(cardId).classList.toggle('hidden', cardId !== id);
+            });
+        }
+
+        function showError(msg) {
+            const el = document.getElementById('formError');
+            el.textContent = msg;
+            el.classList.remove('hidden');
+        }
+
+        // При заходе проверяем, нет ли уже активной гостевой сессии, которая
+        // уже использовала свою бесплатную попытку — тогда сразу показываем
+        // "попытка использована" вместо формы.
+        async function checkExistingGuestSession() {
+            showCard('loadingCard');
+            try {
+                const { data: { session } } = await _supabase.auth.getSession();
+                if (session && session.user) {
+                    const { data: profile } = await _supabase
+                        .from('profiles')
+                        .select('role, guest_completed_demo')
+                        .eq('id', session.user.id)
+                        .maybeSingle();
+
+                    if (profile && profile.role === 'guest' && profile.guest_completed_demo) {
+                        showCard('usedCard');
+                        return;
+                    }
+                    if (profile && profile.role === 'guest' && !profile.guest_completed_demo) {
+                        // Гость уже начинал, но не завершил — пускаем сразу в тест
+                        window.location.href = 'tests.html';
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.error('Guest session check error:', e);
+            }
+            showCard('formCard');
+        }
+
+        document.getElementById('startBtn').onclick = async () => {
+            const name = document.getElementById('guestName').value.trim();
+            const email = document.getElementById('guestEmail').value.trim();
+            const telegram = document.getElementById('guestTelegram').value.trim();
+
+            document.getElementById('formError').classList.add('hidden');
+
+            if (!name) { showError('Пожалуйста, укажите имя.'); return; }
+            if (!email || !email.includes('@')) { showError('Пожалуйста, укажите корректный email.'); return; }
+
+            const btn = document.getElementById('startBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>';
+            lucide.createIcons();
+
+            try {
+                // Анонимный вход — создаёт настоящую (лёгкую) сессию Supabase Auth
+                const { data: authData, error: authError } = await _supabase.auth.signInAnonymously();
+                if (authError) throw authError;
+
+                const userId = authData.user.id;
+
+                const { error: profileError } = await _supabase
+                    .from('profiles')
+                    .upsert({
+                        id: userId,
+                        email: email,
+                        role: 'guest',
+                        is_approved: true,
+                        guest_name: name,
+                        guest_email: email,
+                        guest_telegram: telegram || null,
+                        guest_completed_demo: false
+                    });
+                if (profileError) throw profileError;
+
+                window.location.href = 'tests.html';
+            } catch (err) {
+                console.error('Guest signup error:', err);
+                showError('Не удалось начать тест: ' + (err.message || err));
+                btn.disabled = false;
+                btn.innerHTML = 'Начать бесплатный тест <i data-lucide="arrow-right" class="w-4 h-4 ml-2"></i>';
+                lucide.createIcons();
+            }
+        };
+
+        document.addEventListener('DOMContentLoaded', checkExistingGuestSession);
+    </script>
+</body>
+</html>
