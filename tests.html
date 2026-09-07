@@ -401,9 +401,20 @@
             `;
             if (typeof lucide !== 'undefined') lucide.createIcons();
 
-            document.getElementById('fullTestContinueBtn').onclick = () => {
+            document.getElementById('fullTestContinueBtn').onclick = async () => {
                 if (isDone) {
                     window.fullTestMode = false;
+                    // Если это был гость — фиксируем, что бесплатная попытка использована
+                    if (window.currentUser && window.currentUser.role === 'guest') {
+                        try {
+                            await supabaseClient.from('profiles')
+                                .update({ guest_completed_demo: true })
+                                .eq('id', window.currentUser.id);
+                            if (window.currentUser.profile) window.currentUser.profile.guest_completed_demo = true;
+                        } catch (e) {
+                            console.error('Не удалось отметить гостевую попытку как завершённую:', e);
+                        }
+                    }
                     exitExamEngine();
                 } else {
                     runNextFullTestSection();
@@ -415,12 +426,35 @@
             const container = document.getElementById('tests-container');
             try {
                 container.innerHTML = `<div class="col-span-full text-slate-400 text-sm flex items-center"><i data-lucide="loader-2" class="w-4 h-4 mr-2 animate-spin"></i> Fetching tests...</div>`;
-                
-                const { data: tests, error: errTests } = await supabaseClient.from('full_tests').select('*').order('created_at', { ascending: false });
+
+                const isGuest = window.currentUser && window.currentUser.role === 'guest';
+
+                // Гостю, который уже использовал бесплатную попытку — показываем
+                // заглушку вместо сетки тестов, дальше идти некуда.
+                if (isGuest && window.currentUser.profile && window.currentUser.profile.guest_completed_demo) {
+                    container.innerHTML = `
+                        <div class="col-span-full bg-white rounded-3xl border border-gray-100 shadow-sm p-10 text-center">
+                            <div class="w-14 h-14 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <i data-lucide="clock" class="w-7 h-7"></i>
+                            </div>
+                            <h3 class="font-bold text-slate-800 text-lg mb-2">Бесплатная попытка уже использована</h3>
+                            <p class="text-sm text-gray-500 mb-6 max-w-sm mx-auto">Чтобы пройти ещё раз или получить доступ ко всей платформе, свяжитесь с преподавателем.</p>
+                            <a href="https://t.me/" target="_blank" class="inline-flex items-center justify-center bg-slate-900 hover:bg-indigo-600 transition text-white px-6 py-3 rounded-xl font-bold shadow-md">Написать в Telegram</a>
+                        </div>
+                    `;
+                    lucide.createIcons();
+                    return;
+                }
+
+                let query = supabaseClient.from('full_tests').select('*').order('created_at', { ascending: false });
+                if (isGuest) query = query.eq('is_free_demo', true); // гостю — только помеченный бесплатный тест
+                const { data: tests, error: errTests } = await query;
                 if (errTests) throw errTests;
 
                 if (!tests || tests.length === 0) {
-                    container.innerHTML = `<div class="col-span-full text-center text-slate-500 py-10">No tests found in 'full_tests' table.</div>`;
+                    container.innerHTML = isGuest
+                        ? `<div class="col-span-full text-center text-slate-500 py-10">Бесплатный тест сейчас недоступен. Загляните позже.</div>`
+                        : `<div class="col-span-full text-center text-slate-500 py-10">No tests found in 'full_tests' table.</div>`;
                     return;
                 }
 
@@ -630,6 +664,16 @@
                 if (typeof requireAuth !== 'function') throw new Error("auth.js is missing.");
                 window.currentUser = await requireAuth();
                 if (!window.currentUser) return; // requireAuth сам перенаправит на логин
+
+                // Гостю прячем ссылки на разделы, которые ему всё равно не откроются
+                if (window.currentUser.role === 'guest') {
+                    document.querySelectorAll('aside nav a').forEach(a => {
+                        if (!a.getAttribute('href') || !a.getAttribute('href').includes('tests.html')) {
+                            a.style.display = 'none';
+                        }
+                    });
+                }
+
                 loadTestsGrid();
             } catch (err) {
                 console.error("Auth error on tests.html:", err);
