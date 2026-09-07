@@ -26,12 +26,15 @@ async function requireAuth() {
     const isTeacher = profile && profile.role === 'teacher';
     const isGuest = profile && profile.role === 'guest';
 
-    // 0. Гость: пропускаем проверку is_approved (она для этого и не задумана —
-    // гость подтверждается сразу при регистрации на guest.html) и разрешаем
-    // ему только tests.html — с любой другой страницы сразу уводим обратно.
+    // 0. Гость: пропускаем проверку is_approved (гость подтверждается сразу
+    // при регистрации на guest.html) и пускаем его гулять по демо-режиму —
+    // на все страницы практики, но не на учительские инструменты. Сами
+    // ограничения "сколько заданий видно" применяются на каждой странице
+    // отдельно через applyGuestDemoLimit()/renderGuestLockedCard().
     if (isGuest) {
         const currentPath = window.location.pathname;
-        if (!currentPath.includes('tests.html')) {
+        const blockedForGuest = ['teacher-board.html', 'student-profile.html'];
+        if (blockedForGuest.some(p => currentPath.includes(p))) {
             window.location.href = 'tests.html';
             return null;
         }
@@ -176,4 +179,48 @@ async function requireAuth() {
 async function logoutUser() {
     await _supabase.auth.signOut();
     window.location.href = 'login.html';
+}
+
+// ==========================================
+// ДЕМО-РЕЖИМ ДЛЯ ГОСТЯ: общий механизм ограничения списков заданий.
+// Используется на страницах со списками (Reading/Listening/Writing/
+// Speaking practice, Vocabulary, Grammar Articles) — вместо того, чтобы
+// на каждой странице заново писать логику "гость видит только N штук",
+// весь список просто прогоняется через applyGuestDemoLimit().
+// ==========================================
+
+function isGuestUser(currentUser) {
+    return !!(currentUser && currentUser.role === 'guest');
+}
+
+// items — обычный массив (задания/темы/слова, что угодно), limit — сколько
+// показать не-гостю ничего не меняет; гостю — обрезает и считает остаток.
+function applyGuestDemoLimit(items, currentUser, limit = 1) {
+    if (!isGuestUser(currentUser)) {
+        return { visible: items, lockedCount: 0, isLimited: false };
+    }
+    return {
+        visible: items.slice(0, limit),
+        lockedCount: Math.max(0, items.length - limit),
+        isLimited: items.length > limit
+    };
+}
+
+// Единая карточка-заглушка "остальное по подписке" — вставляется в конец
+// сетки/списка вместо оставшихся элементов. sectionLabel — во множественном
+// числе, например "задания", "темы", "слова".
+function renderGuestLockedCard(lockedCount, sectionLabel) {
+    if (lockedCount <= 0) return '';
+    return `
+        <div class="col-span-full bg-gradient-to-br from-slate-900 to-indigo-900 text-white rounded-2xl p-8 text-center shadow-lg my-2">
+            <div class="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i data-lucide="lock" class="w-6 h-6"></i>
+            </div>
+            <h3 class="font-bold text-lg mb-2">Ещё ${lockedCount} ${sectionLabel} по подписке</h3>
+            <p class="text-sm text-white/70 mb-6 max-w-sm mx-auto">Вы попробовали демо-версию платформы. Оформите подписку, чтобы открыть весь материал.</p>
+            <a href="https://t.me/" target="_blank" class="inline-flex items-center justify-center bg-white text-slate-900 px-6 py-3 rounded-xl font-bold hover:bg-gray-100 transition">
+                Оформить подписку
+            </a>
+        </div>
+    `;
 }
