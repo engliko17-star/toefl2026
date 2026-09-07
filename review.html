@@ -116,11 +116,11 @@
         <div class="bg-gray-50 rounded-2xl p-4 grid grid-cols-2 gap-4">
             <div>
                 <span class="block text-2xl font-extrabold text-indigo-600" id="resCorrectCount">0</span>
-                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Правильно</span>
+                <span id="resCorrectLabel" class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Правильно</span>
             </div>
             <div class="border-l border-gray-200/60">
                 <span class="block text-2xl font-extrabold text-slate-700" id="resTotalCount">0</span>
-                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Всего ответов</span>
+                <span id="resTotalLabel" class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Всего ответов</span>
             </div>
         </div>
 
@@ -459,6 +459,35 @@
 
                 setupEnterKey('dictationInput', 'dictation');
                 setTimeout(playCurrentWordAudio, 400); 
+
+            // --- ПРОСТО ЛИСТАТЬ (без баллов) ---
+            } else if (currentMode === 'browse') {
+                document.getElementById('sessionModeBadge').innerText = "Browse";
+                bottomHint.innerText = "Кликните на карточку, чтобы перевернуть её — прогресс не считается";
+
+                quizArea.innerHTML = `
+                    <div class="w-full h-64 perspective cursor-pointer" onclick="flipCard()">
+                        <div id="cardInner" class="w-full h-full card-inner relative rounded-2xl border border-gray-100 shadow-xs bg-white">
+                            <div class="card-front absolute inset-0 flex flex-col items-center justify-center p-6 bg-slate-50/50 rounded-2xl">
+                                <span class="text-3xl font-extrabold text-slate-900 tracking-tight">${currentWordObj.word}</span>
+                                <span class="text-xs font-bold text-gray-400 uppercase tracking-wider mt-2 bg-white px-2.5 py-1 rounded-md border border-gray-100">${currentWordObj.part}</span>
+                            </div>
+                            <div class="card-back absolute inset-0 flex flex-col justify-center p-6 bg-slate-700 rounded-2xl text-white text-center space-y-3">
+                                <p class="text-base font-medium leading-relaxed">${currentWordObj.definition}</p>
+                                ${currentWordObj.example ? `<p class="text-xs text-slate-200 italic opacity-90 border-t border-slate-500/40 pt-2 font-light">"${currentWordObj.example}"</p>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                const nextBtnWrap = document.createElement('div');
+                nextBtnWrap.className = "flex justify-center w-full mt-4 animate-fade-in";
+                nextBtnWrap.innerHTML = `
+                    <button onclick="event.stopPropagation(); currentIndex++; showWord();" class="px-6 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition flex items-center space-x-1.5 cursor-pointer">
+                        <span>Next</span> <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                    </button>
+                `;
+                quizArea.appendChild(nextBtnWrap);
             }
 
             lucide.createIcons();
@@ -549,10 +578,19 @@
             window.speechSynthesis.cancel();
             document.getElementById('sessionContainer').classList.add('hidden');
             document.getElementById('bottomHint').classList.add('hidden');
-            
-            document.getElementById('resCorrectCount').innerText = correctAnswers;
-            document.getElementById('resTotalCount').innerText = reviewWords.length;
-            
+
+            if (sessionSettings.mode === 'browse') {
+                document.getElementById('resCorrectCount').innerText = reviewWords.length;
+                document.getElementById('resCorrectLabel').innerText = 'Просмотрено слов';
+                document.getElementById('resTotalCount').innerText = '—';
+                document.getElementById('resTotalLabel').innerText = 'Прогресс не считался';
+            } else {
+                document.getElementById('resCorrectCount').innerText = correctAnswers;
+                document.getElementById('resCorrectLabel').innerText = 'Правильно';
+                document.getElementById('resTotalCount').innerText = reviewWords.length;
+                document.getElementById('resTotalLabel').innerText = 'Всего ответов';
+            }
+
             document.getElementById('resultsContainer').classList.remove('hidden');
             lucide.createIcons();
         }
