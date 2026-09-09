@@ -38,9 +38,11 @@ let timeRemaining = 35 * 60;
 
 // Раздельные таймеры на Module 1 и Module 2 (в минутах) — поменяйте эти два
 // числа под нужные значения, они независимы друг от друга.
-// blueprint: 18–21 мин на роутер (30 айтемов), 9 (lower) / 11 (upper) на Модуль 2
+// Спецификация TOEFL 2026, Reading: роутер 18-21 мин, Модуль 2 = 9 мин
+// (для обеих ветвей). Состав по Technical Manual Table 1:
+// роутер 20 зачётных айтемов, Модуль 2 = 15, итого 35 в любом пути.
 let module1TimeMinutes = 21;
-let module2TimeMinutes = 11;
+let module2TimeMinutes = 9;
 
 // Индекс, с которого начинается Module 2 в currentTasks — нужен для кнопки Review,
 // чтобы не давать перепрыгивать обратно в Module 1 (как и на настоящем TOEFL)
@@ -539,12 +541,18 @@ function scoreCompleteWords(task) {
 }
 
 // Балл зависит от того, в какую ветку ушёл ученик.
-// Lower: 1.0–4.0, Upper: 3.0–6.0. Перекрытие 3.0–4.0 — зона, где обе
-// ветки дают сопоставимую оценку.
+// Обоснование по Technical Manual (Table 9, band -> CEFR):
+//   Lower 1.0-4.5: роутер = B1/B2, лёгкий модуль ниже него, поэтому
+//     максимум продемонстрированного уровня B2, а B2 = 4-4.5.
+//   Upper 3.0-6.0: порог роутера B1/B2 уже пройден (B1 = 3-3.5),
+//     верхний модуль содержит C1/C2-контент, поэтому потолок 6.0 (C2).
+// Перекрытие 3.0-4.5 — зона, где обе ветки дают сопоставимую оценку,
+// что соответствует требованию мануала: один и тот же уровень владения
+// языком даёт один и тот же балл независимо от выданного модуля.
 function calculateTOEFLScore(correct, total, branch) {
     if (total === 0) return "1.0";
     const ratio = correct / total;
-    const [min, max] = (branch === '2_hard') ? [3.0, 6.0] : [1.0, 4.0];
+    const [min, max] = (branch === '2_hard') ? [3.0, 6.0] : [1.0, 4.5];
     const score = min + ratio * (max - min);
     return (Math.round(score * 2) / 2).toFixed(1);
 }
@@ -993,4 +1001,4 @@ function closeResults() {
     document.getElementById('results-view').classList.remove('flex');
     document.getElementById('main-interface').classList.remove('hidden');
     loadTestsGrid(); 
-                    }
+}
