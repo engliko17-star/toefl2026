@@ -595,7 +595,11 @@ async function loadListeningStage2() {
         }
     }
 
-    const threshold = 0.50; 
+    // Порог роутинга. По Technical Manual Table 1 роутер = 20 зачётных
+    // айтемов, поэтому 0.6 = 12/20. Значение выровнено с Reading, чтобы
+    // общий балл (среднее по секциям) не перекашивало из-за разных порогов.
+    // Подстраивать по живым данным так, чтобы ~половина уходила в Upper.
+    const threshold = 0.6; 
     const nextStage = (totalStage1 > 0 && (correctCount / totalStage1 >= threshold)) ? '2_upper' : '2_lower';
     
     try {
@@ -622,51 +626,44 @@ async function saveListeningAttemptAndFinish() {
 
     let totalQuestions = 0;
     let correctAnswers = 0;
-    
-    // Переменные для взвешенного (IRT) подсчета
-    let weightedScoreEarned = 0;
-    let maxPossibleWeightedScore = 0;
-    let isLowerTrack = false;
+    let isUpperTrack = false;
 
     listQueue.forEach(block => {
-        const isUpper = block.stage.includes('2_upper');
-        const isLower = block.stage.includes('2_lower');
-        
-        if (isLower) isLowerTrack = true;
+        if (block.stage.includes('2_upper')) isUpperTrack = true;
 
         block.questions.forEach(q => {
             totalQuestions++;
-            
-            // Назначаем веса вопросам
-            let weight = 1.0; // По умолчанию для Stage 1
-            if (isUpper) weight = 1.25; // Сложный модуль ценится выше
-            if (isLower) weight = 0.75; // Легкий модуль ценится ниже
-            
-            maxPossibleWeightedScore += weight;
 
             const correctObj = typeof q.correct_answer === 'string' ? JSON.parse(q.correct_answer) : q.correct_answer;
             const correctIdx = correctObj?.index !== undefined ? correctObj.index : correctObj;
-            
+
             if (listUserAnswers[q.uniqueId] === correctIdx) {
                 correctAnswers++;
-                weightedScoreEarned += weight;
             }
         });
     });
 
-    // Высчитываем пропорцию на основе весов
-    let scoreRatio = maxPossibleWeightedScore > 0 ? (weightedScoreEarned / maxPossibleWeightedScore) : 0;
-    let proportionalScore = 1.0 + (scoreRatio * 5.0);
-
-    // Ограничение балла (Ceiling): 
-    // Если студент попал в легкий модуль (Lower), он физически не может получить высший балл.
-    // Максимум для Lower модуля ограничивается уровнем B2 (4.5 балла).
-    if (isLowerTrack) {
-        proportionalScore = Math.min(proportionalScore, 4.5);
+    // Шкала по ветке — та же механика и те же числа, что в Reading,
+    // иначе общий балл (среднее по секциям) перекашивает: одинаково
+    // сильный ученик получал бы за Reading и Listening разные баллы.
+    //
+    // Обоснование по Technical Manual (Table 9, band -> CEFR):
+    //   Lower 1.0-4.5: роутер = B1/B2, лёгкий модуль ниже него, значит
+    //     максимум продемонстрированного уровня B2, а B2 = 4-4.5.
+    //   Upper 3.0-6.0: порог роутера B1/B2 уже пройден (B1 = 3-3.5),
+    //     верхний модуль содержит C1/C2-контент, отсюда потолок 6.0 (C2).
+    // Перекрытие 3.0-4.5 отвечает требованию мануала: один и тот же
+    // уровень владения языком даёт один и тот же балл независимо от
+    // того, какой второй модуль был выдан.
+    let finalCalculatedScore;
+    if (totalQuestions === 0) {
+        finalCalculatedScore = 1.0;
+    } else {
+        const ratio = correctAnswers / totalQuestions;
+        const [minBand, maxBand] = isUpperTrack ? [3.0, 6.0] : [1.0, 4.5];
+        const proportionalScore = minBand + ratio * (maxBand - minBand);
+        finalCalculatedScore = Math.min(Math.round(proportionalScore * 2) / 2, 6.0);
     }
-
-    // Округляем до ближайшей половинки (1.0, 1.5, 2.0 ... 6.0)
-    let finalCalculatedScore = Math.min(Math.round(proportionalScore * 2) / 2, 6.0);
 
     try {
         const client = supabaseClient;
