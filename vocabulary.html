@@ -187,24 +187,15 @@
         <div id="listsSection" class="hidden space-y-4">
             <div class="flex items-center justify-between">
                 <h2 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Ваши персональные списки</h2>
-                <div class="relative flex items-stretch">
-                    <button onclick="openReviewSetup()" class="bg-indigo-600 hover:bg-indigo-700 text-white pl-4 pr-3 py-2 rounded-l-xl text-xs font-bold transition shadow-xs flex items-center space-x-2 cursor-pointer">
-                        <i data-lucide="brain-circuit" class="w-4 h-4"></i>
-                        <span>Review Words</span>
+                <div class="flex items-center gap-2">
+                    <button onclick="openReviewSetup('learn')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition shadow-xs flex items-center space-x-2 cursor-pointer">
+                        <i data-lucide="graduation-cap" class="w-4 h-4"></i>
+                        <span>Учить</span>
                     </button>
-                    <button id="reviewQuickMenuToggle" onclick="event.stopPropagation(); toggleReviewQuickMenu()" title="Быстрый старт" class="bg-indigo-600 hover:bg-indigo-700 text-white px-2 py-2 rounded-r-xl border-l border-indigo-500/60 transition cursor-pointer">
-                        <i data-lucide="chevron-down" class="w-4 h-4"></i>
+                    <button onclick="openReviewSetup('repeat')" class="bg-white border border-gray-200 hover:bg-gray-50 text-slate-700 px-4 py-2 rounded-xl text-xs font-bold transition shadow-xs flex items-center space-x-2 cursor-pointer">
+                        <i data-lucide="rotate-cw" class="w-4 h-4 text-gray-400"></i>
+                        <span>Повторить</span>
                     </button>
-                    <div id="reviewQuickMenu" class="hidden absolute right-0 top-full mt-1.5 w-60 bg-white border border-gray-100 rounded-xl shadow-lg z-30 overflow-hidden">
-                        <button onclick="quickStartReview('new')" class="w-full text-left px-4 py-3 text-xs font-semibold text-slate-700 hover:bg-gray-50 transition cursor-pointer flex items-center gap-2.5">
-                            <i data-lucide="sparkles" class="w-3.5 h-3.5 text-indigo-500 shrink-0"></i>
-                            <span>Быстро: учить новые слова</span>
-                        </button>
-                        <button onclick="quickStartReview('repeat')" class="w-full text-left px-4 py-3 text-xs font-semibold text-slate-700 hover:bg-gray-50 transition cursor-pointer flex items-center gap-2.5 border-t border-gray-50">
-                            <i data-lucide="rotate-cw" class="w-3.5 h-3.5 text-gray-400 shrink-0"></i>
-                            <span>Быстро: повторить (без баллов)</span>
-                        </button>
-                    </div>
                 </div>
             </div>
             <div id="customListsGrid" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -286,8 +277,8 @@
             <div class="flex items-center space-x-3 border-b border-gray-100 pb-4">
                 <div class="p-2 bg-indigo-50 rounded-xl"><i data-lucide="brain-circuit" class="w-5 h-5 text-indigo-600"></i></div>
                 <div>
-                    <h2 class="text-lg font-bold text-slate-900">Setup Review</h2>
-                    <p class="text-xs text-gray-500">Configure your practice session</p>
+                    <h2 id="reviewSetupTitle" class="text-lg font-bold text-slate-900">Setup Review</h2>
+                    <p id="reviewSetupSubtitle" class="text-xs text-gray-500">Configure your practice session</p>
                 </div>
             </div>
 
@@ -321,7 +312,7 @@
                     </select>
                 </div>
 
-                <div class="space-y-2">
+                <div id="reviewModeStep" class="space-y-2">
                     <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">4. Choose mode</span>
                     <select id="reviewModeSelect" class="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-100 cursor-pointer">
                         <option value="flashcards" selected>Flashcards</option>
@@ -968,7 +959,11 @@
             if (select) select.value = scope;
         }
 
-        function openReviewSetup() {
+        let reviewContext = 'learn';
+
+        function openReviewSetup(context) {
+            reviewContext = context || 'learn';
+
             const container = document.getElementById('reviewListCheckboxes');
             container.innerHTML = '';
             let hasWords = false;
@@ -990,10 +985,41 @@
                 container.innerHTML = '<p class="text-xs text-gray-400 italic py-2">Ваши списки пока пусты. Добавьте слова, чтобы начать тренировку!</p>';
             }
 
-            // Сбрасываем настройки количества слов, области и режима повторения к дефолту при каждом открытии
+            const scopeSelect = document.getElementById('practiceScopeSelect');
+            const modeSelect = document.getElementById('reviewModeSelect');
+            const modeStep = document.getElementById('reviewModeStep');
+
             selectWordLimit(10);
-            selectPracticeScope('all');
-            document.getElementById('reviewModeSelect').value = 'flashcards';
+
+            if (reviewContext === 'repeat') {
+                // Повторить: без баллов, только то, что уже видели — новые слова сюда не тянем
+                document.getElementById('reviewSetupTitle').innerText = 'Setup Repeat';
+                document.getElementById('reviewSetupSubtitle').innerText = 'Повторение не влияет на прогресс — только выбор, что смотреть';
+                scopeSelect.innerHTML = `
+                    <option value="all" selected>All — всё, что уже видели</option>
+                    <option value="in_progress">In progress — только незаконченные</option>
+                `;
+                selectPracticeScope('all');
+                modeSelect.innerHTML = `<option value="browse" selected>Browse (без баллов)</option>`;
+                modeStep.classList.add('opacity-50', 'pointer-events-none');
+            } else {
+                // Учить: с баллами, по умолчанию новые слова
+                document.getElementById('reviewSetupTitle').innerText = 'Setup Learning Session';
+                document.getElementById('reviewSetupSubtitle').innerText = 'Configure your practice session';
+                scopeSelect.innerHTML = `
+                    <option value="new" selected>New — ещё не начинал</option>
+                    <option value="in_progress">In progress — уже начал учить</option>
+                    <option value="all">All — новые в приоритете</option>
+                `;
+                selectPracticeScope('new');
+                modeSelect.innerHTML = `
+                    <option value="flashcards" selected>Flashcards</option>
+                    <option value="typing">Type the Word</option>
+                    <option value="dictation">Listen &amp; Type</option>
+                    <option value="mixed">Mixed Mode</option>
+                `;
+                modeStep.classList.remove('opacity-50', 'pointer-events-none');
+            }
 
             document.getElementById('reviewSetupModal').classList.remove('hidden');
         }
@@ -1028,37 +1054,10 @@
             window.location.href = 'review.html';
         }
 
-        function toggleReviewQuickMenu() {
-            document.getElementById('reviewQuickMenu').classList.toggle('hidden');
-        }
-
-        function quickStartReview(kind) {
-            const lists = Object.keys(studentLists).filter(name => (studentLists[name] || []).length > 0);
-            if (lists.length === 0) {
-                alert("Сначала добавьте слова хотя бы в один личный список.");
-                return;
-            }
-
-            let settings;
-            if (kind === 'new') {
-                settings = { lists, mode: 'flashcards', wordLimit: 10, practiceScope: 'new' };
-            } else {
-                settings = { lists, mode: 'browse', wordLimit: 10, practiceScope: 'all' };
-            }
-
-            localStorage.setItem('reviewSettings', JSON.stringify(settings));
-            window.location.href = 'review.html';
-        }
-
         window.onclick = function(e) { 
             if (e.target == document.getElementById('wordModal')) closeModal(); 
             if (e.target == document.getElementById('saveModal')) closeSaveModal(); 
             if (e.target == document.getElementById('reviewSetupModal')) closeReviewSetup(); 
-
-            const quickMenu = document.getElementById('reviewQuickMenu');
-            if (quickMenu && !quickMenu.classList.contains('hidden') && !quickMenu.contains(e.target) && e.target.closest('#reviewQuickMenuToggle') === null) {
-                quickMenu.classList.add('hidden');
-            }
         }
 
         lucide.createIcons();
