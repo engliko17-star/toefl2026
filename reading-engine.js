@@ -121,7 +121,7 @@ let module2StartIndex = null;
 // поэтому счётчик и Review считают айтемы, а не элементы массива.
 // continuousModuleNumbering = true  -> Модуль 2 продолжает нумерацию Модуля 1
 //                           = false -> Модуль 2 начинает счёт заново с 1
-let continuousModuleNumbering = true;
+let continuousModuleNumbering = false;
 
 function taskItemCount(t) {
     if (!t) return 0;
@@ -394,6 +394,7 @@ async function startExamEngine(testId, testTitle) {
 
         currentIndex = 0;
         module2StartIndex = null;
+        module2LoadPromise = null;
         document.getElementById('engine-title').innerText = testTitle;
         
         timeRemaining = moduleMinutes('1') * 60;
@@ -538,10 +539,22 @@ function renderEngine() {
                 rightPanelContent = `<h3 class="font-bold text-slate-900 mb-6">${task.question}</h3><div class="space-y-3">${(task.options || []).map((opt) => `<label class="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer hover:bg-slate-50 transition"><input type="radio" name="q" value="${opt}" ${task.userAnswer === opt ? 'checked' : ''} onchange="currentTasks[${currentIndex}].userAnswer = this.value" class="w-4 h-4 text-indigo-600 mr-3"><span class="text-sm text-slate-700">${opt}</span></label>`).join('')}</div>`;
             }
 
+            // Абзацы собираются в <p>, а не выводятся через whitespace-pre-wrap:
+            // pre-wrap показывает любые случайные пробелы/отступы из базы буквально,
+            // из-за чего абзац уезжает вправо. Здесь лишние пробелы схлопываются,
+            // а разметка Select a Sentence / Insert Text (span'ы) не трогается.
+            const passageHtml = String(task.passage || '')
+                .replace(/\r\n/g, '\n')
+                .split(/\n\s*\n/)
+                .map(p => p.replace(/[ \t]+/g, ' ').replace(/\n/g, '<br>').trim())
+                .filter(Boolean)
+                .map(p => `<p>${p}</p>`)
+                .join('');
+
             contentDiv.innerHTML = `
                 <section class="w-1/2 bg-white p-10 overflow-y-auto custom-scrollbar border-r border-slate-200">
                     <h2 class="text-xl font-bold text-slate-900 mb-6">${task.title}</h2>
-                    <div id="academicPassageContainer" class="text-sm text-slate-700 leading-relaxed space-y-4 whitespace-pre-wrap">${task.passage}</div>
+                    <div id="academicPassageContainer" class="text-sm text-slate-700 leading-relaxed space-y-4">${passageHtml}</div>
                 </section>
                 <section class="w-1/2 bg-slate-50 p-10 overflow-y-auto custom-scrollbar">
                      <div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-xs max-w-xl mx-auto">${rightPanelContent}</div>
@@ -632,7 +645,24 @@ function highlightVocabWord(task, container) {
     }
 }
 
+// Модуль 2 могут запросить ДВА пути одновременно: клик по Next (nextTask) и
+// истечение таймера (handleReadingTimeUp). Оба проверяют "модуль 1 закончен?"
+// ДО await, поэтому при совпадении по времени оба видели true и склеивали
+// Модуль 2 дважды (27 + 15 + 15 = 57 айтемов вместо 42).
+// Держим один общий промис: второй вызов дожидается первого, а не грузит заново.
+let module2LoadPromise = null;
+
 async function loadModule2Tasks() {
+    if (module2LoadPromise) return module2LoadPromise;
+
+    module2LoadPromise = doLoadModule2Tasks();
+    const ok = await module2LoadPromise;
+    // Повтор разрешаем только если подгрузить не удалось
+    if (!ok) module2LoadPromise = null;
+    return ok;
+}
+
+async function doLoadModule2Tasks() {
     document.getElementById('engine-next').innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin mr-1"></i> Loading Module 2...';
     
     let correctCount = 0;
@@ -653,9 +683,9 @@ async function loadModule2Tasks() {
         }
     }
 
-    // Порог роутинга. Знаменатель теперь ~30 айтемов (после починки
-    // подсчёта Complete the Words), стартовое значение по спеке 18/30 = 0.6.
-    // Дальше подстраивать так, чтобы примерно половина учеников уходила в Upper.
+    // Порог роутинга в долях, поэтому не зависит от длины Модуля 1:
+    // 0.6 это 12 из 20 по спеке и 17 из 27 в текущем составе URANUS.
+    // Крутить так, чтобы примерно половина учеников уходила в Upper.
     const thresholdPercentage = 0.6; 
     const isHardModule = (module1Total > 0) && (correctCount / module1Total >= thresholdPercentage);
     const nextStage = isHardModule ? '2_hard' : '2_easy';
@@ -752,6 +782,10 @@ function renderModuleTransition() {
 }
 
 function startReadingModuleTwo() {
+    // Заставку между модулями может отрисовать и клик, и таймер — второй вызов
+    // сдвинул бы currentIndex ещё раз и перескочил первый айтем Модуля 2.
+    if (module2StartIndex !== null) return;
+
     const nextBtn = document.getElementById('engine-next');
     const prevBtn = document.getElementById('engine-prev');
     const reviewBtn = document.getElementById('engine-review');
