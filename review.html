@@ -149,6 +149,7 @@
         let currentMode = ''; 
         let currentUser = null;
         let wordProgressMap = {}; // { word: correct_count }
+        let wordManualMap = {}; // { word: отмечено ли вручную как "уже знаю" }
         let sessionStartProgressMap = {}; // снимок прогресса на момент начала сессии (для правила "первый раз не считается")
         const LEARNED_THRESHOLD = 10;
 
@@ -195,7 +196,7 @@
         async function loadWordProgress() {
             const { data, error } = await supabaseClient
                 .from('user_word_progress')
-                .select('word, correct_count')
+                .select('word, correct_count, manually_marked')
                 .eq('user_id', currentUser.id);
 
             if (error) {
@@ -203,7 +204,11 @@
                 return;
             }
             wordProgressMap = {};
-            (data || []).forEach(row => { wordProgressMap[row.word] = row.correct_count; });
+            wordManualMap = {};
+            (data || []).forEach(row => {
+                wordProgressMap[row.word] = row.correct_count;
+                wordManualMap[row.word] = !!row.manually_marked;
+            });
             // Снимок состояния ДО начала этой сессии — по нему определяем,
             // встречает ли ученик слово впервые (тогда сессия не даёт прогресса,
             // а только "регистрирует" слово — реальный счёт пойдёт со следующего раза)
@@ -286,6 +291,10 @@
 
             // Получаем чистый список уникальных объектов слов для этой сессии
             let baseWords = wordsTableData.filter(w => uniqueWordNames.has(w.word));
+
+            // Слова, отмеченные вручную как "уже знаю" (Mark as learned), никогда не
+            // попадают ни в "Учить", ни в "Повторить" — ученик явно сказал, что их знает
+            baseWords = baseWords.filter(w => !wordManualMap[w.word]);
 
             // Приоритет и область повторения задаются настройкой practiceScope
             const scope = sessionSettings.practiceScope || 'all';
