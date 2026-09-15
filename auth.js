@@ -5,6 +5,56 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // Создаем единый клиент для работы с базой
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// Карта «страница -> секция». ЕСЛИ ДОБАВЛЯЕТЕ НОВУЮ СТРАНИЦУ С ЗАДАНИЯМИ —
+// впишите её сюда, иначе она будет открыта всем и ссылка на неё не заблокируется.
+const PAGE_SECTIONS = {
+    // --- Reading ---
+    'reading.html': 'reading',
+    'read-academic.html':   'reading',
+    'read-academic-task.html':      'reading',
+    'read-daily-task.html': 'reading',
+    'read-daily.html':      'reading',
+    'complete-words.html':  'reading',
+    'complete-words-task.html':     'reading',
+    'take-mock-test.html':  'reading',
+
+    // --- Listening ---
+    'listening.html':       'listening',
+    'practice-view.html':   'listening',
+    'choose-response-test.html':    'listening',
+    'mock-test-view.html':  'listening',
+
+    // --- Writing ---
+    'writing.html': 'writing',
+    'task-list.html':       'writing',
+    'writing-practice.html':'writing',
+    'mini-mock-writing.html':       'writing',
+    'mini-mock-results.html':       'writing',
+
+    // --- Speaking ---
+    'speaking.html':    'speaking',
+    'speaking_player.html':     'speaking',
+    'speaking_results.html':    'speaking',
+    'interview.html':   'speaking',
+    'interview_results.html':   'speaking',
+    'listen_repeat.html':       'speaking',
+    'listen-repeat-practice.html':      'speaking',
+    'speaking_mini_mock.html':  'speaking',
+    'speaking_mini_mock_player.html':   'speaking',
+    'speaking_mini_mock_results.html':  'speaking',
+
+    // --- Mock Tests ---
+    'tests.html':   'tests'
+};
+
+const ACCESS_FIELD = {
+    reading:   { field: 'access_reading',   label: 'Reading' },
+    listening: { field: 'access_listening', label: 'Listening' },
+    speaking:  { field: 'access_speaking',  label: 'Speaking' },
+    writing:   { field: 'access_writing',   label: 'Writing' },
+    tests:     { field: 'access_tests',     label: 'Mock Tests' }
+};
+
 // Функция контроля доступа
 async function requireAuth() {
     // Спрашиваем у Supabase, есть ли активная сессия в браузере
@@ -109,54 +159,6 @@ async function requireAuth() {
         //
         // ЕСЛИ ДОБАВЛЯЕТЕ НОВУЮ СТРАНИЦУ С ЗАДАНИЯМИ — впишите её сюда,
         // иначе она окажется доступна всем.
-        const PAGE_SECTIONS = {
-            // --- Reading ---
-            'reading.html':                 'reading',
-            'read-academic.html':           'reading',
-            'read-academic-task.html':      'reading',
-            'read-daily-task.html':         'reading',
-            'read-daily.html':              'reading',
-            'complete-words.html':          'reading',
-            'complete-words-task.html':     'reading',
-            'take-mock-test.html':          'reading',
-
-            // --- Listening ---
-            'listening.html':               'listening',
-            'practice-view.html':           'listening',
-            'choose-response-test.html':    'listening',
-            'mock-test-view.html':          'listening',
-
-            // --- Writing ---
-            'writing.html':                 'writing',
-            'task-list.html':               'writing',
-            'writing-practice.html':        'writing',
-            'mini-mock-writing.html':       'writing',
-            'mini-mock-results.html':       'writing',
-
-            // --- Speaking ---
-            'speaking.html':                    'speaking',
-            'speaking_player.html':             'speaking',
-            'speaking_results.html':            'speaking',
-            'interview.html':                   'speaking',
-            'interview_results.html':           'speaking',
-            'listen_repeat.html':               'speaking',
-            'listen-repeat-practice.html':      'speaking',
-            'speaking_mini_mock.html':          'speaking',
-            'speaking_mini_mock_player.html':   'speaking',
-            'speaking_mini_mock_results.html':  'speaking',
-
-            // --- Mock Tests ---
-            'tests.html':                   'tests'
-        };
-
-        const ACCESS_FIELD = {
-            reading:   { field: 'access_reading',   label: 'Reading' },
-            listening: { field: 'access_listening', label: 'Listening' },
-            speaking:  { field: 'access_speaking',  label: 'Speaking' },
-            writing:   { field: 'access_writing',   label: 'Writing' },
-            tests:     { field: 'access_tests',     label: 'Mock Tests' }
-        };
-
         // Берём именно имя файла, а не подстроку всего пути —
         // includes() ловил бы лишнее и пропускал нужное.
         const fileName = (currentPath.split('/').pop() || '').toLowerCase();
@@ -216,12 +218,65 @@ async function requireAuth() {
         }
     }
     
+    // Гасим ссылки на закрытые секции на этой странице
+    applySectionLocks(profile);
+
     // Если всё хорошо — возвращаем объект юзера
     return {
         ...session.user,
         role: profile ? profile.role : 'student',
         profile: profile
     };
+}
+
+// ==========================================
+// Блокировка ссылок на закрытые секции.
+// Вызывается автоматически из requireAuth() на КАЖДОЙ странице, поэтому
+// закрывает разом все входы: боковое меню, карточки на дашборде, нижнее
+// меню на телефоне и любые другие ссылки — без правок самих страниц.
+// ==========================================
+function applySectionLocks(profile) {
+    if (!profile) return;
+
+    const run = () => {
+        document.querySelectorAll('a[href]').forEach(link => {
+            const href = link.getAttribute('href') || '';
+            if (!href || href.startsWith('#') || href.startsWith('http')) return;
+
+            const file = (href.split('?')[0].split('/').pop() || '').toLowerCase();
+            const section = PAGE_SECTIONS[file];
+            if (!section) return;
+
+            const rule = ACCESS_FIELD[section];
+            if (profile[rule.field]) return; // доступ есть — не трогаем
+
+            // Доступа нет: гасим ссылку и вешаем замок
+            link.style.opacity = '0.4';
+            link.style.cursor = 'not-allowed';
+            link.setAttribute('aria-disabled', 'true');
+            link.setAttribute('title', 'Раздел ' + rule.label + ' пока не открыт преподавателем');
+
+            if (!link.querySelector('.section-lock-badge')) {
+                const badge = document.createElement('span');
+                badge.className = 'section-lock-badge';
+                badge.textContent = ' 🔒';
+                badge.style.fontSize = '11px';
+                link.appendChild(badge);
+            }
+
+            link.addEventListener('click', e => {
+                e.preventDefault();
+                e.stopPropagation();
+                alert('Раздел «' + rule.label + '» пока не открыт преподавателем.');
+            }, true);
+        });
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', run);
+    } else {
+        run();
+    }
 }
 
 // Функция выхода
