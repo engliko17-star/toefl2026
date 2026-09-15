@@ -219,6 +219,17 @@ function renderDailyLifeLayout(passage, layoutType, taskTitle) {
         }
         case 'advertisement': 
             return `<div class="max-w-md mx-auto bg-gradient-to-br from-yellow-50 to-orange-50 border-2 border-dashed border-orange-200 p-8 rounded-2xl shadow-sm font-sans text-center relative overflow-hidden"><div class="absolute top-0 right-0 bg-red-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg uppercase tracking-wider">Ad</div><h3 class="text-2xl font-extrabold text-orange-600 mb-4 tracking-tight">${taskTitle}</h3><div class="text-slate-700 space-y-3 font-medium text-sm leading-relaxed mb-6">${cleanPassage.replace(/\n/g, '<br>')}</div><button class="bg-orange-500 text-white font-bold py-2 px-6 rounded-full shadow-md text-sm cursor-default hover:bg-orange-600 transition">Learn More</button></div>`;
+        case 'article': {
+            // Газетная заметка: строка-датлайн вида "RICHMOND (APRIL 13)" выносится
+            // в шапку, остальное идёт абзацами под заголовком.
+            const lines = cleanPassage.split('\n').map(l => l.trim()).filter(Boolean);
+            let dateline = '';
+            if (lines.length && /^[A-Z0-9][A-Z0-9\s.,'\u2019-]*\([^)]+\)\s*$/.test(lines[0])) {
+                dateline = lines.shift();
+            }
+            const body = lines.map(p => `<p>${p}</p>`).join('');
+            return `<div class="max-w-xl mx-auto bg-white border border-slate-300 shadow-xs font-serif"><div class="px-8 pt-7 pb-4 border-b-4 border-double border-slate-800">${dateline ? `<div class="font-sans text-[10px] font-bold tracking-[0.2em] text-slate-500 uppercase mb-2">${dateline}</div>` : ''}<h3 class="text-2xl font-bold text-slate-900 leading-tight tracking-tight">${taskTitle}</h3></div><div class="px-8 py-6 text-slate-700 text-sm leading-relaxed space-y-4">${body}</div></div>`;
+        }
         default: 
             return `<div class="text-slate-700 space-y-4 font-normal leading-relaxed text-base">${cleanPassage.replace(/\n/g, '<br>')}</div>`;
     }
@@ -507,8 +518,8 @@ function renderEngine() {
         else if (task.type === 'daily_life') {
             const renderedLayout = renderDailyLifeLayout(task.passage, task.layout, task.title);
             contentDiv.innerHTML = `
-                <section class="w-1/2 bg-white p-10 overflow-y-auto custom-scrollbar border-r border-slate-200 flex flex-col justify-center">
-                    <div>${renderedLayout}</div>
+                <section class="w-1/2 bg-white p-10 overflow-y-auto custom-scrollbar border-r border-slate-200 flex flex-col">
+                    <div class="my-auto w-full">${renderedLayout}</div>
                 </section>
                 <section class="w-1/2 bg-slate-50 p-10 overflow-y-auto custom-scrollbar">
                     <div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-xs max-w-xl mx-auto mt-10">
@@ -1191,4 +1202,4 @@ function closeResults() {
     document.getElementById('results-view').classList.remove('flex');
     document.getElementById('main-interface').classList.remove('hidden');
     loadTestsGrid(); 
-}
+                    }
