@@ -101,21 +101,71 @@ async function requireAuth() {
         let hasSectionAccess = true;
         let sectionName = '';
 
-        if (currentPath.includes('reading.html')) {
-            hasSectionAccess = profile.access_reading;
-            sectionName = 'Reading';
-        } else if (currentPath.includes('listening.html')) {
-            hasSectionAccess = profile.access_listening;
-            sectionName = 'Listening';
-        } else if (currentPath.includes('speaking.html')) {
-            hasSectionAccess = profile.access_speaking;
-            sectionName = 'Speaking';
-        } else if (currentPath.includes('writing.html')) {
-            hasSectionAccess = profile.access_writing;
-            sectionName = 'Writing';
-        } else if (currentPath.includes('tests.html')) {
-            hasSectionAccess = profile.access_tests;
-            sectionName = 'Mock Tests';
+        // ВАЖНО: раньше проверялись только пять страниц-хабов
+        // (reading/listening/speaking/writing/tests.html), а весь реальный
+        // контент лежит на других файлах — и они были открыты любому
+        // ученику по прямой ссылке, даже с закрытым доступом к секции.
+        // Теперь проверяется каждая страница по имени файла.
+        //
+        // ЕСЛИ ДОБАВЛЯЕТЕ НОВУЮ СТРАНИЦУ С ЗАДАНИЯМИ — впишите её сюда,
+        // иначе она окажется доступна всем.
+        const PAGE_SECTIONS = {
+            // --- Reading ---
+            'reading.html':                 'reading',
+            'read-academic.html':           'reading',
+            'read-academic-task.html':      'reading',
+            'read-daily-task.html':         'reading',
+            'read-daily.html':              'reading',
+            'complete-words.html':          'reading',
+            'complete-words-task.html':     'reading',
+            'take-mock-test.html':          'reading',
+
+            // --- Listening ---
+            'listening.html':               'listening',
+            'practice-view.html':           'listening',
+            'choose-response-test.html':    'listening',
+            'mock-test-view.html':          'listening',
+
+            // --- Writing ---
+            'writing.html':                 'writing',
+            'task-list.html':               'writing',
+            'writing-practice.html':        'writing',
+            'mini-mock-writing.html':       'writing',
+            'mini-mock-results.html':       'writing',
+
+            // --- Speaking ---
+            'speaking.html':                    'speaking',
+            'speaking_player.html':             'speaking',
+            'speaking_results.html':            'speaking',
+            'interview.html':                   'speaking',
+            'interview_results.html':           'speaking',
+            'listen_repeat.html':               'speaking',
+            'listen-repeat-practice.html':      'speaking',
+            'speaking_mini_mock.html':          'speaking',
+            'speaking_mini_mock_player.html':   'speaking',
+            'speaking_mini_mock_results.html':  'speaking',
+
+            // --- Mock Tests ---
+            'tests.html':                   'tests'
+        };
+
+        const ACCESS_FIELD = {
+            reading:   { field: 'access_reading',   label: 'Reading' },
+            listening: { field: 'access_listening', label: 'Listening' },
+            speaking:  { field: 'access_speaking',  label: 'Speaking' },
+            writing:   { field: 'access_writing',   label: 'Writing' },
+            tests:     { field: 'access_tests',     label: 'Mock Tests' }
+        };
+
+        // Берём именно имя файла, а не подстроку всего пути —
+        // includes() ловил бы лишнее и пропускал нужное.
+        const fileName = (currentPath.split('/').pop() || '').toLowerCase();
+        const section = PAGE_SECTIONS[fileName];
+
+        if (section) {
+            const rule = ACCESS_FIELD[section];
+            hasSectionAccess = profile[rule.field];
+            sectionName = rule.label;
         }
 
         if (!hasSectionAccess) {
