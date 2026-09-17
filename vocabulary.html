@@ -204,6 +204,19 @@
         </div>
 
         <div class="bg-white rounded-xl border border-gray-100 shadow-xs overflow-hidden mt-6">
+            <div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 bg-gray-50/50">
+                <span id="wordsCount" class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">—</span>
+                <div class="flex items-center gap-1">
+                    <button onclick="setSortMode('alpha')" id="sortAlphaBtn"
+                            class="px-2.5 py-1 rounded-lg text-[10px] font-bold transition bg-indigo-600 text-white">
+                        А→Я
+                    </button>
+                    <button onclick="setSortMode('shuffle')" id="sortShuffleBtn"
+                            class="px-2.5 py-1 rounded-lg text-[10px] font-bold transition bg-white text-slate-600 border border-gray-200 hover:bg-gray-50">
+                        Вразброс
+                    </button>
+                </div>
+            </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-left text-xs border-collapse">
                     <thead>
@@ -533,18 +546,26 @@
                 filteredWords = allWords.filter(w => w.category === currentCategory);
             }
 
-            renderWordsTable(filteredWords);
+            renderWordsTable(sortWords(filteredWords));
         }
 
         function selectCategory(category) {
             currentCategory = category;
             currentMockTest = null; 
             
+            // Подсветка рисуется СНАРУЖИ карточки: ring-inset был не виден,
+            // потому что внутренние absolute-блоки с картинкой перекрывали его.
             document.querySelectorAll('.category-card').forEach(card => {
                 const cardText = card.querySelector('span').innerText.trim();
-                card.classList.remove('ring-4', 'ring-indigo-600', 'ring-inset', 'scale-[1.02]');
+                card.classList.remove('ring-4', 'ring-indigo-500', 'ring-offset-2', 'scale-105', 'shadow-lg');
+                card.querySelector('.cat-check')?.remove();
+
                 if (category !== 'All' && cardText === category) {
-                    card.classList.add('ring-4', 'ring-indigo-600', 'ring-inset', 'scale-[1.02]');
+                    card.classList.add('ring-4', 'ring-indigo-500', 'ring-offset-2', 'scale-105', 'shadow-lg');
+                    const check = document.createElement('span');
+                    check.className = 'cat-check absolute top-1.5 right-1.5 z-30 w-5 h-5 bg-indigo-600 text-white rounded-full flex items-center justify-center text-[11px] font-bold shadow';
+                    check.textContent = '✓';
+                    card.appendChild(check);
                 }
             });
 
@@ -578,9 +599,50 @@
             selectCategory('All');
         }
 
+        // 'alpha' — по алфавиту, 'shuffle' — случайный порядок.
+        // Перемешивание запоминается, чтобы список не прыгал при каждой
+        // перерисовке (например, после отметки слова выученным).
+        let sortMode = 'alpha';
+        let shuffleSeed = Math.random();
+
+        function setSortMode(mode) {
+            sortMode = mode;
+            if (mode === 'shuffle') shuffleSeed = Math.random();  // новая тасовка по клику
+
+            document.getElementById('sortAlphaBtn').className =
+                'px-2.5 py-1 rounded-lg text-[10px] font-bold transition ' +
+                (mode === 'alpha' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 border border-gray-200 hover:bg-gray-50');
+            document.getElementById('sortShuffleBtn').className =
+                'px-2.5 py-1 rounded-lg text-[10px] font-bold transition ' +
+                (mode === 'shuffle' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 border border-gray-200 hover:bg-gray-50');
+
+            applyFilters();
+        }
+
+        function sortWords(words) {
+            const arr = [...words];
+            if (sortMode === 'alpha') {
+                return arr.sort((a, b) =>
+                    String(a.word || '').localeCompare(String(b.word || ''), 'en', { sensitivity: 'base' })
+                );
+            }
+            // Детерминированная тасовка: один и тот же seed даёт один порядок,
+            // поэтому список стабилен до следующего клика по «Вразброс».
+            let x = shuffleSeed;
+            const rnd = () => { x = Math.sin(x * 10000) * 10000; return x - Math.floor(x); };
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(rnd() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
+
         function renderWordsTable(words) {
             const tableBody = document.getElementById('wordsTableBody');
             tableBody.innerHTML = '';
+
+            const counter = document.getElementById('wordsCount');
+            if (counter) counter.innerText = (words ? words.length : 0) + ' слов';
 
             if(!words || words.length === 0) {
                 tableBody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-gray-400">Слова для этого фильтра пока не добавлены.</td></tr>`;
@@ -916,10 +978,55 @@
 
         function closeModal() { document.getElementById('wordModal').classList.add('hidden'); }
         
+        // Голоса грузятся асинхронно; кэшируем выбранный.
+        let _cachedVoice = null;
+
+        function pickEnglishVoice() {
+            if (_cachedVoice) return _cachedVoice;
+            const voices = window.speechSynthesis.getVoices();
+            if (!voices || !voices.length) return null;
+
+            const en = voices.filter(v => /^en(-|_)?/i.test(v.lang || ''));
+            if (!en.length) return null;
+
+            // Порядок предпочтения: сначала заведомо «чистые» голоса,
+            // затем любой US/GB, и только потом остальной английский.
+            const preferred = [
+                'Google US English', 'Microsoft Aria', 'Microsoft Jenny', 'Microsoft Zira',
+                'Samantha', 'Alex', 'Google UK English Female', 'Google UK English Male',
+                'Microsoft Ryan', 'Daniel'
+            ];
+            for (const name of preferred) {
+                const hit = en.find(v => (v.name || '').includes(name));
+                if (hit) { _cachedVoice = hit; return hit; }
+            }
+
+            const usgb = en.find(v => /en[-_](US|GB)/i.test(v.lang || ''));
+            _cachedVoice = usgb || en[0];
+            return _cachedVoice;
+        }
+
+        // Список голосов часто пуст при первой загрузке — дожидаемся события
+        if (window.speechSynthesis) {
+            window.speechSynthesis.onvoiceschanged = () => { _cachedVoice = null; pickEnglishVoice(); };
+            pickEnglishVoice();
+        }
+
         function speakWord() {
             const wordText = document.getElementById('modalWord').innerText;
             const utterance = new SpeechSynthesisUtterance(wordText);
             utterance.lang = 'en-US';
+
+            // lang — это лишь пожелание: браузер сам берёт любой голос из
+            // установленных, и при наличии индийского/французского пакета
+            // читает с их акцентом. Поэтому голос выбираем явно.
+            const voice = pickEnglishVoice();
+            if (voice) utterance.voice = voice;
+
+            utterance.rate = 0.9;   // чуть медленнее — слово слышно отчётливее
+            utterance.pitch = 1.0;
+
+            window.speechSynthesis.cancel();   // обрываем предыдущее слово
             window.speechSynthesis.speak(utterance);
         }
 
