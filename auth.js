@@ -1,10 +1,13 @@
-// Подключаем ключи от твоего проекта Supabase
-const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
+// Ключи. Имена намеренно с префиксом AUTH_: почти каждая страница
+// объявляет свои SUPABASE_URL/SUPABASE_ANON_KEY, а два одинаковых const
+// в глобальной области роняют ВЕСЬ скрипт страницы (SyntaxError).
+// С префиксом auth.js можно подключать куда угодно, ничего не ломая.
+const AUTH_SB_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
+const AUTH_SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
 
 // Создаем единый клиент для работы с базой
 // window.supabase — явно, чтобы не подхватить одноимённую переменную страницы
-const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const _supabase = window.supabase.createClient(AUTH_SB_URL, AUTH_SB_KEY);
 
 // Карта «страница -> секция». ЕСЛИ ДОБАВЛЯЕТЕ НОВУЮ СТРАНИЦУ С ЗАДАНИЯМИ —
 // впишите её сюда, иначе она будет открыта всем и ссылка на неё не заблокируется.
