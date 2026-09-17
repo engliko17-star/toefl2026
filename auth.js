@@ -3,7 +3,8 @@ const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
 
 // Создаем единый клиент для работы с базой
-const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// window.supabase — явно, чтобы не подхватить одноимённую переменную страницы
+const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Карта «страница -> секция». ЕСЛИ ДОБАВЛЯЕТЕ НОВУЮ СТРАНИЦУ С ЗАДАНИЯМИ —
 // впишите её сюда, иначе она будет открыта всем и ссылка на неё не заблокируется.
@@ -328,3 +329,49 @@ function renderGuestLockedCard(lockedCount, sectionLabel) {
         </div>
     `;
 }
+
+
+// ==========================================
+// САМОЗАПУСК блокировки ссылок.
+//
+// Раньше замки вешались только изнутри requireAuth(), поэтому страницы,
+// которые делают проверку сессии по-своему (vocabulary.html,
+// irregular-verbs.html и т.п.), оставляли все ссылки на закрытые секции
+// рабочими — именно так ученики и попадали в Writing/Speaking.
+//
+// Теперь auth.js сам, при подключении к ЛЮБОЙ странице, догружает профиль
+// и гасит недоступные ссылки. Профиль кэшируется, чтобы не дублировать
+// запрос там, где requireAuth() уже отработал.
+// ==========================================
+let _cachedProfile = null;
+
+async function getCachedProfile() {
+    if (_cachedProfile) return _cachedProfile;
+    try {
+        const { data: { session } } = await _supabase.auth.getSession();
+        if (!session) return null;
+        const { data } = await _supabase
+            .from('profiles')
+            .select('role, is_approved, access_reading, access_listening, access_speaking, access_writing, access_tests')
+            .eq('id', session.user.id)
+            .maybeSingle();
+        _cachedProfile = data || null;
+        return _cachedProfile;
+    } catch (err) {
+        console.error('Не удалось получить профиль для блокировки ссылок:', err);
+        return null;
+    }
+}
+
+(async function autoLockSectionLinks() {
+    // На странице логина блокировать нечего
+    const here = (window.location.pathname.split('/').pop() || '').toLowerCase();
+    if (here === 'login.html' || here === 'register.html') return;
+
+    const profile = await getCachedProfile();
+    if (!profile) return;
+    if (profile.role === 'teacher') return;   // учителю доступно всё
+    if (profile.role === 'guest') return;     // у гостя свои правила
+
+    applySectionLocks(profile);
+})();
