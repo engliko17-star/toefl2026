@@ -9,6 +9,15 @@ const AUTH_SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 // window.supabase — явно, чтобы не подхватить одноимённую переменную страницы
 const _supabase = window.supabase.createClient(AUTH_SB_URL, AUTH_SB_KEY);
 
+// Совместимость в обе стороны.
+// Кладём ключи в window (а НЕ через const), поэтому:
+//   • страница со своими const SUPABASE_URL — просто перекрывает их, ошибки нет;
+//   • страница, которая рассчитывает получить ключи из auth.js, — получает их.
+// Раньше это были const, и любой из двух случаев ронял весь скрипт страницы.
+window.SUPABASE_URL = AUTH_SB_URL;
+window.SUPABASE_ANON_KEY = AUTH_SB_KEY;
+window.supabaseClient = window.supabaseClient || _supabase;
+
 // Карта «страница -> секция». ЕСЛИ ДОБАВЛЯЕТЕ НОВУЮ СТРАНИЦУ С ЗАДАНИЯМИ —
 // впишите её сюда, иначе она будет открыта всем и ссылка на неё не заблокируется.
 const PAGE_SECTIONS = {
