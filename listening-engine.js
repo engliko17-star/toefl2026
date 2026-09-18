@@ -21,6 +21,52 @@ let listUserAnswers = {};
 // перехода в другую секцию и падает на несуществующих элементах)
 let listAutoplayTimeout = null;
 
+// ==========================================
+// ЕДИНСТВЕННОЕ место, где решается «какой вариант правильный».
+//
+// Раньше эта логика была скопирована в четырёх местах и разошлась:
+// роутинг и экран разбора читали correct_index, а подсчёт балла и
+// запись is_correct — только correct_answer. Поскольку все вопросы к
+// диалогам, объявлениям и лекциям размечены именно correct_index,
+// их ответы в итоговом балле уходили в ноль: засчитывались лишь
+// 8 коротких реплик из 20 айтемов роутера.
+//
+// Понимает все варианты хранения:
+//   correct_index: 2          -> 2
+//   correct_answer: 2         -> 2
+//   correct_answer: "2"       -> 2
+//   correct_answer: {index:2} -> 2
+//   correct_answer: '{"index":2}' -> 2
+// Индекс 0 обрабатывается корректно (важно: 0 — это валидный ответ,
+// а не «пусто», поэтому проверки идут через !== undefined/null).
+// ==========================================
+function getCorrectIndex(q) {
+    if (!q) return null;
+
+    if (q.correct_index !== undefined && q.correct_index !== null) {
+        const n = Number(q.correct_index);
+        return Number.isNaN(n) ? q.correct_index : n;
+    }
+
+    let raw = q.correct_answer;
+    if (raw === undefined || raw === null) return null;
+
+    if (typeof raw === 'string') {
+        const trimmed = raw.trim();
+        if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+            try { raw = JSON.parse(trimmed); } catch (e) { /* оставляем строкой */ }
+        }
+    }
+
+    if (raw && typeof raw === 'object' && raw.index !== undefined && raw.index !== null) {
+        const n = Number(raw.index);
+        return Number.isNaN(n) ? raw.index : n;
+    }
+
+    const n = Number(raw);
+    return Number.isNaN(n) ? raw : n;
+}
+
 window.engineType = null; // Глобальный флаг для роутинга кнопок в tests.html
 
 // Флаг для предотвращения гонки состояний при переходах
@@ -589,7 +635,7 @@ async function loadListeningStage2() {
         if (block.stage === '1') {
             for (let q of block.questions) {
                 totalStage1++;
-                const correctIdx = q.correct_index !== undefined ? q.correct_index : q.correct_answer;
+                const correctIdx = getCorrectIndex(q);
                 if (listUserAnswers[q.uniqueId] === correctIdx) correctCount++;
             }
         }
@@ -634,8 +680,7 @@ async function saveListeningAttemptAndFinish() {
         block.questions.forEach(q => {
             totalQuestions++;
 
-            const correctObj = typeof q.correct_answer === 'string' ? JSON.parse(q.correct_answer) : q.correct_answer;
-            const correctIdx = correctObj?.index !== undefined ? correctObj.index : correctObj;
+            const correctIdx = getCorrectIndex(q);
 
             if (listUserAnswers[q.uniqueId] === correctIdx) {
                 correctAnswers++;
@@ -688,8 +733,7 @@ async function saveListeningAttemptAndFinish() {
 
                 const answersToSave = listQueue.flatMap(block => {
                     return block.questions.map(q => {
-                        const correctObj = typeof q.correct_answer === 'string' ? JSON.parse(q.correct_answer) : q.correct_answer;
-                        const correctIdx = correctObj?.index !== undefined ? correctObj.index : correctObj;
+                        const correctIdx = getCorrectIndex(q);
                         return {
                             attempt_id: attempt.id,
                             task_id: block.db_id,
@@ -785,7 +829,7 @@ function renderListeningReview(finalScore, correctAnswers, totalQuestions) {
         
         block.questions.forEach((q, qIdx) => {
             const userAns = listUserAnswers[q.uniqueId];
-            const correctIdx = q.correct_index !== undefined ? q.correct_index : q.correct_answer;
+            const correctIdx = getCorrectIndex(q);
             const isCorrect = userAns === correctIdx;
 
             let optionsHTML = '<div class="space-y-2 mt-4">';
