@@ -148,7 +148,38 @@
         let sessionSettings = null;
         let currentMode = ''; 
         let currentUser = null;
-        let wordProgressMap = {}; // { word: correct_count }
+        let wordProgressMap = {}; // { word: correct_count }  (legacy, для совместимости)
+        let srsMap = {};          // { word: { box, due_at, lapses } }
+
+        // Лестница интервалов. Верный ответ поднимает на ступень,
+        // ошибка роняет на 1. Дошёл до 6 (два месяца) — слово выучено.
+        const SRS_INTERVALS_MIN = {
+            1: 10,          // 10 минут
+            2: 60 * 24,     // 1 день
+            3: 60 * 24 * 3, // 3 дня
+            4: 60 * 24 * 7, // неделя
+            5: 60 * 24 * 21,// 3 недели
+            6: 60 * 24 * 60 // 2 месяца = выучено
+        };
+        const SRS_MASTERED_BOX = 6;
+
+        function nextDueDate(box) {
+            const minutes = SRS_INTERVALS_MIN[box] || 10;
+            return new Date(Date.now() + minutes * 60000).toISOString();
+        }
+
+        // Режим для конкретного слова: в 'auto' сложность растёт по зрелости,
+        // иначе используется режим, который ученик выбрал сам.
+        function modeForWord(word) {
+            const configured = sessionSettings.mode || 'auto';
+            if (configured !== 'auto') return configured;
+
+            const box = (srsMap[word] && srsMap[word].box) || 0;
+            if (box <= 1) return 'flashcards';   // знакомство и узнавание
+            if (box <= 3) return 'multiple';     // припоминание с вариантами
+            if (box === 4) return 'typing';      // ввод с клавиатуры
+            return 'dictation';                  // зрелые слова — на слух
+        }
         let wordManualMap = {}; // { word: отмечено ли вручную как "уже знаю" }
         let sessionStartProgressMap = {}; // снимок прогресса на момент начала сессии (для правила "первый раз не считается")
         const LEARNED_THRESHOLD = 10;
@@ -196,7 +227,7 @@
         async function loadWordProgress() {
             const { data, error } = await supabaseClient
                 .from('user_word_progress')
-                .select('word, correct_count, manually_marked')
+                .select('word, correct_count, manually_marked, box, due_at, lapses')
                 .eq('user_id', currentUser.id);
 
             if (error) {
@@ -207,6 +238,11 @@
             wordManualMap = {};
             (data || []).forEach(row => {
                 wordProgressMap[row.word] = row.correct_count;
+                srsMap[row.word] = {
+                    box: row.box || 0,
+                    due_at: row.due_at,
+                    lapses: row.lapses || 0
+                };
                 wordManualMap[row.word] = !!row.manually_marked;
             });
             // Снимок состояния ДО начала этой сессии — по нему определяем,
@@ -215,34 +251,47 @@
             sessionStartProgressMap = { ...wordProgressMap };
         }
 
+        // Движение по лестнице интервалов.
+        // Раньше: ошибка игнорировалась, верный ответ прибавлял к счётчику,
+        // и 10 верных подряд за одну сессию помечали слово выученным.
+        // Теперь ошибка роняет слово вниз, а верный ответ поднимает на
+        // ступень и назначает дату следующего показа.
         function recordWordProgress(word, wasCorrect, increment) {
-            if (!wasCorrect) return; // ошибки не увеличивают и не обнуляют счётчик
+            const prev = srsMap[word] || { box: 0, lapses: 0 };
+            let box = prev.box || 0;
+            let lapses = prev.lapses || 0;
 
-            const isFirstEverEncounter = !(word in sessionStartProgressMap);
-
-            if (isFirstEverEncounter) {
-                // Первое знакомство со словом в принципе (до этой сессии прогресса не было).
-                // Не начисляем очки за сам факт первого прохода — только "регистрируем" слово,
-                // чтобы со следующей review-сессии по нему уже считался реальный прогресс.
-                if (wordProgressMap[word] === undefined) {
-                    wordProgressMap[word] = 0;
-                    supabaseClient
-                        .from('user_word_progress')
-                        .upsert({ user_id: currentUser.id, word: word, correct_count: 0, last_reviewed_at: new Date().toISOString() }, { onConflict: 'user_id,word' })
-                        .then(({ error }) => { if (error) console.error("Ошибка регистрации слова:", error); });
-                }
-                return;
+            if (wasCorrect) {
+                box = Math.min(box + 1, SRS_MASTERED_BOX);
+            } else {
+                // Срыв: слово возвращается в начало лестницы.
+                if (box > 0) lapses += 1;
+                box = 1;
             }
 
-            const inc = increment || 1;
-            const newCount = Math.round(((wordProgressMap[word] || 0) + inc) * 10) / 10; // округляем до 1 знака, избегаем 0.1+0.2 проблем float
-            wordProgressMap[word] = newCount;
+            const due_at = nextDueDate(box);
+            srsMap[word] = { box: box, due_at: due_at, lapses: lapses };
 
-            // Пишем в базу в фоне, не блокируя интерфейс
+            // correct_count оставляем — на него ещё смотрят другие страницы
+            if (wasCorrect) {
+                const inc = increment || 1;
+                wordProgressMap[word] = Math.round(((wordProgressMap[word] || 0) + inc) * 10) / 10;
+            }
+
+            // Пишем в фоне, не блокируя интерфейс
             supabaseClient
                 .from('user_word_progress')
-                .upsert({ user_id: currentUser.id, word: word, correct_count: newCount, last_reviewed_at: new Date().toISOString() }, { onConflict: 'user_id,word' })
-                .then(({ error }) => { if (error) console.error("Ошибка сохранения прогресса слова:", error); });
+                .upsert({
+                    user_id: currentUser.id,
+                    word: word,
+                    correct_count: wordProgressMap[word] || 0,
+                    box: box,
+                    due_at: due_at,
+                    lapses: lapses,
+                    last_result: wasCorrect,
+                    last_reviewed_at: new Date().toISOString()
+                }, { onConflict: 'user_id,word' })
+                .then(({ error }) => { if (error) console.error("Ошибка сохранения прогресса:", error); });
         }
 
         async function loadSessionWords() {
@@ -296,34 +345,45 @@
             // попадают ни в "Учить", ни в "Повторить" — ученик явно сказал, что их знает
             baseWords = baseWords.filter(w => !wordManualMap[w.word]);
 
-            // Приоритет и область повторения задаются настройкой practiceScope
+            // ОТБОР СЛОВ ПО ИНТЕРВАЛЬНОМУ ПОВТОРЕНИЮ.
+            // Сначала то, что реально созрело к повторению (due_at прошёл),
+            // затем добираем новыми до дневной цели. Раньше бралось просто
+            // «сначала невыученные», из-за чего одни и те же слова крутились
+            // в каждой сессии, а созревшие могли не показаться неделями.
+            const now = Date.now();
+            const MAX_REVIEWS = 50;   // страховка от завала после перерыва
+
+            const dueWords = shuffle(baseWords.filter(w => {
+                const p = srsMap[w.word];
+                if (!p || !p.box) return false;                 // новое — не сюда
+                if (p.box >= SRS_MASTERED_BOX) return false;    // выучено
+                return !p.due_at || new Date(p.due_at).getTime() <= now;
+            })).slice(0, MAX_REVIEWS);
+
+            const newWords = shuffle(baseWords.filter(w => {
+                const p = srsMap[w.word];
+                return !p || !p.box;
+            }));
+
             const scope = sessionSettings.practiceScope || 'all';
-            let baseWordsScoped;
+            const dailyGoal = sessionSettings.dailyGoal || 10;
+
             if (scope === 'new') {
-                // Только слова, которые ученик ещё не начинал (прогресс = 0)
-                baseWordsScoped = shuffle(baseWords.filter(w => !(wordProgressMap[w.word] > 0)));
+                baseWords = newWords.slice(0, dailyGoal);
             } else if (scope === 'in_progress') {
-                // Только слова "в процессе": уже что-то отвечал правильно, но ещё не выучил до конца
-                baseWordsScoped = shuffle(baseWords.filter(w => {
-                    const p = wordProgressMap[w.word] || 0;
-                    return p > 0 && p < LEARNED_THRESHOLD;
-                }));
+                baseWords = dueWords;
             } else {
-                // 'all': сначала невыученные слова (correct_count < LEARNED_THRESHOLD), затем уже выученные
-                const learningWords = shuffle(baseWords.filter(w => (wordProgressMap[w.word] || 0) < LEARNED_THRESHOLD));
-                const masteredWords = shuffle(baseWords.filter(w => (wordProgressMap[w.word] || 0) >= LEARNED_THRESHOLD));
-                baseWordsScoped = [...learningWords, ...masteredWords];
+                // Обычный режим: всё созревшее + новые до дневной цели
+                baseWords = [...dueWords, ...newWords.slice(0, dailyGoal)];
             }
-            baseWords = baseWordsScoped;
 
             if (baseWords.length === 0) {
-                const scopeLabels = { new: 'новых', in_progress: 'слов "в процессе"', all: 'подходящих' };
-                alert(`В выбранных списках нет ${scopeLabels[scope] || ''} слов для этой сессии. Попробуйте выбрать другую область повторения.`);
+                alert('На сегодня всё повторено 🎉 Новые слова появятся, когда добавите их в списки, а созревшие — по расписанию.');
                 window.location.href = 'vocabulary.html';
                 return;
             }
 
-            // Ограничиваем количество слов в сессии (если выбрано не "all")
+            // Явный лимит (Browse и ручной выбор) по-прежнему уважаем
             const wordLimit = sessionSettings.wordLimit;
             if (wordLimit && wordLimit !== 'all' && baseWords.length > wordLimit) {
                 baseWords = baseWords.slice(0, wordLimit);
