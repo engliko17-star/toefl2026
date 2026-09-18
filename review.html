@@ -184,10 +184,11 @@
             const configured = sessionSettings.mode || 'auto';
             if (configured !== 'auto') return configured;
 
+            // Движок умеет только flashcards / typing / dictation —
+            // других вариантов возвращать нельзя, иначе карточка будет пустой.
             const box = (srsMap[word] && srsMap[word].box) || 0;
-            if (box <= 2) return 'flashcards';   // первые показы — знакомство
-            if (box <= 6) return 'multiple';     // в течение первого дня — варианты
-            if (box <= 9) return 'typing';       // закрепилось — ввод с клавиатуры
+            if (box <= 3) return 'flashcards';   // знакомство и первые показы
+            if (box <= 8) return 'typing';       // закрепилось — ввод с клавиатуры
             return 'dictation';                  // зрелые слова — на слух
         }
         let wordManualMap = {}; // { word: отмечено ли вручную как "уже знаю" }
@@ -408,8 +409,16 @@
                     reviewWords.push({ ...wordObj, fixedMode: 'typing' });
                     reviewWords.push({ ...wordObj, fixedMode: 'dictation' });
                 });
+            } else if (sessionSettings.mode === 'auto') {
+                // АВТО: режим подбирается под зрелость каждого слова отдельно.
+                // Без этой ветки карточкам доставался бы mode 'auto',
+                // которого движок не знает — и они оставались пустыми.
+                reviewWords = baseWords.map(wordObj => ({
+                    ...wordObj,
+                    fixedMode: modeForWord(wordObj.word)
+                }));
             } else {
-                // Если выбран конкретный режим (например, только карточки), оставляем как обычно
+                // Явно выбранный режим — используем как есть
                 reviewWords = baseWords.map(wordObj => ({ ...wordObj, fixedMode: sessionSettings.mode }));
             }
 
