@@ -125,12 +125,10 @@
         </div>
 
         <div class="space-y-2">
-            <button onclick="location.reload()" class="w-full py-3 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition shadow-md cursor-pointer">
-                Повторить еще раз
-            </button>
-            <a href="vocabulary.html" class="w-full block py-3 bg-gray-50 text-slate-600 rounded-xl text-sm font-semibold hover:bg-gray-100 transition cursor-pointer">
-                В библиотеку
+            <a href="vocabulary.html" class="w-full block py-3 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition shadow-md cursor-pointer text-center">
+                Готово
             </a>
+            <p class="text-[11px] text-gray-400 text-center">Выученные слова отправлены в повторение — они вернутся по расписанию.</p>
         </div>
     </div>
 
@@ -269,6 +267,7 @@
         // ступень и назначает дату следующего показа.
         function recordWordProgress(word, wasCorrect, increment) {
             const prev = srsMap[word] || { box: 0, lapses: 0 };
+            const isFirstTime = !prev.box;   // слово берётся в изучение впервые
             let box = prev.box || 0;
             let lapses = prev.lapses || 0;
 
@@ -292,7 +291,7 @@
             // Пишем в фоне, не блокируя интерфейс
             supabaseClient
                 .from('user_word_progress')
-                .upsert({
+                .upsert(Object.assign({
                     user_id: currentUser.id,
                     word: word,
                     correct_count: wordProgressMap[word] || 0,
@@ -301,7 +300,8 @@
                     lapses: lapses,
                     last_result: wasCorrect,
                     last_reviewed_at: new Date().toISOString()
-                }, { onConflict: 'user_id,word' })
+                }, isFirstTime ? { first_seen_at: new Date().toISOString() } : {}),
+                { onConflict: 'user_id,word' })
                 .then(({ error }) => { if (error) console.error("Ошибка сохранения прогресса:", error); });
         }
 
