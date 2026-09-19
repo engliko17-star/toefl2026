@@ -176,13 +176,71 @@ function playSpeakingBeep() {
 // ==========================================
 // 3. РЕНДЕР ВОПРОСА
 // ==========================================
+// Видео или аудио: интервью может приходить и записью говорящего, и просто mp3.
+function isSpeakingVideoUrl(url) {
+    return typeof url === 'string' && /\.(mp4|webm|ogv|mov|m4v)(\?|$)/i.test(url);
+}
+
+// Экран сценария перед интервью: по спеке он проговаривается и показывается
+// текстом, но ответа не требует, поэтому запись здесь не включается.
+function renderSpeakingScenario(i) {
+    const item = speakingItems[i];
+    const q = item.question || {};
+
+    document.getElementById('engine-progress').innerText = 'Scenario';
+    document.getElementById('engine-content').innerHTML = `
+        <div class="m-auto flex flex-col items-center p-6 w-full max-w-md">
+            <span class="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-4">Scenario</span>
+            <div class="w-full bg-white border border-gray-200 rounded-[2rem] shadow-md p-8">
+                <p class="text-sm text-slate-700 leading-relaxed">${q.transcript || ''}</p>
+            </div>
+            <button id="speakingScenarioContinue" class="mt-6 px-6 py-3 bg-slate-900 text-white rounded-full text-sm font-bold hidden">Continue</button>
+        </div>
+    `;
+
+    const advance = () => {
+        if (window.__speakingScenarioDone) return;
+        window.__speakingScenarioDone = true;
+        speakingIndex++;
+        if (speakingIndex < speakingItems.length) loadSpeakingQuestion(speakingIndex);
+        else finishSpeakingSection();
+    };
+    window.__speakingScenarioDone = false;
+
+    const btn = document.getElementById('speakingScenarioContinue');
+    if (btn) btn.onclick = advance;
+
+    const audio = document.getElementById('globalAudio');
+    const src = q.audio_prompt_url || q.media_url;
+    if (audio && src) {
+        audio.src = src;
+        audio.load();
+        audio.onended = advance;
+        audio.onerror = () => { if (btn) btn.classList.remove('hidden'); };
+        const p = audio.play();
+        // если автовоспроизведение заблокировано, показываем кнопку
+        if (p !== undefined) p.catch(() => { if (btn) btn.classList.remove('hidden'); });
+    } else if (btn) {
+        btn.classList.remove('hidden');
+    }
+}
+
 function loadSpeakingQuestion(i) {
     speakingIndex = i;
     const item = speakingItems[i];
     const q = item.question || {};
+
+    if (item.task_type === 'interview_intro') {
+        renderSpeakingScenario(i);
+        return;
+    }
+
     const isInterview = item.task_type === 'interview';
 
-    document.getElementById('engine-progress').innerText = `Question ${i + 1} of ${speakingItems.length}`;
+    // Сценарий не входит в нумерацию: он не оценивается
+    const scored = speakingItems.filter(it => it.task_type !== 'interview_intro');
+    const num = scored.indexOf(item) + 1;
+    document.getElementById('engine-progress').innerText = `Question ${num} of ${scored.length}`;
 
     document.getElementById('engine-content').innerHTML = `
         <div class="m-auto flex flex-col items-center p-6 w-full max-w-md">
@@ -213,11 +271,7 @@ function loadSpeakingQuestion(i) {
     const img = document.getElementById('speakingImage');
     const audio = document.getElementById('globalAudio'); // общий audio-элемент из tests.html (тот же, что у Listening)
 
-    if (isInterview) {
-        if (!q.media_url) {
-            alert("Ошибка: не заполнена ссылка на видео (media_url) для этого вопроса!");
-            return;
-        }
+    if (isInterview && isSpeakingVideoUrl(q.media_url)) {
         video.src = q.media_url;
         video.load();
         video.classList.remove('hidden');
@@ -233,7 +287,9 @@ function loadSpeakingQuestion(i) {
         if (p !== undefined) p.catch(e => console.error("Video autoplay blocked:", e));
 
     } else {
-        if (q.media_url) {
+        // Сюда попадают и Listen & Repeat, и интервью, записанное аудио, а не видео.
+        // media_url тогда — необязательная картинка (фото говорящего или сцены).
+        if (q.media_url && !isSpeakingVideoUrl(q.media_url)) {
             img.src = q.media_url;
             img.classList.remove('hidden');
         }
@@ -248,7 +304,7 @@ function loadSpeakingQuestion(i) {
             audio.onended = async () => {
                 setSpeakingStatus('Get Ready...', 'bg-amber-100 text-amber-700 border-amber-200');
                 await playSpeakingBeep();
-                startSpeakingRecording(q.time_limit || 8);
+                startSpeakingRecording(q.time_limit || (isInterview ? 45 : 8));
             };
             setSpeakingStatus('Listening to Phrase...', 'bg-sky-100 text-sky-700 border-sky-200');
             const p = audio.play();
