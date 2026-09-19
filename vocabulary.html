@@ -119,6 +119,70 @@
                 <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Vocabulary Library</h1>
                 <p class="text-xs text-gray-400 mt-0.5">Build academic fluency. Master words that matter.</p>
             </div>
+        </div>
+
+        <!-- ГЛАВНЫЙ БЛОК ТРЕНИРОВКИ. Раньше всё это пряталось в модальном
+             окне, до которого надо было ещё догадаться дойти. -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+            <!-- Квадрат 1: учить новые -->
+            <button onclick="startLearnSession()" id="cardLearn"
+                    class="text-left bg-white p-5 rounded-3xl border border-gray-100 shadow-xs hover:shadow-md hover:border-indigo-200 transition group">
+                <div class="flex items-start justify-between mb-4">
+                    <div class="p-2.5 bg-indigo-50 text-indigo-600 rounded-2xl group-hover:scale-105 transition-transform">
+                        <i data-lucide="sparkles" class="w-5 h-5"></i>
+                    </div>
+                    <span id="learnGoalBadge" class="text-[10px] font-bold px-2 py-1 rounded-lg bg-gray-50 text-gray-400">—</span>
+                </div>
+                <h3 class="text-base font-bold text-slate-900">Учить новые</h3>
+                <p id="learnSubtitle" class="text-xs text-gray-500 mt-0.5">загрузка...</p>
+                <div class="mt-3">
+                    <div class="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                        <div id="learnProgressBar" class="bg-indigo-500 h-1.5 rounded-full transition-all duration-500" style="width:0%"></div>
+                    </div>
+                </div>
+            </button>
+
+            <!-- Квадрат 2: повторение -->
+            <button onclick="startReviewSession()" id="cardReview"
+                    class="text-left bg-white p-5 rounded-3xl border border-gray-100 shadow-xs hover:shadow-md hover:border-emerald-200 transition group">
+                <div class="flex items-start justify-between mb-4">
+                    <div class="p-2.5 bg-emerald-50 text-emerald-600 rounded-2xl group-hover:scale-105 transition-transform">
+                        <i data-lucide="repeat" class="w-5 h-5"></i>
+                    </div>
+                    <span id="reviewCountBadge" class="text-[10px] font-bold px-2 py-1 rounded-lg bg-gray-50 text-gray-400">—</span>
+                </div>
+                <h3 class="text-base font-bold text-slate-900">Повторение</h3>
+                <p id="reviewSubtitle" class="text-xs text-gray-500 mt-0.5">загрузка...</p>
+                <p id="reviewCountdown" class="text-[11px] font-bold text-emerald-600 mt-3 h-4"></p>
+            </button>
+        </div>
+
+        <!-- Полоска: пролистать слова -->
+        <div class="bg-white rounded-2xl border border-gray-100 shadow-xs p-4 space-y-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="eye" class="w-4 h-4 text-gray-400"></i>
+                    <span class="text-xs font-bold text-slate-700">Пролистать слова</span>
+                    <span class="text-[10px] text-gray-400">без влияния на прогресс</span>
+                </div>
+                <button onclick="toggleVocabSettings()" class="text-[10px] font-bold text-gray-400 hover:text-slate-700 flex items-center gap-1">
+                    <i data-lucide="settings" class="w-3.5 h-3.5"></i> Настройки
+                </button>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <button onclick="startBrowseSession('all')"
+                        class="py-2.5 bg-gray-50 hover:bg-gray-100 text-slate-600 rounded-xl text-xs font-bold transition">
+                    Все слова
+                </button>
+                <button onclick="startBrowseSession('in_progress')"
+                        class="py-2.5 bg-gray-50 hover:bg-gray-100 text-slate-600 rounded-xl text-xs font-bold transition">
+                    Только в изучении
+                </button>
+            </div>
+        </div>
+
+        <div class="hidden">
             <div class="flex items-center gap-2">
                 <button id="dyslexiaToggle" onclick="toggleDyslexiaMode()" title="Dyslexia-friendly reading mode" class="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-500 hover:bg-gray-50 transition cursor-pointer shrink-0">
                     <i data-lucide="type" class="w-4 h-4"></i>
@@ -292,13 +356,6 @@
                 </div>
             </div>
 
-            <!-- ОДНА КНОПКА. Всё остальное система решает сама. -->
-            <button onclick="startSmartSession()" id="smartStartBtn"
-                    class="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition cursor-pointer shadow-md flex flex-col items-center justify-center">
-                <span id="smartStartMain" class="text-base">Начать</span>
-                <span id="smartStartSub" class="text-[11px] font-medium text-indigo-200 mt-0.5">загрузка...</span>
-            </button>
-
             <button onclick="startBrowseSession()"
                     class="w-full py-2.5 bg-white border border-gray-200 text-slate-600 rounded-xl text-xs font-bold hover:bg-gray-50 transition cursor-pointer flex items-center justify-center gap-1.5">
                 <i data-lucide="eye" class="w-3.5 h-3.5"></i> Просто посмотреть слова — без зачёта
@@ -441,14 +498,14 @@
             
             await applyFilters();
             updateGlobalListsCount();
-            refreshSmartButton();
+            refreshVocabCards();
         }
 
         async function loadWordProgress() {
             if (!currentUser) return;
             const { data, error } = await supabaseClient
                 .from('user_word_progress')
-                .select('word, correct_count, box, due_at')
+                .select('word, correct_count, box, due_at, first_seen_at')
                 .eq('user_id', currentUser.id);
 
             if (error) {
@@ -459,7 +516,7 @@
             (data || []).forEach(row => {
                 const key = normalizeWord(row.word);
                 wordProgressMap[key] = row.correct_count;
-                srsProgressMap[key] = { box: row.box || 0, due_at: row.due_at };
+                srsProgressMap[key] = { box: row.box || 0, due_at: row.due_at, first_seen_at: row.first_seen_at };
             });
         }
 
@@ -1075,7 +1132,7 @@
         async function setDailyGoal(n) {
             vocabDailyGoal = n;
             updateGoalButtons();
-            refreshSmartButton();
+            refreshVocabCards();
             if (!currentUser) return;
             await supabaseClient.from('profiles').update({ vocab_daily_goal: n }).eq('id', currentUser.id);
         }
@@ -1091,45 +1148,6 @@
             const checked = Array.from(document.querySelectorAll('.review-list-checkbox:checked')).map(cb => cb.value);
             if (checked.length) return checked;
             return Object.keys(studentLists || {});
-        }
-
-        // Сколько слов созрело и сколько новых доступно — для подписи на кнопке
-        function countDueAndNew() {
-            const listNames = getAllListNames();
-            const inLists = new Set();
-            Object.entries(studentLists || {}).forEach(([name, words]) => {
-                if (listNames.includes(name)) (words || []).forEach(w => inLists.add(normalizeWord(w.word || w)));
-            });
-
-            const now = Date.now();
-            let due = 0, fresh = 0;
-            inLists.forEach(w => {
-                const p = srsProgressMap[w];
-                if (!p || !p.box) { fresh++; return; }
-                if (p.box >= 13) return;                        // выучено
-                if (!p.due_at || new Date(p.due_at).getTime() <= now) due++;
-            });
-            return { due: Math.min(due, 50), fresh: Math.min(fresh, vocabDailyGoal) };
-        }
-
-        function refreshSmartButton() {
-            const main = document.getElementById('smartStartMain');
-            const sub = document.getElementById('smartStartSub');
-            if (!main || !sub) return;
-
-            const { due, fresh } = countDueAndNew();
-            const total = due + fresh;
-
-            if (total === 0) {
-                main.innerText = 'На сегодня всё 🎉';
-                sub.innerText = 'Возвращайтесь, когда слова созреют';
-                return;
-            }
-            main.innerText = 'Начать — ' + total + ' ' + plural(total, 'слово', 'слова', 'слов');
-            const parts = [];
-            if (due) parts.push('повторить ' + due);
-            if (fresh) parts.push('новых ' + fresh);
-            sub.innerText = parts.join(' · ');
         }
 
         function plural(n, one, few, many) {
@@ -1155,10 +1173,137 @@
             window.location.href = 'review.html';
         }
 
-        function startSmartSession()   { launchSession(); }
-        function startBrowseSession()  { launchSession({ mode: 'browse', practiceScope: 'all', wordLimit: 20 }); }
+        // Учить новые: только слова, которых ученик ещё не касался
+        function startLearnSession() {
+            const { learnedToday } = getVocabStats();
+            const left = Math.max(0, vocabDailyGoal - learnedToday);
+            if (left === 0) {
+                if (!confirm('Цель на сегодня уже выполнена 🎉\n\nВзять ещё новых слов сверх нормы?')) return;
+            }
+            launchSession({ practiceScope: 'new', dailyGoal: left > 0 ? left : vocabDailyGoal });
+        }
 
-        let reviewContext = 'learn';
+        // Повторение: только созревшие слова, новых не подмешиваем
+        function startReviewSession() {
+            const { due } = getVocabStats();
+            if (due === 0) {
+                alert('Сейчас нет слов, готовых к повторению.\n\nОни появятся по расписанию — время до ближайшего показано на карточке.');
+                return;
+            }
+            launchSession({ practiceScope: 'in_progress' });
+        }
+
+        // Пролистать: без зачёта прогресса
+        function startBrowseSession(scope) {
+            launchSession({ mode: 'browse', practiceScope: scope || 'all', wordLimit: 'all' });
+        }
+
+        // ==========================================
+        // Статистика для карточек
+        // ==========================================
+        function getVocabStats() {
+            const listNames = getAllListNames();
+            const inLists = new Set();
+            Object.entries(studentLists || {}).forEach(([name, words]) => {
+                if (listNames.includes(name)) (words || []).forEach(w => inLists.add(normalizeWord(w.word || w)));
+            });
+
+            const now = Date.now();
+            const todayStr = new Date().toISOString().slice(0, 10);
+
+            let due = 0, fresh = 0, learnedToday = 0, inProgress = 0;
+            let nextDue = null;
+
+            inLists.forEach(w => {
+                const p = srsProgressMap[w];
+
+                if (!p || !p.box) { fresh++; return; }
+                if (p.first_seen_at && p.first_seen_at.slice(0, 10) === todayStr) learnedToday++;
+                if (p.box >= 13) return;   // выучено — из оборота выбыло
+
+                inProgress++;
+                const dueTime = p.due_at ? new Date(p.due_at).getTime() : 0;
+                if (dueTime <= now) {
+                    due++;
+                } else if (nextDue === null || dueTime < nextDue) {
+                    nextDue = dueTime;
+                }
+            });
+
+            return { due: Math.min(due, 50), fresh, learnedToday, inProgress, nextDue };
+        }
+
+        function formatCountdown(ms) {
+            const total = Math.max(0, Math.floor(ms / 1000));
+            const d = Math.floor(total / 86400);
+            const h = Math.floor((total % 86400) / 3600);
+            const m = Math.floor((total % 3600) / 60);
+            const sec = total % 60;
+            if (d > 0) return d + ' дн ' + h + ' ч';
+            if (h > 0) return h + ' ч ' + m + ' мин';
+            if (m > 0) return m + ' мин ' + sec + ' сек';
+            return sec + ' сек';
+        }
+
+        let countdownTimer = null;
+
+        function refreshVocabCards() {
+            const st = getVocabStats();
+
+            // --- карточка «Учить новые» ---
+            const badge = document.getElementById('learnGoalBadge');
+            const sub = document.getElementById('learnSubtitle');
+            const bar = document.getElementById('learnProgressBar');
+            if (badge && sub && bar) {
+                const done = Math.min(st.learnedToday, vocabDailyGoal);
+                const pct = vocabDailyGoal ? Math.round((done / vocabDailyGoal) * 100) : 0;
+                bar.style.width = pct + '%';
+
+                if (st.learnedToday >= vocabDailyGoal) {
+                    badge.textContent = 'цель выполнена';
+                    badge.className = 'text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-50 text-emerald-600';
+                    sub.textContent = 'Сегодня: ' + st.learnedToday + ' из ' + vocabDailyGoal + ' 🎉';
+                } else {
+                    badge.textContent = st.learnedToday + ' / ' + vocabDailyGoal;
+                    badge.className = 'text-[10px] font-bold px-2 py-1 rounded-lg bg-indigo-50 text-indigo-600';
+                    sub.textContent = st.fresh > 0
+                        ? 'Осталось сегодня: ' + (vocabDailyGoal - st.learnedToday) + ' · доступно ' + st.fresh
+                        : 'Новых слов в списках нет';
+                }
+            }
+
+            // --- карточка «Повторение» ---
+            const rBadge = document.getElementById('reviewCountBadge');
+            const rSub = document.getElementById('reviewSubtitle');
+            const rCd = document.getElementById('reviewCountdown');
+            if (rBadge && rSub && rCd) {
+                if (st.due > 0) {
+                    rBadge.textContent = st.due + ' готово';
+                    rBadge.className = 'text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-50 text-emerald-600';
+                    rSub.textContent = 'Слова, которые пора освежить';
+                    rCd.textContent = 'Можно начинать';
+                } else {
+                    rBadge.textContent = st.inProgress + ' в изучении';
+                    rBadge.className = 'text-[10px] font-bold px-2 py-1 rounded-lg bg-gray-50 text-gray-400';
+                    rSub.textContent = 'Сейчас всё повторено';
+                    rCd.textContent = st.nextDue
+                        ? 'Следующее через ' + formatCountdown(st.nextDue - Date.now())
+                        : '';
+                }
+            }
+
+            // Обратный отсчёт тикает раз в секунду, пока ждём ближайшее слово
+            if (countdownTimer) clearInterval(countdownTimer);
+            if (st.due === 0 && st.nextDue) {
+                countdownTimer = setInterval(() => {
+                    const left = st.nextDue - Date.now();
+                    const el = document.getElementById('reviewCountdown');
+                    if (!el) return;
+                    if (left <= 0) { clearInterval(countdownTimer); refreshVocabCards(); return; }
+                    el.textContent = 'Следующее через ' + formatCountdown(left);
+                }, 1000);
+            }
+        }
 
         function openReviewSetup(context) {
             reviewContext = context || 'learn';
@@ -1191,7 +1336,7 @@
             title.innerText = 'Тренировка';
             subtitle.innerText = 'Система сама выберет, что повторять сегодня';
 
-            refreshSmartButton();
+            refreshVocabCards();
 
             document.getElementById('reviewSetupModal').classList.remove('hidden');
         }
@@ -1210,4 +1355,4 @@
         initAuth();
     </script>
 </body>
-</html>
+    </html>
