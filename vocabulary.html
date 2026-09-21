@@ -715,7 +715,10 @@
             words.forEach(w => {
                 const isSaved = Object.values(studentLists).some(arr => arr.includes(w.word));
                 const bookmarkClass = isSaved ? 'text-indigo-600 fill-indigo-600' : 'text-gray-300 hover:text-indigo-600';
-                const isMastered = currentUser && (wordProgressMap[normalizeWord(w.word)] || 0) >= LEARNED_THRESHOLD;
+                const isMastered = currentUser && getWordStatus(w.word).state === 'mastered';
+                // Кнопка удаления — только внутри конкретного списка:
+                // в «Всех словах» непонятно, из какого списка убирать.
+                const inListView = currentViewMode !== 'all' && selectedCustomList;
 
                 const row = document.createElement('tr');
                 row.className = `cursor-pointer transition ${isMastered ? 'bg-emerald-50/70 hover:bg-emerald-50' : 'hover:bg-slate-50/80'}`;
@@ -725,6 +728,10 @@
                 
                 row.innerHTML = `
                     <td class="p-4 text-center" onclick="event.stopPropagation();">
+                        ${inListView ? `<button class="text-gray-300 hover:text-rose-500 transition cursor-pointer mr-1" title="Убрать из списка «${selectedCustomList}»"
+                                onclick="removeWordFromList('${escJs(w.word)}', '${escJs(selectedCustomList)}')">
+                            <i data-lucide="x-circle" class="w-4 h-4"></i>
+                        </button>` : ''}
                         <button class="${bookmarkClass} transition cursor-pointer" onclick="openSaveModal('${escJs(w.word)}')">
                             <i data-lucide="bookmark" class="w-4 h-4"></i>
                         </button>
@@ -923,6 +930,35 @@
             } else {
                 renderWordsTable([]);
             }
+        }
+
+        // Убрать ОДНО слово из списка. Раньше можно было удалить только
+        // список целиком. Прогресс по слову не трогаем — он привязан к
+        // слову, а не к списку, и пригодится, если слово добавят снова.
+        async function removeWordFromList(word, listName) {
+            if (!confirm('Убрать «' + word + '» из списка «' + listName + '»?\n\nПрогресс по слову сохранится.')) return;
+
+            if (currentUser) {
+                const { error } = await supabaseClient
+                    .from('user_vocabulary')
+                    .delete()
+                    .eq('user_id', currentUser.id)
+                    .eq('word', word)
+                    .eq('list_name', listName);
+
+                if (error) {
+                    alert('Не удалось убрать слово: ' + error.message);
+                    return;
+                }
+            }
+
+            if (studentLists[listName]) {
+                studentLists[listName] = studentLists[listName].filter(x => x !== word);
+            }
+            renderCustomLists();
+            refreshCurrentView();
+            refreshVocabCards();
+            updateGlobalListsCount();
         }
 
         async function deleteCustomList(name) {
@@ -1432,4 +1468,4 @@
         initAuth();
     </script>
 </body>
-    </html>
+</html>
