@@ -142,6 +142,21 @@
 
         let reviewWords = [];
         let currentIndex = 0;
+
+        // ==========================================
+        // РЕЖИМ ЗАУЧИВАНИЯ (как в ReWord).
+        // Слова подаются маленькими порциями, а не все сразу: в работе
+        // одновременно POOL_SIZE слов, каждое возвращается в разных
+        // режимах, пока ученик сам не отметит «Выучил». Только тогда оно
+        // уходит в интервальное повторение, а на освободившееся место
+        // встаёт следующее слово из дневной нормы.
+        // ==========================================
+        let isLearnMode = false;
+        const POOL_SIZE = 3;
+        let learnPool = [];       // слова в активной работе
+        let learnQueue = [];      // ещё не введённые в работу
+        let learnDone = [];       // отмеченные «Выучил»
+        let learnSeenCount = {};  // сколько раз показали слово (для смены режима)
         let correctAnswers = 0;
         let sessionSettings = null;
         let currentMode = ''; 
@@ -425,6 +440,16 @@
             // Перемешиваем весь итоговый массив, чтобы форматы шли вразброс
             reviewWords = shuffle(reviewWords);
 
+            // Сессия «Учить новые» идёт по другому сценарию: порциями,
+            // с самооценкой и повторами внутри сессии.
+            isLearnMode = (sessionSettings.practiceScope === 'new' && sessionSettings.mode !== 'browse');
+            if (isLearnMode) {
+                learnQueue = [...reviewWords];
+                learnPool = learnQueue.splice(0, POOL_SIZE);
+                learnDone = [];
+                learnSeenCount = {};
+            }
+
             document.getElementById('loader').classList.add('hidden');
             document.getElementById('sessionContainer').classList.remove('hidden');
 
@@ -437,22 +462,82 @@
             showWord();
         }
 
+        // Какой режим показать слову на этом круге: сначала карточка,
+        // потом узнавание, потом ввод. Один и тот же набор слов
+        // прокручивается по-разному, а не читается один раз подряд.
+        function learnModeFor(word) {
+            const seen = learnSeenCount[word] || 0;
+            if (seen === 0) return 'flashcards';
+            if (seen === 1) return 'flashcards';
+            return 'typing';
+        }
+
+        function pickNextLearnWord() {
+            if (!learnPool.length) return null;
+            // Берём то, что показывали реже всего — чтобы слова чередовались
+            let best = learnPool[0], bestSeen = learnSeenCount[best.word] || 0;
+            for (const w of learnPool) {
+                const seen = learnSeenCount[w.word] || 0;
+                if (seen < bestSeen) { best = w; bestSeen = seen; }
+            }
+            return best;
+        }
+
+        // «Выучил» — слово уходит в интервальное повторение,
+        // на его место встаёт следующее из дневной нормы.
+        function markLearned() {
+            const w = reviewWords[currentIndex];
+            if (!w) return;
+            recordWordProgress(w.word, true, 1);
+            correctAnswers++;
+            learnPool = learnPool.filter(x => x.word !== w.word);
+            learnDone.push(w);
+            if (learnQueue.length) learnPool.push(learnQueue.shift());
+            showWord();
+        }
+
+        // «Ещё повторить» — слово остаётся в пуле и вернётся в этой же сессии
+        function markAgain() {
+            const w = reviewWords[currentIndex];
+            if (!w) return;
+            learnSeenCount[w.word] = (learnSeenCount[w.word] || 0) + 1;
+            showWord();
+        }
+
         function showWord() {
             window.speechSynthesis.cancel();
 
-            if (currentIndex >= reviewWords.length) {
-                showResults();
-                return;
+            let currentWordObj;
+
+            if (isLearnMode) {
+                // Заучивание: сессия кончается, когда ВСЕ слова отмечены «Выучил»,
+                // а не когда список прокручен один раз.
+                const next = pickNextLearnWord();
+                if (!next) { showResults(); return; }
+
+                currentWordObj = next;
+                currentIndex = reviewWords.findIndex(w => w.word === next.word);
+
+                const totalLearn = learnDone.length + learnPool.length + learnQueue.length;
+                document.getElementById('progressText').innerText =
+                    `Выучено ${learnDone.length} из ${totalLearn}`;
+                document.getElementById('progressBar').style.width =
+                    `${totalLearn ? (learnDone.length / totalLearn) * 100 : 0}%`;
+
+                currentMode = learnModeFor(next.word);
+            } else {
+                if (currentIndex >= reviewWords.length) {
+                    showResults();
+                    return;
+                }
+
+                const total = reviewWords.length;
+                document.getElementById('progressText').innerText = `Word ${currentIndex + 1} of ${total}`;
+                document.getElementById('progressBar').style.width = `${(currentIndex / total) * 100}%`;
+
+                currentWordObj = reviewWords[currentIndex];
+                currentMode = currentWordObj.fixedMode;
             }
-
-            const total = reviewWords.length;
-            document.getElementById('progressText').innerText = `Word ${currentIndex + 1} of ${total}`;
-            document.getElementById('progressBar').style.width = `${(currentIndex / total) * 100}%`;
-
-            const currentWordObj = reviewWords[currentIndex];
-            
-            // Теперь режим берется из самого объекта слова (сформированного в loadSessionWords)
-            currentMode = currentWordObj.fixedMode;
 
             const quizArea = document.getElementById('quizArea');
             const bottomHint = document.getElementById('bottomHint');
@@ -482,7 +567,17 @@
 
                 const actionButtons = document.createElement('div');
                 actionButtons.className = "flex justify-center space-x-3 w-full mt-4 animate-fade-in";
-                actionButtons.innerHTML = `
+                // В заучивании ученик сам решает судьбу слова: «Выучил» уводит
+                // его в интервальное повторение, «Ещё повторить» оставляет
+                // в пуле до конца сессии.
+                actionButtons.innerHTML = isLearnMode ? `
+                    <button onclick="event.stopPropagation(); markAgain()" class="px-5 py-2.5 bg-amber-50 text-amber-700 rounded-xl text-xs font-bold hover:bg-amber-100 transition flex items-center space-x-1.5 cursor-pointer">
+                        <i data-lucide="rotate-ccw" class="w-4 h-4"></i> <span>Ещё повторить</span>
+                    </button>
+                    <button onclick="event.stopPropagation(); markLearned()" class="px-5 py-2.5 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold hover:bg-emerald-100 transition flex items-center space-x-1.5 cursor-pointer">
+                        <i data-lucide="check" class="w-4 h-4"></i> <span>Выучил</span>
+                    </button>
+                ` : `
                     <button onclick="event.stopPropagation(); nextWord(false)" class="px-5 py-2.5 bg-gray-50 text-slate-500 rounded-xl text-xs font-bold hover:bg-gray-100 transition flex items-center space-x-1 cursor-pointer">
                         <i data-lucide="frown" class="w-4 h-4 text-red-400"></i> <span>Forgot</span>
                     </button>
@@ -654,6 +749,22 @@
 
         function nextWord(wasCorrect) {
             const currentWordObj = reviewWords[currentIndex];
+
+            if (isLearnMode) {
+                // В заучивании прогресс пишется только по кнопке «Выучил»,
+                // а ответ на ввод просто крутит слово дальше по пулу.
+                if (currentWordObj) {
+                    learnSeenCount[currentWordObj.word] = (learnSeenCount[currentWordObj.word] || 0) + 1;
+                    if (wasCorrect) {
+                        // Ввёл верно сам — это достаточное доказательство, слово закрываем
+                        markLearned();
+                        return;
+                    }
+                }
+                showWord();
+                return;
+            }
+
             if (currentMode === 'flashcards' && currentWordObj) {
                 recordWordProgress(currentWordObj.word, wasCorrect, 1); // самооценка весит меньше, чем typing (2)
                 if (wasCorrect) correctAnswers++;
