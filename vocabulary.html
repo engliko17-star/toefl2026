@@ -739,23 +739,51 @@
             lucide.createIcons();
         }
 
+        // ЕДИНСТВЕННЫЙ источник правды о прогрессе слова — ступень на
+        // лестнице интервалов (0..13). Раньше таблица, карточка слова и
+        // ручная отметка считали процент по старому correct_count / 10,
+        // и поэтому не совпадали с тем, что реально делает движок.
+        const SRS_MAX_BOX = 13;
+
+        function getWordStatus(word) {
+            const p = srsProgressMap[normalizeWord(word)];
+            const box = (p && p.box) || 0;
+            const percent = Math.min(100, Math.round((box / SRS_MAX_BOX) * 100));
+            let state = 'new', label = 'Новое';
+            if (box >= SRS_MAX_BOX)  { state = 'mastered';  label = 'Выучено'; }
+            else if (box > 0)        { state = 'learning';  label = 'В изучении'; }
+            return { box, percent, state, label, hasProgress: box > 0 };
+        }
+
         function renderProgressCell(word) {
-            const count = wordProgressMap[normalizeWord(word)] || 0;
-            const percent = Math.min(100, Math.round((count / LEARNED_THRESHOLD) * 100));
-            const isMastered = count >= LEARNED_THRESHOLD;
-            const barColor = isMastered ? 'bg-emerald-500' : 'bg-indigo-500';
-            const iconName = isMastered ? 'check-circle-2' : 'circle';
-            const iconClass = isMastered ? 'text-emerald-500' : 'text-gray-300 hover:text-indigo-500';
-            const title = isMastered ? 'Unmark as learned' : 'Mark as learned';
+            const st = getWordStatus(word);
+            const barColor = st.state === 'mastered' ? 'bg-emerald-500' : 'bg-indigo-500';
+            const labelColor = st.state === 'mastered' ? 'text-emerald-600'
+                             : st.state === 'learning' ? 'text-indigo-600' : 'text-gray-400';
+            const w = escJs(word);
+
+            // ✓ — отметить выученным (если ещё не выучено)
+            const markBtn = st.state !== 'mastered'
+                ? `<button onclick="event.stopPropagation(); markWordMastered('${w}')" title="Отметить выученным"
+                        class="text-gray-300 hover:text-emerald-500 transition cursor-pointer shrink-0">
+                        <i data-lucide="check-circle-2" class="w-4 h-4"></i></button>`
+                : `<span class="text-emerald-500 shrink-0" title="Выучено"><i data-lucide="check-circle-2" class="w-4 h-4"></i></span>`;
+
+            // ↺ — сбросить прогресс (только если он есть)
+            const resetBtn = st.hasProgress
+                ? `<button onclick="event.stopPropagation(); resetWordProgress('${w}')" title="Сбросить прогресс"
+                        class="text-gray-300 hover:text-rose-500 transition cursor-pointer shrink-0">
+                        <i data-lucide="rotate-ccw" class="w-4 h-4"></i></button>`
+                : '';
+
             return `
                 <div class="flex items-center gap-2">
                     <div class="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden min-w-10">
-                        <div class="h-full ${barColor} rounded-full transition-all" style="width: ${percent}%"></div>
+                        <div class="h-full ${barColor} rounded-full transition-all" style="width: ${st.percent}%"></div>
                     </div>
-                    <span class="text-[10px] font-bold ${isMastered ? 'text-emerald-600' : 'text-gray-400'} w-8 text-right">${percent}%</span>
-                    <button onclick="event.stopPropagation(); toggleWordLearned('${escJs(word)}')" title="${title}" class="${iconClass} transition cursor-pointer shrink-0">
-                        <i data-lucide="${iconName}" class="w-4 h-4"></i>
-                    </button>
+                    <span class="text-[10px] font-bold ${labelColor} w-16 text-right whitespace-nowrap">${st.label}</span>
+                    ${markBtn}
+                    ${resetBtn}
                 </div>
             `;
         }
@@ -777,28 +805,61 @@
             }
         }
 
+        // Совместимость: старые вызовы toggleWordLearned продолжают работать
         async function toggleWordLearned(word) {
-            if (!currentUser) {
-                alert("Чтобы отмечать слова как выученные, нужно авторизоваться.");
-                return;
-            }
-            const norm = normalizeWord(word);
-            const isCurrentlyMastered = (wordProgressMap[norm] || 0) >= LEARNED_THRESHOLD;
-            const newCount = isCurrentlyMastered ? 0 : LEARNED_THRESHOLD;
-            const newManualFlag = !isCurrentlyMastered; // ставим флаг "отмечено вручную", когда помечаем; снимаем при отмене
+            const st = getWordStatus(word);
+            if (st.state === 'mastered') return resetWordProgress(word);
+            return markWordMastered(word);
+        }
 
-            // Мгновенно обновляем интерфейс, не дожидаясь ответа сервера
-            wordProgressMap[norm] = newCount;
+        function afterProgressChange(word) {
             refreshCurrentView();
+            refreshVocabCards();
             if (document.getElementById('modalWord').innerText === word) {
                 updateModalProgressDisplay(word);
             }
+        }
 
-            const { error } = await supabaseClient
-                .from('user_word_progress')
-                .upsert({ user_id: currentUser.id, word: word, correct_count: newCount, manually_marked: newManualFlag, last_reviewed_at: new Date().toISOString() }, { onConflict: 'user_id,word' });
+        // Отметить выученным: ставим на последнюю ступень, чтобы движок
+        // перестал приносить слово на повторение. Раньше писался только
+        // correct_count, и слово продолжало приходить по расписанию.
+        async function markWordMastered(word) {
+            if (!currentUser) { alert("Чтобы отмечать слова, нужно авторизоваться."); return; }
+            const norm = normalizeWord(word);
+            const due = new Date(Date.now() + 60 * 86400000).toISOString();
 
-            if (error) console.error("Ошибка сохранения отметки 'выучено':", error);
+            srsProgressMap[norm] = Object.assign({}, srsProgressMap[norm], { box: SRS_MAX_BOX, due_at: due });
+            wordProgressMap[norm] = LEARNED_THRESHOLD;
+            afterProgressChange(word);
+
+            const { error } = await supabaseClient.from('user_word_progress').upsert({
+                user_id: currentUser.id, word: word,
+                box: SRS_MAX_BOX, due_at: due,
+                correct_count: LEARNED_THRESHOLD, manually_marked: true,
+                last_reviewed_at: new Date().toISOString()
+            }, { onConflict: 'user_id,word' });
+            if (error) console.error("Ошибка отметки 'выучено':", error);
+        }
+
+        // Сбросить прогресс: слово снова становится новым и вернётся
+        // в «Учить новые». Пишем нули, а не удаляем строку — так не нужны
+        // отдельные права на удаление в базе.
+        async function resetWordProgress(word) {
+            if (!currentUser) return;
+            if (!confirm('Сбросить прогресс по слову «' + word + '»?\n\nОно снова станет новым и вернётся в «Учить новые».')) return;
+
+            const norm = normalizeWord(word);
+            srsProgressMap[norm] = { box: 0, due_at: null, first_seen_at: null };
+            wordProgressMap[norm] = 0;
+            afterProgressChange(word);
+
+            const { error } = await supabaseClient.from('user_word_progress').upsert({
+                user_id: currentUser.id, word: word,
+                box: 0, due_at: null, first_seen_at: null, lapses: 0,
+                correct_count: 0, manually_marked: false, last_result: null,
+                last_reviewed_at: new Date().toISOString()
+            }, { onConflict: 'user_id,word' });
+            if (error) console.error("Ошибка сброса прогресса:", error);
         }
 
         // Возвращает { matched: [...словари слов], missingCount: N, missingNames: [...исходный текст непойманных слов] }
@@ -1001,19 +1062,35 @@
                 progressBlock.classList.add('hidden');
                 return;
             }
-            const count = wordProgressMap[normalizeWord(word)] || 0;
-            const percent = Math.min(100, Math.round((count / LEARNED_THRESHOLD) * 100));
-            const isMastered = count >= LEARNED_THRESHOLD;
-            document.getElementById('modalProgressBar').style.width = percent + '%';
+            const st = getWordStatus(word);
+            const isMastered = st.state === 'mastered';
+            document.getElementById('modalProgressBar').style.width = st.percent + '%';
             document.getElementById('modalProgressBar').className = `h-full rounded-full transition-all ${isMastered ? 'bg-emerald-500' : 'bg-indigo-500'}`;
-            document.getElementById('modalProgressLabel').innerText = isMastered ? 'Learned ✓' : `${percent}%`;
+            document.getElementById('modalProgressLabel').innerText = isMastered ? 'Выучено ✓' : st.label;
 
+            // Если выучено — кнопка сбрасывает прогресс, иначе отмечает выученным
             const btn = document.getElementById('modalMarkLearnedBtn');
             btn.innerHTML = isMastered
-                ? `<i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i><span>Unmark as learned</span>`
-                : `<i data-lucide="check" class="w-3.5 h-3.5"></i><span>Mark as learned</span>`;
-            btn.className = `text-[11px] font-bold px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5 ${isMastered ? 'bg-gray-50 text-gray-500 hover:bg-gray-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`;
-            btn.onclick = () => toggleWordLearned(word);
+                ? `<i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i><span>Сбросить прогресс</span>`
+                : `<i data-lucide="check" class="w-3.5 h-3.5"></i><span>Отметить выученным</span>`;
+            btn.className = `text-[11px] font-bold px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5 ${isMastered ? 'bg-rose-50 text-rose-600 hover:bg-rose-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`;
+            btn.onclick = () => isMastered ? resetWordProgress(word) : markWordMastered(word);
+
+            // Для слова «в изучении» — отдельная кнопка сброса рядом
+            let resetBtn = document.getElementById('modalResetBtn');
+            if (st.state === 'learning') {
+                if (!resetBtn) {
+                    resetBtn = document.createElement('button');
+                    resetBtn.id = 'modalResetBtn';
+                    resetBtn.className = 'text-[11px] font-bold px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5 bg-gray-50 text-gray-500 hover:bg-rose-50 hover:text-rose-600 ml-2';
+                    resetBtn.innerHTML = '<i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i><span>Сбросить</span>';
+                    btn.parentNode.insertBefore(resetBtn, btn.nextSibling);
+                }
+                resetBtn.onclick = () => resetWordProgress(word);
+                resetBtn.classList.remove('hidden');
+            } else if (resetBtn) {
+                resetBtn.classList.add('hidden');
+            }
 
             progressBlock.classList.remove('hidden');
             lucide.createIcons();
