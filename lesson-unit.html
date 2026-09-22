@@ -127,7 +127,7 @@
                         </div>
                         <div class="text-right shrink-0">
                             <p class="text-[11px] font-semibold text-gray-400 mb-0.5">Пройдено</p>
-                            <p id="unitProgress" class="text-xl font-bold text-slate-900">0/2</p>
+                            <p id="unitProgress" class="text-xl font-bold text-slate-900">0/3</p>
                         </div>
                     </div>
                 </div>
@@ -175,13 +175,29 @@
                     <div id="phrasesWrap" class="flex flex-wrap gap-2"></div>
                 </section>
 
-                <!-- Интервью -->
+                <!-- Банк идей -->
+                <section id="ideasSection" class="bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-xs">
+                    <div class="flex items-center justify-between gap-3 mb-1">
+                        <h2 class="text-base font-bold text-slate-900">Банк идей</h2>
+                        <button id="doneIdeas" class="section-done shrink-0"></button>
+                    </div>
+                    <p class="text-xs text-gray-400 mb-3">Без таймера. Подумай над вопросом, накидай 2–3 мысли вслух — потом открой «Идеи» и сверься. Чем больше мыслей соберёшь здесь, тем легче будет на проверке ниже.</p>
+                    <button id="toggleAllIdeas" class="mb-4 inline-flex items-center gap-1.5 text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-xl px-3 py-2 transition">
+                        <i data-lucide="lightbulb" class="w-3.5 h-3.5"></i><span>Показать все идеи</span>
+                    </button>
+                    <div id="ideaGroups" class="space-y-4"></div>
+                </section>
+
+                <!-- Проверка в формате TOEFL -->
                 <section id="interviewSection" class="bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-xs">
                     <div class="flex items-center justify-between gap-3 mb-1">
-                        <h2 class="text-base font-bold text-slate-900">Вопросы интервью</h2>
+                        <h2 class="text-base font-bold text-slate-900">Проверка в формате TOEFL</h2>
                         <button id="doneInterview" class="section-done shrink-0"></button>
                     </div>
-                    <p class="text-xs text-gray-400 mb-5">Как на экзамене: вопросы идут от личного опыта к прогнозам и становятся сложнее. Нажми «Ответить» — таймер внизу зачитает вопрос и начнёт отсчёт.</p>
+                    <p class="text-xs text-gray-400 mb-3">Как на экзамене: вопросы идут от личного опыта к прогнозам и становятся сложнее. Нажми «Ответить» — таймер внизу зачитает вопрос и начнёт отсчёт.</p>
+                    <button id="toggleAllModels" class="mb-4 inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-xl px-3 py-2 transition">
+                        <i data-lucide="eye" class="w-3.5 h-3.5"></i><span>Показать все образцы</span>
+                    </button>
                     <div id="levelsWrap" class="space-y-5"></div>
                 </section>
 
@@ -313,7 +329,7 @@ const LEVEL_STYLES = {
     rose:   'bg-rose-50 text-rose-700 border-rose-100'
 };
 
-let db = null, unit = null, vocabStep = null, interviewStep = null, doneSteps = new Set();
+let db = null, unit = null, vocabStep = null, ideaStep = null, interviewStep = null, doneSteps = new Set();
 
 function safeCreateIcons() {
     try { if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons(); } catch (e) {}
@@ -381,6 +397,73 @@ function renderVocab() {
         </button>`).join('');
 }
 
+function renderIdeas() {
+    const groups = ((ideaStep && ideaStep.content) || {}).groups || [];
+    const sec = document.getElementById('ideasSection');
+    if (!groups.length) { sec.classList.add('hidden'); return; }
+    sec.classList.remove('hidden');
+
+    document.getElementById('ideaGroups').innerHTML = groups.map(g => `
+        <div class="rounded-2xl border border-gray-100 overflow-hidden">
+            <p class="text-xs font-bold text-slate-700 px-4 py-2.5 bg-gray-50/60 border-b border-gray-100">${esc(g.title)}</p>
+            <div class="divide-y divide-gray-50">
+                ${(g.questions || []).map(item => `
+                <div class="idea-item px-4 py-3">
+                    <div class="flex items-center gap-2">
+                        <button class="tts text-gray-300 hover:text-indigo-600 transition shrink-0" data-say="${esc(item.q)}" aria-label="Прослушать вопрос">
+                            <i data-lucide="volume-2" class="w-4 h-4"></i>
+                        </button>
+                        <p class="text-sm text-slate-800 flex-1">${esc(item.q)}</p>
+                        <button class="idea-toggle shrink-0 inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg px-2.5 py-1.5 transition">
+                            <i data-lucide="lightbulb" class="w-3 h-3"></i><span class="idea-label">Идеи</span>
+                        </button>
+                    </div>
+                    <div class="idea-body hidden flex flex-wrap gap-1.5 mt-2 pl-6">
+                        ${(item.ideas || []).map(i => `<span class="text-xs text-amber-900 bg-amber-50/70 border border-amber-100 rounded-lg px-2 py-1">${esc(i)}</span>`).join('')}
+                    </div>
+                </div>`).join('')}
+            </div>
+        </div>`).join('');
+}
+
+// Переключатели: отдельный элемент и «показать все»
+function setShown(body, label, shown, onText, offText) {
+    body.classList.toggle('hidden', !shown);
+    if (label) label.textContent = shown ? onText : offText;
+}
+
+function bindToggles() {
+    document.querySelectorAll('.idea-toggle').forEach(btn => btn.addEventListener('click', () => {
+        const body = btn.closest('.idea-item').querySelector('.idea-body');
+        setShown(body, btn.querySelector('.idea-label'), body.classList.contains('hidden'), 'Скрыть', 'Идеи');
+    }));
+    document.querySelectorAll('.model-toggle').forEach(btn => btn.addEventListener('click', () => {
+        const body = btn.nextElementSibling;
+        setShown(body, btn.querySelector('.model-label'), body.classList.contains('hidden'),
+                 'Скрыть образец ответа', 'Показать образец ответа');
+    }));
+
+    const allIdeas = document.getElementById('toggleAllIdeas');
+    allIdeas.onclick = () => {
+        const show = allIdeas.dataset.open !== '1';
+        allIdeas.dataset.open = show ? '1' : '0';
+        allIdeas.querySelector('span').textContent = show ? 'Скрыть все идеи' : 'Показать все идеи';
+        document.querySelectorAll('.idea-toggle').forEach(btn => {
+            const body = btn.closest('.idea-item').querySelector('.idea-body');
+            setShown(body, btn.querySelector('.idea-label'), show, 'Скрыть', 'Идеи');
+        });
+    };
+
+    const allModels = document.getElementById('toggleAllModels');
+    allModels.onclick = () => {
+        const show = allModels.dataset.open !== '1';
+        allModels.dataset.open = show ? '1' : '0';
+        allModels.querySelector('span').textContent = show ? 'Скрыть все образцы' : 'Показать все образцы';
+        document.querySelectorAll('.model-toggle').forEach(btn => setShown(btn.nextElementSibling,
+            btn.querySelector('.model-label'), show, 'Скрыть образец ответа', 'Показать образец ответа'));
+    };
+}
+
 function renderInterview() {
     const levels = ((interviewStep && interviewStep.content) || {}).levels || [];
     document.getElementById('levelsWrap').innerHTML = levels.map((lv, i) => {
@@ -410,15 +493,20 @@ function renderInterview() {
             </div>
 
             ${lv.model ? `
-            <div class="px-4 py-3 bg-emerald-50/40 border-t border-emerald-100/60">
-                <div class="flex items-center gap-2 mb-1.5">
-                    <span class="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">Образец ответа</span>
+            <div class="border-t border-emerald-100/60 bg-emerald-50/30">
+                <button class="model-toggle w-full flex items-center gap-2 px-4 py-2.5 text-left hover:bg-emerald-50/60 transition">
+                    <i data-lucide="eye" class="w-3.5 h-3.5 text-emerald-600"></i>
+                    <span class="model-label text-xs font-bold text-emerald-700">Показать образец ответа</span>
                     <span class="text-[11px] text-emerald-600/70">на первый вопрос · ~45 сек</span>
-                    <button class="tts ml-auto text-emerald-400 hover:text-emerald-700 transition" data-say="${esc(lv.model)}" aria-label="Прослушать образец">
-                        <i data-lucide="volume-2" class="w-4 h-4"></i>
-                    </button>
+                </button>
+                <div class="model-body hidden px-4 pb-3">
+                    <div class="flex items-start gap-2">
+                        <p class="text-sm text-slate-700 leading-relaxed flex-1">${esc(lv.model)}</p>
+                        <button class="tts text-emerald-400 hover:text-emerald-700 transition shrink-0" data-say="${esc(lv.model)}" aria-label="Прослушать образец">
+                            <i data-lucide="volume-2" class="w-4 h-4"></i>
+                        </button>
+                    </div>
                 </div>
-                <p class="text-sm text-slate-700 leading-relaxed">${esc(lv.model)}</p>
             </div>` : ''}
         </div>`;
     }).join('');
@@ -433,9 +521,10 @@ function bindContent() {
 // Прогресс: каждый из двух разделов отмечается отдельно
 // ==========================================
 function renderProgress() {
-    const total = [vocabStep, interviewStep].filter(Boolean).length;
-    document.getElementById('unitProgress').textContent = doneSteps.size + '/' + total;
-    [['doneVocab', vocabStep], ['doneInterview', interviewStep]].forEach(([id, step]) => {
+    const all = [vocabStep, ideaStep, interviewStep].filter(Boolean);
+    const doneCount = all.filter(st => doneSteps.has(st.id)).length;
+    document.getElementById('unitProgress').textContent = doneCount + '/' + all.length;
+    [['doneVocab', vocabStep], ['doneIdeas', ideaStep], ['doneInterview', interviewStep]].forEach(([id, step]) => {
         const btn = document.getElementById(id);
         if (!step) { btn.classList.add('hidden'); return; }
         const done = doneSteps.has(step.id);
@@ -646,6 +735,7 @@ async function load() {
         const steps = stepRes.data || [];
         // Разделы различаем по содержимому, а не по типу — так надёжнее
         vocabStep = steps.find(s => s.content && s.content.words) || null;
+        ideaStep = steps.find(s => s.content && s.content.groups) || null;
         interviewStep = steps.find(s => s.content && s.content.levels) || null;
         doneSteps = new Set((progRes.data || []).map(p => p.step_id));
 
@@ -656,8 +746,10 @@ async function load() {
         $('unitIconWrap').innerHTML = `<i data-lucide="${esc(u.cover_icon || 'message-circle')}" class="w-6 h-6"></i>`;
 
         renderVocab();
+        renderIdeas();
         renderInterview();
         bindContent();
+        bindToggles();
         renderProgress();
 
         state.classList.add('hidden');
