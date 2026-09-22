@@ -38,6 +38,11 @@ const PAGE_SECTIONS = {
     'practice-view.html':   'listening',
     'choose-response-test.html':    'listening',
     'mock-test-view.html':  'listening',
+    'choose-response-list.html':   'listening',
+    'listening-practice.html':     'listening',
+    'listening-mini-mock.html':    'listening',
+    'listening-articles.html':     'listening',
+    'listening-article-view.html': 'listening',
 
     // --- Writing ---
     'writing.html': 'writing',
