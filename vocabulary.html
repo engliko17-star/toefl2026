@@ -262,6 +262,17 @@
                 <button id="modalMarkLearnedBtn" class="text-[11px] font-bold px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5"></button>
             </div>
             <p id="modalDefinition" class="text-sm text-slate-700 leading-relaxed font-medium"></p>
+            <div id="modalTranslationWrap" class="hidden -mt-2">
+                <button id="modalTranslationBtn" type="button" onclick="revealModalTranslation()"
+                        class="text-[11px] font-bold text-gray-400 hover:text-indigo-600 transition flex items-center gap-1">
+                    <i data-lucide="languages" class="w-3.5 h-3.5"></i> Показать перевод
+                </button>
+                <p id="modalTranslation" class="hidden text-sm text-slate-500"></p>
+            </div>
+            <div id="modalFamilyWrap" class="hidden space-y-1.5">
+                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Word family</span>
+                <div id="modalFamily" class="flex flex-wrap gap-1"></div>
+            </div>
             <div class="space-y-1.5">
                 <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Synonyms</span>
                 <div id="modalSynonyms" class="flex flex-wrap gap-1"></div>
@@ -337,6 +348,14 @@
                     <p class="text-[10px] text-gray-400">Выбирается один раз и запоминается.</p>
                 </div>
 
+                <label class="flex items-start gap-3 cursor-pointer select-none">
+                    <input id="showTranslationToggle" type="checkbox" onchange="setShowTranslation(this.checked)"
+                           class="mt-0.5 w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-600">
+                    <span>
+                        <span class="block text-sm font-medium text-slate-700">Показывать русский перевод сразу</span>
+                        <span class="block text-[10px] text-gray-400">Иначе он спрятан — открывается по нажатию. Удобно для уровня A1–A2.</span>
+                    </span>
+                </label>
                 <div class="space-y-2">
                     <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Какие списки тренировать</span>
                     <div id="reviewListCheckboxes" class="space-y-1 max-h-40 overflow-y-auto p-1"></div>
@@ -665,10 +684,12 @@
             return Math.round((done / list.length) * 100);
         }
 
+        // Процент выученного — тихим текстом рядом с числом слов, без плашек
+        // и цвета: он для ориентира, а не для давления.
         function listProgressBadge(words) {
             const pct = masteredPercent(words);
             if (!pct) return '';
-            return `<span class="absolute top-3 right-9 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-md">${pct}%</span>`;
+            return `<span class="text-gray-300 font-medium"> · ${pct}% выучено</span>`;
         }
 
         // Процент выученного на карточках категорий. Показываем, только когда
@@ -681,7 +702,7 @@
                 const pct = masteredPercent(allWords.filter(w => w.category === m[1]));
                 if (!pct) return;
                 const b = document.createElement('span');
-                b.className = 'cat-progress absolute top-1.5 right-1.5 z-20 text-[9px] font-bold text-white bg-emerald-500/90 px-1.5 py-0.5 rounded-md';
+                b.className = 'cat-progress absolute bottom-2 right-2.5 z-20 text-[9px] font-medium text-white/50';
                 b.textContent = pct + '%';
                 b.title = 'Выучено ' + pct + '% слов этой категории';
                 card.appendChild(b);
@@ -837,10 +858,9 @@
                         <i data-lucide="folder" class="w-5 h-5 text-indigo-500 fill-indigo-50/50"></i>
                         ${listName !== 'Избранное ❤️' ? `<button onclick="event.stopPropagation(); deleteCustomList('${listName}')" class="text-gray-300 hover:text-red-500 transition cursor-pointer"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
                     </div>
-                    ${listProgressBadge(studentLists[listName])}
                     <div>
                         <h4 class="font-bold text-sm text-slate-900 tracking-tight">${listName}</h4>
-                        <p class="text-[10px] text-gray-400 font-semibold">${count} слов${missingCount > 0 ? ` <span class="text-amber-500">(${missingCount} не найдено в базе)</span>` : ''}</p>
+                        <p class="text-[10px] text-gray-400 font-semibold">${count} слов${listProgressBadge(studentLists[listName])}${missingCount > 0 ? ` <span class="text-amber-500">(${missingCount} не найдено в базе)</span>` : ''}</p>
                     </div>
                 `;
                 grid.appendChild(card);
@@ -1104,6 +1124,7 @@
             document.getElementById('modalDefinition').innerText = def || '';
             document.getElementById('modalExample').innerText = example || '';
             document.getElementById('modalMnemonic').innerText = mnemonic || '';
+            renderModalExtras(word);
 
             updateModalProgressDisplay(word);
 
@@ -1116,6 +1137,58 @@
             if (antonyms) antonyms.split(',').forEach(a => { if(a.trim()) antContainer.innerHTML += `<span class="px-2.5 py-1 bg-slate-100 text-[11px] font-medium text-slate-600 rounded-lg">${a.trim()}</span>`; });
 
             document.getElementById('wordModal').classList.remove('hidden');
+        }
+
+        // ===== Перевод и формы слова =====
+        // Перевод по умолчанию спрятан: главным остаётся английское определение,
+        // а перевод — возможность подсмотреть. Настройка «показывать сразу»
+        // хранится в браузере и действует и здесь, и в тренировке.
+        const SHOW_TR_KEY = 'vocabShowTranslation';
+        function showTranslationByDefault() {
+            try { return localStorage.getItem(SHOW_TR_KEY) === '1'; } catch (e) { return false; }
+        }
+        function setShowTranslation(on) {
+            try { localStorage.setItem(SHOW_TR_KEY, on ? '1' : '0'); } catch (e) {}
+        }
+
+        function parseFamily(raw) {
+            if (!raw) return [];
+            let arr = raw;
+            if (typeof raw === 'string') { try { arr = JSON.parse(raw); } catch (e) { return []; } }
+            return Array.isArray(arr) ? arr.filter(f => f && f.w) : [];
+        }
+
+        function escText(t) {
+            return String(t == null ? '' : t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+
+        function renderModalExtras(word) {
+            const obj = (allWords || []).find(w => w.word === word) || {};
+
+            const trWrap = document.getElementById('modalTranslationWrap');
+            const trText = document.getElementById('modalTranslation');
+            const trBtn = document.getElementById('modalTranslationBtn');
+            if (obj.translation_ru) {
+                trText.textContent = obj.translation_ru;
+                const open = showTranslationByDefault();
+                trText.classList.toggle('hidden', !open);
+                trBtn.classList.toggle('hidden', open);
+                trWrap.classList.remove('hidden');
+            } else {
+                trWrap.classList.add('hidden');
+            }
+
+            const fam = parseFamily(obj.word_family);
+            const famWrap = document.getElementById('modalFamilyWrap');
+            document.getElementById('modalFamily').innerHTML = fam.map(f =>
+                `<span class="px-2.5 py-1 bg-indigo-50/60 text-[11px] font-medium text-slate-700 rounded-lg">${escText(f.w)}${f.p ? ` <span class="text-gray-400">${escText(f.p)}</span>` : ''}</span>`
+            ).join('');
+            famWrap.classList.toggle('hidden', fam.length === 0);
+        }
+
+        function revealModalTranslation() {
+            document.getElementById('modalTranslation').classList.remove('hidden');
+            document.getElementById('modalTranslationBtn').classList.add('hidden');
         }
 
         function closeModal() { document.getElementById('wordModal').classList.add('hidden'); }
@@ -1429,6 +1502,8 @@
             const title = document.getElementById('reviewSetupTitle');
             const subtitle = document.getElementById('reviewSetupSubtitle');
             title.innerText = 'Настройки тренировки';
+            const trToggle = document.getElementById('showTranslationToggle');
+            if (trToggle) trToggle.checked = showTranslationByDefault();
             subtitle.innerText = 'Сохраняются сразу, отдельной кнопки не нужно';
 
             refreshVocabCards();
