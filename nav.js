@@ -49,6 +49,8 @@
         'listening-articles.html': 'listening.html', 'listening-article-view.html': 'listening.html',
         'task-list.html': 'writing.html', 'writing-practice.html': 'writing.html',
         'mini-mock-writing.html': 'writing.html', 'mini-mock-results.html': 'writing.html',
+        'mini-mock-writing-list.html': 'writing.html', 'sentence-practice.html': 'writing.html',
+        'writing-articles.html': 'writing.html',
         'speaking_player.html': 'speaking.html', 'speaking_results.html': 'speaking.html',
         'interview.html': 'speaking.html', 'interview_results.html': 'speaking.html',
         'listen_repeat.html': 'speaking.html', 'listen-repeat-practice.html': 'speaking.html',
@@ -56,7 +58,25 @@
         'speaking_mini_mock_results.html': 'speaking.html',
         'review.html': 'vocabulary.html',
         'lesson-unit.html': 'lessons.html',
-        'student-profile.html': 'teacher-board.html'
+        'student-profile.html': 'teacher-board.html',
+
+        // Статьи обеих секций начинаются на article-, поэтому по префиксу их
+        // не различить — каждая вписана явно. Новую статью добавлять сюда.
+        // --- статьи Reading ---
+        'article-academic-passage.html': 'reading.html', 'article-complete-words.html': 'reading.html',
+        'article-factual.html': 'reading.html', 'article-inference.html': 'reading.html',
+        'article-insert-text.html': 'reading.html', 'article-read-in-daily.html': 'reading.html',
+        'article-reference.html': 'reading.html', 'article-rhetorical-purpose.html': 'reading.html',
+        'article-select-sentence.html': 'reading.html',
+        'article-sentence-simplification.html': 'reading.html', 'article-vocabulary.html': 'reading.html',
+        // --- статьи Writing (грамматика и задания) ---
+        'article-articles.html': 'writing.html', 'article-build-a-sentence.html': 'writing.html',
+        'article-collocations.html': 'writing.html', 'article-countable-uncountable.html': 'writing.html',
+        'article-dependent-prepositions.html': 'writing.html',
+        'article-general-writing.html': 'writing.html', 'article-gerund-infinitive.html': 'writing.html',
+        'article-prepositions.html': 'writing.html', 'article-punctuation.html': 'writing.html',
+        'article-verb-government.html': 'writing.html', 'article-verb-patterns.html': 'writing.html',
+        'article-write-an-academic.html': 'writing.html', 'article-write-an-email.html': 'writing.html'
     };
 
     const here = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
