@@ -157,7 +157,6 @@
                             <h2 class="text-base font-bold text-slate-900 tracking-tight">Your Performance Analytics</h2>
                             <p class="text-xs text-gray-400 mt-0.5">Overview of your reading achievements.</p>
                         </div>
-                        <a href="#" class="text-xs font-bold text-indigo-600 hover:underline flex items-center">Detailed Report</a>
                     </div>
 
                     <div class="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-6 divide-y md:divide-y-0 md:divide-x divide-gray-100">
@@ -204,7 +203,7 @@
                     <div class="relative z-10">
                         <span class="bg-white/20 text-white text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wider backdrop-blur-sm">Weekly Goal</span>
                         <h3 class="text-lg font-bold mt-3 mb-1">Reading Challenge</h3>
-                        <p class="text-xs text-indigo-100 mb-4 pr-6">Read 10 passages this week to build stamina and improve your score.</p>
+                        <p class="text-xs text-indigo-100 mb-4 pr-6">Complete 10 reading tasks this week — any type counts: Complete the Words, Daily Life, Academic or a mini mock.</p>
                         <div class="flex justify-between text-xs font-bold mb-1.5">
                             <span>Progress</span>
                             <span id="weeklyProgressText">0 / 10</span>
@@ -221,7 +220,6 @@
                     <div class="space-y-4" id="questionStatsContainer">
                         <div class="text-center text-xs text-gray-400 py-4">Fetching data from Supabase...</div>
                     </div>
-                    <button class="w-full mt-5 py-2 bg-gray-50 hover:bg-gray-100 text-slate-700 rounded-xl text-xs font-bold transition">View Full Breakdown</button>
                 </div>
             </div>
         </div>
@@ -241,6 +239,46 @@
             await fetchAndRenderAnalytics();
         });
         
+        // Недельная цель по Reading. reading_results хранит только Daily Life
+        // и Academic; Complete the Words и мини-моки пишут в свои таблицы.
+        // Раньше они не считались, и ученик мог сделать десять заданий,
+        // видя «0 / 10». Каждую таблицу запрашиваем отдельно и в try: если
+        // где-то нет колонки created_at, это не ломает остальной подсчёт.
+        const WEEKLY_GOAL = 10;
+
+        function startOfThisWeek() {
+            const d = new Date();
+            const day = d.getDay();
+            d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+            d.setHours(0, 0, 0, 0);
+            return d;
+        }
+
+        async function countThisWeek(table) {
+            try {
+                const { count, error } = await supabaseClient
+                    .from(table)
+                    .select('*', { count: 'exact', head: true })
+                    .eq('user_id', currentUser.id)
+                    .gte('created_at', startOfThisWeek().toISOString());
+                if (error) throw error;
+                return count || 0;
+            } catch (e) {
+                console.warn('Недельная цель: не удалось посчитать ' + table + ':', e.message || e);
+                return 0;
+            }
+        }
+
+        async function renderWeeklyGoal(readingResultsCount) {
+            const [completeWords, miniMocks] = await Promise.all([
+                countThisWeek('complete_words_results'),
+                countThisWeek('mock_test_results')
+            ]);
+            const done = readingResultsCount + completeWords + miniMocks;
+            document.getElementById('weeklyProgressText').innerText = `${done} / ${WEEKLY_GOAL}`;
+            document.getElementById('weeklyProgressBar').style.width = `${Math.min((done / WEEKLY_GOAL) * 100, 100)}%`;
+        }
+
         async function fetchAndRenderAnalytics() {
             try {
                 const { data, error } = await supabaseClient
@@ -256,6 +294,9 @@
                     document.getElementById('topStrengthsList').innerHTML = '<span class="text-xs text-gray-400">No data</span>';
                     document.getElementById('overallScoreText').innerHTML = `0<span class="text-xs text-gray-400 font-medium">%</span>`;
                     document.getElementById('avgTimeText').innerText = "00:00";
+                    document.getElementById('overallScoreBadge').innerText = "No data yet";
+                    document.getElementById('overallScoreBadge').className = "text-[10px] text-gray-400 font-bold";
+                    await renderWeeklyGoal(0);
                     return;
                 }
 
@@ -321,9 +362,7 @@
                     badge.innerText = "Keep trying"; badge.className = "text-[10px] text-orange-500 font-bold";
                 }
 
-                document.getElementById('weeklyProgressText').innerText = `${weeklyCount} / 10`;
-                const progressWidth = Math.min((weeklyCount / 10) * 100, 100);
-                document.getElementById('weeklyProgressBar').style.width = `${progressWidth}%`;
+                await renderWeeklyGoal(weeklyCount);
 
                 if (testsWithTimeCount > 0) {
                     let avgSeconds = Math.round(totalTimeSeconds / testsWithTimeCount);
