@@ -44,7 +44,9 @@
         'take-mock-test.html': 'reading.html', 'mini-mock-test.html': 'reading.html',
         'reading-articles.html': 'reading.html',
         'practice-view.html': 'listening.html', 'choose-response-test.html': 'listening.html',
-        'mock-test-view.html': 'listening.html',
+        'mock-test-view.html': 'listening.html', 'choose-response-list.html': 'listening.html',
+        'listening-practice.html': 'listening.html', 'listening-mini-mock.html': 'listening.html',
+        'listening-articles.html': 'listening.html', 'listening-article-view.html': 'listening.html',
         'task-list.html': 'writing.html', 'writing-practice.html': 'writing.html',
         'mini-mock-writing.html': 'writing.html', 'mini-mock-results.html': 'writing.html',
         'speaking_player.html': 'speaking.html', 'speaking_results.html': 'speaking.html',
@@ -117,6 +119,8 @@
     @media (max-width:767px){ body.app-has-mnav main::after{content:'';display:block;height:calc(72px + env(safe-area-inset-bottom))} }
     /* Ссылка преподавателя скрыта для всех, кроме учителя — независимо от порядка стилей */
     .app-nav .hidden,.app-mnav .hidden{display:none !important}
+    /* Страница может спрятать всё меню целиком (режим фокуса в упражнении) */
+    .app-nav.hidden,.app-mnav.hidden{display:none !important}
     `;
     const style = document.createElement('style');
     style.id = 'app-nav-styles';
@@ -137,6 +141,9 @@
     // для гостя ищет ссылки через 'aside nav a'.
     const aside = document.createElement('aside');
     aside.className = 'app-nav';
+    // Старые id сохранены намеренно: страницы с упражнениями (practice-view)
+    // прячут меню на время выполнения задания, находя его по этим id.
+    aside.id = 'mainSidebar';
     aside.innerHTML = `
         <div class="app-nav-brand">
             <a href="index.html" class="app-nav-logo"><span>TOEFL</span><i></i></a>
@@ -164,6 +171,7 @@
     const allItems = NAV_GROUPS.flatMap(g => g.items);
     const mnav = document.createElement('nav');
     mnav.className = 'app-mnav';
+    mnav.id = 'mobileBottomNav';
     mnav.innerHTML = `<div class="app-mnav-row">
         ${allItems.map(it => `<a href="${it.href}" class="app-mnav-link${it.href === activeHref ? ' is-active' : ''}">
             <i data-lucide="${it.icon}"></i><span>${esc(it.label.replace('Speaking Topics', 'Topics').replace('Irregular Verbs', 'Verbs'))}</span></a>`).join('')}
