@@ -30,6 +30,8 @@ const PAGE_SECTIONS = {
     'complete-words.html':  'reading',
     'complete-words-task.html':     'reading',
     'take-mock-test.html':  'reading',
+    'mini-mock-test.html':  'reading',
+    'reading-articles.html': 'reading',
 
     // --- Listening ---
     'listening.html':       'listening',
