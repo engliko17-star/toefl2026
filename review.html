@@ -157,6 +157,9 @@
         let learnQueue = [];      // ещё не введённые в работу
         let learnDone = [];       // отмеченные «Выучил»
         let learnSeenCount = {};  // сколько раз показали слово (для смены режима)
+        let learnReady = {};      // ученик нажал «Помню» — следующий показ будет вводом
+        let lastShownWord = null; // чтобы одно и то же слово не шло два раза подряд
+        let recordedInSession = new Set(); // слова, по которым прогресс уже записан в этой сессии
         let correctAnswers = 0;
         let sessionSettings = null;
         let currentMode = ''; 
@@ -465,18 +468,24 @@
         // Какой режим показать слову на этом круге: сначала карточка,
         // потом узнавание, потом ввод. Один и тот же набор слов
         // прокручивается по-разному, а не читается один раз подряд.
+        // Заучивание чередует три упражнения: карточку «слово → определение»,
+        // карточку «определение → слово» и ввод слова по определению.
+        // Одних карточек мало: слово закрепляется, когда его вспоминают и пишут.
         function learnModeFor(word) {
+            if (learnReady[word]) return 'typing';       // ученик нажал «Помню» — проверяем вводом
             const seen = learnSeenCount[word] || 0;
-            if (seen === 0) return 'flashcards';
-            if (seen === 1) return 'flashcards';
-            return 'typing';
+            if (seen === 0) return 'flashcards';         // знакомство
+            if (seen === 1) return 'flashcards_rev';     // вспомнить слово по определению
+            return seen % 2 === 0 ? 'typing' : 'flashcards_rev';
         }
 
         function pickNextLearnWord() {
             if (!learnPool.length) return null;
             // Берём то, что показывали реже всего — чтобы слова чередовались
-            let best = learnPool[0], bestSeen = learnSeenCount[best.word] || 0;
-            for (const w of learnPool) {
+            // Не показываем одно и то же слово два раза подряд, если есть выбор
+            const pool = learnPool.length > 1 ? learnPool.filter(w => w.word !== lastShownWord) : learnPool;
+            let best = pool[0], bestSeen = learnSeenCount[best.word] || 0;
+            for (const w of pool) {
                 const seen = learnSeenCount[w.word] || 0;
                 if (seen < bestSeen) { best = w; bestSeen = seen; }
             }
@@ -501,6 +510,17 @@
             const w = reviewWords[currentIndex];
             if (!w) return;
             learnSeenCount[w.word] = (learnSeenCount[w.word] || 0) + 1;
+            learnReady[w.word] = false;
+            showWord();
+        }
+
+        // «Помню» на карточке ещё не закрывает слово: следующим показом
+        // будет ввод, и выученным слово станет, только если его написать.
+        function markRemember() {
+            const w = reviewWords[currentIndex];
+            if (!w) return;
+            learnSeenCount[w.word] = (learnSeenCount[w.word] || 0) + 1;
+            learnReady[w.word] = true;
             showWord();
         }
 
@@ -525,6 +545,7 @@
                     `${totalLearn ? (learnDone.length / totalLearn) * 100 : 0}%`;
 
                 currentMode = learnModeFor(next.word);
+                lastShownWord = next.word;
             } else {
                 if (currentIndex >= reviewWords.length) {
                     showResults();
@@ -532,11 +553,17 @@
                 }
 
                 const total = reviewWords.length;
-                document.getElementById('progressText').innerText = `Word ${currentIndex + 1} of ${total}`;
+                const retryNote = reviewWords[currentIndex] && reviewWords[currentIndex].isRetry ? ' · ещё раз' : '';
+                document.getElementById('progressText').innerText = `Word ${currentIndex + 1} of ${total}${retryNote}`;
                 document.getElementById('progressBar').style.width = `${(currentIndex / total) * 100}%`;
 
                 currentWordObj = reviewWords[currentIndex];
                 currentMode = currentWordObj.fixedMode;
+                // В повторении карточка тоже идёт то от слова, то от определения
+                if (currentMode === 'flashcards') {
+                    if (currentWordObj.cardDir === undefined) currentWordObj.cardDir = Math.random() < 0.5 ? 'rev' : 'fwd';
+                    if (currentWordObj.cardDir === 'rev') currentMode = 'flashcards_rev';
+                }
             }
 
             const quizArea = document.getElementById('quizArea');
@@ -547,7 +574,7 @@
 
             // --- КАРТОЧКИ ---
             if (currentMode === 'flashcards') {
-                document.getElementById('sessionModeBadge').innerText = "Flashcards";
+                document.getElementById('sessionModeBadge').innerText = "Word → Meaning";
                 bottomHint.innerText = "Кликните на карточку, чтобы перевернуть её";
                 
                 quizArea.innerHTML = `
@@ -556,6 +583,7 @@
                             <div class="card-front absolute inset-0 flex flex-col items-center justify-center p-6 bg-slate-50/50 rounded-2xl">
                                 <span class="text-3xl font-extrabold text-slate-900 tracking-tight">${currentWordObj.word}</span>
                                 <span class="text-xs font-bold text-gray-400 uppercase tracking-wider mt-2 bg-white px-2.5 py-1 rounded-md border border-gray-100">${currentWordObj.part}</span>
+                                <div class="mt-3">${audioBtn('bg-indigo-50 text-indigo-600 hover:bg-indigo-100')}</div>
                             </div>
                             <div class="card-back absolute inset-0 flex flex-col justify-center p-6 bg-indigo-600 rounded-2xl text-white text-center space-y-3">
                                 <p class="text-base font-medium leading-relaxed">${currentWordObj.definition}</p>
@@ -570,14 +598,7 @@
                 // В заучивании ученик сам решает судьбу слова: «Выучил» уводит
                 // его в интервальное повторение, «Ещё повторить» оставляет
                 // в пуле до конца сессии.
-                actionButtons.innerHTML = isLearnMode ? `
-                    <button onclick="event.stopPropagation(); markAgain()" class="px-5 py-2.5 bg-amber-50 text-amber-700 rounded-xl text-xs font-bold hover:bg-amber-100 transition flex items-center space-x-1.5 cursor-pointer">
-                        <i data-lucide="rotate-ccw" class="w-4 h-4"></i> <span>Ещё повторить</span>
-                    </button>
-                    <button onclick="event.stopPropagation(); markLearned()" class="px-5 py-2.5 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold hover:bg-emerald-100 transition flex items-center space-x-1.5 cursor-pointer">
-                        <i data-lucide="check" class="w-4 h-4"></i> <span>Выучил</span>
-                    </button>
-                ` : `
+                actionButtons.innerHTML = isLearnMode ? learnCardButtons() : `
                     <button onclick="event.stopPropagation(); nextWord(false)" class="px-5 py-2.5 bg-gray-50 text-slate-500 rounded-xl text-xs font-bold hover:bg-gray-100 transition flex items-center space-x-1 cursor-pointer">
                         <i data-lucide="frown" class="w-4 h-4 text-red-400"></i> <span>Forgot</span>
                     </button>
@@ -586,6 +607,32 @@
                     </button>
                 `;
                 quizArea.appendChild(actionButtons);
+                setTimeout(playCurrentWordAudio, 300);   // слово видно сразу — сразу и звучит
+
+            // --- КАРТОЧКА «ОПРЕДЕЛЕНИЕ → СЛОВО» ---
+            } else if (currentMode === 'flashcards_rev') {
+                document.getElementById('sessionModeBadge').innerText = "Meaning → Word";
+                bottomHint.innerText = "Вспомните слово по определению и переверните карточку";
+
+                quizArea.innerHTML = `
+                    <div class="w-full h-64 perspective cursor-pointer" onclick="flipCard()">
+                        <div id="cardInner" class="w-full h-full card-inner relative rounded-2xl border border-gray-100 shadow-xs bg-white">
+                            <div class="card-front absolute inset-0 flex flex-col justify-center p-6 bg-slate-50/50 rounded-2xl text-center space-y-3">
+                                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">${currentWordObj.part}</span>
+                                <p class="text-base font-medium text-slate-800 leading-relaxed">${currentWordObj.definition}</p>
+                            </div>
+                            <div class="card-back absolute inset-0 flex flex-col items-center justify-center p-6 bg-indigo-600 rounded-2xl text-white text-center space-y-2">
+                                <span class="text-3xl font-extrabold tracking-tight">${currentWordObj.word}</span>
+                                ${audioBtn('bg-white/15 text-white hover:bg-white/25')}
+                                ${currentWordObj.example ? `<p class="text-xs text-indigo-100 italic opacity-90 border-t border-indigo-500/40 pt-2 font-light">"${currentWordObj.example}"</p>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+                const revButtons = document.createElement('div');
+                revButtons.className = "flex justify-center space-x-3 w-full mt-4 animate-fade-in";
+                revButtons.innerHTML = isLearnMode ? learnCardButtons() : reviewCardButtons();
+                quizArea.appendChild(revButtons);
 
             // --- НАПИСАНИЕ ПО ОПРЕДЕЛЕНИЮ ---
             } else if (currentMode === 'typing') {
@@ -654,6 +701,7 @@
                             <div class="card-front absolute inset-0 flex flex-col items-center justify-center p-6 bg-slate-50/50 rounded-2xl">
                                 <span class="text-3xl font-extrabold text-slate-900 tracking-tight">${currentWordObj.word}</span>
                                 <span class="text-xs font-bold text-gray-400 uppercase tracking-wider mt-2 bg-white px-2.5 py-1 rounded-md border border-gray-100">${currentWordObj.part}</span>
+                                <div class="mt-3">${audioBtn('bg-slate-100 text-slate-600 hover:bg-slate-200')}</div>
                             </div>
                             <div class="card-back absolute inset-0 flex flex-col justify-center p-6 bg-slate-700 rounded-2xl text-white text-center space-y-3">
                                 <p class="text-base font-medium leading-relaxed">${currentWordObj.definition}</p>
@@ -671,6 +719,7 @@
                     </button>
                 `;
                 quizArea.appendChild(nextBtnWrap);
+                setTimeout(playCurrentWordAudio, 300);
             }
 
             lucide.createIcons();
@@ -679,18 +728,88 @@
             if(inputField) inputField.focus();
         }
 
+        // Явно выбираем «чистый» английский голос. Одного lang = 'en-US'
+        // мало: браузер может взять голос с индийским или французским акцентом.
+        let _voice = null;
+        function pickVoice() {
+            if (_voice) return _voice;
+            const vs = (window.speechSynthesis && speechSynthesis.getVoices()) || [];
+            const en = vs.filter(v => /^en[-_]/i.test(v.lang || ''));
+            if (!en.length) return null;
+            const pref = ['Google US English', 'Microsoft Aria', 'Microsoft Jenny', 'Samantha', 'Alex', 'Google UK English Female'];
+            for (const n of pref) { const hit = en.find(v => (v.name || '').includes(n)); if (hit) return (_voice = hit); }
+            return (_voice = en.find(v => /en[-_](US|GB)/i.test(v.lang)) || en[0]);
+        }
+        if (window.speechSynthesis) speechSynthesis.onvoiceschanged = () => { _voice = null; pickVoice(); };
+
+        function speakWord(text) {
+            try {
+                if (!window.speechSynthesis || !text) return;
+                speechSynthesis.cancel();
+                const u = new SpeechSynthesisUtterance(text);
+                u.lang = 'en-US'; u.rate = 0.9;
+                const v = pickVoice(); if (v) u.voice = v;
+                speechSynthesis.speak(u);
+            } catch (e) {}
+        }
+
         function playCurrentWordAudio() {
-            window.speechSynthesis.cancel(); 
-            const wordText = reviewWords[currentIndex].word;
-            const utterance = new SpeechSynthesisUtterance(wordText);
-            utterance.lang = 'en-US';
-            utterance.rate = 0.9; 
-            window.speechSynthesis.speak(utterance);
+            const w = reviewWords[currentIndex];
+            if (w) speakWord(w.word);
+        }
+
+        // Кнопка озвучки, которая не переворачивает карточку при нажатии
+        function audioBtn(extra) {
+            return `<button onclick="event.stopPropagation(); playCurrentWordAudio()" title="Прослушать"
+                        class="${extra || ''} w-9 h-9 rounded-full flex items-center justify-center transition cursor-pointer">
+                        <i data-lucide="volume-2" class="w-4 h-4"></i></button>`;
         }
 
         function flipCard() {
             const cardInner = document.getElementById('cardInner');
-            if (cardInner) cardInner.classList.toggle('card-flipped');
+            if (!cardInner) return;
+            cardInner.classList.toggle('card-flipped');
+            // В карточке «определение → слово» слово появляется только на обороте —
+            // тогда и звучит, иначе озвучка подсказала бы ответ заранее.
+            if (currentMode === 'flashcards_rev' && cardInner.classList.contains('card-flipped')) playCurrentWordAudio();
+        }
+
+        function learnCardButtons() {
+            return `
+                <button onclick="event.stopPropagation(); markAgain()" class="px-5 py-2.5 bg-amber-50 text-amber-700 rounded-xl text-xs font-bold hover:bg-amber-100 transition flex items-center space-x-1.5 cursor-pointer">
+                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i> <span>Ещё повторить</span>
+                </button>
+                <button onclick="event.stopPropagation(); markRemember()" class="px-5 py-2.5 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold hover:bg-emerald-100 transition flex items-center space-x-1.5 cursor-pointer">
+                    <i data-lucide="check" class="w-4 h-4"></i> <span>Помню — проверить</span>
+                </button>`;
+        }
+
+        function reviewCardButtons() {
+            return `
+                <button onclick="event.stopPropagation(); nextWord(false)" class="px-5 py-2.5 bg-gray-50 text-slate-500 rounded-xl text-xs font-bold hover:bg-gray-100 transition flex items-center space-x-1 cursor-pointer">
+                    <i data-lucide="frown" class="w-4 h-4 text-red-400"></i> <span>Forgot</span>
+                </button>
+                <button onclick="event.stopPropagation(); nextWord(true)" class="px-5 py-2.5 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100 transition flex items-center space-x-1 cursor-pointer">
+                    <i data-lucide="smile" class="w-4 h-4 text-green-500"></i> <span>Knew it</span>
+                </button>`;
+        }
+
+        // Прогресс по слову пишется один раз за сессию — по первой попытке.
+        // Повторные показы забытого слова — тренировка, а не новая оценка:
+        // иначе слово поднималось бы по лестнице просто за то, что его показали дважды.
+        function recordOnce(word, ok, inc) {
+            if (recordedInSession.has(word)) return false;
+            recordedInSession.add(word);
+            recordWordProgress(word, ok, inc);
+            if (ok) correctAnswers++;
+            return true;
+        }
+
+        // Забытое слово возвращается в конец сессии и показывается, пока не вспомнится
+        function requeue(wordObj) {
+            const copy = Object.assign({}, wordObj, { isRetry: true });
+            delete copy.cardDir;
+            reviewWords.push(copy);
         }
 
         function setupEnterKey(inputId, mode) {
@@ -724,13 +843,15 @@
             feedback.classList.remove('hidden');
 
             const isCorrect = (userAnswer === correctAnswer);
-            recordWordProgress(currentWordObj.word, isCorrect, mode === 'typing' ? 2 : 1);
+            // В заучивании прогресс пишет только markLearned — раньше здесь он
+            // записывался второй раз. В повторении — одна оценка за сессию.
+            if (!isLearnMode) recordOnce(currentWordObj.word, isCorrect, mode === 'typing' ? 2 : 1);
+            speakWord(currentWordObj.word);   // после ответа слово звучит во всех режимах
 
             if (isCorrect) {
                 input.className = `w-full px-4 py-3 bg-green-50 border border-green-300 rounded-xl text-sm font-bold tracking-wide text-green-700 ${mode === 'dictation' ? 'text-center' : ''}`;
                 feedback.innerText = "✨ Correct! Excellent spelling.";
                 feedback.className = "text-xs font-bold text-green-600 mt-1";
-                correctAnswers++;
             } else {
                 input.className = `w-full px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm font-bold tracking-wide text-red-700 ${mode === 'dictation' ? 'text-center' : ''}`;
                 feedback.innerHTML = `❌ Incorrect. Correct spelling is: <span class="underline">${currentWordObj.word}</span>`;
@@ -760,15 +881,17 @@
                         markLearned();
                         return;
                     }
+                    learnReady[currentWordObj.word] = false;   // ошибся во вводе — назад к карточкам
                 }
                 showWord();
                 return;
             }
 
-            if (currentMode === 'flashcards' && currentWordObj) {
-                recordWordProgress(currentWordObj.word, wasCorrect, 1); // самооценка весит меньше, чем typing (2)
-                if (wasCorrect) correctAnswers++;
+            if ((currentMode === 'flashcards' || currentMode === 'flashcards_rev') && currentWordObj) {
+                recordOnce(currentWordObj.word, wasCorrect, 1); // самооценка весит меньше, чем typing (2)
             }
+            // «Forgot» или ошибка во вводе — слово вернётся в конце сессии
+            if (!wasCorrect && currentWordObj && sessionSettings.mode !== 'browse') requeue(currentWordObj);
             currentIndex++;
             showWord();
         }
@@ -786,8 +909,9 @@
             } else {
                 document.getElementById('resCorrectCount').innerText = correctAnswers;
                 document.getElementById('resCorrectLabel').innerText = 'Правильно';
-                document.getElementById('resTotalCount').innerText = reviewWords.length;
-                document.getElementById('resTotalLabel').innerText = 'Всего ответов';
+                // Повторы забытых слов не раздувают итог: считаем уникальные слова
+                document.getElementById('resTotalCount').innerText = new Set(reviewWords.map(w => w.word)).size;
+                document.getElementById('resTotalLabel').innerText = 'Всего слов';
             }
 
             document.getElementById('resultsContainer').classList.remove('hidden');
