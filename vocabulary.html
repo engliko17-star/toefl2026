@@ -793,7 +793,13 @@
             const norm = normalizeWord(word);
             const due = new Date(Date.now() + 60 * 86400000).toISOString();
 
-            srsProgressMap[norm] = Object.assign({}, srsProgressMap[norm], { box: SRS_MAX_BOX, due_at: due });
+            // Отметку красим сразу, но если база откажет — возвращаем как было
+            // и говорим об этом. Раньше ошибка уходила только в консоль, и слово
+            // выглядело выученным до перезагрузки страницы.
+            const prevSrs = srsProgressMap[norm];
+            const prevCount = wordProgressMap[norm];
+
+            srsProgressMap[norm] = Object.assign({}, prevSrs, { box: SRS_MAX_BOX, due_at: due });
             wordProgressMap[norm] = LEARNED_THRESHOLD;
             afterProgressChange(word);
 
@@ -803,7 +809,14 @@
                 correct_count: LEARNED_THRESHOLD, manually_marked: true,
                 last_reviewed_at: new Date().toISOString()
             }, { onConflict: 'user_id,word' });
-            if (error) console.error("Ошибка отметки 'выучено':", error);
+
+            if (error) {
+                console.error("Ошибка отметки 'выучено':", error);
+                srsProgressMap[norm] = prevSrs;
+                wordProgressMap[norm] = prevCount;
+                afterProgressChange(word);
+                alert('Не удалось сохранить отметку: ' + (error.message || error.code || error));
+            }
         }
 
         // Сбросить прогресс: слово снова становится новым и вернётся
@@ -814,6 +827,9 @@
             if (!confirm('Сбросить прогресс по слову «' + word + '»?\n\nОно снова станет новым и вернётся в «Учить новые».')) return;
 
             const norm = normalizeWord(word);
+            const prevSrs = srsProgressMap[norm];
+            const prevCount = wordProgressMap[norm];
+
             srsProgressMap[norm] = { box: 0, due_at: null, first_seen_at: null };
             wordProgressMap[norm] = 0;
             afterProgressChange(word);
@@ -824,7 +840,13 @@
                 correct_count: 0, manually_marked: false, last_result: null,
                 last_reviewed_at: new Date().toISOString()
             }, { onConflict: 'user_id,word' });
-            if (error) console.error("Ошибка сброса прогресса:", error);
+            if (error) {
+                console.error("Ошибка сброса прогресса:", error);
+                srsProgressMap[norm] = prevSrs;
+                wordProgressMap[norm] = prevCount;
+                afterProgressChange(word);
+                alert('Не удалось сбросить прогресс: ' + (error.message || error.code || error));
+            }
         }
 
         // Возвращает { matched: [...словари слов], missingCount: N, missingNames: [...исходный текст непойманных слов] }
