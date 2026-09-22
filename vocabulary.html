@@ -217,11 +217,11 @@
                 <div class="flex items-center gap-1">
                     <button onclick="setSortMode('alpha')" id="sortAlphaBtn"
                             class="px-2.5 py-1 rounded-lg text-[10px] font-bold transition bg-indigo-600 text-white">
-                        А→Я
+                        A→Z
                     </button>
                     <button onclick="setSortMode('shuffle')" id="sortShuffleBtn"
                             class="px-2.5 py-1 rounded-lg text-[10px] font-bold transition bg-white text-slate-600 border border-gray-200 hover:bg-gray-50">
-                        Вразброс
+                        Shuffle
                     </button>
                 </div>
             </div>
@@ -304,25 +304,15 @@
             <button onclick="closeReviewSetup()" class="absolute top-5 right-5 text-gray-400 hover:text-slate-800"><i data-lucide="x" class="w-5 h-5"></i></button>
             
             <div class="flex items-center space-x-3 border-b border-gray-100 pb-4">
-                <div class="p-2 bg-indigo-50 rounded-xl"><i data-lucide="brain-circuit" class="w-5 h-5 text-indigo-600"></i></div>
+                <div class="p-2 bg-indigo-50 rounded-xl"><i data-lucide="settings" class="w-5 h-5 text-indigo-600"></i></div>
                 <div class="flex-1">
                     <h2 id="reviewSetupTitle" class="text-lg font-bold text-slate-900">Тренировка</h2>
                     <p id="reviewSetupSubtitle" class="text-xs text-gray-500">Система сама выберет, что повторять</p>
                 </div>
             </div>
 
-            <button onclick="startBrowseSession()"
-                    class="w-full py-2.5 bg-white border border-gray-200 text-slate-600 rounded-xl text-xs font-bold hover:bg-gray-50 transition cursor-pointer flex items-center justify-center gap-1.5">
-                <i data-lucide="eye" class="w-3.5 h-3.5"></i> Просто посмотреть слова — без зачёта
-            </button>
-
-            <button onclick="toggleVocabSettings()"
-                    class="w-full py-2 text-gray-400 hover:text-slate-700 text-[11px] font-bold transition flex items-center justify-center gap-1.5">
-                <i data-lucide="settings" class="w-3.5 h-3.5"></i> <span id="settingsToggleLabel">Настройки: цель на день и режим</span>
-            </button>
-
             <!-- Настройки: задаются один раз и запоминаются -->
-            <div id="vocabSettings" class="hidden space-y-4 pt-4 border-t border-gray-100">
+            <div id="vocabSettings" class="space-y-5">
                 <div class="space-y-2">
                     <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Цель на день — новых слов</span>
                     <div class="flex gap-1.5">
@@ -348,8 +338,9 @@
                 </div>
 
                 <div class="space-y-2">
-                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Списки слов</span>
-                    <div id="reviewListCheckboxes" class="space-y-2 max-h-32 overflow-y-auto p-1"></div>
+                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Какие списки тренировать</span>
+                    <div id="reviewListCheckboxes" class="space-y-1 max-h-40 overflow-y-auto p-1"></div>
+                    <p class="text-[10px] text-gray-400">Выбор запоминается. Отмеченные списки идут и в «Учить новые», и в «Повторение».</p>
                 </div>
             </div>
         </div>
@@ -418,6 +409,7 @@
             await applyFilters();
             updateGlobalListsCount();
             refreshVocabCards();
+            renderCategoryProgress();
         }
 
         async function loadWordProgress() {
@@ -665,6 +657,37 @@
         // и поэтому не совпадали с тем, что реально делает движок.
         const SRS_MAX_BOX = 13;
 
+        // Доля выученных слов в наборе — для ненавязчивых подписей на карточках
+        function masteredPercent(words) {
+            const list = (words || []).map(w => (typeof w === 'string' ? w : w.word)).filter(Boolean);
+            if (!list.length || !currentUser) return null;
+            const done = list.filter(w => getWordStatus(w).state === 'mastered').length;
+            return Math.round((done / list.length) * 100);
+        }
+
+        function listProgressBadge(words) {
+            const pct = masteredPercent(words);
+            if (!pct) return '';
+            return `<span class="absolute top-3 right-9 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-md">${pct}%</span>`;
+        }
+
+        // Процент выученного на карточках категорий. Показываем, только когда
+        // он больше нуля: стена «0%» в начале скорее отпугивает, чем мотивирует.
+        function renderCategoryProgress() {
+            document.querySelectorAll('.category-card').forEach(card => {
+                const m = (card.getAttribute('onclick') || '').match(/selectCategory\('(.+?)'\)/);
+                if (!m || m[1] === 'All') return;
+                card.querySelector('.cat-progress')?.remove();
+                const pct = masteredPercent(allWords.filter(w => w.category === m[1]));
+                if (!pct) return;
+                const b = document.createElement('span');
+                b.className = 'cat-progress absolute top-1.5 right-1.5 z-20 text-[9px] font-bold text-white bg-emerald-500/90 px-1.5 py-0.5 rounded-md';
+                b.textContent = pct + '%';
+                b.title = 'Выучено ' + pct + '% слов этой категории';
+                card.appendChild(b);
+            });
+        }
+
         function getWordStatus(word) {
             const p = srsProgressMap[normalizeWord(word)];
             const box = (p && p.box) || 0;
@@ -735,6 +758,7 @@
         function afterProgressChange(word) {
             refreshCurrentView();
             refreshVocabCards();
+            renderCategoryProgress();
             if (document.getElementById('modalWord').innerText === word) {
                 updateModalProgressDisplay(word);
             }
@@ -813,6 +837,7 @@
                         <i data-lucide="folder" class="w-5 h-5 text-indigo-500 fill-indigo-50/50"></i>
                         ${listName !== 'Избранное ❤️' ? `<button onclick="event.stopPropagation(); deleteCustomList('${listName}')" class="text-gray-300 hover:text-red-500 transition cursor-pointer"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
                     </div>
+                    ${listProgressBadge(studentLists[listName])}
                     <div>
                         <h4 class="font-bold text-sm text-slate-900 tracking-tight">${listName}</h4>
                         <p class="text-[10px] text-gray-400 font-semibold">${count} слов${missingCount > 0 ? ` <span class="text-amber-500">(${missingCount} не найдено в базе)</span>` : ''}</p>
@@ -1151,9 +1176,9 @@
         let vocabDailyGoal = 10;
         let vocabMode = 'auto';
 
-        function toggleVocabSettings() {
-            document.getElementById('vocabSettings').classList.toggle('hidden');
-        }
+        // Кнопка «Настройки» открывает окно. Раньше она переключала блок,
+        // лежавший ВНУТРИ скрытого окна, поэтому на экране ничего не менялось.
+        function toggleVocabSettings() { openReviewSetup('settings'); }
 
         async function loadVocabSettings() {
             if (!currentUser) return;
@@ -1198,11 +1223,26 @@
         }
 
         // Все списки ученика — по умолчанию тренируем всё
-        function getAllListNames() {
-            const checked = Array.from(document.querySelectorAll('.review-list-checkbox:checked')).map(cb => cb.value);
-            if (checked.length) return checked;
-            return Object.keys(studentLists || {});
+        // Выбор списков для тренировки хранится в браузере. Раньше галочки
+        // рисовались пустыми при каждом открытии и нигде не запоминались.
+        const LIST_SELECTION_KEY = 'vocabSelectedLists';
+
+        function getSelectedListNames() {
+            const all = Object.keys(studentLists || {});
+            let saved = null;
+            try { saved = JSON.parse(localStorage.getItem(LIST_SELECTION_KEY) || 'null'); } catch (e) {}
+            if (!Array.isArray(saved)) return all;               // ещё не выбирали — все
+            const valid = saved.filter(n => all.includes(n));
+            return valid.length ? valid : all;                   // выбранные удалили — все
         }
+
+        function onListSelectionChange() {
+            const checked = Array.from(document.querySelectorAll('.review-list-checkbox:checked')).map(cb => cb.value);
+            try { localStorage.setItem(LIST_SELECTION_KEY, JSON.stringify(checked)); } catch (e) {}
+            refreshVocabCards();
+        }
+
+        function getAllListNames() { return getSelectedListNames(); }
 
         function plural(n, one, few, many) {
             const n10 = n % 10, n100 = n % 100;
@@ -1372,8 +1412,9 @@
                 
                 const label = document.createElement('label');
                 label.className = `flex items-center p-2 rounded-lg cursor-pointer hover:bg-gray-50 transition ${count === 0 ? 'opacity-50' : ''}`;
+                const checked = count > 0 && getSelectedListNames().includes(listName);
                 label.innerHTML = `
-                    <input type="checkbox" value="${listName}" class="review-list-checkbox w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-600" ${count === 0 ? 'disabled' : ''}>
+                    <input type="checkbox" value="${listName}" onchange="onListSelectionChange()" class="review-list-checkbox w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-600" ${count === 0 ? 'disabled' : ''} ${checked ? 'checked' : ''}>
                     <span class="ml-2 text-sm font-medium text-slate-700">${listName} <span class="text-xs text-gray-400 ml-1">(${count})</span></span>
                 `;
                 container.appendChild(label);
@@ -1387,8 +1428,8 @@
             // решает сама, а цель дня и режим живут в шестерёнке.
             const title = document.getElementById('reviewSetupTitle');
             const subtitle = document.getElementById('reviewSetupSubtitle');
-            title.innerText = 'Тренировка';
-            subtitle.innerText = 'Система сама выберет, что повторять сегодня';
+            title.innerText = 'Настройки тренировки';
+            subtitle.innerText = 'Сохраняются сразу, отдельной кнопки не нужно';
 
             refreshVocabCards();
 
