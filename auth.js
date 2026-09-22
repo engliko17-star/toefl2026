@@ -50,6 +50,9 @@ const PAGE_SECTIONS = {
     'writing-practice.html':'writing',
     'mini-mock-writing.html':       'writing',
     'mini-mock-results.html':       'writing',
+    'mini-mock-writing-list.html':  'writing',
+    'sentence-practice.html':       'writing',
+    'writing-articles.html':        'writing',
 
     // --- Speaking ---
     'speaking.html':    'speaking',
