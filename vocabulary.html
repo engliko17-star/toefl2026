@@ -130,8 +130,8 @@
             </div>
         </div>
 
-        <div class="hidden">
-            <div class="flex items-center gap-2">
+        <div class="flex items-center justify-end">
+            <div class="flex items-center gap-2 w-full sm:w-auto">
                 <button id="dyslexiaToggle" onclick="toggleDyslexiaMode()" title="Dyslexia-friendly reading mode" class="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-500 hover:bg-gray-50 transition cursor-pointer shrink-0">
                     <i data-lucide="type" class="w-4 h-4"></i>
                     <span class="hidden sm:inline">Dyslexia</span>
@@ -431,20 +431,46 @@
             renderCategoryProgress();
         }
 
+        // Постраничное чтение прогресса: идём по 1000 строк, пока они не кончатся
+        async function fetchAllProgress(columns) {
+            const PAGE = 1000;
+            let rows = [], from = 0;
+            while (true) {
+                const { data, error } = await supabaseClient
+                    .from('user_word_progress')
+                    .select(columns)
+                    .eq('user_id', currentUser.id)
+                    .order('word', { ascending: true })
+                    .range(from, from + PAGE - 1);
+                if (error) {
+                    console.error("Ошибка загрузки прогресса слов:", error);
+                    return rows.length ? rows : null;
+                }
+                rows = rows.concat(data || []);
+                if (!data || data.length < PAGE) return rows;
+                from += PAGE;
+                if (from > 50000) return rows;   // страховка от бесконечного цикла
+            }
+        }
+
         async function loadWordProgress() {
             if (!currentUser) return;
-            const { data, error } = await supabaseClient
-                .from('user_word_progress')
-                .select('word, correct_count, box, due_at, first_seen_at')
-                .eq('user_id', currentUser.id);
-
-            if (error) {
-                console.error("Ошибка загрузки прогресса слов:", error);
-                return;
-            }
+            // Supabase отдаёт не больше 1000 строк за запрос. Раньше прогресс
+            // запрашивался одним разом и без сортировки: при большем числе слов
+            // возвращалась произвольная тысяча, и часть отметок просто не
+            // доезжала до страницы — без всякой ошибки. Читаем страницами.
+            const data = await fetchAllProgress('word, correct_count, box, due_at, first_seen_at');
+            if (data === null) return;
             wordProgressMap = {};
+            srsProgressMap = {};
+            // По одному слову в базе может оказаться несколько строк
+            // («Abandon» и «abandon» — разные ключи). Раньше побеждала та,
+            // что пришла последней, и свежая отметка могла молча затираться
+            // старой пустой записью. Теперь берём самую продвинутую.
             (data || []).forEach(row => {
                 const key = normalizeWord(row.word);
+                const prev = srsProgressMap[key];
+                if (prev && (prev.box || 0) >= (row.box || 0)) return;
                 wordProgressMap[key] = row.correct_count;
                 srsProgressMap[key] = { box: row.box || 0, due_at: row.due_at, first_seen_at: row.first_seen_at };
             });
@@ -816,6 +842,27 @@
                 wordProgressMap[norm] = prevCount;
                 afterProgressChange(word);
                 alert('Не удалось сохранить отметку: ' + (error.message || error.code || error));
+                return;
+            }
+
+            // База может ответить «успешно», но строки не окажется.
+            // Поэтому сразу перечитываем её и убеждаемся своими глазами.
+            const { data: check, error: checkErr } = await supabaseClient
+                .from('user_word_progress')
+                .select('word, box')
+                .eq('user_id', currentUser.id)
+                .eq('word', word)
+                .maybeSingle();
+
+            if (checkErr || !check || (check.box || 0) < SRS_MAX_BOX) {
+                console.error('Отметка не сохранилась. Ответ базы:', { check, checkErr });
+                srsProgressMap[norm] = prevSrs;
+                wordProgressMap[norm] = prevCount;
+                afterProgressChange(word);
+                alert('Отметка не сохранилась: база приняла запрос, но записи нет.\n\n'
+                    + 'Слово: ' + word + '\n'
+                    + 'Что вернулось: ' + JSON.stringify(check) + '\n'
+                    + (checkErr ? 'Ошибка: ' + (checkErr.message || checkErr.code) : ''));
             }
         }
 
