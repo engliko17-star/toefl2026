@@ -252,14 +252,26 @@
         }
 
         async function loadWordProgress() {
-            const { data, error } = await supabaseClient
-                .from('user_word_progress')
-                .select('word, correct_count, manually_marked, box, due_at, lapses')
-                .eq('user_id', currentUser.id);
-
-            if (error) {
-                console.error("Ошибка загрузки прогресса слов:", error);
-                return;
+            // Читаем страницами: одним запросом Supabase отдаёт максимум 1000 строк,
+            // и часть прогресса терялась молча.
+            const PAGE = 1000;
+            let data = [], from = 0;
+            while (true) {
+                const res = await supabaseClient
+                    .from('user_word_progress')
+                    .select('word, correct_count, manually_marked, box, due_at, lapses')
+                    .eq('user_id', currentUser.id)
+                    .order('word', { ascending: true })
+                    .range(from, from + PAGE - 1);
+                if (res.error) {
+                    console.error("Ошибка загрузки прогресса слов:", res.error);
+                    if (!data.length) return;
+                    break;
+                }
+                data = data.concat(res.data || []);
+                if (!res.data || res.data.length < PAGE) break;
+                from += PAGE;
+                if (from > 50000) break;
             }
             wordProgressMap = {};
             wordManualMap = {};
