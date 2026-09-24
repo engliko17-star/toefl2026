@@ -431,6 +431,63 @@
         }
 
         document.addEventListener('DOMContentLoaded', initResults);
+
+        // ===== Проверка преподавателем прямо на странице =====
+        // Раньше правку можно было внести только напрямую в базе.
+        function teacherEditorHTML(response) {
+            const score = (response.score === null || response.score === undefined) ? '' : response.score;
+            const text = response.teacher_correction || '';
+            return `
+                <div class="flex flex-col flex-1 gap-3">
+                    <div class="flex items-center gap-2">
+                        <label class="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Балл</label>
+                        <input type="number" step="0.5" min="1.0" max="6.0" id="tscore-${response.id}" value="${score}"
+                               class="w-24 border border-gray-200 rounded-xl p-2 text-sm text-center font-bold focus:ring-2 focus:ring-indigo-200 outline-none"
+                               placeholder="1.0-6.0">
+                        <button onclick="saveTeacherReview('${response.id}')"
+                                class="ml-auto bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer">
+                            <i data-lucide="save" class="w-3.5 h-3.5"></i> Сохранить
+                        </button>
+                    </div>
+                    <textarea id="tcorr-${response.id}" rows="12"
+                              class="flex-1 min-h-[240px] resize-y border border-gray-200 rounded-xl p-4 text-sm leading-relaxed focus:ring-2 focus:ring-indigo-200 outline-none"
+                              placeholder="Разбор и комментарий для ученика">${text}</textarea>
+                    <p id="tstatus-${response.id}" class="text-[11px] text-gray-400 h-4"></p>
+                </div>`;
+        }
+
+        async function saveTeacherReview(responseId) {
+            const scoreEl = document.getElementById('tscore-' + responseId);
+            const textEl = document.getElementById('tcorr-' + responseId);
+            const status = document.getElementById('tstatus-' + responseId);
+            const raw = scoreEl.value.trim();
+            const score = raw === '' ? null : parseFloat(raw);
+
+            if (score !== null && (isNaN(score) || score < 1 || score > 6)) {
+                alert('Балл должен быть от 1.0 до 6.0');
+                return;
+            }
+
+            status.textContent = 'Сохраняю...';
+            // .select() обязателен: без него отказ по правам выглядит как успех
+            const { data, error } = await supabaseClient
+                .from('mini_mock_writing_responses')
+                .update({ score: score, teacher_correction: textEl.value.trim() || null })
+                .eq('id', responseId)
+                .select('id');
+
+            if (error || !data || data.length !== 1) {
+                console.error('Проверка не сохранилась:', { error, data });
+                status.textContent = '';
+                alert(error
+                    ? 'Не удалось сохранить: ' + (error.message || error.code)
+                    : 'Не удалось сохранить: база приняла запрос, но строка не изменилась.\n\nВероятно, преподавателю не разрешено менять ответы учеников.');
+                return;
+            }
+            status.textContent = 'Сохранено ✓';
+            setTimeout(() => { status.textContent = ''; }, 2000);
+        }
+
     </script>
 </body>
 </html>
