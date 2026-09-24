@@ -2442,14 +2442,32 @@
                 return;
             }
 
-            // Приватный бакет — получаем временные подписанные ссылки для каждой записи
+            // Приватный бакет — получаем временные подписанные ссылки для каждой записи.
+            // В базе путь может быть записан по-разному: просто путь внутри бакета,
+            // с именем бакета впереди или вообще полным адресом. Ссылка создаётся
+            // только от пути внутри бакета, поэтому приводим к нему.
+            const toStoragePath = (raw) => {
+                let v = String(raw || '').trim();
+                if (!v) return '';
+                const marker = '/student_recordings/';
+                const at = v.indexOf(marker);
+                if (at !== -1) v = v.slice(at + marker.length);          // полный адрес
+                else if (v.startsWith('student_recordings/')) v = v.slice('student_recordings/'.length);
+                return v.split('?')[0].replace(/^\/+/, '');
+            };
+
             const signedUrls = await Promise.all(items.map(async (item) => {
-                if (!item.audio_url) return null;
+                if (!item.audio_url) return { url: null, err: 'в базе нет пути к записи' };
+                const path = toStoragePath(item.audio_url);
                 try {
-                    const { data } = await _supabase.storage.from('student_recordings').createSignedUrl(item.audio_url, 3600);
-                    return data ? data.signedUrl : null;
+                    // Ошибку больше не глотаем: раньше при отказе просто появлялся
+                    // пустой плеер на 0:00, и причина была не видна.
+                    const { data, error } = await _supabase.storage
+                        .from('student_recordings').createSignedUrl(path, 3600);
+                    if (error) return { url: null, err: error.message || 'нет доступа к файлу', path };
+                    return { url: data ? data.signedUrl : null, err: data ? null : 'ссылка не создалась', path };
                 } catch (e) {
-                    return null;
+                    return { url: null, err: (e && e.message) || 'ошибка хранилища', path };
                 }
             }));
 
@@ -2464,7 +2482,10 @@
                             <span class="text-[10px] text-gray-400 font-bold">#${i + 1}</span>
                         </div>
                         ${item.transcript ? `<p class="text-xs text-slate-600 mb-3">${item.transcript}</p>` : ''}
-                        ${signedUrls[i] ? `<audio controls class="w-full h-9" src="${signedUrls[i]}"></audio>` : `<p class="text-xs text-gray-400 italic">Запись не найдена</p>`}
+                        ${signedUrls[i].url
+                            ? `<audio controls preload="metadata" class="w-full h-9" src="${signedUrls[i].url}"
+                                      onerror="this.outerHTML='<p class=\'text-xs text-rose-500\'>Файл не открылся. Путь: ${signedUrls[i].path || '—'}</p>'"></audio>`
+                            : `<p class="text-xs text-rose-500">Запись не открылась: ${signedUrls[i].err}<br><span class="text-gray-400">Путь: ${signedUrls[i].path || item.audio_url || '—'}</span></p>`}
                     </div>
                 `;
             }).join('');
@@ -2525,4 +2546,4 @@
         }
     </script>
 </body>
-</html>
+                            </html>
