@@ -47,6 +47,8 @@
         'mock-test-view.html': 'listening.html', 'choose-response-list.html': 'listening.html',
         'listening-practice.html': 'listening.html', 'listening-mini-mock.html': 'listening.html',
         'listening-articles.html': 'listening.html', 'listening-article-view.html': 'listening.html',
+        // --- статьи Listening ---
+        'article-general-listening.html': 'listening.html', 'article-listen-choose-a-response.html': 'listening.html', 'article-listen-to-a-conversation.html': 'listening.html', 'article-listen-announcement.html': 'listening.html', 'article-listening-academic.html': 'listening.html',
         'task-list.html': 'writing.html', 'writing-practice.html': 'writing.html',
         'mini-mock-writing.html': 'writing.html', 'mini-mock-results.html': 'writing.html',
         'mini-mock-writing-list.html': 'writing.html', 'sentence-practice.html': 'writing.html',
