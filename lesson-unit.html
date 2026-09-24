@@ -368,8 +368,67 @@ function bindToggles() {
     };
 }
 
+// Новый формат: несколько полных интервью, каждое — свой сценарий и четыре
+// вопроса по нарастанию, как на экзамене. Старый формат (levels) тоже
+// поддерживается, пока темы переводятся по одной.
+function renderInterviewSets() {
+    const sets = ((interviewStep && interviewStep.content) || {}).sets || [];
+    document.getElementById('levelsWrap').innerHTML = sets.map((set, si) => `
+        <div class="rounded-2xl border border-gray-100 overflow-hidden">
+            <div class="px-4 py-3 border-b border-gray-100 bg-slate-50">
+                <div class="flex items-center gap-2 mb-1">
+                    <span class="text-[11px] font-bold px-2 py-0.5 rounded-lg border bg-white text-slate-700 border-gray-200">Интервью ${si + 1}</span>
+                    <span class="text-sm font-bold text-slate-900">${esc(set.title || '')}</span>
+                </div>
+                <p class="text-xs text-gray-500">${esc(set.scenario || '')}</p>
+            </div>
+
+            <div class="divide-y divide-gray-50">
+                ${(set.questions || []).map((item, qi) => {
+                    const meta = LEVELS[qi] || LEVELS[LEVELS.length - 1];
+                    const st = LEVEL_STYLES[meta.color];
+                    return `
+                    <div class="px-4 py-3">
+                        <div class="flex items-center gap-2 mb-1.5">
+                            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded border ${st}">${qi + 1}</span>
+                            <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">${esc(meta.name)}</span>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <p class="text-sm text-slate-800 flex-1">${esc(item.q || item)}</p>
+                            <button class="answer-btn shrink-0 inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl px-3 py-2 transition" data-q="${esc(item.q || item)}">
+                                <i data-lucide="mic" class="w-3.5 h-3.5"></i> Ответить
+                            </button>
+                        </div>
+                        <div class="flex flex-wrap gap-1.5 mt-2">
+                            ${meta.frames.slice(0, 2).map(f => `<span class="text-[10px] text-slate-500 bg-gray-50 border border-gray-100 rounded-lg px-2 py-0.5">${esc(f)}</span>`).join('')}
+                        </div>
+                    </div>`;
+                }).join('')}
+            </div>
+
+            ${set.model ? `
+            <div class="border-t border-emerald-100/60 bg-emerald-50/30">
+                <button class="model-toggle w-full flex items-center gap-2 px-4 py-2.5 text-left hover:bg-emerald-50/60 transition">
+                    <i data-lucide="eye" class="w-3.5 h-3.5 text-emerald-600"></i>
+                    <span class="model-label text-xs font-bold text-emerald-700">Показать образец ответа</span>
+                    <span class="text-[11px] text-emerald-600/70">на вопрос ${set.modelFor || 4} · ~45 сек</span>
+                </button>
+                <div class="model-body hidden px-4 pb-3">
+                    <div class="flex items-start gap-2">
+                        <p class="text-sm text-slate-700 leading-relaxed flex-1">${esc(set.model)}</p>
+                        <button class="tts text-emerald-400 hover:text-emerald-700 transition shrink-0" data-say="${esc(set.model)}" aria-label="Прослушать образец">
+                            <i data-lucide="volume-2" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>` : ''}
+        </div>`).join('');
+}
+
 function renderInterview() {
-    const levels = ((interviewStep && interviewStep.content) || {}).levels || [];
+    const content = (interviewStep && interviewStep.content) || {};
+    if (content.sets) return renderInterviewSets();
+    const levels = content.levels || [];
     document.getElementById('levelsWrap').innerHTML = levels.map((lv, i) => {
         const meta = LEVELS[i] || LEVELS[LEVELS.length - 1];
         const st = LEVEL_STYLES[meta.color];
@@ -640,7 +699,7 @@ async function load() {
         // Разделы различаем по содержимому, а не по типу — так надёжнее
         vocabStep = steps.find(s => s.content && s.content.words) || null;
         ideaStep = steps.find(s => s.content && s.content.groups) || null;
-        interviewStep = steps.find(s => s.content && s.content.levels) || null;
+        interviewStep = steps.find(s => s.content && (s.content.sets || s.content.levels)) || null;
         doneSteps = new Set((progRes.data || []).map(p => p.step_id));
 
         document.title = u.title_en + ' — Speaking';
