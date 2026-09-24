@@ -50,7 +50,12 @@
         }
     </style>
 </head>
-<body class="bg-[#f8f9fa] text-slate-800 pb-16">
+<body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex flex-col md:flex-row">
+
+    <div id="app-sidebar"></div>
+    <script src="nav.js"></script>
+
+    <main class="flex-1 overflow-y-auto pb-16">
     <div class="p-6 md:p-8 max-w-6xl mx-auto">
         
         <a href="teacher-board.html" class="inline-flex items-center space-x-2 mb-6 text-xs font-bold text-gray-400 hover:text-slate-900 transition">
@@ -640,6 +645,8 @@
         </div>
 
     </div>
+    </main>
+
 
     <script>
         const defaultChecklist = [
@@ -1178,11 +1185,26 @@
             studentProfile[field] = newValue;
             renderAccessToggles();
 
-            const { error } = await _supabase.from('profiles').update({ [field]: newValue }).eq('id', studentId);
-            if (error) {
-                studentProfile[field] = currentValue; 
+            // .select() заставляет базу вернуть изменённую строку.
+            // Без него отказ по правам выглядит как успех: ошибки нет,
+            // но обновлено НОЛЬ строк — переключатель светился, а доступ
+            // на самом деле не менялся.
+            const { data, error } = await _supabase
+                .from('profiles')
+                .update({ [field]: newValue })
+                .eq('id', studentId)
+                .select('id, ' + field);
+
+            const saved = !error && Array.isArray(data) && data.length === 1 && data[0][field] === newValue;
+
+            if (!saved) {
+                console.error('Доступ не сохранился:', { field, newValue, data, error });
+                studentProfile[field] = currentValue;
                 renderAccessToggles();
-                alert("Ошибка сохранения доступа");
+                alert(error
+                    ? 'Ошибка сохранения доступа: ' + (error.message || error.code)
+                    : 'Доступ не сохранился: база приняла запрос, но строка не изменилась.\n\n'
+                      + 'Обычно это значит, что учителю не разрешено менять профили учеников.');
             }
         }
 
@@ -1891,14 +1913,14 @@
                                 <span class="text-[10px] text-gray-400">${response.word_count || 0} слов</span>
                             </div>
                             <div class="p-4 bg-gray-50/60 rounded-xl border border-gray-100 text-sm text-slate-700 whitespace-pre-wrap mb-3">${response.essay_text || ''}</div>
-                            <div class="grid grid-cols-1 md:grid-cols-[120px_1fr] gap-3">
+                            <div class="grid grid-cols-1 gap-3">
                                 <div>
                                     <label class="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1 block">Балл</label>
                                     <input type="number" step="0.5" min="1.0" max="6.0" id="wscore-${response.id}" value="${response.score !== null && response.score !== undefined ? response.score : ''}" class="w-full border border-gray-200 rounded-xl p-2 text-sm text-center font-bold focus:ring-2 focus:ring-indigo-200 outline-none" placeholder="1.0-6.0">
                                 </div>
                                 <div>
                                     <label class="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1 block">Фидбэк</label>
-                                    <textarea id="wfeedback-${response.id}" rows="2" class="w-full border border-gray-200 rounded-xl p-2 text-sm focus:ring-2 focus:ring-indigo-200 outline-none" placeholder="Комментарий для ученика">${response.feedback || ''}</textarea>
+                                    <textarea id="wfeedback-${response.id}" rows="10" class="w-full min-h-[220px] resize-y border border-gray-200 rounded-xl p-3 text-sm leading-relaxed focus:ring-2 focus:ring-indigo-200 outline-none" placeholder="Комментарий для ученика">${response.feedback || ''}</textarea>
                                 </div>
                             </div>
                         </div>
