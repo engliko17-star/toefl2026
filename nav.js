@@ -63,7 +63,7 @@
         // Статьи обеих секций начинаются на article-, поэтому по префиксу их
         // не различить — каждая вписана явно. Новую статью добавлять сюда.
         // --- статьи Reading ---
-        'general-reading.html': 'reading.html',
+        'general-reading.html': 'reading.html', 'article-greek-latin.html': 'reading.html',
         'article-academic-passage.html': 'reading.html', 'article-complete-words.html': 'reading.html',
         'article-factual.html': 'reading.html', 'article-inference.html': 'reading.html',
         'article-insert-text.html': 'reading.html', 'article-read-in-daily.html': 'reading.html',
@@ -71,6 +71,7 @@
         'article-select-sentence.html': 'reading.html',
         'article-sentence-simplification.html': 'reading.html', 'article-vocabulary.html': 'reading.html',
         // --- статьи Writing (грамматика и задания) ---
+        'article-idioms.html': 'writing.html',
         'article-articles.html': 'writing.html', 'article-build-a-sentence.html': 'writing.html',
         'article-collocations.html': 'writing.html', 'article-countable-uncountable.html': 'writing.html',
         'article-dependent-prepositions.html': 'writing.html',
