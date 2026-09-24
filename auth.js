@@ -43,6 +43,11 @@ const PAGE_SECTIONS = {
     'listening-mini-mock.html':    'listening',
     'listening-articles.html':     'listening',
     'listening-article-view.html': 'listening',
+    'article-general-listening.html': 'listening',
+    'article-listen-choose-a-response.html': 'listening',
+    'article-listen-to-a-conversation.html': 'listening',
+    'article-listen-announcement.html': 'listening',
+    'article-listening-academic.html': 'listening',
 
     // --- Writing ---
     'writing.html': 'writing',
