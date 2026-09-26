@@ -721,8 +721,11 @@ async function saveListeningAttemptAndFinish() {
                         test_id: currentActiveTestId, 
                         user_id: session.user.id,
                         total_score: finalCalculatedScore, 
-                        score_earned: correctAnswers,
-                        score_total: totalQuestions,
+                        // В таблице колонки называются raw_score и total_questions.
+                        // Раньше сюда слались score_earned/score_total — база
+                        // отклоняла вставку, и результат Listening НЕ сохранялся.
+                        raw_score: correctAnswers,
+                        total_questions: totalQuestions,
                         status: 'completed',
                         completed_at: new Date().toISOString()
                     }])
@@ -734,12 +737,21 @@ async function saveListeningAttemptAndFinish() {
                 const answersToSave = listQueue.flatMap(block => {
                     return block.questions.map(q => {
                         const correctIdx = getCorrectIndex(q);
+                        // В таблице всего четыре поля: attempt_id, task_id,
+                        // user_answer (jsonb) и is_correct. Раньше движок слал
+                        // task_type, answer_json и user_choice_index — таких
+                        // колонок нет, и ответы не сохранялись вовсе.
+                        // Всё, что нужно для разбора, кладём внутрь user_answer.
                         return {
                             attempt_id: attempt.id,
                             task_id: block.db_id,
-                            task_type: block.block_type,
-                            answer_json: { question_id: q.id, unique_id: q.uniqueId, question_text: q.text },
-                            user_choice_index: listUserAnswers[q.uniqueId] !== undefined ? listUserAnswers[q.uniqueId] : null,
+                            user_answer: {
+                                question_id: q.id,
+                                unique_id: q.uniqueId,
+                                question_text: q.text,
+                                task_type: block.block_type,
+                                choice_index: listUserAnswers[q.uniqueId] !== undefined ? listUserAnswers[q.uniqueId] : null
+                            },
                             is_correct: listUserAnswers[q.uniqueId] === correctIdx
                         };
                     });
@@ -750,7 +762,11 @@ async function saveListeningAttemptAndFinish() {
             }
         }
     } catch(e) {
+        // Раньше ошибка уходила только в консоль: тест выглядел завершённым,
+        // а результата в базе не появлялось.
         console.error("Error saving Listening test:", e);
+        alert('Результат Listening не сохранился.\n\n' + (e.message || e)
+            + '\n\nПокажите это сообщение преподавателю, не закрывая страницу.');
     }
 
     if (window.fullTestMode && typeof continueFullTestSequence === 'function') { continueFullTestSequence(); return; }
@@ -794,8 +810,16 @@ async function loadListeningReviewMode(attemptId, testId, testTitle) {
 
         listQueue.forEach(block => {
             block.questions.forEach(q => {
-                let ansRow = answers.find(a => a.answer_json && a.answer_json.unique_id === q.uniqueId);
-                if(ansRow) listUserAnswers[q.uniqueId] = ansRow.user_choice_index;
+                // Читаем из user_answer; старое поле answer_json оставляем на
+                // случай, если где-то остались записи прежнего формата.
+                let ansRow = answers.find(a => {
+                    const d = a.user_answer || a.answer_json;
+                    return d && d.unique_id === q.uniqueId;
+                });
+                if (ansRow) {
+                    const d = ansRow.user_answer || ansRow.answer_json;
+                    listUserAnswers[q.uniqueId] = (d.choice_index !== undefined) ? d.choice_index : ansRow.user_choice_index;
+                }
             });
         });
 
