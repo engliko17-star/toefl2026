@@ -257,7 +257,10 @@ function loadSpeakingQuestion(i) {
                     <div id="speakingMicIcon" class="w-14 h-14 rounded-full bg-gray-100 text-slate-400 flex items-center justify-center shadow-inner shrink-0">
                         <i data-lucide="mic" class="w-6 h-6"></i>
                     </div>
-                    <div id="speakingTimerDisplay" class="text-4xl font-mono font-black text-slate-800 tabular-nums">00:00</div>
+                    <div class="flex flex-col items-center">
+                        <div id="speakingTimerDisplay" class="text-4xl font-mono font-black text-slate-300 tabular-nums">00:${String(isInterview ? (q.time_limit || 45) : (q.time_limit || 8)).padStart(2, '0')}</div>
+                        <span id="speakingTimerHint" class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-1">на ответ</span>
+                    </div>
                 </div>
                 <div class="w-full bg-gray-100 h-2 rounded-full mt-6 overflow-hidden">
                     <div id="speakingProgressBar" class="h-full bg-indigo-600 w-0 transition-all duration-1000 ease-linear"></div>
@@ -283,6 +286,9 @@ function loadSpeakingQuestion(i) {
             await playSpeakingBeep();
             startSpeakingRecording(q.time_limit || 45);
         };
+        // Страховка: на части устройств событие окончания не приходит,
+        // и тогда запись никогда не начиналась — ученик видел 00:00 и тишину.
+        armSpeakingFailsafe(video, () => startSpeakingRecording(q.time_limit || 45));
         const p = video.play();
         if (p !== undefined) p.catch(e => console.error("Video autoplay blocked:", e));
 
@@ -306,11 +312,31 @@ function loadSpeakingQuestion(i) {
                 await playSpeakingBeep();
                 startSpeakingRecording(q.time_limit || (isInterview ? 45 : 8));
             };
+            armSpeakingFailsafe(audio, () => startSpeakingRecording(q.time_limit || (isInterview ? 45 : 8)));
             setSpeakingStatus('Listening to Phrase...', 'bg-sky-100 text-sky-700 border-sky-200');
             const p = audio.play();
             if (p !== undefined) p.catch(e => console.error("Audio autoplay blocked:", e));
         }
     }
+}
+
+// Если событие окончания вопроса не пришло, запускаем запись сами —
+// через длительность записи плюс пара секунд.
+let speakingFailsafeTimer = null;
+function armSpeakingFailsafe(media, start) {
+    clearTimeout(speakingFailsafeTimer);
+    const arm = () => {
+        const dur = isFinite(media.duration) && media.duration > 0 ? media.duration : 20;
+        clearTimeout(speakingFailsafeTimer);
+        speakingFailsafeTimer = setTimeout(() => {
+            if (!speakingMediaRecorder || speakingMediaRecorder.state === 'inactive') {
+                console.warn('Событие окончания вопроса не пришло — запускаем запись по страховке');
+                start();
+            }
+        }, (dur + 2) * 1000);
+    };
+    if (isFinite(media.duration) && media.duration > 0) arm();
+    else media.addEventListener('loadedmetadata', arm, { once: true });
 }
 
 function setSpeakingStatus(text, classes) {
@@ -353,8 +379,15 @@ function startSpeakingRecording(limit) {
     let time = limit;
     const progress = document.getElementById('speakingProgressBar');
     const display = document.getElementById('speakingTimerDisplay');
+    const hint = document.getElementById('speakingTimerHint');
+    if (hint) hint.innerText = 'осталось';
     const update = () => {
-        if (display) display.innerText = `00:${time < 10 ? '0' + time : time}`;
+        if (display) {
+            display.innerText = `00:${time < 10 ? '0' + time : time}`;
+            // пока идёт запись счётчик активный, на последних секундах — красный
+            display.className = 'text-4xl font-mono font-black tabular-nums ' +
+                (time <= 10 ? 'text-rose-600' : 'text-slate-800');
+        }
         if (progress) progress.style.width = `${((limit - time) / limit) * 100}%`;
     };
     update();
@@ -371,6 +404,7 @@ function startSpeakingRecording(limit) {
 }
 
 async function stopSpeakingRecording() {
+    clearTimeout(speakingFailsafeTimer);
     if (!speakingMediaRecorder || speakingMediaRecorder.state === 'inactive') return;
     speakingMediaRecorder.stop();
     setSpeakingStatus('Saving to Cloud...', 'bg-amber-100 text-amber-700 border-amber-200');
