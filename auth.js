@@ -48,6 +48,12 @@ const PAGE_SECTIONS = {
     'article-listen-to-a-conversation.html': 'listening',
     'article-listen-announcement.html': 'listening',
     'article-listening-academic.html': 'listening',
+    'article-listening-main-idea.html': 'listening',
+    'article-listening-factual.html': 'listening',
+    'article-listening-inference.html': 'listening',
+    'article-listening-purpose.html': 'listening',
+    'article-listening-attitude.html': 'listening',
+    'article-listening-method.html': 'listening',
 
     // --- Writing ---
     'writing.html': 'writing',
