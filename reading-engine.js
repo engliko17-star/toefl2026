@@ -38,130 +38,15 @@ let timeRemaining = 35 * 60;
 
 // Раздельные таймеры на Module 1 и Module 2 (в минутах) — поменяйте эти два
 // числа под нужные значения, они независимы друг от друга.
-// Ориентир спеки TOEFL 2026, Reading (Technical Manual Table 1):
-// роутер 20 зачётных айтемов за 18-21 мин, Модуль 2 = 15 айтемов за 9 мин.
-// Это ОРИЕНТИР, а не требование движка: состав теста задаётся данными, а
-// балл и порог роутинга считаются в долях, поэтому тест любой длины
-// оценивается корректно. Время подстраивается под состав автоматически.
-// ВРЕМЯ. Раньше здесь стояли жёсткие минуты, из-за чего тест на 27 айтемов
-// получал столько же времени, сколько тест на 15. Теперь время считается от
-// состава модуля: у каждого типа задания своя цена за текст (читается один раз
-// на задание) и цена за айтем.
-//
-// timerMode:
-//   'budget' — время считается по составу (по умолчанию)
-//   'fixed'  — жёстко module1TimeMinutes / module2TimeMinutes, как было раньше
-let timerMode = 'budget';
-
-// Ориентир спеки TOEFL 2026, Reading: роутер 18-21 мин на 20 зачётных айтемов,
-// Модуль 2 = 9 мин на 15. Числа ниже подогнаны под этот ориентир; крути их,
-// если по живым ученикам увидишь, что времени мало или много.
-const TIME_BUDGET = {
-    complete_words: { passage: 45,  perItem: 12 },  // 10 пропусков -> 2.75 мин
-    daily_life:     { passage: 60,  perItem: 35 },
-    academic:       { passage: 120, perItem: 45 },
-    default:        { passage: 60,  perItem: 40 }
-};
-
-// Границы, чтобы опечатка в составе не выдала 2 минуты или час
-const MIN_MODULE_MINUTES = 4;
-const MAX_MODULE_MINUTES = 45;
-
-// Спека сама несимметрична: роутер даёт ~63 сек на айтем (21 мин / 20),
-// а Модуль 2 всего ~36 сек (9 мин / 15) — второй модуль намеренно жёстче.
-// Одной ставкой это не описать, поэтому цены выше калиброваны под Модуль 2,
-// а роутер получает множитель.
-const MODULE1_TIME_FACTOR = 1.35;
-
-// Запасной вариант для timerMode = 'fixed'
+// Спецификация TOEFL 2026, Reading: роутер 18-21 мин, Модуль 2 = 9 мин
+// (для обеих ветвей). Состав по Technical Manual Table 1:
+// роутер 20 зачётных айтемов, Модуль 2 = 15, итого 35 в любом пути.
 let module1TimeMinutes = 21;
 let module2TimeMinutes = 9;
-
-// Оценка времени на набор элементов currentTasks.
-// Важно: daily_life и academic лежат в currentTasks по одному элементу НА ВОПРОС,
-// но текст у них общий, поэтому цена за текст берётся один раз на taskId.
-function estimateMinutes(tasks, factor) {
-    let seconds = 0;
-    const countedPassages = new Set();
-
-    (tasks || []).forEach(t => {
-        const budget = TIME_BUDGET[t.type] || TIME_BUDGET.default;
-        const passageKey = `${t.type}:${t.taskId}`;
-        if (!countedPassages.has(passageKey)) {
-            seconds += budget.passage;
-            countedPassages.add(passageKey);
-        }
-        seconds += budget.perItem * taskItemCount(t);
-    });
-
-    const minutes = Math.ceil(seconds * (factor || 1) / 60);
-    return Math.min(MAX_MODULE_MINUTES, Math.max(MIN_MODULE_MINUTES, minutes));
-}
-
-// Сколько времени дать модулю. stage: '1' | '2_easy' | '2_hard'
-function moduleMinutes(stagePrefix) {
-    if (timerMode === 'fixed') {
-        return stagePrefix === '1' ? module1TimeMinutes : module2TimeMinutes;
-    }
-    const isModule1 = (stagePrefix === '1');
-    const slice = currentTasks.filter(t => isModule1
-        ? t.stage === '1'
-        : String(t.stage).startsWith('2'));
-    const minutes = estimateMinutes(slice, isModule1 ? MODULE1_TIME_FACTOR : 1);
-    console.log(`[reading] Module ${isModule1 ? 1 : 2}: ${slice.length} элементов, ${slice.reduce((n, t) => n + taskItemCount(t), 0)} айтемов -> ${minutes} мин`);
-    return minutes;
-}
 
 // Индекс, с которого начинается Module 2 в currentTasks — нужен для кнопки Review,
 // чтобы не давать перепрыгивать обратно в Module 1 (как и на настоящем TOEFL)
 let module2StartIndex = null;
-
-// Нумерация айтемов. Complete the Words — ОДИН элемент currentTasks, но
-// 10 отдельных зачётных айтемов (по пропуску на балл, как и в scoreCompleteWords),
-// поэтому счётчик и Review считают айтемы, а не элементы массива.
-// continuousModuleNumbering = true  -> Модуль 2 продолжает нумерацию Модуля 1
-//                           = false -> Модуль 2 начинает счёт заново с 1
-let continuousModuleNumbering = false;
-
-function taskItemCount(t) {
-    if (!t) return 0;
-    if (t.type === 'complete_words') {
-        const n = (t.correctWords || []).length;
-        return n > 0 ? n : 1;
-    }
-    return 1;
-}
-
-// С какого элемента начинается отсчёт для айтема под индексом i
-function numberingBaseFor(i) {
-    if (!continuousModuleNumbering && module2StartIndex !== null && i >= module2StartIndex) {
-        return module2StartIndex;
-    }
-    return 0;
-}
-
-// Диапазон номеров, который занимает элемент i: {first, last, count}
-function itemNumberRange(i) {
-    const base = numberingBaseFor(i);
-    let n = 0;
-    for (let k = base; k < i; k++) n += taskItemCount(currentTasks[k]);
-    const count = taskItemCount(currentTasks[i]);
-    return { first: n + 1, last: n + count, count: count };
-}
-
-// Сколько всего айтемов в текущей области нумерации
-function numberingTotal(i) {
-    const base = numberingBaseFor(i);
-    let n = 0;
-    for (let k = base; k < currentTasks.length; k++) n += taskItemCount(currentTasks[k]);
-    return n;
-}
-
-// Заполнен ли конкретный пропуск Complete the Words (пустые буквы приходят как '_')
-function isGapFilled(t, gapIndex) {
-    const w = (t.userWords && t.userWords[gapIndex]) ? String(t.userWords[gapIndex]) : '';
-    return w.length > 0 && w.indexOf('_') === -1;
-}
 
 function renderDailyLifeLayout(passage, layoutType, taskTitle) {
     if (!passage) return "";
@@ -171,33 +56,8 @@ function renderDailyLifeLayout(passage, layoutType, taskTitle) {
     const safeLayout = (layoutType || 'notice').toLowerCase().trim();
 
     switch(safeLayout) {
-        case 'email': {
-            // Шапка письма берётся из первых строк самого текста (To:/From:/Date:/Subject:),
-            // а не подставляется жёстко: в тестовых заданиях письмо часто адресовано
-            // не студенту, а третьему лицу (напр. Maria Rivera -> Ms. Grant).
-            const lines = cleanPassage.split('\n');
-            const meta = {};
-            let bodyStart = 0;
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
-                const m = line.match(/^\s*(To|From|Date|Subject)\s*:\s*(.*)$/i);
-                if (m) {
-                    meta[m[1].toLowerCase()] = m[2].trim();
-                    bodyStart = i + 1;
-                } else if (!line.trim()) {
-                    if (bodyStart === i) bodyStart = i + 1;
-                } else {
-                    break;
-                }
-            }
-
-            const body = lines.slice(bodyStart).join('\n').replace(/^\n+/, '');
-            const headerRow = (label, value) => value
-                ? `<div><span class="inline-block w-16 font-semibold text-slate-400">${label}:</span> <span class="text-slate-700">${value}</span></div>`
-                : '';
-
-            return `<div class="max-w-xl mx-auto bg-white border border-slate-200 rounded-lg overflow-hidden shadow-xs font-sans text-sm"><div class="bg-slate-50 p-4 border-b border-slate-200 space-y-1.5 text-slate-700"><div><span class="inline-block w-16 font-semibold text-slate-400">To:</span> <span class="bg-white px-2 py-0.5 border border-slate-200 rounded text-xs">${meta.to || 'student@toeflprep.com'}</span></div>${headerRow('From', meta.from || 'admin')}${headerRow('Date', meta.date)}<div><span class="inline-block w-16 font-semibold text-slate-400">Subject:</span> <span class="font-medium text-slate-900">${meta.subject || taskTitle}</span></div></div><div class="p-6 text-slate-800 space-y-4 leading-relaxed font-normal bg-white">${body.replace(/\n/g, '<br>')}</div></div>`;
-        }
+        case 'email': 
+            return `<div class="max-w-xl mx-auto bg-white border border-slate-200 rounded-lg overflow-hidden shadow-xs font-sans text-sm"><div class="bg-slate-50 p-4 border-b border-slate-200 space-y-1.5 text-slate-700"><div><span class="inline-block w-14 font-semibold text-slate-400">To:</span> <span class="bg-white px-2 py-0.5 border border-slate-200 rounded text-xs">student@toeflprep.com</span></div><div><span class="inline-block w-14 font-semibold text-slate-400">From:</span> <span class="text-slate-600">admin</span></div><div><span class="inline-block w-14 font-semibold text-slate-400">Subject:</span> <span class="font-medium text-slate-900">${taskTitle}</span></div></div><div class="p-6 text-slate-800 space-y-4 leading-relaxed font-normal bg-white">${cleanPassage.replace(/\n/g, '<br>')}</div></div>`;
         case 'social_media': 
             return `<div class="max-w-md mx-auto bg-white border border-slate-200 rounded-2xl p-5 shadow-xs font-sans"><div class="flex items-center space-x-3 mb-4"><div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-sm"><i data-lucide="user" class="w-5 h-5"></i></div><div><div class="font-bold text-sm text-slate-900">Community Board</div><div class="text-[11px] text-slate-400 font-normal">Posted recently</div></div></div><div class="text-slate-700 space-y-3 font-normal text-sm leading-relaxed mb-4">${cleanPassage.replace(/\n/g, '<br>')}</div></div>`;
         case 'notice': 
@@ -219,17 +79,6 @@ function renderDailyLifeLayout(passage, layoutType, taskTitle) {
         }
         case 'advertisement': 
             return `<div class="max-w-md mx-auto bg-gradient-to-br from-yellow-50 to-orange-50 border-2 border-dashed border-orange-200 p-8 rounded-2xl shadow-sm font-sans text-center relative overflow-hidden"><div class="absolute top-0 right-0 bg-red-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg uppercase tracking-wider">Ad</div><h3 class="text-2xl font-extrabold text-orange-600 mb-4 tracking-tight">${taskTitle}</h3><div class="text-slate-700 space-y-3 font-medium text-sm leading-relaxed mb-6">${cleanPassage.replace(/\n/g, '<br>')}</div><button class="bg-orange-500 text-white font-bold py-2 px-6 rounded-full shadow-md text-sm cursor-default hover:bg-orange-600 transition">Learn More</button></div>`;
-        case 'article': {
-            // Газетная заметка: строка-датлайн вида "RICHMOND (APRIL 13)" выносится
-            // в шапку, остальное идёт абзацами под заголовком.
-            const lines = cleanPassage.split('\n').map(l => l.trim()).filter(Boolean);
-            let dateline = '';
-            if (lines.length && /^[A-Z0-9][A-Z0-9\s.,'\u2019-]*\([^)]+\)\s*$/.test(lines[0])) {
-                dateline = lines.shift();
-            }
-            const body = lines.map(p => `<p>${p}</p>`).join('');
-            return `<div class="max-w-xl mx-auto bg-white border border-slate-300 shadow-xs font-serif"><div class="px-8 pt-7 pb-4 border-b-4 border-double border-slate-800">${dateline ? `<div class="font-sans text-[10px] font-bold tracking-[0.2em] text-slate-500 uppercase mb-2">${dateline}</div>` : ''}<h3 class="text-2xl font-bold text-slate-900 leading-tight tracking-tight">${taskTitle}</h3></div><div class="px-8 py-6 text-slate-700 text-sm leading-relaxed space-y-4">${body}</div></div>`;
-        }
         default: 
             return `<div class="text-slate-700 space-y-4 font-normal leading-relaxed text-base">${cleanPassage.replace(/\n/g, '<br>')}</div>`;
     }
@@ -405,10 +254,9 @@ async function startExamEngine(testId, testTitle) {
 
         currentIndex = 0;
         module2StartIndex = null;
-        module2LoadPromise = null;
         document.getElementById('engine-title').innerText = testTitle;
         
-        timeRemaining = moduleMinutes('1') * 60;
+        timeRemaining = module1TimeMinutes * 60;
         startTimer();
         renderEngine();
 
@@ -483,10 +331,7 @@ function renderEngine() {
         // БЕЗОПАСНО: обновляем элементы, только если они физически есть на странице
         const progressEl = document.getElementById('engine-progress');
         if (progressEl) {
-            // Complete the Words занимает диапазон номеров (напр. "1-10"), а не один номер
-            const range = itemNumberRange(currentIndex);
-            const label = range.count > 1 ? `${range.first}-${range.last}` : `${range.first}`;
-            progressEl.innerText = `${label} / ${numberingTotal(currentIndex)}`;
+            progressEl.innerText = `${currentIndex + 1} / ${currentTasks.length}`;
         }
 
         const prevEl = document.getElementById('engine-prev');
@@ -518,8 +363,8 @@ function renderEngine() {
         else if (task.type === 'daily_life') {
             const renderedLayout = renderDailyLifeLayout(task.passage, task.layout, task.title);
             contentDiv.innerHTML = `
-                <section class="w-1/2 bg-white p-10 overflow-y-auto custom-scrollbar border-r border-slate-200 flex flex-col">
-                    <div class="my-auto w-full">${renderedLayout}</div>
+                <section class="w-1/2 bg-white p-10 overflow-y-auto custom-scrollbar border-r border-slate-200 flex flex-col justify-center">
+                    <div>${renderedLayout}</div>
                 </section>
                 <section class="w-1/2 bg-slate-50 p-10 overflow-y-auto custom-scrollbar">
                     <div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-xs max-w-xl mx-auto mt-10">
@@ -550,22 +395,10 @@ function renderEngine() {
                 rightPanelContent = `<h3 class="font-bold text-slate-900 mb-6">${task.question}</h3><div class="space-y-3">${(task.options || []).map((opt) => `<label class="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer hover:bg-slate-50 transition"><input type="radio" name="q" value="${opt}" ${task.userAnswer === opt ? 'checked' : ''} onchange="currentTasks[${currentIndex}].userAnswer = this.value" class="w-4 h-4 text-indigo-600 mr-3"><span class="text-sm text-slate-700">${opt}</span></label>`).join('')}</div>`;
             }
 
-            // Абзацы собираются в <p>, а не выводятся через whitespace-pre-wrap:
-            // pre-wrap показывает любые случайные пробелы/отступы из базы буквально,
-            // из-за чего абзац уезжает вправо. Здесь лишние пробелы схлопываются,
-            // а разметка Select a Sentence / Insert Text (span'ы) не трогается.
-            const passageHtml = String(task.passage || '')
-                .replace(/\r\n/g, '\n')
-                .split(/\n\s*\n/)
-                .map(p => p.replace(/[ \t]+/g, ' ').replace(/\n/g, '<br>').trim())
-                .filter(Boolean)
-                .map(p => `<p>${p}</p>`)
-                .join('');
-
             contentDiv.innerHTML = `
                 <section class="w-1/2 bg-white p-10 overflow-y-auto custom-scrollbar border-r border-slate-200">
                     <h2 class="text-xl font-bold text-slate-900 mb-6">${task.title}</h2>
-                    <div id="academicPassageContainer" class="text-sm text-slate-700 leading-relaxed space-y-4">${passageHtml}</div>
+                    <div id="academicPassageContainer" class="text-sm text-slate-700 leading-relaxed space-y-4 whitespace-pre-wrap">${task.passage}</div>
                 </section>
                 <section class="w-1/2 bg-slate-50 p-10 overflow-y-auto custom-scrollbar">
                      <div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-xs max-w-xl mx-auto">${rightPanelContent}</div>
@@ -656,24 +489,7 @@ function highlightVocabWord(task, container) {
     }
 }
 
-// Модуль 2 могут запросить ДВА пути одновременно: клик по Next (nextTask) и
-// истечение таймера (handleReadingTimeUp). Оба проверяют "модуль 1 закончен?"
-// ДО await, поэтому при совпадении по времени оба видели true и склеивали
-// Модуль 2 дважды (27 + 15 + 15 = 57 айтемов вместо 42).
-// Держим один общий промис: второй вызов дожидается первого, а не грузит заново.
-let module2LoadPromise = null;
-
 async function loadModule2Tasks() {
-    if (module2LoadPromise) return module2LoadPromise;
-
-    module2LoadPromise = doLoadModule2Tasks();
-    const ok = await module2LoadPromise;
-    // Повтор разрешаем только если подгрузить не удалось
-    if (!ok) module2LoadPromise = null;
-    return ok;
-}
-
-async function doLoadModule2Tasks() {
     document.getElementById('engine-next').innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin mr-1"></i> Loading Module 2...';
     
     let correctCount = 0;
@@ -694,9 +510,9 @@ async function doLoadModule2Tasks() {
         }
     }
 
-    // Порог роутинга в долях, поэтому не зависит от длины Модуля 1:
-    // 0.6 это 12 из 20 по спеке и 17 из 27 в текущем составе URANUS.
-    // Крутить так, чтобы примерно половина учеников уходила в Upper.
+    // Порог роутинга. Знаменатель теперь ~30 айтемов (после починки
+    // подсчёта Complete the Words), стартовое значение по спеке 18/30 = 0.6.
+    // Дальше подстраивать так, чтобы примерно половина учеников уходила в Upper.
     const thresholdPercentage = 0.6; 
     const isHardModule = (module1Total > 0) && (correctCount / module1Total >= thresholdPercentage);
     const nextStage = isHardModule ? '2_hard' : '2_easy';
@@ -793,10 +609,6 @@ function renderModuleTransition() {
 }
 
 function startReadingModuleTwo() {
-    // Заставку между модулями может отрисовать и клик, и таймер — второй вызов
-    // сдвинул бы currentIndex ещё раз и перескочил первый айтем Модуля 2.
-    if (module2StartIndex !== null) return;
-
     const nextBtn = document.getElementById('engine-next');
     const prevBtn = document.getElementById('engine-prev');
     const reviewBtn = document.getElementById('engine-review');
@@ -810,7 +622,7 @@ function startReadingModuleTwo() {
     module2StartIndex = currentIndex; // с этого индекса начинается Module 2 — Review не пустит раньше
 
     // Отдельный, свежий таймер именно для Module 2
-    timeRemaining = moduleMinutes('2') * 60;
+    timeRemaining = module2TimeMinutes * 60;
     startTimer();
 
     renderEngine();
@@ -833,42 +645,29 @@ function showReadingReview() {
     const nextBtn = document.getElementById('engine-next');
     if (nextBtn) nextBtn.style.display = 'none';
 
-    const rowHTML = (num, answered, targetIdx, note) => `
-            <div class="flex justify-between items-center p-4 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0 transition" onclick="returnToReadingTask(${targetIdx})">
+    let listHTML = '';
+    for (let i = startIdx; i < endIdx; i++) {
+        const t = currentTasks[i];
+        const displayNum = i - startIdx + 1;
+        const answered = isReadingTaskAnswered(t);
+        listHTML += `
+            <div class="flex justify-between items-center p-4 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0 transition" onclick="returnToReadingTask(${i})">
                 <div class="flex items-center gap-3">
-                    <span class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">${num}</span>
-                    <span class="font-bold text-slate-700">Question ${num}${note ? ` <span class="font-medium text-slate-400 text-xs">${note}</span>` : ''}</span>
+                    <span class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">${displayNum}</span>
+                    <span class="font-bold text-slate-700">Question ${displayNum}</span>
                 </div>
                 ${answered
                     ? `<span class="text-emerald-500 bg-emerald-50 px-3 py-1 rounded-lg font-bold text-xs flex items-center"><i data-lucide="check" class="w-3 h-3 mr-1"></i> Answered</span>`
                     : `<span class="text-rose-500 bg-rose-50 px-3 py-1 rounded-lg font-bold text-xs flex items-center"><i data-lucide="alert-circle" class="w-3 h-3 mr-1"></i> Skipped</span>`}
             </div>
         `;
-
-    let listHTML = '';
-    for (let i = startIdx; i < endIdx; i++) {
-        const t = currentTasks[i];
-        const range = itemNumberRange(i);
-
-        if (t.type === 'complete_words') {
-            // Каждый пропуск — отдельная строка Review со своим статусом
-            for (let g = 0; g < range.count; g++) {
-                listHTML += rowHTML(range.first + g, isGapFilled(t, g), i, 'Complete the Words');
-            }
-        } else {
-            listHTML += rowHTML(range.first, isReadingTaskAnswered(t), i, '');
-        }
     }
 
-    // Скролл только на внешнем контейнере: вложенный overflow-y-auto + flex-1/shrink-0
-    // обрезал список примерно на 11-й строке и не давал доскроллить до конца.
     document.getElementById('engine-content').innerHTML = `
-        <div class="w-full h-full overflow-y-auto">
-            <div class="p-4 md:p-8 max-w-3xl mx-auto w-full">
-                <h2 class="text-2xl font-black text-slate-900 mb-6 text-center">Module Review</h2>
-                <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden mb-8">
-                    ${listHTML}
-                </div>
+        <div class="p-4 md:p-8 max-w-3xl mx-auto w-full h-full flex flex-col flex-1 overflow-y-auto">
+            <h2 class="text-2xl font-black text-slate-900 mb-6 text-center">Module Review</h2>
+            <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex-1 shrink-0">
+                ${listHTML}
             </div>
         </div>
     `;
@@ -966,7 +765,8 @@ async function saveAttemptAndFinish() {
 
     } catch(e) {
         console.error("Error saving test:", e);
-        alert("Could not save results to database, but we will show your score.");
+        alert('Результат Reading не сохранился в базу — балл на экране показан, но его не будет в отчёте.\n\n'
+            + (e.message || e) + '\n\nПокажите это сообщение преподавателю.');
         if (window.fullTestMode && typeof continueFullTestSequence === 'function') { continueFullTestSequence(); return; }
         renderResultsUI(currentTasks, finalScore, correctAnswers, totalQuestions);
     }
@@ -1202,4 +1002,4 @@ function closeResults() {
     document.getElementById('results-view').classList.remove('flex');
     document.getElementById('main-interface').classList.remove('hidden');
     loadTestsGrid(); 
-                    }
+}
