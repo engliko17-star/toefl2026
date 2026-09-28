@@ -48,12 +48,15 @@
         'listening-practice.html': 'listening.html', 'listening-mini-mock.html': 'listening.html',
         'listening-articles.html': 'listening.html', 'listening-article-view.html': 'listening.html',
         // --- статьи Listening ---
+        'article-listening-main-idea.html': 'listening.html', 'article-listening-factual.html': 'listening.html', 'article-listening-inference.html': 'listening.html', 'article-listening-purpose.html': 'listening.html', 'article-listening-attitude.html': 'listening.html', 'article-listening-method.html': 'listening.html',
         'article-general-listening.html': 'listening.html', 'article-listen-choose-a-response.html': 'listening.html', 'article-listen-to-a-conversation.html': 'listening.html', 'article-listen-announcement.html': 'listening.html', 'article-listening-academic.html': 'listening.html',
         'task-list.html': 'writing.html', 'writing-practice.html': 'writing.html',
         'mini-mock-writing.html': 'writing.html', 'mini-mock-results.html': 'writing.html',
         'mini-mock-writing-list.html': 'writing.html', 'sentence-practice.html': 'writing.html',
         'writing-articles.html': 'writing.html',
-        'speaking_player.html': 'speaking.html', 'speaking_results.html': 'speaking.html',
+        'speaking_player.html': 'speaking.html',
+        // --- статьи Speaking ---
+        'general-speaking.html': 'speaking.html', 'article-speaking-listen-repeat.html': 'speaking.html', 'article-speaking-interview.html': 'speaking.html', 'article-speaking-personal-experience.html': 'speaking.html', 'article-speaking-plans-goals.html': 'speaking.html', 'article-speaking-preferences.html': 'speaking.html', 'speaking-articles.html': 'speaking.html', 'speaking_results.html': 'speaking.html',
         'interview.html': 'speaking.html', 'interview_results.html': 'speaking.html',
         'listen_repeat.html': 'speaking.html', 'listen-repeat-practice.html': 'speaking.html',
         'speaking_mini_mock.html': 'speaking.html', 'speaking_mini_mock_player.html': 'speaking.html',
