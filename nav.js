@@ -56,6 +56,7 @@
         'writing-articles.html': 'writing.html',
         'speaking_player.html': 'speaking.html',
         // --- статьи Speaking ---
+        'article-speaking-observations.html': 'speaking.html', 'article-speaking-opinions.html': 'speaking.html', 'article-speaking-future.html': 'speaking.html', 'article-speaking-hypothetical.html': 'speaking.html',
         'general-speaking.html': 'speaking.html', 'article-speaking-listen-repeat.html': 'speaking.html', 'article-speaking-interview.html': 'speaking.html', 'article-speaking-personal-experience.html': 'speaking.html', 'article-speaking-plans-goals.html': 'speaking.html', 'article-speaking-preferences.html': 'speaking.html', 'speaking-articles.html': 'speaking.html', 'speaking_results.html': 'speaking.html',
         'interview.html': 'speaking.html', 'interview_results.html': 'speaking.html',
         'listen_repeat.html': 'speaking.html', 'listen-repeat-practice.html': 'speaking.html',
