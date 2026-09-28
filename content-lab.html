@@ -186,7 +186,7 @@
             const [tests, shortQs, res, mini, big] = await Promise.all([
                 fetchAll('listening_tests', 'id, task_type, title, questions, is_mock_only'),
                 fetchAll('listening_questions', 'id, set_number, options, correct_answer, transcript, is_mock_only'),
-                fetchAll('listening_results', 'task_id, task_type, score_earned, score_total, created_at'),
+                fetchAll('listening_results', 'task_id, task_type, score_earned, score_total, user_answers, created_at'),
                 fetchAll('listening_mini_mock_results', 'detailed_answers, completed_at'),
                 fetchAll('big_mock_listening_answers', 'attempt_id, user_answer, is_correct, created_at')
             ]);
@@ -235,12 +235,21 @@
                 t.attempts.push({ source: 'practice', answers, created_at: r.created_at });
             });
 
-            // практика остальных заданий: ответов по вопросам нет, только балл
+            // практика остальных заданий: с недавних пор сохраняются ответы
+            // по вопросам; у старых прохождений их нет — тогда берём только балл
             res.forEach(r => {
                 const t = byKey['listening:std:' + r.task_id];
                 if (!t) return;
+                const raw = parseJson(r.user_answers);
+                let answers = null;
+                if (raw && typeof raw === 'object' && Object.keys(raw).length) {
+                    answers = {};
+                    Object.entries(raw).forEach(([k, v]) => {
+                        if (v !== null && v !== '') answers[k] = Number(v);
+                    });
+                }
                 t.attempts.push({
-                    source: 'practice', answers: null, created_at: r.created_at,
+                    source: 'practice', answers, created_at: r.created_at,
                     share: r.score_total ? r.score_earned / r.score_total : null
                 });
             });
@@ -350,7 +359,7 @@
             const texts = qs.map(q => normText(q.text)).filter(Boolean);
             if (new Set(texts).size !== texts.length) task.health.push(['Есть повторяющиеся вопросы', 'amber']);
             if (n && !task.totalAttempts) task.health.push(['Ни разу не проходили', 'gray']);
-            if (n && task.totalAttempts && !task.used) task.health.push(['Проходили, но ответы по вопросам не сохраняются', 'gray']);
+            if (n && task.totalAttempts && !task.used) task.health.push(['Есть прохождения, но без ответов по вопросам (старые записи)', 'gray']);
 
             task.problemCount = task.health.filter(h => h[1] === 'rose').length
                 + task.items.reduce((s, it) => s + it.flags.filter(f => f[1] === 'rose').length, 0);
