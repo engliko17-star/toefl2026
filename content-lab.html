@@ -324,10 +324,26 @@
                 };
             });
 
-            const put = (key, source, score, created_at) => {
+            // Build a Sentence проверяется автоматически, и его результат
+            // хранится строкой вида «4/6». Раньше она превращалась в NaN,
+            // а задание висело в «ожидают проверки», хотя проверять нечего.
+            const parseScore = raw => {
+                if (raw === null || raw === undefined || raw === '') return { value: null, auto: false };
+                if (typeof raw === 'string' && raw.includes('/')) {
+                    const [a, b] = raw.split('/').map(Number);
+                    if (isFinite(a) && isFinite(b) && b > 0) return { value: (a / b) * 6, auto: true, share: a / b };
+                    return { value: null, auto: false };
+                }
+                const n = Number(raw);
+                return isFinite(n) ? { value: n, auto: false } : { value: null, auto: false };
+            };
+
+            const put = (key, source, raw, created_at) => {
                 const t = byKey[key];
                 if (!t) return;
-                t.responses.push({ source, graded: score !== null && score !== undefined, score, created_at });
+                const p = parseScore(raw);
+                if (p.auto) t.autoGraded = true;
+                t.responses.push({ source, graded: p.value !== null, score: p.value, share: p.share, auto: p.auto, created_at });
                 t.attempts.push({ source, answers: null, created_at });
             };
 
@@ -453,13 +469,15 @@
             task.avgScore = graded.length
                 ? graded.reduce((s, r) => s + Number(r.score), 0) / graded.length : null;
             task.avgShare = task.avgScore === null ? null : task.avgScore / 6;   // шкала 1–6
+            // У автоматических заданий «непроверенных» не бывает
+            if (task.autoGraded) task.pendingCount = 0;
             task.used = 0;
             task.items = [];
 
             task.health = [];
             if (!task.totalAttempts) task.health.push(['Ни разу не давали ученикам', 'gray']);
             // Непроверенные работы — не поломка материала, но повод вернуться
-            if (task.pendingCount >= 3) task.health.push([`Ждут проверки: ${task.pendingCount}`, 'amber']);
+            if (!task.autoGraded && task.pendingCount >= 3) task.health.push([`Ждут проверки: ${task.pendingCount}`, 'amber']);
             task.problemCount = 0;
             task.warnCount = task.health.filter(h => h[1] === 'amber').length;
         }
@@ -559,7 +577,9 @@
                 if (t.bySource.minimock) src.push('мини ' + t.bySource.minimock);
                 if (t.bySource.mock) src.push('мок ' + t.bySource.mock);
                 const manualInfo = t.manual
-                    ? `${t.responses.length} работ · проверено ${t.gradedCount}${t.pendingCount ? ` · ждут ${t.pendingCount}` : ''}`
+                    ? (t.autoGraded
+                        ? `${t.responses.length} прохождений · проверяется автоматически`
+                        : `${t.responses.length} работ · проверено ${t.gradedCount}${t.pendingCount ? ` · ждут ${t.pendingCount}` : ''}`)
                     : null;
                 const badge = t.problemCount
                     ? `<span class="text-[10px] font-bold px-2 py-1 rounded-lg bg-rose-50 text-rose-600">${t.problemCount}</span>`
@@ -573,7 +593,7 @@
                             <p class="text-sm font-bold text-slate-900 truncate">${esc(t.title)}</p>
                             <p class="text-[11px] text-gray-400 mt-0.5">${esc(t.kind)} · ${manualInfo || `${t.questions.length} вопр. · ${src.join(' · ') || 'нет прохождений'}${t.used && t.used < MIN_ATTEMPTS ? ' — мало для выводов' : ''}`}</p>
                         </div>
-                        <span class="text-sm font-bold ${t.avgShare === null ? 'text-gray-300' : t.avgShare < 0.4 ? 'text-rose-600' : t.avgShare > 0.85 ? 'text-amber-600' : 'text-slate-700'}">${t.manual ? (t.avgScore === null ? '—' : t.avgScore.toFixed(1)) : pct(t.avgShare)}</span>
+                        <span class="text-sm font-bold ${t.avgShare === null ? 'text-gray-300' : t.avgShare < 0.4 ? 'text-rose-600' : t.avgShare > 0.85 ? 'text-amber-600' : 'text-slate-700'}">${t.manual ? (t.avgScore === null ? '—' : (t.autoGraded ? pct(t.avgShare) : t.avgScore.toFixed(1))) : pct(t.avgShare)}</span>
                         ${badge}
                     </button>
                     <div id="tsk-${cssKey(t.key)}" class="hidden px-5 pb-4"></div>
@@ -594,13 +614,14 @@
                     const list = t.responses.filter(r => r.source === sr);
                     if (!list.length) return '';
                     const g = list.filter(r => r.graded);
-                    const avg = g.length ? (g.reduce((s, r) => s + Number(r.score), 0) / g.length).toFixed(1) : '—';
+                    const avgNum = g.length ? g.reduce((s, r) => s + Number(r.score), 0) / g.length : null;
+                    const avg = avgNum === null ? '—' : (t.autoGraded ? pct(avgNum / 6) : avgNum.toFixed(1));
                     return `<div class="flex items-center gap-3 text-xs py-1.5">
                         <span class="w-32 text-gray-500">${SOURCE_LABEL[sr]}</span>
-                        <span class="text-slate-700">работ ${list.length}</span>
-                        <span class="text-emerald-600">проверено ${g.length}</span>
-                        ${list.length - g.length ? `<span class="text-amber-600">ждут ${list.length - g.length}</span>` : ''}
-                        <span class="ml-auto font-bold text-slate-700">средний ${avg}</span>
+                        <span class="text-slate-700">${t.autoGraded ? 'прохождений' : 'работ'} ${list.length}</span>
+                        ${t.autoGraded ? '' : `<span class="text-emerald-600">проверено ${g.length}</span>`}
+                        ${!t.autoGraded && list.length - g.length ? `<span class="text-amber-600">ждут ${list.length - g.length}</span>` : ''}
+                        <span class="ml-auto font-bold text-slate-700">${t.autoGraded ? 'верных' : 'средний'} ${avg}</span>
                     </div>`;
                 }).join('');
                 box.innerHTML = bySrc || `<p class="text-sm text-gray-400">Работ по этому заданию пока нет.</p>`;
@@ -657,35 +678,70 @@
         }
 
         // ==========================================
-        // Нижние карточки: пробники целиком
+        // Нижние карточки: пробники целиком, с разбивкой по тестам
         // ==========================================
-        async function renderTests() {
-            const grab = async (table, cols, scoreField) => {
+        let testData = { mini: [], full: [] };
+
+        async function collectTests() {
+            // [подпись секции, таблица попыток, поле балла, таблица тестов, поле названия]
+            const MINI = [
+                ['Reading',   'mock_test_results',          'band_score',             'mock_tests',           'title'],
+                ['Listening', 'listening_mini_mock_results', 'final_calculated_score', 'listening_mock_tests', 'title'],
+                ['Writing',   'mini_mock_writing_attempts',  'total_score',            'mini_mock_writing_tests',  'title'],
+                ['Speaking',  'mini_mock_speaking_attempts', 'overall_score',          'mini_mock_speaking_tests', 'title']
+            ];
+            const FULL = [
+                ['Reading',   'big_mock_attempts',           'total_score', 'full_tests', 'title'],
+                ['Listening', 'big_mock_listening_attempts', 'total_score', 'full_tests', 'title'],
+                ['Writing',   'big_mock_writing_attempts',   'total_score', 'full_tests', 'title'],
+                ['Speaking',  'big_mock_speaking_attempts',  'total_score', 'full_tests', 'title']
+            ];
+
+            const build = async defs => Promise.all(defs.map(async ([name, attTable, scoreField, testTable, titleField]) => {
                 try {
-                    const rows = await fetchAll(table, cols);
-                    const scores = rows.map(r => r[scoreField]).filter(v => v !== null && v !== undefined).map(Number);
+                    const idField = attTable === 'listening_mini_mock_results' ? 'mock_test_id' : 'test_id';
+                    const rows = await fetchAll(attTable, `user_id, ${idField}, ${scoreField}`);
+                    let titles = {};
+                    try {
+                        (await fetchAll(testTable, `id, ${titleField}`)).forEach(t => titles[t.id] = t[titleField]);
+                    } catch (e) { /* названий нет — покажем номер */ }
+
+                    const byTest = {};
+                    rows.forEach(r => {
+                        const id = r[idField];
+                        const g = (byTest[id] ||= { id, attempts: 0, students: new Set(), scores: [] });
+                        g.attempts++;
+                        if (r.user_id) g.students.add(r.user_id);
+                        const v = Number(r[scoreField]);
+                        if (isFinite(v)) g.scores.push(v);
+                    });
+                    const tests = Object.values(byTest).map(g => ({
+                        id: g.id,
+                        title: titles[g.id] || ('Тест #' + g.id),
+                        attempts: g.attempts,
+                        students: g.students.size,
+                        avg: g.scores.length ? g.scores.reduce((a, b) => a + b, 0) / g.scores.length : null
+                    })).sort((a, b) => b.attempts - a.attempts);
+
+                    const all = rows.map(r => Number(r[scoreField])).filter(isFinite);
                     return {
+                        name, tests,
                         attempts: rows.length,
                         students: new Set(rows.map(r => r.user_id).filter(Boolean)).size,
-                        avg: scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null
+                        avg: all.length ? all.reduce((a, b) => a + b, 0) / all.length : null
                     };
-                } catch (e) { console.warn(table + ':', e.message); return null; }
-            };
+                } catch (e) {
+                    console.warn(attTable + ':', e.message);
+                    return { name, tests: [], attempts: 0, students: 0, avg: null, missing: true };
+                }
+            }));
 
-            const mini = [
-                ['Reading', await grab('mock_test_results', 'user_id, band_score', 'band_score')],
-                ['Listening', await grab('listening_mini_mock_results', 'user_id, final_calculated_score', 'final_calculated_score')],
-                ['Writing', await grab('mini_mock_writing_attempts', 'user_id, total_score', 'total_score')],
-                ['Speaking', await grab('mini_mock_speaking_attempts', 'user_id, overall_score', 'overall_score')]
-            ];
-            const full = [
-                ['Reading', await grab('big_mock_attempts', 'user_id, total_score', 'total_score')],
-                ['Listening', await grab('big_mock_listening_attempts', 'user_id, total_score', 'total_score')],
-                ['Writing', await grab('big_mock_writing_attempts', 'user_id, total_score', 'total_score')],
-                ['Speaking', await grab('big_mock_speaking_attempts', 'user_id, total_score', 'total_score')]
-            ];
+            testData.mini = await build(MINI);
+            testData.full = await build(FULL);
+        }
 
-            const card = (title, hint, icon, color, rows) => `
+        function renderTests() {
+            const card = (kind, title, hint, icon, color, rows) => `
                 <div class="bg-white rounded-3xl border border-gray-100 shadow-xs overflow-hidden">
                     <div class="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
                         <div class="w-10 h-10 rounded-2xl bg-${color}-50 text-${color}-600 flex items-center justify-center shrink-0">
@@ -697,21 +753,39 @@
                         </div>
                     </div>
                     <div class="divide-y divide-gray-50">
-                        ${rows.map(([name, d]) => `
-                            <div class="px-5 py-3 flex items-center gap-3 text-sm">
-                                <span class="w-24 font-semibold text-slate-700">${name}</span>
-                                ${d ? `
-                                    <span class="text-xs text-gray-500">${d.attempts} попыток · ${d.students} ученик(ов)</span>
-                                    <span class="ml-auto font-bold ${d.avg === null ? 'text-gray-300' : 'text-slate-800'}">${d.avg === null ? '—' : d.avg.toFixed(1)}</span>`
-                                : `<span class="text-xs text-gray-300">нет данных</span>`}
+                        ${rows.map((d, i) => `
+                            <div>
+                                <button onclick="toggleTestRow('${kind}',${i})" class="w-full text-left px-5 py-3 hover:bg-gray-50/70 transition flex items-center gap-3 text-sm">
+                                    <span class="w-24 font-semibold text-slate-700">${d.name}</span>
+                                    ${d.missing
+                                        ? `<span class="text-xs text-gray-300">нет данных</span>`
+                                        : `<span class="text-xs text-gray-500">${d.attempts} попыток · ${d.students} ученик(ов) · ${d.tests.length} тест(ов)</span>
+                                           <span class="ml-auto font-bold ${d.avg === null ? 'text-gray-300' : 'text-slate-800'}">${d.avg === null ? '—' : d.avg.toFixed(1)}</span>
+                                           <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-gray-300"></i>`}
+                                </button>
+                                <div id="tr-${kind}-${i}" class="hidden bg-gray-50/40"></div>
                             </div>`).join('')}
                     </div>
                 </div>`;
 
             document.getElementById('tests').innerHTML =
-                card('Мини-пробники', 'Одна секция под таймером', 'timer', 'sky', mini) +
-                card('Полные пробники', 'Все четыре секции подряд', 'file-check', 'violet', full);
+                card('mini', 'Мини-пробники', 'Одна секция под таймером', 'timer', 'sky', testData.mini) +
+                card('full', 'Полные пробники', 'Все четыре секции подряд', 'file-check', 'violet', testData.full);
             icons();
+        }
+
+        function toggleTestRow(kind, i) {
+            const box = document.getElementById(`tr-${kind}-${i}`);
+            if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
+            box.classList.remove('hidden');
+            const d = testData[kind][i];
+            box.innerHTML = d.tests.length ? d.tests.map(t => `
+                <div class="px-5 py-2.5 flex items-center gap-3 text-xs border-t border-gray-50">
+                    <span class="flex-1 truncate text-slate-700">${esc(t.title)}</span>
+                    <span class="text-gray-500">${t.attempts} попыток</span>
+                    <span class="text-gray-400">${t.students} ученик(ов)</span>
+                    <span class="w-10 text-right font-bold ${t.avg === null ? 'text-gray-300' : 'text-slate-800'}">${t.avg === null ? '—' : t.avg.toFixed(1)}</span>
+                </div>`).join('') : `<p class="px-5 py-3 text-xs text-gray-400">Пока никто не проходил.</p>`;
         }
 
         async function load() {
@@ -727,7 +801,8 @@
                 tasks.forEach(analyse);
                 renderHealth();
                 renderSections();
-                await renderTests();
+                await collectTests();
+                renderTests();
                 state.classList.add('hidden');
                 document.getElementById('body').classList.remove('hidden');
                 icons();
