@@ -117,12 +117,13 @@
         // READING
         // ==========================================
         async function loadReading(byKey) {
-            const [acad, daily, res, mini, big] = await Promise.all([
+            const [acad, daily, res, mini, big, attemptsMap] = await Promise.all([
                 fetchAll('academic_tasks', 'id, title, questions, questions_count, is_mock_only'),
                 fetchAll('daily_life_tasks', 'id, title, questions, questions_count, is_mock_only'),
                 fetchAll('reading_results', 'task_id, task_type, user_answers, created_at', q => q.in('task_type', ['academic', 'daily'])),
-                fetchAll('mock_test_results', 'user_answers, created_at'),
-                fetchAll('big_mock_answers', 'attempt_id, answer_json, answer_text, is_correct, created_at', q => q.in('task_type', ['academic', 'daily', 'daily_life']))
+                fetchAll('mock_test_results', 'test_id, user_answers, created_at'),
+                fetchAll('big_mock_answers', 'attempt_id, answer_json, answer_text, is_correct, created_at', q => q.in('task_type', ['academic', 'daily', 'daily_life'])),
+                fetchAll('big_mock_attempts', 'id, test_id')
             ]);
 
             const add = (rows, type) => (rows || []).forEach(t => {
@@ -158,23 +159,25 @@
                     (byTask['reading:' + m[1] + ':' + m[2]] ||= {})[m[3]] = Number(v);
                 });
                 Object.entries(byTask).forEach(([key, answers]) => {
-                    if (byKey[key]) byKey[key].attempts.push({ source: 'minimock', answers, created_at: row.created_at });
+                    if (byKey[key]) byKey[key].attempts.push({ source: 'minimock', answers, created_at: row.created_at, testId: row.test_id });
                 });
             });
 
             // полные пробники: вопрос и ответ текстом
+            const attemptTest = {};
+            (attemptsMap || []).forEach(a => attemptTest[a.id] = a.test_id);
             const lookup = buildLookup(byKey, 'reading');
             const grouped = {};
             big.forEach(row => {
                 const hit = lookup[normText((row.answer_json || {}).question)];
                 if (!hit) return;
-                const g = (grouped[row.attempt_id + '|' + hit.key] ||= { key: hit.key, answers: {}, created_at: row.created_at });
+                const g = (grouped[row.attempt_id + '|' + hit.key] ||= { key: hit.key, answers: {}, created_at: row.created_at, testId: attemptTest[row.attempt_id] });
                 const opts = hit.task.questions[hit.index].options;
                 let choice = opts.findIndex(o => normText(o) === normText(row.answer_text));
                 if (choice === -1 && row.is_correct) choice = hit.task.questions[hit.index].correct;
                 if (choice !== -1 && choice !== null) g.answers[hit.index] = choice;
             });
-            Object.values(grouped).forEach(g => byKey[g.key].attempts.push({ source: 'mock', answers: g.answers, created_at: g.created_at }));
+            Object.values(grouped).forEach(g => byKey[g.key].attempts.push({ source: 'mock', answers: g.answers, created_at: g.created_at, testId: g.testId }));
         }
 
         function buildLookup(byKey, section) {
@@ -192,12 +195,13 @@
         // LISTENING
         // ==========================================
         async function loadListening(byKey) {
-            const [tests, shortQs, res, mini, big] = await Promise.all([
+            const [tests, shortQs, res, mini, big, lAttempts] = await Promise.all([
                 fetchAll('listening_tests', 'id, task_type, title, questions, is_mock_only'),
                 fetchAll('listening_questions', 'id, set_number, options, correct_answer, transcript, is_mock_only'),
                 fetchAll('listening_results', 'task_id, task_type, score_earned, score_total, user_answers, created_at'),
-                fetchAll('listening_mini_mock_results', 'detailed_answers, completed_at'),
-                fetchAll('big_mock_listening_answers', 'attempt_id, user_answer, is_correct, created_at')
+                fetchAll('listening_mini_mock_results', 'mock_test_id, detailed_answers, completed_at'),
+                fetchAll('big_mock_listening_answers', 'attempt_id, user_answer, is_correct, created_at'),
+                fetchAll('big_mock_listening_attempts', 'id, test_id')
             ]);
             const respRes = await fetchAll('response_results', 'set_number, user_answers, created_at');
 
@@ -279,21 +283,23 @@
                     }
                 });
                 Object.entries(byTask).forEach(([key, answers]) => {
-                    if (byKey[key]) byKey[key].attempts.push({ source: 'minimock', answers, created_at: row.completed_at });
+                    if (byKey[key]) byKey[key].attempts.push({ source: 'minimock', answers, created_at: row.completed_at, testId: row.mock_test_id });
                 });
             });
 
             // полные пробники: в user_answer лежит текст вопроса и выбранный вариант
+            const attemptTest = {};
+            (lAttempts || []).forEach(a => attemptTest[a.id] = a.test_id);
             const lookup = buildLookup(byKey, 'listening');
             const grouped = {};
             big.forEach(row => {
                 const d = parseJson(row.user_answer) || {};
                 const hit = lookup[normText(d.question_text)];
                 if (!hit || d.choice_index === null || d.choice_index === undefined) return;
-                const g = (grouped[row.attempt_id + '|' + hit.key] ||= { key: hit.key, answers: {}, created_at: row.created_at });
+                const g = (grouped[row.attempt_id + '|' + hit.key] ||= { key: hit.key, answers: {}, created_at: row.created_at, testId: attemptTest[row.attempt_id] });
                 g.answers[hit.index] = Number(d.choice_index);
             });
-            Object.values(grouped).forEach(g => byKey[g.key].attempts.push({ source: 'mock', answers: g.answers, created_at: g.created_at }));
+            Object.values(grouped).forEach(g => byKey[g.key].attempts.push({ source: 'mock', answers: g.answers, created_at: g.created_at, testId: g.testId }));
         }
 
         // ==========================================
@@ -380,6 +386,14 @@
         // ==========================================
         // Анализ
         // ==========================================
+        // Тот же разбор, но только по выбранным попыткам — нужен, чтобы
+        // посмотреть, как задание отработало в конкретном пробнике.
+        function analyseSubset(task, filter) {
+            const copy = Object.assign({}, task, { attempts: task.attempts.filter(filter) });
+            analyse(copy);
+            return copy;
+        }
+
         function analyse(task) {
             if (task.manual) return analyseManual(task);
             const qs = task.questions, n = qs.length;
@@ -779,13 +793,74 @@
             if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
             box.classList.remove('hidden');
             const d = testData[kind][i];
-            box.innerHTML = d.tests.length ? d.tests.map(t => `
-                <div class="px-5 py-2.5 flex items-center gap-3 text-xs border-t border-gray-50">
-                    <span class="flex-1 truncate text-slate-700">${esc(t.title)}</span>
-                    <span class="text-gray-500">${t.attempts} попыток</span>
-                    <span class="text-gray-400">${t.students} ученик(ов)</span>
-                    <span class="w-10 text-right font-bold ${t.avg === null ? 'text-gray-300' : 'text-slate-800'}">${t.avg === null ? '—' : t.avg.toFixed(1)}</span>
+            box.innerHTML = d.tests.length ? d.tests.map((t, ti) => `
+                <div class="border-t border-gray-50">
+                    <button onclick="toggleTestTasks('${kind}',${i},${ti})" class="w-full text-left px-5 py-2.5 flex items-center gap-3 text-xs hover:bg-white/60 transition">
+                        <span class="flex-1 truncate text-slate-700 font-semibold">${esc(t.title)}</span>
+                        <span class="text-gray-500">${t.attempts} попыток</span>
+                        <span class="text-gray-400">${t.students} ученик(ов)</span>
+                        <span class="w-10 text-right font-bold ${t.avg === null ? 'text-gray-300' : 'text-slate-800'}">${t.avg === null ? '—' : t.avg.toFixed(1)}</span>
+                        <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-gray-300"></i>
+                    </button>
+                    <div id="tt-${kind}-${i}-${ti}" class="hidden px-5 pb-3 bg-white"></div>
                 </div>`).join('') : `<p class="px-5 py-3 text-xs text-gray-400">Пока никто не проходил.</p>`;
+            icons();
+        }
+
+        // Задания конкретного пробника с разбором по вопросам —
+        // считаем ТОЛЬКО по ответам из этого теста, а не по всем источникам.
+        function toggleTestTasks(kind, i, ti) {
+            const box = document.getElementById(`tt-${kind}-${i}-${ti}`);
+            if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
+            box.classList.remove('hidden');
+
+            const d = testData[kind][i];
+            const test = d.tests[ti];
+            const source = kind === 'mini' ? 'minimock' : 'mock';
+            const section = ({ Reading: 'reading', Listening: 'listening', Writing: 'writing', Speaking: 'speaking' })[d.name];
+
+            const involved = tasks.filter(t => t.section === section &&
+                t.attempts.some(a => a.source === source && String(a.testId) === String(test.id)));
+
+            if (!involved.length) {
+                box.innerHTML = `<p class="text-xs text-gray-400 py-3">Ответы по вопросам из этого теста не сохранились —
+                    виден только итоговый балл.</p>`;
+                return;
+            }
+
+            box.innerHTML = involved.map((t, k) => {
+                const sub = analyseSubset(t, a => a.source === source && String(a.testId) === String(test.id));
+                const flagged = sub.items.reduce((s, it) => s + it.flags.filter(f => f[1] === 'rose').length, 0);
+                return `
+                <div class="border border-gray-100 rounded-2xl mt-2 overflow-hidden">
+                    <button onclick="toggleTestTaskItems('${kind}',${i},${ti},${k})" class="w-full text-left px-4 py-2.5 hover:bg-gray-50 transition flex items-center gap-3">
+                        <span class="flex-1 truncate text-sm font-semibold text-slate-800">${esc(t.title)}</span>
+                        <span class="text-[11px] text-gray-400">${sub.used} прохождений</span>
+                        <span class="text-sm font-bold ${sub.avgShare === null ? 'text-gray-300' : sub.avgShare < 0.4 ? 'text-rose-600' : 'text-slate-700'}">${pct(sub.avgShare)}</span>
+                        ${flagged ? `<span class="text-[10px] font-bold px-2 py-1 rounded-lg bg-rose-50 text-rose-600">${flagged}</span>` : ''}
+                        <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-gray-300"></i>
+                    </button>
+                    <div id="tti-${kind}-${i}-${ti}-${k}" class="hidden px-4 pb-3"></div>
+                </div>`;
+            }).join('');
+            box.dataset.tasks = JSON.stringify(involved.map(t => t.key));
+            box.dataset.source = source;
+            box.dataset.testId = test.id;
+            icons();
+        }
+
+        function toggleTestTaskItems(kind, i, ti, k) {
+            const parent = document.getElementById(`tt-${kind}-${i}-${ti}`);
+            const box = document.getElementById(`tti-${kind}-${i}-${ti}-${k}`);
+            if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
+            box.classList.remove('hidden');
+            const keys = JSON.parse(parent.dataset.tasks || '[]');
+            const t = tasks.find(x => x.key === keys[k]);
+            const source = parent.dataset.source, testId = parent.dataset.testId;
+            const sub = analyseSubset(t, a => a.source === source && String(a.testId) === String(testId));
+            box.innerHTML = sub.items.length ? sub.items.map(renderItem).join('')
+                : `<p class="text-xs text-gray-400">Разбор по вопросам недоступен.</p>`;
+            icons();
         }
 
         async function load() {
