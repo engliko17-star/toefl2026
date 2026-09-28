@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Обкатка материала — TOEFL Prep</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="auth.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+    </style>
+</head>
+<body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex flex-col md:flex-row">
+
+    <div id="app-sidebar"></div>
+    <script src="nav.js"></script>
+
+    <main class="flex-1 overflow-y-auto p-4 md:p-8">
+        <div class="max-w-6xl mx-auto">
+
+            <div class="mb-6">
+                <span class="text-xs font-semibold text-gray-400">Только для преподавателя</span>
+                <h1 class="text-2xl font-bold text-slate-900 tracking-tight mt-0.5">Обкатка материала</h1>
+                <p class="text-sm text-gray-500 mt-2 max-w-2xl">
+                    Как ведут себя вопросы на реальных учениках и нет ли в заданиях поломок.
+                    Пока прохождений мало, выводы по вопросам ненадёжны — страница показывает,
+                    на скольких попытках они основаны.
+                </p>
+            </div>
+
+            <div id="state" class="text-sm text-gray-500 py-16 text-center">Загрузка…</div>
+
+            <div id="body" class="hidden space-y-6">
+
+                <!-- Сводка -->
+                <div id="summary" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
+
+                <!-- Здоровье материала -->
+                <section class="bg-white rounded-3xl border border-gray-100 shadow-xs overflow-hidden">
+                    <div class="px-5 py-4 border-b border-gray-100">
+                        <h2 class="text-base font-bold text-slate-900">Здоровье материала</h2>
+                        <p class="text-xs text-gray-400 mt-0.5">Проверки самих заданий — работают даже без единого прохождения.</p>
+                    </div>
+                    <div id="healthList" class="divide-y divide-gray-50"></div>
+                </section>
+
+                <!-- Задания -->
+                <section class="bg-white rounded-3xl border border-gray-100 shadow-xs overflow-hidden">
+                    <div class="px-5 py-4 border-b border-gray-100 flex flex-wrap items-center gap-3">
+                        <div class="flex-1 min-w-40">
+                            <h2 class="text-base font-bold text-slate-900">Задания</h2>
+                            <p class="text-xs text-gray-400 mt-0.5">Нажмите на задание, чтобы увидеть разбор по вопросам.</p>
+                        </div>
+                        <select id="sortBy" class="text-xs font-semibold border border-gray-200 rounded-xl px-3 py-2 bg-white cursor-pointer">
+                            <option value="problems">Сначала проблемные</option>
+                            <option value="attempts">Сначала частые</option>
+                            <option value="unused">Сначала неиспользованные</option>
+                            <option value="hardest">Сначала трудные</option>
+                            <option value="title">По названию</option>
+                        </select>
+                    </div>
+                    <div id="taskList" class="divide-y divide-gray-50"></div>
+                </section>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const MIN_ATTEMPTS = 5;   // ниже этого выводы по вопросу считаем ненадёжными
+
+        function db() {
+            if (typeof _supabase !== 'undefined' && _supabase) return _supabase;
+            return window.supabaseClient;
+        }
+        const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
+            c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        const icons = () => { try { if (window.lucide) lucide.createIcons(); } catch (e) {} };
+
+        let tasks = [];   // {id, type, title, questions[], attempts[], stats}
+
+        // ==========================================
+        // Загрузка
+        // ==========================================
+        async function load() {
+            const state = document.getElementById('state');
+            try {
+                const user = await requireAuth();
+                if (!user) return;
+
+                const client = db();
+                const [aRes, dRes, rRes] = await Promise.all([
+                    client.from('academic_tasks').select('id, title, category, questions, questions_count, is_mock_only'),
+                    client.from('daily_life_tasks').select('id, title, category, questions, questions_count, is_mock_only'),
+                    fetchAllResults(client)
+                ]);
+                if (aRes.error) throw aRes.error;
+                if (dRes.error) throw dRes.error;
+
+                const byKey = {};
+                const push = (rows, type) => (rows || []).forEach(t => {
+                    byKey[type + ':' + t.id] = {
+                        id: t.id, type, title: t.title || ('Без названия #' + t.id),
+                        category: t.category, isMockOnly: t.is_mock_only,
+                        declared: t.questions_count,
+                        questions: parseQuestions(t.questions),
+                        attempts: []
+                    };
+                });
+                push(aRes.data, 'academic');
+                push(dRes.data, 'daily');
+
+                (rRes || []).forEach(r => {
+                    const t = byKey[r.task_type + ':' + r.task_id];
+                    if (t) t.attempts.push(r);
+                });
+
+                tasks = Object.values(byKey);
+                tasks.forEach(analyse);
+
+                renderSummary();
+                renderHealth();
+                renderTasks();
+
+                state.classList.add('hidden');
+                document.getElementById('body').classList.remove('hidden');
+                icons();
+            } catch (e) {
+                console.error(e);
+                state.innerHTML = `<p class="text-rose-600 font-medium">Не удалось загрузить данные.</p>
+                                   <p class="text-xs text-gray-400 mt-1">${esc(e.message || e)}</p>`;
+            }
+        }
+
+        // Результатов может быть больше тысячи — читаем страницами
+        async function fetchAllResults(client) {
+            const PAGE = 1000;
+            let rows = [], from = 0;
+            while (true) {
+                const { data, error } = await client
+                    .from('reading_results')
+                    .select('task_id, task_type, user_id, score_earned, score_total, user_answers, created_at')
+                    .in('task_type', ['academic', 'daily'])
+                    .order('created_at', { ascending: true })
+                    .range(from, from + PAGE - 1);
+                if (error) throw error;
+                rows = rows.concat(data || []);
+                if (!data || data.length < PAGE) return rows;
+                from += PAGE;
+                if (from > 50000) return rows;
+            }
+        }
+
+        function parseQuestions(raw) {
+            let q = raw;
+            if (typeof q === 'string') { try { q = JSON.parse(q); } catch (e) { return []; } }
+            return Array.isArray(q) ? q : [];
+        }
+
+        // ==========================================
+        // Анализ
+        // ==========================================
+        function analyse(task) {
+            const qs = task.questions;
+            const n = qs.length;
+
+            // доля верных по каждой попытке — для различающей способности
+            const scored = task.attempts.map(a => {
+                const ans = a.user_answers || {};
+                let correct = 0, answered = 0;
+                qs.forEach((q, i) => {
+                    const given = ans[String(i)];
+                    if (given === undefined || given === null) return;
+                    answered++;
+                    if (Number(given) === Number(q.correct)) correct++;
+                });
+                return { a, ans, correct, share: n ? correct / n : 0, answered };
+            }).filter(x => x.answered > 0);
+
+            task.used = scored.length;
+            task.avgShare = scored.length ? scored.reduce((s, x) => s + x.share, 0) / scored.length : null;
+            task.lastAt = task.attempts.length
+                ? task.attempts.map(a => a.created_at).sort().slice(-1)[0] : null;
+
+            // сильная и слабая половина — по общему результату за задание
+            const sorted = [...scored].sort((a, b) => b.share - a.share);
+            const half = Math.floor(sorted.length / 2);
+            const top = sorted.slice(0, half), bottom = sorted.slice(-half);
+
+            task.items = qs.map((q, i) => {
+                const counts = {};
+                let answered = 0, correct = 0;
+                scored.forEach(x => {
+                    const g = x.ans[String(i)];
+                    if (g === undefined || g === null) return;
+                    answered++;
+                    counts[g] = (counts[g] || 0) + 1;
+                    if (Number(g) === Number(q.correct)) correct++;
+                });
+                const share = answered ? correct / answered : null;
+
+                const shareIn = group => {
+                    let c = 0, tot = 0;
+                    group.forEach(x => {
+                        const g = x.ans[String(i)];
+                        if (g === undefined || g === null) return;
+                        tot++;
+                        if (Number(g) === Number(q.correct)) c++;
+                    });
+                    return tot ? c / tot : null;
+                };
+                const pTop = shareIn(top), pBottom = shareIn(bottom);
+                const discrimination = (pTop === null || pBottom === null || half < 2) ? null : pTop - pBottom;
+
+                const options = Array.isArray(q.options) ? q.options : [];
+                const dead = options.map((_, oi) => oi).filter(oi => oi !== Number(q.correct) && !counts[oi]);
+
+                const flags = [];
+                if (!options.length) flags.push(['нет вариантов ответа', 'rose']);
+                else if (q.correct === undefined || q.correct === null) flags.push(['не отмечен правильный ответ', 'rose']);
+                else if (Number(q.correct) < 0 || Number(q.correct) >= options.length) flags.push(['правильный ответ вне списка вариантов', 'rose']);
+
+                if (answered >= 3 && share === 0) flags.push(['никто не ответил верно — вероятно, ошибка в ключе', 'rose']);
+                if (answered >= MIN_ATTEMPTS) {
+                    if (share === 1) flags.push(['все отвечают верно — вопрос ничего не проверяет', 'amber']);
+                    if (discrimination !== null && discrimination < 0) flags.push(['сильные ученики ошибаются чаще слабых', 'rose']);
+                    if (dead.length && options.length > 2) flags.push([`вариант${dead.length > 1 ? 'ы' : ''} никто не выбирает: ${dead.map(d => String.fromCharCode(65 + d)).join(', ')}`, 'amber']);
+                }
+
+                return { i, q, options, counts, answered, correct, share, discrimination, dead, flags };
+            });
+
+            // проблемы уровня задания
+            task.health = [];
+            if (!n) task.health.push(['В задании нет вопросов', 'rose']);
+            if (n && task.declared && Number(task.declared) !== n)
+                task.health.push([`Заявлено вопросов: ${task.declared}, фактически: ${n}`, 'amber']);
+            const texts = qs.map(q => (q.text || '').trim().toLowerCase()).filter(Boolean);
+            if (new Set(texts).size !== texts.length) task.health.push(['Есть повторяющиеся вопросы', 'amber']);
+            if (n && !task.attempts.length && !task.isMockOnly) task.health.push(['Ни разу не проходили', 'gray']);
+
+            task.problemCount = task.health.filter(h => h[1] === 'rose').length
+                + task.items.reduce((s, it) => s + it.flags.filter(f => f[1] === 'rose').length, 0);
+            task.warnCount = task.health.filter(h => h[1] === 'amber').length
+                + task.items.reduce((s, it) => s + it.flags.filter(f => f[1] === 'amber').length, 0);
+        }
+
+        // ==========================================
+        // Отрисовка
+        // ==========================================
+        const pct = v => v === null ? '—' : Math.round(v * 100) + '%';
+
+        function renderSummary() {
+            const totalQ = tasks.reduce((s, t) => s + t.questions.length, 0);
+            const problems = tasks.reduce((s, t) => s + t.problemCount, 0);
+            const unused = tasks.filter(t => !t.attempts.length && !t.isMockOnly).length;
+            const attempts = tasks.reduce((s, t) => s + t.attempts.length, 0);
+            const cards = [
+                ['Заданий', tasks.length, 'text-slate-900'],
+                ['Вопросов', totalQ, 'text-slate-900'],
+                ['Прохождений', attempts, 'text-slate-900'],
+                ['Требуют внимания', problems, problems ? 'text-rose-600' : 'text-emerald-600']
+            ];
+            document.getElementById('summary').innerHTML = cards.map(([l, v, c]) => `
+                <div class="bg-white rounded-2xl border border-gray-100 p-4">
+                    <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">${l}</p>
+                    <p class="text-2xl font-bold ${c} mt-1">${v}</p>
+                </div>`).join('') + (unused ? `
+                <div class="col-span-2 md:col-span-4 text-xs text-gray-500 px-1">
+                    Ни разу не проходили: <b>${unused}</b> из ${tasks.length}.
+                </div>` : '');
+        }
+
+        function renderHealth() {
+            const rows = [];
+            tasks.forEach(t => t.health.forEach(([text, level]) => rows.push({ t, text, level })));
+            tasks.forEach(t => t.items.forEach(it => it.flags
+                .filter(f => f[1] === 'rose')
+                .forEach(f => rows.push({ t, text: `Вопрос ${it.i + 1}: ${f[0]}`, level: 'rose' }))));
+
+            const order = { rose: 0, amber: 1, gray: 2 };
+            rows.sort((a, b) => order[a.level] - order[b.level]);
+
+            const box = document.getElementById('healthList');
+            if (!rows.length) {
+                box.innerHTML = `<p class="px-5 py-6 text-sm text-emerald-600 font-medium">Проблем не найдено.</p>`;
+                return;
+            }
+            const color = { rose: 'text-rose-600 bg-rose-50', amber: 'text-amber-700 bg-amber-50', gray: 'text-gray-500 bg-gray-50' };
+            box.innerHTML = rows.slice(0, 60).map(r => `
+                <div class="px-5 py-3 flex items-start gap-3">
+                    <span class="text-[10px] font-bold px-2 py-1 rounded-lg shrink-0 ${color[r.level]}">
+                        ${r.level === 'rose' ? 'ошибка' : r.level === 'amber' ? 'внимание' : 'простой'}
+                    </span>
+                    <div class="min-w-0">
+                        <p class="text-sm text-slate-800">${esc(r.text)}</p>
+                        <p class="text-[11px] text-gray-400">${esc(r.t.title)} · ${r.t.type === 'academic' ? 'Academic' : 'Daily Life'}</p>
+                    </div>
+                </div>`).join('') + (rows.length > 60
+                ? `<p class="px-5 py-3 text-xs text-gray-400">…и ещё ${rows.length - 60}</p>` : '');
+        }
+
+        function sortTasks(list) {
+            const by = document.getElementById('sortBy').value;
+            const c = [...list];
+            if (by === 'problems') c.sort((a, b) => (b.problemCount - a.problemCount) || (b.warnCount - a.warnCount));
+            else if (by === 'attempts') c.sort((a, b) => b.attempts.length - a.attempts.length);
+            else if (by === 'unused') c.sort((a, b) => a.attempts.length - b.attempts.length);
+            else if (by === 'hardest') c.sort((a, b) => (a.avgShare === null) - (b.avgShare === null) || (a.avgShare ?? 9) - (b.avgShare ?? 9));
+            else c.sort((a, b) => a.title.localeCompare(b.title));
+            return c;
+        }
+
+        function renderTasks() {
+            document.getElementById('taskList').innerHTML = sortTasks(tasks).map((t, idx) => {
+                const badge = t.problemCount
+                    ? `<span class="text-[10px] font-bold px-2 py-1 rounded-lg bg-rose-50 text-rose-600">${t.problemCount} ошибк${t.problemCount === 1 ? 'а' : 'и'}</span>`
+                    : t.warnCount
+                        ? `<span class="text-[10px] font-bold px-2 py-1 rounded-lg bg-amber-50 text-amber-700">${t.warnCount} замечани${t.warnCount === 1 ? 'е' : 'я'}</span>`
+                        : `<span class="text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-50 text-emerald-600">чисто</span>`;
+                const reliability = t.used >= MIN_ATTEMPTS
+                    ? `<span class="text-[11px] text-gray-400">${t.used} прохождений</span>`
+                    : `<span class="text-[11px] text-gray-400">${t.used || 0} прохождений — мало для выводов</span>`;
+                return `
+                <div>
+                    <button onclick="toggleTask(${idx})" class="w-full text-left px-5 py-4 hover:bg-gray-50/70 transition flex items-center gap-3">
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-bold text-slate-900 truncate">${esc(t.title)}</p>
+                            <p class="text-[11px] text-gray-400 mt-0.5">
+                                ${t.type === 'academic' ? 'Academic' : 'Daily Life'} · ${t.questions.length} вопрос(ов) · ${reliability}
+                            </p>
+                        </div>
+                        <span class="text-sm font-bold ${t.avgShare === null ? 'text-gray-300' : t.avgShare < 0.4 ? 'text-rose-600' : t.avgShare > 0.85 ? 'text-amber-600' : 'text-slate-700'}">${pct(t.avgShare)}</span>
+                        ${badge}
+                        <i data-lucide="chevron-down" class="w-4 h-4 text-gray-300 shrink-0"></i>
+                    </button>
+                    <div id="task-${idx}" class="hidden px-5 pb-5"></div>
+                </div>`;
+            }).join('');
+            icons();
+        }
+
+        function toggleTask(idx) {
+            const t = sortTasks(tasks)[idx];
+            const box = document.getElementById('task-' + idx);
+            if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
+            box.classList.remove('hidden');
+            box.innerHTML = t.items.length ? t.items.map(it => renderItem(it, t)).join('') :
+                `<p class="text-sm text-gray-400">В задании нет вопросов.</p>`;
+            icons();
+        }
+
+        function renderItem(it, task) {
+            const reliable = it.answered >= MIN_ATTEMPTS;
+            const opts = it.options.map((o, oi) => {
+                const n = it.counts[oi] || 0;
+                const share = it.answered ? n / it.answered : 0;
+                const isCorrect = oi === Number(it.q.correct);
+                return `
+                    <div class="flex items-center gap-2 text-xs">
+                        <span class="w-5 font-bold ${isCorrect ? 'text-emerald-600' : 'text-gray-400'}">${String.fromCharCode(65 + oi)}</span>
+                        <div class="flex-1 h-4 bg-gray-100 rounded-md overflow-hidden">
+                            <div class="h-full ${isCorrect ? 'bg-emerald-400' : 'bg-slate-300'}" style="width:${Math.round(share * 100)}%"></div>
+                        </div>
+                        <span class="w-10 text-right text-gray-500">${n}</span>
+                        <span class="flex-1 truncate text-gray-600">${esc(o)}</span>
+                    </div>`;
+            }).join('');
+
+            const disc = it.discrimination === null ? '—'
+                : (it.discrimination > 0 ? '+' : '') + Math.round(it.discrimination * 100) + '%';
+
+            return `
+            <div class="border border-gray-100 rounded-2xl p-4 mb-3">
+                <div class="flex items-start gap-3 mb-3">
+                    <span class="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded-lg shrink-0">${it.i + 1}</span>
+                    <div class="min-w-0 flex-1">
+                        <p class="text-sm text-slate-800">${esc(it.q.text || '(без текста)')}</p>
+                        ${it.q.type ? `<span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">${esc(it.q.type)}</span>` : ''}
+                    </div>
+                    <div class="text-right shrink-0">
+                        <p class="text-sm font-bold ${it.share === null ? 'text-gray-300' : it.share === 0 ? 'text-rose-600' : it.share < 0.4 ? 'text-amber-600' : 'text-slate-700'}">${pct(it.share)}</p>
+                        <p class="text-[10px] text-gray-400">верных</p>
+                    </div>
+                </div>
+                <div class="space-y-1.5 mb-3">${opts}</div>
+                <div class="flex flex-wrap items-center gap-3 text-[11px] ${reliable ? 'text-gray-500' : 'text-gray-300'}">
+                    <span>ответов: ${it.answered}</span>
+                    <span>различающая способность: <b>${disc}</b></span>
+                    ${!reliable ? '<span>— данных мало, цифры пока ни о чём не говорят</span>' : ''}
+                </div>
+                ${it.flags.length ? `<div class="flex flex-wrap gap-1.5 mt-2">${it.flags.map(f => `
+                    <span class="text-[10px] font-bold px-2 py-1 rounded-lg ${f[1] === 'rose' ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-700'}">${esc(f[0])}</span>`).join('')}</div>` : ''}
+            </div>`;
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('sortBy').addEventListener('change', renderTasks);
+            load();
+        });
+    </script>
+</body>
+</html>
