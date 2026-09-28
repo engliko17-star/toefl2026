@@ -45,7 +45,12 @@
                     <div id="healthList" class="divide-y divide-gray-50 max-h-96 overflow-y-auto"></div>
                 </section>
 
-                <div id="sections" class="space-y-4"></div>
+                <div id="sections" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+
+                <div>
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 px-1">Пробники целиком</p>
+                    <div id="tests" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+                </div>
             </div>
         </div>
     </main>
@@ -53,7 +58,11 @@
         const MIN_ATTEMPTS = 5;
         const SECTIONS = {
             reading:   { title: 'Reading',   icon: 'book-text',  color: 'indigo' },
-            listening: { title: 'Listening', icon: 'headphones', color: 'teal' }
+            listening: { title: 'Listening', icon: 'headphones', color: 'teal' },
+            // В этих секциях правильность определяет преподаватель,
+            // поэтому вместо доли верных ответов считаем проверку и охват.
+            writing:   { title: 'Writing',   icon: 'pen-tool',   color: 'amber',  manual: true },
+            speaking:  { title: 'Speaking',  icon: 'mic',        color: 'rose',   manual: true }
         };
         const SOURCE_LABEL = { practice: 'Практика', minimock: 'Мини-пробники', mock: 'Полные пробники' };
 
@@ -288,9 +297,75 @@
         }
 
         // ==========================================
+        // WRITING и SPEAKING — проверяет преподаватель
+        // ==========================================
+        // Считаем не правильность, а работу с материалом: сколько сдано,
+        // сколько проверено, что ждёт очереди и какие задания не давали ни разу.
+        async function loadManual(byKey) {
+            let wTasks = [], sTasks = [];
+            try { wTasks = await fetchAll('writing_tasks', 'id, title, type, category, is_mock_only'); } catch (e) { console.warn('writing_tasks:', e.message); }
+            try { sTasks = await fetchAll('speaking_tests', 'id, title, type'); } catch (e) { console.warn('speaking_tests:', e.message); }
+
+            wTasks.forEach(t => {
+                byKey['writing:task:' + t.id] = {
+                    key: 'writing:task:' + t.id, section: 'writing', type: 'task', id: t.id,
+                    title: t.title || ('Без названия #' + t.id),
+                    kind: ({ email: 'Write an Email', academic: 'Academic Discussion', sentence: 'Build a Sentence' })[t.type] || (t.type || 'Задание'),
+                    isMockOnly: t.is_mock_only, manual: true,
+                    questions: [], attempts: [], responses: []
+                };
+            });
+            sTasks.forEach(t => {
+                byKey['speaking:test:' + t.id] = {
+                    key: 'speaking:test:' + t.id, section: 'speaking', type: 'test', id: t.id,
+                    title: t.title || ('Без названия #' + t.id),
+                    kind: t.type === 'interview' ? 'Interview' : 'Listen & Repeat',
+                    manual: true, questions: [], attempts: [], responses: []
+                };
+            });
+
+            const put = (key, source, score, created_at) => {
+                const t = byKey[key];
+                if (!t) return;
+                t.responses.push({ source, graded: score !== null && score !== undefined, score, created_at });
+                t.attempts.push({ source, answers: null, created_at });
+            };
+
+            // практика Writing
+            try {
+                (await fetchAll('student_responses', 'task_id, task_type, score, teacher_correction, created_at'))
+                    .forEach(r => put('writing:task:' + r.task_id, 'practice',
+                        r.score ?? (r.teacher_correction ? null : undefined), r.created_at));
+            } catch (e) { console.warn('student_responses:', e.message); }
+
+            // мини-пробники Writing
+            try {
+                (await fetchAll('mini_mock_writing_responses', 'task_id, score, teacher_correction, created_at'))
+                    .forEach(r => put('writing:task:' + r.task_id, 'minimock', r.score, r.created_at));
+            } catch (e) { console.warn('mini_mock_writing_responses:', e.message); }
+
+            // полные пробники Writing
+            try {
+                (await fetchAll('big_mock_writing_answers', 'task_id, score, feedback, created_at'))
+                    .forEach(r => put('writing:task:' + r.task_id, 'mock', r.score, r.created_at));
+            } catch (e) { console.warn('big_mock_writing_answers:', e.message); }
+
+            // Speaking: практика по попыткам, мини-пробники и полные — по ответам
+            try {
+                (await fetchAll('speaking_attempts', 'test_id, score, created_at'))
+                    .forEach(r => put('speaking:test:' + r.test_id, 'practice', r.score, r.created_at));
+            } catch (e) { console.warn('speaking_attempts:', e.message); }
+            try {
+                (await fetchAll('mini_mock_speaking_responses', 'task_id, score, created_at'))
+                    .forEach(r => put('speaking:test:' + r.task_id, 'minimock', r.score, r.created_at));
+            } catch (e) { console.warn('mini_mock_speaking_responses:', e.message); }
+        }
+
+        // ==========================================
         // Анализ
         // ==========================================
         function analyse(task) {
+            if (task.manual) return analyseManual(task);
             const qs = task.questions, n = qs.length;
             task.bySource = { practice: 0, minimock: 0, mock: 0 };
             task.attempts.forEach(a => task.bySource[a.source]++);
@@ -367,6 +442,28 @@
                 + task.items.reduce((s, it) => s + it.flags.filter(f => f[1] === 'amber').length, 0);
         }
 
+        function analyseManual(task) {
+            task.bySource = { practice: 0, minimock: 0, mock: 0 };
+            task.attempts.forEach(a => task.bySource[a.source]++);
+            task.totalAttempts = task.attempts.length;
+
+            const graded = task.responses.filter(r => r.graded);
+            task.gradedCount = graded.length;
+            task.pendingCount = task.responses.length - graded.length;
+            task.avgScore = graded.length
+                ? graded.reduce((s, r) => s + Number(r.score), 0) / graded.length : null;
+            task.avgShare = task.avgScore === null ? null : task.avgScore / 6;   // шкала 1–6
+            task.used = 0;
+            task.items = [];
+
+            task.health = [];
+            if (!task.totalAttempts) task.health.push(['Ни разу не давали ученикам', 'gray']);
+            // Непроверенные работы — не поломка материала, но повод вернуться
+            if (task.pendingCount >= 3) task.health.push([`Ждут проверки: ${task.pendingCount}`, 'amber']);
+            task.problemCount = 0;
+            task.warnCount = task.health.filter(h => h[1] === 'amber').length;
+        }
+
         // ==========================================
         // Отрисовка
         // ==========================================
@@ -408,7 +505,7 @@
                         </div>
                         <div class="flex-1 min-w-0">
                             <p class="text-base font-bold text-slate-900">${meta.title}</p>
-                            <p class="text-[11px] text-gray-400 mt-0.5">${list.length} заданий · ${attempts} прохождений${unused ? ` · ${unused} не использовались` : ''}</p>
+                            <p class="text-[11px] text-gray-400 mt-0.5">${list.length} заданий · ${meta.manual ? `${list.reduce((s, t) => s + t.responses.length, 0)} работ, ждут проверки ${list.reduce((s, t) => s + t.pendingCount, 0)}` : `${attempts} прохождений`}${unused ? ` · ${unused} не использовались` : ''}</p>
                         </div>
                         <span class="text-[10px] font-bold px-2 py-1 rounded-lg ${problems ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}">
                             ${problems ? problems + ' ошибок' : 'чисто'}
@@ -461,6 +558,9 @@
                 if (t.bySource.practice) src.push('практика ' + t.bySource.practice);
                 if (t.bySource.minimock) src.push('мини ' + t.bySource.minimock);
                 if (t.bySource.mock) src.push('мок ' + t.bySource.mock);
+                const manualInfo = t.manual
+                    ? `${t.responses.length} работ · проверено ${t.gradedCount}${t.pendingCount ? ` · ждут ${t.pendingCount}` : ''}`
+                    : null;
                 const badge = t.problemCount
                     ? `<span class="text-[10px] font-bold px-2 py-1 rounded-lg bg-rose-50 text-rose-600">${t.problemCount}</span>`
                     : t.warnCount
@@ -471,9 +571,9 @@
                     <button onclick="toggleTask('${t.key}')" class="w-full text-left px-5 py-3 hover:bg-gray-50/70 transition flex items-center gap-3">
                         <div class="flex-1 min-w-0">
                             <p class="text-sm font-bold text-slate-900 truncate">${esc(t.title)}</p>
-                            <p class="text-[11px] text-gray-400 mt-0.5">${esc(t.kind)} · ${t.questions.length} вопр. · ${src.join(' · ') || 'нет прохождений'}${t.used && t.used < MIN_ATTEMPTS ? ' — мало для выводов' : ''}</p>
+                            <p class="text-[11px] text-gray-400 mt-0.5">${esc(t.kind)} · ${manualInfo || `${t.questions.length} вопр. · ${src.join(' · ') || 'нет прохождений'}${t.used && t.used < MIN_ATTEMPTS ? ' — мало для выводов' : ''}`}</p>
                         </div>
-                        <span class="text-sm font-bold ${t.avgShare === null ? 'text-gray-300' : t.avgShare < 0.4 ? 'text-rose-600' : t.avgShare > 0.85 ? 'text-amber-600' : 'text-slate-700'}">${pct(t.avgShare)}</span>
+                        <span class="text-sm font-bold ${t.avgShare === null ? 'text-gray-300' : t.avgShare < 0.4 ? 'text-rose-600' : t.avgShare > 0.85 ? 'text-amber-600' : 'text-slate-700'}">${t.manual ? (t.avgScore === null ? '—' : t.avgScore.toFixed(1)) : pct(t.avgShare)}</span>
                         ${badge}
                     </button>
                     <div id="tsk-${cssKey(t.key)}" class="hidden px-5 pb-4"></div>
@@ -489,6 +589,23 @@
             const box = document.getElementById('tsk-' + cssKey(key));
             if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
             box.classList.remove('hidden');
+            if (t.manual) {
+                const bySrc = ['practice', 'minimock', 'mock'].map(sr => {
+                    const list = t.responses.filter(r => r.source === sr);
+                    if (!list.length) return '';
+                    const g = list.filter(r => r.graded);
+                    const avg = g.length ? (g.reduce((s, r) => s + Number(r.score), 0) / g.length).toFixed(1) : '—';
+                    return `<div class="flex items-center gap-3 text-xs py-1.5">
+                        <span class="w-32 text-gray-500">${SOURCE_LABEL[sr]}</span>
+                        <span class="text-slate-700">работ ${list.length}</span>
+                        <span class="text-emerald-600">проверено ${g.length}</span>
+                        ${list.length - g.length ? `<span class="text-amber-600">ждут ${list.length - g.length}</span>` : ''}
+                        <span class="ml-auto font-bold text-slate-700">средний ${avg}</span>
+                    </div>`;
+                }).join('');
+                box.innerHTML = bySrc || `<p class="text-sm text-gray-400">Работ по этому заданию пока нет.</p>`;
+                return;
+            }
             if (!t.questions.length) { box.innerHTML = `<p class="text-sm text-gray-400">В задании нет вопросов.</p>`; return; }
             if (!t.used) {
                 box.innerHTML = `<p class="text-sm text-gray-400">Ответы по вопросам не сохранялись — по этому заданию виден только общий результат.</p>`;
@@ -539,6 +656,64 @@
             </div>`;
         }
 
+        // ==========================================
+        // Нижние карточки: пробники целиком
+        // ==========================================
+        async function renderTests() {
+            const grab = async (table, cols, scoreField) => {
+                try {
+                    const rows = await fetchAll(table, cols);
+                    const scores = rows.map(r => r[scoreField]).filter(v => v !== null && v !== undefined).map(Number);
+                    return {
+                        attempts: rows.length,
+                        students: new Set(rows.map(r => r.user_id).filter(Boolean)).size,
+                        avg: scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null
+                    };
+                } catch (e) { console.warn(table + ':', e.message); return null; }
+            };
+
+            const mini = [
+                ['Reading', await grab('mock_test_results', 'user_id, band_score', 'band_score')],
+                ['Listening', await grab('listening_mini_mock_results', 'user_id, final_calculated_score', 'final_calculated_score')],
+                ['Writing', await grab('mini_mock_writing_attempts', 'user_id, total_score', 'total_score')],
+                ['Speaking', await grab('mini_mock_speaking_attempts', 'user_id, overall_score', 'overall_score')]
+            ];
+            const full = [
+                ['Reading', await grab('big_mock_attempts', 'user_id, total_score', 'total_score')],
+                ['Listening', await grab('big_mock_listening_attempts', 'user_id, total_score', 'total_score')],
+                ['Writing', await grab('big_mock_writing_attempts', 'user_id, total_score', 'total_score')],
+                ['Speaking', await grab('big_mock_speaking_attempts', 'user_id, total_score', 'total_score')]
+            ];
+
+            const card = (title, hint, icon, color, rows) => `
+                <div class="bg-white rounded-3xl border border-gray-100 shadow-xs overflow-hidden">
+                    <div class="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-2xl bg-${color}-50 text-${color}-600 flex items-center justify-center shrink-0">
+                            <i data-lucide="${icon}" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <p class="text-base font-bold text-slate-900">${title}</p>
+                            <p class="text-[11px] text-gray-400">${hint}</p>
+                        </div>
+                    </div>
+                    <div class="divide-y divide-gray-50">
+                        ${rows.map(([name, d]) => `
+                            <div class="px-5 py-3 flex items-center gap-3 text-sm">
+                                <span class="w-24 font-semibold text-slate-700">${name}</span>
+                                ${d ? `
+                                    <span class="text-xs text-gray-500">${d.attempts} попыток · ${d.students} ученик(ов)</span>
+                                    <span class="ml-auto font-bold ${d.avg === null ? 'text-gray-300' : 'text-slate-800'}">${d.avg === null ? '—' : d.avg.toFixed(1)}</span>`
+                                : `<span class="text-xs text-gray-300">нет данных</span>`}
+                            </div>`).join('')}
+                    </div>
+                </div>`;
+
+            document.getElementById('tests').innerHTML =
+                card('Мини-пробники', 'Одна секция под таймером', 'timer', 'sky', mini) +
+                card('Полные пробники', 'Все четыре секции подряд', 'file-check', 'violet', full);
+            icons();
+        }
+
         async function load() {
             const state = document.getElementById('state');
             try {
@@ -547,10 +722,12 @@
                 const byKey = {};
                 await loadReading(byKey);
                 await loadListening(byKey);
+                await loadManual(byKey);
                 tasks = Object.values(byKey);
                 tasks.forEach(analyse);
                 renderHealth();
                 renderSections();
+                await renderTests();
                 state.classList.add('hidden');
                 document.getElementById('body').classList.remove('hidden');
                 icons();
