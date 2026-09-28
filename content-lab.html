@@ -29,7 +29,9 @@
                 <p class="text-sm text-gray-500 mt-2 max-w-2xl">
                     Как ведут себя вопросы на реальных учениках и нет ли в заданиях поломок.
                     Пока прохождений мало, выводы по вопросам ненадёжны — страница показывает,
-                    на скольких попытках они основаны.
+                    на скольких попытках они основаны. В тесте ученик ограничен временем и не может
+                    вернуться, поэтому одни и те же вопросы там даются хуже, чем в практике —
+                    сравнивайте источники по отдельности.
                 </p>
             </div>
 
@@ -56,6 +58,12 @@
                             <h2 class="text-base font-bold text-slate-900">Задания</h2>
                             <p class="text-xs text-gray-400 mt-0.5">Нажмите на задание, чтобы увидеть разбор по вопросам.</p>
                         </div>
+                        <select id="sourceBy" class="text-xs font-semibold border border-gray-200 rounded-xl px-3 py-2 bg-white cursor-pointer">
+                            <option value="all">Все источники</option>
+                            <option value="practice">Только практика</option>
+                            <option value="minimock">Только мини-моки</option>
+                            <option value="mock">Только большой мок</option>
+                        </select>
                         <select id="sortBy" class="text-xs font-semibold border border-gray-200 rounded-xl px-3 py-2 bg-white cursor-pointer">
                             <option value="problems">Сначала проблемные</option>
                             <option value="attempts">Сначала частые</option>
@@ -93,10 +101,13 @@
                 if (!user) return;
 
                 const client = db();
-                const [aRes, dRes, rRes] = await Promise.all([
+                const [aRes, dRes, rRes, mRes, bRes, ftRes] = await Promise.all([
                     client.from('academic_tasks').select('id, title, category, questions, questions_count, is_mock_only'),
                     client.from('daily_life_tasks').select('id, title, category, questions, questions_count, is_mock_only'),
-                    fetchAllResults(client)
+                    fetchAllResults(client),
+                    client.from('mock_test_results').select('user_id, user_answers, created_at'),
+                    client.from('big_mock_answers').select('attempt_id, task_id, task_type, answer_json, answer_text, is_correct, created_at').in('task_type', ['academic', 'daily_life', 'daily']),
+                    client.from('full_test_tasks').select('id, task_type, task_id')
                 ]);
                 if (aRes.error) throw aRes.error;
                 if (dRes.error) throw dRes.error;
@@ -114,9 +125,48 @@
                 push(aRes.data, 'academic');
                 push(dRes.data, 'daily');
 
+                // ---- 1. Практика: ответы вида {"0": 2, "1": 3} ----
                 (rRes || []).forEach(r => {
                     const t = byKey[r.task_type + ':' + r.task_id];
-                    if (t) t.attempts.push(r);
+                    if (!t) return;
+                    t.attempts.push({ source: 'practice', answers: numericAnswers(r.user_answers), created_at: r.created_at });
+                });
+
+                // ---- 2. Мини-мок: ключи вида academic_62_3 ----
+                (mRes.data || []).forEach(row => {
+                    const ua = row.user_answers || {};
+                    const byTask = {};
+                    Object.entries(ua).forEach(([k, v]) => {
+                        const m = /^(academic|daily)_(\d+)_(\d+)$/.exec(k);
+                        if (!m) return;
+                        const key = m[1] + ':' + m[2];
+                        (byTask[key] = byTask[key] || {})[m[3]] = Number(v);
+                    });
+                    Object.entries(byTask).forEach(([key, answers]) => {
+                        if (byKey[key]) byKey[key].attempts.push({ source: 'minimock', answers, created_at: row.created_at });
+                    });
+                });
+
+                // ---- 3. Большой мок: вопрос и ответ текстом, номеров нет ----
+                // Сопоставляем вопрос по тексту, а выбранный вариант — по подписи.
+                const ftMap = {};
+                (ftRes.data || []).forEach(f => { ftMap[f.id] = f; });
+                const lookup = buildTextLookup(byKey);
+
+                const grouped = {};
+                (bRes.data || []).forEach(row => {
+                    const qText = (row.answer_json && row.answer_json.question) || '';
+                    const hit = lookup[normText(qText)];
+                    if (!hit) return;                       // вопрос не нашёлся — пропускаем
+                    const g = grouped[row.attempt_id + '|' + hit.key] =
+                        grouped[row.attempt_id + '|' + hit.key] || { key: hit.key, answers: {}, created_at: row.created_at };
+                    const opts = hit.task.questions[hit.index].options || [];
+                    let choice = opts.findIndex(o => normText(o) === normText(row.answer_text));
+                    if (choice === -1 && row.is_correct) choice = Number(hit.task.questions[hit.index].correct);
+                    if (choice !== -1) g.answers[hit.index] = choice;
+                });
+                Object.values(grouped).forEach(g => {
+                    if (byKey[g.key]) byKey[g.key].attempts.push({ source: 'mock', answers: g.answers, created_at: g.created_at });
                 });
 
                 tasks = Object.values(byKey);
@@ -155,6 +205,29 @@
             }
         }
 
+        const normText = t => String(t || '').replace(/\s+/g, ' ').replace(/[""«»"']/g, '"').trim().toLowerCase();
+
+        function numericAnswers(raw) {
+            const out = {};
+            Object.entries(raw || {}).forEach(([k, v]) => {
+                if (v === null || v === '' || v === undefined) return;
+                out[k] = Number(v);
+            });
+            return out;
+        }
+
+        // Текст вопроса -> задание и номер вопроса (для большого мока)
+        function buildTextLookup(byKey) {
+            const map = {};
+            Object.entries(byKey).forEach(([key, task]) => {
+                task.questions.forEach((q, i) => {
+                    const t = normText(q.text);
+                    if (t && !map[t]) map[t] = { key, task, index: i };
+                });
+            });
+            return map;
+        }
+
         function parseQuestions(raw) {
             let q = raw;
             if (typeof q === 'string') { try { q = JSON.parse(q); } catch (e) { return []; } }
@@ -164,13 +237,19 @@
         // ==========================================
         // Анализ
         // ==========================================
+        let sourceFilter = 'all';
+
         function analyse(task) {
             const qs = task.questions;
             const n = qs.length;
 
+            const pool = task.attempts.filter(a => sourceFilter === 'all' || a.source === sourceFilter);
+            task.bySource = { practice: 0, minimock: 0, mock: 0 };
+            task.attempts.forEach(a => { task.bySource[a.source] = (task.bySource[a.source] || 0) + 1; });
+
             // доля верных по каждой попытке — для различающей способности
-            const scored = task.attempts.map(a => {
-                const ans = a.user_answers || {};
+            const scored = pool.map(a => {
+                const ans = a.answers || {};
                 let correct = 0, answered = 0;
                 qs.forEach((q, i) => {
                     const given = ans[String(i)];
@@ -183,8 +262,8 @@
 
             task.used = scored.length;
             task.avgShare = scored.length ? scored.reduce((s, x) => s + x.share, 0) / scored.length : null;
-            task.lastAt = task.attempts.length
-                ? task.attempts.map(a => a.created_at).sort().slice(-1)[0] : null;
+            task.lastAt = pool.length ? pool.map(a => a.created_at).filter(Boolean).sort().slice(-1)[0] : null;
+            task.poolCount = pool.length;
 
             // сильная и слабая половина — по общему результату за задание
             const sorted = [...scored].sort((a, b) => b.share - a.share);
@@ -241,7 +320,7 @@
                 task.health.push([`Заявлено вопросов: ${task.declared}, фактически: ${n}`, 'amber']);
             const texts = qs.map(q => (q.text || '').trim().toLowerCase()).filter(Boolean);
             if (new Set(texts).size !== texts.length) task.health.push(['Есть повторяющиеся вопросы', 'amber']);
-            if (n && !task.attempts.length && !task.isMockOnly) task.health.push(['Ни разу не проходили', 'gray']);
+            if (n && !task.attempts.length) task.health.push(['Ни разу не проходили — ни в практике, ни в тестах', 'gray']);
 
             task.problemCount = task.health.filter(h => h[1] === 'rose').length
                 + task.items.reduce((s, it) => s + it.flags.filter(f => f[1] === 'rose').length, 0);
@@ -259,6 +338,8 @@
             const problems = tasks.reduce((s, t) => s + t.problemCount, 0);
             const unused = tasks.filter(t => !t.attempts.length && !t.isMockOnly).length;
             const attempts = tasks.reduce((s, t) => s + t.attempts.length, 0);
+            const bySrc = { practice: 0, minimock: 0, mock: 0 };
+            tasks.forEach(t => Object.entries(t.bySource).forEach(([k, v]) => bySrc[k] = (bySrc[k] || 0) + v));
             const cards = [
                 ['Заданий', tasks.length, 'text-slate-900'],
                 ['Вопросов', totalQ, 'text-slate-900'],
@@ -272,7 +353,10 @@
                 </div>`).join('') + (unused ? `
                 <div class="col-span-2 md:col-span-4 text-xs text-gray-500 px-1">
                     Ни разу не проходили: <b>${unused}</b> из ${tasks.length}.
-                </div>` : '');
+                </div>` : '') + `
+                <div class="col-span-2 md:col-span-4 text-xs text-gray-500 px-1">
+                    Источники: практика ${bySrc.practice} · мини-моки ${bySrc.minimock} · большой мок ${bySrc.mock}.
+                </div>`;
         }
 
         function renderHealth() {
@@ -322,9 +406,13 @@
                     : t.warnCount
                         ? `<span class="text-[10px] font-bold px-2 py-1 rounded-lg bg-amber-50 text-amber-700">${t.warnCount} замечани${t.warnCount === 1 ? 'е' : 'я'}</span>`
                         : `<span class="text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-50 text-emerald-600">чисто</span>`;
+                const src = [];
+                if (t.bySource.practice) src.push(`практика ${t.bySource.practice}`);
+                if (t.bySource.minimock) src.push(`мини-мок ${t.bySource.minimock}`);
+                if (t.bySource.mock) src.push(`мок ${t.bySource.mock}`);
                 const reliability = t.used >= MIN_ATTEMPTS
-                    ? `<span class="text-[11px] text-gray-400">${t.used} прохождений</span>`
-                    : `<span class="text-[11px] text-gray-400">${t.used || 0} прохождений — мало для выводов</span>`;
+                    ? `<span class="text-[11px] text-gray-400">${src.join(' · ') || t.used + ' прохождений'}</span>`
+                    : `<span class="text-[11px] text-gray-400">${src.join(' · ') || '0 прохождений'} — мало для выводов</span>`;
                 return `
                 <div>
                     <button onclick="toggleTask(${idx})" class="w-full text-left px-5 py-4 hover:bg-gray-50/70 transition flex items-center gap-3">
@@ -400,6 +488,11 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('sortBy').addEventListener('change', renderTasks);
+            document.getElementById('sourceBy').addEventListener('change', e => {
+                sourceFilter = e.target.value;
+                tasks.forEach(analyse);
+                renderSummary(); renderHealth(); renderTasks();
+            });
             load();
         });
     </script>
