@@ -728,6 +728,12 @@
                 if (isCorrect) stats[qType].earned += 1;
             });
 
+            const answersByIndex = {};
+            currentTask.questions.forEach((q, idx) => {
+                const given = userAnswers[idx];
+                if (given !== undefined && given !== null) answersByIndex[idx] = Number(given);
+            });
+
             if (currentUser && db) {
                 try {
                     const { error } = await db
@@ -740,11 +746,18 @@
                                 score_earned: score,
                                 score_total: currentTask.questions.length,
                                 time_spent_seconds: timeSpentSeconds,
-                                category_stats: stats 
+                                category_stats: stats,
+                                // Ответы по каждому вопросу: номер вопроса -> выбранный вариант.
+                                // Раньше сохранялся только балл, поэтому разобрать
+                                // отдельные вопросы академических текстов было нечем.
+                                user_answers: answersByIndex
                             }
                         ]);
 
-                    if (error) console.error("Error saving to Supabase:", error.message);
+                    if (error) {
+                        console.error("Error saving to Supabase:", error.message);
+                        alert('Результат не сохранился: ' + error.message);
+                    }
                 } catch (err) {
                     console.error("Failed to connect with Supabase:", err);
                 }
