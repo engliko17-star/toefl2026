@@ -34,7 +34,12 @@
             { href: 'lessons.html',         icon: 'message-circle', label: 'Speaking Topics' }
         ]}
     ];
-    const TEACHER_ITEM = { href: 'teacher-board.html', icon: 'users', label: 'Teacher Board' };
+    // Пункты преподавателя — скрыты, пока роль не подтверждена
+    const TEACHER_ITEMS = [
+        { href: 'teacher-board.html', icon: 'users',  label: 'Teacher Board', id: 'teacherLinkDesktop' },
+        { href: 'content-lab.html',   icon: 'flask-conical', label: 'Обкатка материала', id: 'teacherLinkLab' }
+    ];
+    const TEACHER_ITEM = TEACHER_ITEMS[0];   // для совместимости со старым кодом страниц
 
     // Внутренние страницы подсвечивают свой раздел в меню
     const PARENT_OF = {
@@ -64,7 +69,7 @@
         'speaking_mini_mock_results.html': 'speaking.html',
         'review.html': 'vocabulary.html',
         'lesson-unit.html': 'lessons.html',
-        'student-profile.html': 'teacher-board.html', 'content-lab.html': 'teacher-board.html',
+        'student-profile.html': 'teacher-board.html',
 
         // Статьи обеих секций начинаются на article-, поэтому по префиксу их
         // не различить — каждая вписана явно. Новую статью добавлять сюда.
@@ -185,7 +190,7 @@
                     <p class="app-nav-title">${esc(g.title)}</p>
                     ${g.items.map(it => linkHtml(it)).join('')}
                 </div>`).join('')}
-            ${linkHtml(TEACHER_ITEM, ' is-teacher hidden', 'teacherLinkDesktop')}
+            ${TEACHER_ITEMS.map(it => linkHtml(it, ' is-teacher hidden', it.id)).join('')}
             <button type="button" class="app-nav-logout" onclick="logoutUser()" title="Log Out">
                 <i data-lucide="log-out"></i><span class="app-nav-label">Log Out</span>
             </button>
@@ -203,8 +208,8 @@
     mnav.innerHTML = `<div class="app-mnav-row">
         ${allItems.map(it => `<a href="${it.href}" class="app-mnav-link${it.href === activeHref ? ' is-active' : ''}">
             <i data-lucide="${it.icon}"></i><span>${esc(it.label.replace('Speaking Topics', 'Topics').replace('Irregular Verbs', 'Verbs'))}</span></a>`).join('')}
-        <a href="${TEACHER_ITEM.href}" id="teacherLinkMobile" class="app-mnav-link hidden${TEACHER_ITEM.href === activeHref ? ' is-active' : ''}">
-            <i data-lucide="${TEACHER_ITEM.icon}"></i><span>Teacher</span></a>
+        ${TEACHER_ITEMS.map((it, i) => `<a href="${it.href}" id="${i === 0 ? 'teacherLinkMobile' : 'teacherLinkLabMobile'}" class="app-mnav-link hidden${it.href === activeHref ? ' is-active' : ''}">
+            <i data-lucide="${it.icon}"></i><span>${i === 0 ? 'Teacher' : 'Обкатка'}</span></a>`).join('')}
         <button type="button" class="app-mnav-link is-logout" onclick="logoutUser()"><i data-lucide="log-out"></i><span>Exit</span></button>
     </div>`;
     document.body.appendChild(mnav);
@@ -243,7 +248,7 @@
     // Страницы и так раскрывают teacherLink* для учителя; дублируем здесь,
     // чтобы ссылка появлялась и там, где страница этого не делает.
     function showTeacher() {
-        ['teacherLinkDesktop', 'teacherLinkMobile'].forEach(id => {
+        ['teacherLinkDesktop', 'teacherLinkMobile', 'teacherLinkLab', 'teacherLinkLabMobile'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.classList.remove('hidden');
         });
