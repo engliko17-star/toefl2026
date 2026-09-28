@@ -28,10 +28,8 @@
                 <h1 class="text-2xl font-bold text-slate-900 tracking-tight mt-0.5">Обкатка материала</h1>
                 <p class="text-sm text-gray-500 mt-2 max-w-2xl">
                     Как ведут себя вопросы на реальных учениках и нет ли в заданиях поломок.
-                    Пока прохождений мало, выводы по вопросам ненадёжны — страница показывает,
-                    на скольких попытках они основаны. В тесте ученик ограничен временем и не может
-                    вернуться, поэтому одни и те же вопросы там даются хуже, чем в практике —
-                    сравнивайте источники по отдельности.
+                    Пока прохождений мало, выводы ненадёжны — рядом с каждым числом видно,
+                    на скольких попытках оно основано.
                 </p>
             </div>
 
@@ -39,47 +37,25 @@
 
             <div id="body" class="hidden space-y-6">
 
-                <!-- Сводка -->
-                <div id="summary" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
-
-                <!-- Здоровье материала -->
                 <section class="bg-white rounded-3xl border border-gray-100 shadow-xs overflow-hidden">
                     <div class="px-5 py-4 border-b border-gray-100">
                         <h2 class="text-base font-bold text-slate-900">Здоровье материала</h2>
-                        <p class="text-xs text-gray-400 mt-0.5">Проверки самих заданий — работают даже без единого прохождения.</p>
+                        <p class="text-xs text-gray-400 mt-0.5">Поломки во всех секциях сразу. Работает даже без прохождений.</p>
                     </div>
-                    <div id="healthList" class="divide-y divide-gray-50"></div>
+                    <div id="healthList" class="divide-y divide-gray-50 max-h-96 overflow-y-auto"></div>
                 </section>
 
-                <!-- Задания -->
-                <section class="bg-white rounded-3xl border border-gray-100 shadow-xs overflow-hidden">
-                    <div class="px-5 py-4 border-b border-gray-100 flex flex-wrap items-center gap-3">
-                        <div class="flex-1 min-w-40">
-                            <h2 class="text-base font-bold text-slate-900">Задания</h2>
-                            <p class="text-xs text-gray-400 mt-0.5">Нажмите на задание, чтобы увидеть разбор по вопросам.</p>
-                        </div>
-                        <select id="sourceBy" class="text-xs font-semibold border border-gray-200 rounded-xl px-3 py-2 bg-white cursor-pointer">
-                            <option value="all">Все источники</option>
-                            <option value="practice">Только практика</option>
-                            <option value="minimock">Только мини-моки</option>
-                            <option value="mock">Только большой мок</option>
-                        </select>
-                        <select id="sortBy" class="text-xs font-semibold border border-gray-200 rounded-xl px-3 py-2 bg-white cursor-pointer">
-                            <option value="problems">Сначала проблемные</option>
-                            <option value="attempts">Сначала частые</option>
-                            <option value="unused">Сначала неиспользованные</option>
-                            <option value="hardest">Сначала трудные</option>
-                            <option value="title">По названию</option>
-                        </select>
-                    </div>
-                    <div id="taskList" class="divide-y divide-gray-50"></div>
-                </section>
+                <div id="sections" class="space-y-4"></div>
             </div>
         </div>
     </main>
-
     <script>
-        const MIN_ATTEMPTS = 5;   // ниже этого выводы по вопросу считаем ненадёжными
+        const MIN_ATTEMPTS = 5;
+        const SECTIONS = {
+            reading:   { title: 'Reading',   icon: 'book-text',  color: 'indigo' },
+            listening: { title: 'Listening', icon: 'headphones', color: 'teal' }
+        };
+        const SOURCE_LABEL = { practice: 'Практика', minimock: 'Мини-пробники', mock: 'Полные пробники' };
 
         function db() {
             if (typeof _supabase !== 'undefined' && _supabase) return _supabase;
@@ -88,115 +64,38 @@
         const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
             c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
         const icons = () => { try { if (window.lucide) lucide.createIcons(); } catch (e) {} };
+        const normText = t => String(t || '').replace(/\s+/g, ' ').replace(/[“”«»"']/g, '"').trim().toLowerCase();
+        const pct = v => (v === null || v === undefined) ? '—' : Math.round(v * 100) + '%';
 
-        let tasks = [];   // {id, type, title, questions[], attempts[], stats}
+        let tasks = [];
 
-        // ==========================================
-        // Загрузка
-        // ==========================================
-        async function load() {
-            const state = document.getElementById('state');
-            try {
-                const user = await requireAuth();
-                if (!user) return;
+        function parseJson(raw) {
+            let q = raw;
+            if (typeof q === 'string') { try { q = JSON.parse(q); } catch (e) { return null; } }
+            return q;
+        }
+        function asArray(raw) { const v = parseJson(raw); return Array.isArray(v) ? v : []; }
 
-                const client = db();
-                const [aRes, dRes, rRes, mRes, bRes, ftRes] = await Promise.all([
-                    client.from('academic_tasks').select('id, title, category, questions, questions_count, is_mock_only'),
-                    client.from('daily_life_tasks').select('id, title, category, questions, questions_count, is_mock_only'),
-                    fetchAllResults(client),
-                    client.from('mock_test_results').select('user_id, user_answers, created_at'),
-                    client.from('big_mock_answers').select('attempt_id, task_id, task_type, answer_json, answer_text, is_correct, created_at').in('task_type', ['academic', 'daily_life', 'daily']),
-                    client.from('full_test_tasks').select('id, task_type, task_id')
-                ]);
-                if (aRes.error) throw aRes.error;
-                if (dRes.error) throw dRes.error;
-
-                const byKey = {};
-                const push = (rows, type) => (rows || []).forEach(t => {
-                    byKey[type + ':' + t.id] = {
-                        id: t.id, type, title: t.title || ('Без названия #' + t.id),
-                        category: t.category, isMockOnly: t.is_mock_only,
-                        declared: t.questions_count,
-                        questions: parseQuestions(t.questions),
-                        attempts: []
-                    };
-                });
-                push(aRes.data, 'academic');
-                push(dRes.data, 'daily');
-
-                // ---- 1. Практика: ответы вида {"0": 2, "1": 3} ----
-                (rRes || []).forEach(r => {
-                    const t = byKey[r.task_type + ':' + r.task_id];
-                    if (!t) return;
-                    t.attempts.push({ source: 'practice', answers: numericAnswers(r.user_answers), created_at: r.created_at });
-                });
-
-                // ---- 2. Мини-мок: ключи вида academic_62_3 ----
-                (mRes.data || []).forEach(row => {
-                    const ua = row.user_answers || {};
-                    const byTask = {};
-                    Object.entries(ua).forEach(([k, v]) => {
-                        const m = /^(academic|daily)_(\d+)_(\d+)$/.exec(k);
-                        if (!m) return;
-                        const key = m[1] + ':' + m[2];
-                        (byTask[key] = byTask[key] || {})[m[3]] = Number(v);
-                    });
-                    Object.entries(byTask).forEach(([key, answers]) => {
-                        if (byKey[key]) byKey[key].attempts.push({ source: 'minimock', answers, created_at: row.created_at });
-                    });
-                });
-
-                // ---- 3. Большой мок: вопрос и ответ текстом, номеров нет ----
-                // Сопоставляем вопрос по тексту, а выбранный вариант — по подписи.
-                const ftMap = {};
-                (ftRes.data || []).forEach(f => { ftMap[f.id] = f; });
-                const lookup = buildTextLookup(byKey);
-
-                const grouped = {};
-                (bRes.data || []).forEach(row => {
-                    const qText = (row.answer_json && row.answer_json.question) || '';
-                    const hit = lookup[normText(qText)];
-                    if (!hit) return;                       // вопрос не нашёлся — пропускаем
-                    const g = grouped[row.attempt_id + '|' + hit.key] =
-                        grouped[row.attempt_id + '|' + hit.key] || { key: hit.key, answers: {}, created_at: row.created_at };
-                    const opts = hit.task.questions[hit.index].options || [];
-                    let choice = opts.findIndex(o => normText(o) === normText(row.answer_text));
-                    if (choice === -1 && row.is_correct) choice = Number(hit.task.questions[hit.index].correct);
-                    if (choice !== -1) g.answers[hit.index] = choice;
-                });
-                Object.values(grouped).forEach(g => {
-                    if (byKey[g.key]) byKey[g.key].attempts.push({ source: 'mock', answers: g.answers, created_at: g.created_at });
-                });
-
-                tasks = Object.values(byKey);
-                tasks.forEach(analyse);
-
-                renderSummary();
-                renderHealth();
-                renderTasks();
-
-                state.classList.add('hidden');
-                document.getElementById('body').classList.remove('hidden');
-                icons();
-            } catch (e) {
-                console.error(e);
-                state.innerHTML = `<p class="text-rose-600 font-medium">Не удалось загрузить данные.</p>
-                                   <p class="text-xs text-gray-400 mt-1">${esc(e.message || e)}</p>`;
-            }
+        // Вопрос приводим к общему виду: текст, варианты, номер верного
+        function normQuestion(q) {
+            const correct = (q.correct !== undefined) ? q.correct
+                          : (q.correct_index !== undefined) ? q.correct_index
+                          : (q.correct_answer !== undefined) ? q.correct_answer : null;
+            return {
+                text: q.text || q.question || '',
+                type: q.type || '',
+                options: Array.isArray(q.options) ? q.options : [],
+                correct: correct === null ? null : Number(correct)
+            };
         }
 
-        // Результатов может быть больше тысячи — читаем страницами
-        async function fetchAllResults(client) {
+        async function fetchAll(table, columns, tune) {
             const PAGE = 1000;
             let rows = [], from = 0;
             while (true) {
-                const { data, error } = await client
-                    .from('reading_results')
-                    .select('task_id, task_type, user_id, score_earned, score_total, user_answers, created_at')
-                    .in('task_type', ['academic', 'daily'])
-                    .order('created_at', { ascending: true })
-                    .range(from, from + PAGE - 1);
+                let q = db().from(table).select(columns).range(from, from + PAGE - 1);
+                if (tune) q = tune(q);
+                const { data, error } = await q;
                 if (error) throw error;
                 rows = rows.concat(data || []);
                 if (!data || data.length < PAGE) return rows;
@@ -205,122 +104,253 @@
             }
         }
 
-        const normText = t => String(t || '').replace(/\s+/g, ' ').replace(/[""«»"']/g, '"').trim().toLowerCase();
+        // ==========================================
+        // READING
+        // ==========================================
+        async function loadReading(byKey) {
+            const [acad, daily, res, mini, big] = await Promise.all([
+                fetchAll('academic_tasks', 'id, title, questions, questions_count, is_mock_only'),
+                fetchAll('daily_life_tasks', 'id, title, questions, questions_count, is_mock_only'),
+                fetchAll('reading_results', 'task_id, task_type, user_answers, created_at', q => q.in('task_type', ['academic', 'daily'])),
+                fetchAll('mock_test_results', 'user_answers, created_at'),
+                fetchAll('big_mock_answers', 'attempt_id, answer_json, answer_text, is_correct, created_at', q => q.in('task_type', ['academic', 'daily', 'daily_life']))
+            ]);
 
-        function numericAnswers(raw) {
-            const out = {};
-            Object.entries(raw || {}).forEach(([k, v]) => {
-                if (v === null || v === '' || v === undefined) return;
-                out[k] = Number(v);
+            const add = (rows, type) => (rows || []).forEach(t => {
+                byKey['reading:' + type + ':' + t.id] = {
+                    key: 'reading:' + type + ':' + t.id,
+                    section: 'reading', type, id: t.id,
+                    title: t.title || ('Без названия #' + t.id),
+                    kind: type === 'academic' ? 'Academic' : 'Daily Life',
+                    declared: t.questions_count, isMockOnly: t.is_mock_only,
+                    questions: asArray(t.questions).map(normQuestion),
+                    perQuestion: true, attempts: []
+                };
             });
-            return out;
+            add(acad, 'academic'); add(daily, 'daily');
+
+            // практика
+            res.forEach(r => {
+                const t = byKey['reading:' + r.task_type + ':' + r.task_id];
+                if (!t) return;
+                const answers = {};
+                Object.entries(r.user_answers || {}).forEach(([k, v]) => {
+                    if (v !== null && v !== '') answers[k] = Number(v);
+                });
+                t.attempts.push({ source: 'practice', answers, created_at: r.created_at });
+            });
+
+            // мини-пробники: ключи academic_62_3
+            mini.forEach(row => {
+                const byTask = {};
+                Object.entries(row.user_answers || {}).forEach(([k, v]) => {
+                    const m = /^(academic|daily)_(\d+)_(\d+)$/.exec(k);
+                    if (!m || v === null || v === '') return;
+                    (byTask['reading:' + m[1] + ':' + m[2]] ||= {})[m[3]] = Number(v);
+                });
+                Object.entries(byTask).forEach(([key, answers]) => {
+                    if (byKey[key]) byKey[key].attempts.push({ source: 'minimock', answers, created_at: row.created_at });
+                });
+            });
+
+            // полные пробники: вопрос и ответ текстом
+            const lookup = buildLookup(byKey, 'reading');
+            const grouped = {};
+            big.forEach(row => {
+                const hit = lookup[normText((row.answer_json || {}).question)];
+                if (!hit) return;
+                const g = (grouped[row.attempt_id + '|' + hit.key] ||= { key: hit.key, answers: {}, created_at: row.created_at });
+                const opts = hit.task.questions[hit.index].options;
+                let choice = opts.findIndex(o => normText(o) === normText(row.answer_text));
+                if (choice === -1 && row.is_correct) choice = hit.task.questions[hit.index].correct;
+                if (choice !== -1 && choice !== null) g.answers[hit.index] = choice;
+            });
+            Object.values(grouped).forEach(g => byKey[g.key].attempts.push({ source: 'mock', answers: g.answers, created_at: g.created_at }));
         }
 
-        // Текст вопроса -> задание и номер вопроса (для большого мока)
-        function buildTextLookup(byKey) {
+        function buildLookup(byKey, section) {
             const map = {};
-            Object.entries(byKey).forEach(([key, task]) => {
+            Object.values(byKey).filter(t => t.section === section).forEach(task => {
                 task.questions.forEach((q, i) => {
                     const t = normText(q.text);
-                    if (t && !map[t]) map[t] = { key, task, index: i };
+                    if (t && !map[t]) map[t] = { key: task.key, task, index: i };
                 });
             });
             return map;
         }
 
-        function parseQuestions(raw) {
-            let q = raw;
-            if (typeof q === 'string') { try { q = JSON.parse(q); } catch (e) { return []; } }
-            return Array.isArray(q) ? q : [];
+        // ==========================================
+        // LISTENING
+        // ==========================================
+        async function loadListening(byKey) {
+            const [tests, shortQs, res, mini, big] = await Promise.all([
+                fetchAll('listening_tests', 'id, task_type, title, questions, is_mock_only'),
+                fetchAll('listening_questions', 'id, set_number, options, correct_answer, transcript, is_mock_only'),
+                fetchAll('listening_results', 'task_id, task_type, score_earned, score_total, created_at'),
+                fetchAll('listening_mini_mock_results', 'detailed_answers, completed_at'),
+                fetchAll('big_mock_listening_answers', 'attempt_id, user_answer, is_correct, created_at')
+            ]);
+            const respRes = await fetchAll('response_results', 'set_number, user_answers, created_at');
+
+            // задания с несколькими вопросами (диалоги, объявления, лекции)
+            tests.forEach(t => {
+                byKey['listening:std:' + t.id] = {
+                    key: 'listening:std:' + t.id, section: 'listening', type: 'std', id: t.id,
+                    title: t.title || ('Без названия #' + t.id),
+                    kind: ({ conversation: 'Диалог', announcement: 'Объявление', academic: 'Лекция' })[t.task_type] || (t.task_type || 'Задание'),
+                    isMockOnly: t.is_mock_only,
+                    questions: asArray(t.questions).map(normQuestion),
+                    perQuestion: true, attempts: []
+                };
+            });
+
+            // короткие реплики: один вопрос = одна строка, группируем по набору
+            const sets = {};
+            shortQs.forEach(q => (sets[q.set_number] ||= []).push(q));
+            Object.entries(sets).forEach(([set, rows]) => {
+                rows.sort((a, b) => a.id - b.id);
+                byKey['listening:resp:' + set] = {
+                    key: 'listening:resp:' + set, section: 'listening', type: 'resp', id: Number(set),
+                    title: 'Choose a Response · набор ' + set,
+                    kind: 'Короткие реплики',
+                    isMockOnly: rows.every(r => r.is_mock_only),
+                    questions: rows.map(r => normQuestion({
+                        text: r.transcript || ('Вопрос #' + r.id),
+                        options: asArray(r.options), correct_answer: r.correct_answer
+                    })),
+                    qIds: rows.map(r => r.id),
+                    perQuestion: true, attempts: []
+                };
+            });
+
+            // практика коротких реплик: [{question_id, selected_index}]
+            respRes.forEach(r => {
+                const t = byKey['listening:resp:' + r.set_number];
+                if (!t) return;
+                const answers = {};
+                (parseJson(r.user_answers) || []).forEach(a => {
+                    const idx = t.qIds.indexOf(a.question_id);
+                    if (idx !== -1 && a.selected_index !== null) answers[idx] = Number(a.selected_index);
+                });
+                t.attempts.push({ source: 'practice', answers, created_at: r.created_at });
+            });
+
+            // практика остальных заданий: ответов по вопросам нет, только балл
+            res.forEach(r => {
+                const t = byKey['listening:std:' + r.task_id];
+                if (!t) return;
+                t.attempts.push({
+                    source: 'practice', answers: null, created_at: r.created_at,
+                    share: r.score_total ? r.score_earned / r.score_total : null
+                });
+            });
+
+            // мини-пробники: std_<id>_<idx> и resp_<set>_<questionId>
+            mini.forEach(row => {
+                const byTask = {};
+                Object.entries(parseJson(row.detailed_answers) || {}).forEach(([k, v]) => {
+                    if (v === null || v === '') return;
+                    let m = /^std_(\d+)_(\d+)$/.exec(k);
+                    if (m) { (byTask['listening:std:' + m[1]] ||= {})[m[2]] = Number(v); return; }
+                    m = /^resp_(\d+)_(\d+)$/.exec(k);
+                    if (m) {
+                        const t = byKey['listening:resp:' + m[1]];
+                        if (!t) return;
+                        const idx = t.qIds.indexOf(Number(m[2]));
+                        if (idx !== -1) (byTask[t.key] ||= {})[idx] = Number(v);
+                    }
+                });
+                Object.entries(byTask).forEach(([key, answers]) => {
+                    if (byKey[key]) byKey[key].attempts.push({ source: 'minimock', answers, created_at: row.completed_at });
+                });
+            });
+
+            // полные пробники: в user_answer лежит текст вопроса и выбранный вариант
+            const lookup = buildLookup(byKey, 'listening');
+            const grouped = {};
+            big.forEach(row => {
+                const d = parseJson(row.user_answer) || {};
+                const hit = lookup[normText(d.question_text)];
+                if (!hit || d.choice_index === null || d.choice_index === undefined) return;
+                const g = (grouped[row.attempt_id + '|' + hit.key] ||= { key: hit.key, answers: {}, created_at: row.created_at });
+                g.answers[hit.index] = Number(d.choice_index);
+            });
+            Object.values(grouped).forEach(g => byKey[g.key].attempts.push({ source: 'mock', answers: g.answers, created_at: g.created_at }));
         }
 
         // ==========================================
         // Анализ
         // ==========================================
-        let sourceFilter = 'all';
-
         function analyse(task) {
-            const qs = task.questions;
-            const n = qs.length;
-
-            const pool = task.attempts.filter(a => sourceFilter === 'all' || a.source === sourceFilter);
+            const qs = task.questions, n = qs.length;
             task.bySource = { practice: 0, minimock: 0, mock: 0 };
-            task.attempts.forEach(a => { task.bySource[a.source] = (task.bySource[a.source] || 0) + 1; });
+            task.attempts.forEach(a => task.bySource[a.source]++);
 
-            // доля верных по каждой попытке — для различающей способности
-            const scored = pool.map(a => {
-                const ans = a.answers || {};
+            // попытки с ответами по вопросам
+            const detailed = task.attempts.filter(a => a.answers);
+            const scored = detailed.map(a => {
                 let correct = 0, answered = 0;
                 qs.forEach((q, i) => {
-                    const given = ans[String(i)];
-                    if (given === undefined || given === null) return;
+                    const g = a.answers[String(i)] ?? a.answers[i];
+                    if (g === undefined || g === null) return;
                     answered++;
-                    if (Number(given) === Number(q.correct)) correct++;
+                    if (Number(g) === q.correct) correct++;
                 });
-                return { a, ans, correct, share: n ? correct / n : 0, answered };
+                return { a, correct, answered, share: n ? correct / n : 0 };
             }).filter(x => x.answered > 0);
 
             task.used = scored.length;
-            task.avgShare = scored.length ? scored.reduce((s, x) => s + x.share, 0) / scored.length : null;
-            task.lastAt = pool.length ? pool.map(a => a.created_at).filter(Boolean).sort().slice(-1)[0] : null;
-            task.poolCount = pool.length;
+            // средний результат: по разобранным попыткам, иначе по готовым баллам
+            const plain = task.attempts.filter(a => !a.answers && typeof a.share === 'number');
+            const all = scored.map(x => x.share).concat(plain.map(p => p.share));
+            task.avgShare = all.length ? all.reduce((s, v) => s + v, 0) / all.length : null;
+            task.totalAttempts = task.attempts.length;
 
-            // сильная и слабая половина — по общему результату за задание
             const sorted = [...scored].sort((a, b) => b.share - a.share);
             const half = Math.floor(sorted.length / 2);
             const top = sorted.slice(0, half), bottom = sorted.slice(-half);
+            const get = (x, i) => x.a.answers[String(i)] ?? x.a.answers[i];
 
             task.items = qs.map((q, i) => {
                 const counts = {};
                 let answered = 0, correct = 0;
                 scored.forEach(x => {
-                    const g = x.ans[String(i)];
+                    const g = get(x, i);
                     if (g === undefined || g === null) return;
-                    answered++;
-                    counts[g] = (counts[g] || 0) + 1;
-                    if (Number(g) === Number(q.correct)) correct++;
+                    answered++; counts[g] = (counts[g] || 0) + 1;
+                    if (Number(g) === q.correct) correct++;
                 });
                 const share = answered ? correct / answered : null;
-
-                const shareIn = group => {
+                const shareIn = grp => {
                     let c = 0, tot = 0;
-                    group.forEach(x => {
-                        const g = x.ans[String(i)];
-                        if (g === undefined || g === null) return;
-                        tot++;
-                        if (Number(g) === Number(q.correct)) c++;
-                    });
+                    grp.forEach(x => { const g = get(x, i); if (g === undefined || g === null) return; tot++; if (Number(g) === q.correct) c++; });
                     return tot ? c / tot : null;
                 };
-                const pTop = shareIn(top), pBottom = shareIn(bottom);
-                const discrimination = (pTop === null || pBottom === null || half < 2) ? null : pTop - pBottom;
-
-                const options = Array.isArray(q.options) ? q.options : [];
-                const dead = options.map((_, oi) => oi).filter(oi => oi !== Number(q.correct) && !counts[oi]);
+                const pT = shareIn(top), pB = shareIn(bottom);
+                const discrimination = (pT === null || pB === null || half < 2) ? null : pT - pB;
+                const dead = q.options.map((_, oi) => oi).filter(oi => oi !== q.correct && !counts[oi]);
 
                 const flags = [];
-                if (!options.length) flags.push(['нет вариантов ответа', 'rose']);
-                else if (q.correct === undefined || q.correct === null) flags.push(['не отмечен правильный ответ', 'rose']);
-                else if (Number(q.correct) < 0 || Number(q.correct) >= options.length) flags.push(['правильный ответ вне списка вариантов', 'rose']);
-
+                if (!q.options.length) flags.push(['нет вариантов ответа', 'rose']);
+                else if (q.correct === null) flags.push(['не отмечен правильный ответ', 'rose']);
+                else if (q.correct < 0 || q.correct >= q.options.length) flags.push(['правильный ответ вне списка вариантов', 'rose']);
                 if (answered >= 3 && share === 0) flags.push(['никто не ответил верно — вероятно, ошибка в ключе', 'rose']);
                 if (answered >= MIN_ATTEMPTS) {
                     if (share === 1) flags.push(['все отвечают верно — вопрос ничего не проверяет', 'amber']);
-                    if (discrimination !== null && discrimination < 0) flags.push(['сильные ученики ошибаются чаще слабых', 'rose']);
-                    if (dead.length && options.length > 2) flags.push([`вариант${dead.length > 1 ? 'ы' : ''} никто не выбирает: ${dead.map(d => String.fromCharCode(65 + d)).join(', ')}`, 'amber']);
+                    if (discrimination !== null && discrimination < 0) flags.push(['сильные ошибаются чаще слабых', 'rose']);
+                    if (dead.length && q.options.length > 2) flags.push([`вариант(ы) никто не выбирает: ${dead.map(d => String.fromCharCode(65 + d)).join(', ')}`, 'amber']);
                 }
-
-                return { i, q, options, counts, answered, correct, share, discrimination, dead, flags };
+                return { i, q, counts, answered, share, discrimination, dead, flags };
             });
 
-            // проблемы уровня задания
             task.health = [];
             if (!n) task.health.push(['В задании нет вопросов', 'rose']);
             if (n && task.declared && Number(task.declared) !== n)
                 task.health.push([`Заявлено вопросов: ${task.declared}, фактически: ${n}`, 'amber']);
-            const texts = qs.map(q => (q.text || '').trim().toLowerCase()).filter(Boolean);
+            const texts = qs.map(q => normText(q.text)).filter(Boolean);
             if (new Set(texts).size !== texts.length) task.health.push(['Есть повторяющиеся вопросы', 'amber']);
-            if (n && !task.attempts.length) task.health.push(['Ни разу не проходили — ни в практике, ни в тестах', 'gray']);
+            if (n && !task.totalAttempts) task.health.push(['Ни разу не проходили', 'gray']);
+            if (n && task.totalAttempts && !task.used) task.health.push(['Проходили, но ответы по вопросам не сохраняются', 'gray']);
 
             task.problemCount = task.health.filter(h => h[1] === 'rose').length
                 + task.items.reduce((s, it) => s + it.flags.filter(f => f[1] === 'rose').length, 0);
@@ -331,139 +361,153 @@
         // ==========================================
         // Отрисовка
         // ==========================================
-        const pct = v => v === null ? '—' : Math.round(v * 100) + '%';
-
-        function renderSummary() {
-            const totalQ = tasks.reduce((s, t) => s + t.questions.length, 0);
-            const problems = tasks.reduce((s, t) => s + t.problemCount, 0);
-            const unused = tasks.filter(t => !t.attempts.length && !t.isMockOnly).length;
-            const attempts = tasks.reduce((s, t) => s + t.attempts.length, 0);
-            const bySrc = { practice: 0, minimock: 0, mock: 0 };
-            tasks.forEach(t => Object.entries(t.bySource).forEach(([k, v]) => bySrc[k] = (bySrc[k] || 0) + v));
-            const cards = [
-                ['Заданий', tasks.length, 'text-slate-900'],
-                ['Вопросов', totalQ, 'text-slate-900'],
-                ['Прохождений', attempts, 'text-slate-900'],
-                ['Требуют внимания', problems, problems ? 'text-rose-600' : 'text-emerald-600']
-            ];
-            document.getElementById('summary').innerHTML = cards.map(([l, v, c]) => `
-                <div class="bg-white rounded-2xl border border-gray-100 p-4">
-                    <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">${l}</p>
-                    <p class="text-2xl font-bold ${c} mt-1">${v}</p>
-                </div>`).join('') + (unused ? `
-                <div class="col-span-2 md:col-span-4 text-xs text-gray-500 px-1">
-                    Ни разу не проходили: <b>${unused}</b> из ${tasks.length}.
-                </div>` : '') + `
-                <div class="col-span-2 md:col-span-4 text-xs text-gray-500 px-1">
-                    Источники: практика ${bySrc.practice} · мини-моки ${bySrc.minimock} · большой мок ${bySrc.mock}.
-                </div>`;
-        }
-
         function renderHealth() {
             const rows = [];
-            tasks.forEach(t => t.health.forEach(([text, level]) => rows.push({ t, text, level })));
-            tasks.forEach(t => t.items.forEach(it => it.flags
-                .filter(f => f[1] === 'rose')
-                .forEach(f => rows.push({ t, text: `Вопрос ${it.i + 1}: ${f[0]}`, level: 'rose' }))));
-
+            tasks.forEach(t => {
+                t.health.forEach(([text, level]) => rows.push({ t, text, level }));
+                t.items.forEach(it => it.flags.filter(f => f[1] === 'rose')
+                    .forEach(f => rows.push({ t, text: `Вопрос ${it.i + 1}: ${f[0]}`, level: 'rose' })));
+            });
             const order = { rose: 0, amber: 1, gray: 2 };
             rows.sort((a, b) => order[a.level] - order[b.level]);
 
             const box = document.getElementById('healthList');
-            if (!rows.length) {
-                box.innerHTML = `<p class="px-5 py-6 text-sm text-emerald-600 font-medium">Проблем не найдено.</p>`;
-                return;
-            }
+            if (!rows.length) { box.innerHTML = `<p class="px-5 py-6 text-sm text-emerald-600 font-medium">Проблем не найдено.</p>`; return; }
             const color = { rose: 'text-rose-600 bg-rose-50', amber: 'text-amber-700 bg-amber-50', gray: 'text-gray-500 bg-gray-50' };
-            box.innerHTML = rows.slice(0, 60).map(r => `
+            const label = { rose: 'ошибка', amber: 'внимание', gray: 'простой' };
+            box.innerHTML = rows.slice(0, 80).map(r => `
                 <div class="px-5 py-3 flex items-start gap-3">
-                    <span class="text-[10px] font-bold px-2 py-1 rounded-lg shrink-0 ${color[r.level]}">
-                        ${r.level === 'rose' ? 'ошибка' : r.level === 'amber' ? 'внимание' : 'простой'}
-                    </span>
+                    <span class="text-[10px] font-bold px-2 py-1 rounded-lg shrink-0 ${color[r.level]}">${label[r.level]}</span>
                     <div class="min-w-0">
                         <p class="text-sm text-slate-800">${esc(r.text)}</p>
-                        <p class="text-[11px] text-gray-400">${esc(r.t.title)} · ${r.t.type === 'academic' ? 'Academic' : 'Daily Life'}</p>
+                        <p class="text-[11px] text-gray-400">${esc(r.t.title)} · ${SECTIONS[r.t.section].title} · ${esc(r.t.kind)}</p>
                     </div>
-                </div>`).join('') + (rows.length > 60
-                ? `<p class="px-5 py-3 text-xs text-gray-400">…и ещё ${rows.length - 60}</p>` : '');
+                </div>`).join('') + (rows.length > 80 ? `<p class="px-5 py-3 text-xs text-gray-400">…и ещё ${rows.length - 80}</p>` : '');
         }
 
-        function sortTasks(list) {
-            const by = document.getElementById('sortBy').value;
-            const c = [...list];
-            if (by === 'problems') c.sort((a, b) => (b.problemCount - a.problemCount) || (b.warnCount - a.warnCount));
-            else if (by === 'attempts') c.sort((a, b) => b.attempts.length - a.attempts.length);
-            else if (by === 'unused') c.sort((a, b) => a.attempts.length - b.attempts.length);
-            else if (by === 'hardest') c.sort((a, b) => (a.avgShare === null) - (b.avgShare === null) || (a.avgShare ?? 9) - (b.avgShare ?? 9));
-            else c.sort((a, b) => a.title.localeCompare(b.title));
-            return c;
-        }
-
-        function renderTasks() {
-            document.getElementById('taskList').innerHTML = sortTasks(tasks).map((t, idx) => {
-                const badge = t.problemCount
-                    ? `<span class="text-[10px] font-bold px-2 py-1 rounded-lg bg-rose-50 text-rose-600">${t.problemCount} ошибк${t.problemCount === 1 ? 'а' : 'и'}</span>`
-                    : t.warnCount
-                        ? `<span class="text-[10px] font-bold px-2 py-1 rounded-lg bg-amber-50 text-amber-700">${t.warnCount} замечани${t.warnCount === 1 ? 'е' : 'я'}</span>`
-                        : `<span class="text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-50 text-emerald-600">чисто</span>`;
-                const src = [];
-                if (t.bySource.practice) src.push(`практика ${t.bySource.practice}`);
-                if (t.bySource.minimock) src.push(`мини-мок ${t.bySource.minimock}`);
-                if (t.bySource.mock) src.push(`мок ${t.bySource.mock}`);
-                const reliability = t.used >= MIN_ATTEMPTS
-                    ? `<span class="text-[11px] text-gray-400">${src.join(' · ') || t.used + ' прохождений'}</span>`
-                    : `<span class="text-[11px] text-gray-400">${src.join(' · ') || '0 прохождений'} — мало для выводов</span>`;
+        function renderSections() {
+            document.getElementById('sections').innerHTML = Object.entries(SECTIONS).map(([sec, meta]) => {
+                const list = tasks.filter(t => t.section === sec);
+                const attempts = list.reduce((s, t) => s + t.totalAttempts, 0);
+                const problems = list.reduce((s, t) => s + t.problemCount, 0);
+                const unused = list.filter(t => !t.totalAttempts).length;
                 return `
-                <div>
-                    <button onclick="toggleTask(${idx})" class="w-full text-left px-5 py-4 hover:bg-gray-50/70 transition flex items-center gap-3">
-                        <div class="flex-1 min-w-0">
-                            <p class="text-sm font-bold text-slate-900 truncate">${esc(t.title)}</p>
-                            <p class="text-[11px] text-gray-400 mt-0.5">
-                                ${t.type === 'academic' ? 'Academic' : 'Daily Life'} · ${t.questions.length} вопрос(ов) · ${reliability}
-                            </p>
+                <div class="bg-white rounded-3xl border border-gray-100 shadow-xs overflow-hidden">
+                    <button onclick="toggleSection('${sec}')" class="w-full text-left px-5 py-4 hover:bg-gray-50/70 transition flex items-center gap-4">
+                        <div class="w-11 h-11 rounded-2xl bg-${meta.color}-50 text-${meta.color}-600 flex items-center justify-center shrink-0">
+                            <i data-lucide="${meta.icon}" class="w-5 h-5"></i>
                         </div>
-                        <span class="text-sm font-bold ${t.avgShare === null ? 'text-gray-300' : t.avgShare < 0.4 ? 'text-rose-600' : t.avgShare > 0.85 ? 'text-amber-600' : 'text-slate-700'}">${pct(t.avgShare)}</span>
-                        ${badge}
+                        <div class="flex-1 min-w-0">
+                            <p class="text-base font-bold text-slate-900">${meta.title}</p>
+                            <p class="text-[11px] text-gray-400 mt-0.5">${list.length} заданий · ${attempts} прохождений${unused ? ` · ${unused} не использовались` : ''}</p>
+                        </div>
+                        <span class="text-[10px] font-bold px-2 py-1 rounded-lg ${problems ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}">
+                            ${problems ? problems + ' ошибок' : 'чисто'}
+                        </span>
                         <i data-lucide="chevron-down" class="w-4 h-4 text-gray-300 shrink-0"></i>
                     </button>
-                    <div id="task-${idx}" class="hidden px-5 pb-5"></div>
+                    <div id="sec-${sec}" class="hidden border-t border-gray-100"></div>
                 </div>`;
             }).join('');
             icons();
         }
 
-        function toggleTask(idx) {
-            const t = sortTasks(tasks)[idx];
-            const box = document.getElementById('task-' + idx);
+        function toggleSection(sec) {
+            const box = document.getElementById('sec-' + sec);
             if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
             box.classList.remove('hidden');
-            box.innerHTML = t.items.length ? t.items.map(it => renderItem(it, t)).join('') :
-                `<p class="text-sm text-gray-400">В задании нет вопросов.</p>`;
+            const list = tasks.filter(t => t.section === sec);
+            const groups = [
+                ['practice', list.filter(t => t.bySource.practice)],
+                ['minimock', list.filter(t => t.bySource.minimock)],
+                ['mock', list.filter(t => t.bySource.mock)],
+                ['unused', list.filter(t => !t.totalAttempts)]
+            ];
+            box.innerHTML = groups.map(([g, items]) => {
+                if (!items.length) return '';
+                const title = g === 'unused' ? 'Не использовались' : SOURCE_LABEL[g];
+                items.sort((a, b) => (b.problemCount - a.problemCount) || (b.warnCount - a.warnCount));
+                return `
+                <div class="border-b border-gray-50 last:border-0">
+                    <button onclick="toggleGroup('${sec}','${g}')" class="w-full text-left px-5 py-3 bg-gray-50/40 hover:bg-gray-50 transition flex items-center gap-2">
+                        <span class="text-xs font-bold text-slate-700">${title}</span>
+                        <span class="text-[11px] text-gray-400">${items.length}</span>
+                        <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-gray-300 ml-auto"></i>
+                    </button>
+                    <div id="grp-${sec}-${g}" class="hidden divide-y divide-gray-50"></div>
+                </div>`;
+            }).join('');
             icons();
         }
 
-        function renderItem(it, task) {
+        function toggleGroup(sec, g) {
+            const box = document.getElementById(`grp-${sec}-${g}`);
+            if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
+            box.classList.remove('hidden');
+            const list = tasks.filter(t => t.section === sec).filter(t =>
+                g === 'unused' ? !t.totalAttempts : t.bySource[g]);
+            list.sort((a, b) => (b.problemCount - a.problemCount) || (b.warnCount - a.warnCount));
+            box.innerHTML = list.map(t => {
+                const src = [];
+                if (t.bySource.practice) src.push('практика ' + t.bySource.practice);
+                if (t.bySource.minimock) src.push('мини ' + t.bySource.minimock);
+                if (t.bySource.mock) src.push('мок ' + t.bySource.mock);
+                const badge = t.problemCount
+                    ? `<span class="text-[10px] font-bold px-2 py-1 rounded-lg bg-rose-50 text-rose-600">${t.problemCount}</span>`
+                    : t.warnCount
+                        ? `<span class="text-[10px] font-bold px-2 py-1 rounded-lg bg-amber-50 text-amber-700">${t.warnCount}</span>`
+                        : `<span class="text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-50 text-emerald-600">ок</span>`;
+                return `
+                <div>
+                    <button onclick="toggleTask('${t.key}')" class="w-full text-left px-5 py-3 hover:bg-gray-50/70 transition flex items-center gap-3">
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-bold text-slate-900 truncate">${esc(t.title)}</p>
+                            <p class="text-[11px] text-gray-400 mt-0.5">${esc(t.kind)} · ${t.questions.length} вопр. · ${src.join(' · ') || 'нет прохождений'}${t.used && t.used < MIN_ATTEMPTS ? ' — мало для выводов' : ''}</p>
+                        </div>
+                        <span class="text-sm font-bold ${t.avgShare === null ? 'text-gray-300' : t.avgShare < 0.4 ? 'text-rose-600' : t.avgShare > 0.85 ? 'text-amber-600' : 'text-slate-700'}">${pct(t.avgShare)}</span>
+                        ${badge}
+                    </button>
+                    <div id="tsk-${cssKey(t.key)}" class="hidden px-5 pb-4"></div>
+                </div>`;
+            }).join('');
+            icons();
+        }
+
+        const cssKey = k => k.replace(/[^\w]/g, '_');
+
+        function toggleTask(key) {
+            const t = tasks.find(x => x.key === key);
+            const box = document.getElementById('tsk-' + cssKey(key));
+            if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
+            box.classList.remove('hidden');
+            if (!t.questions.length) { box.innerHTML = `<p class="text-sm text-gray-400">В задании нет вопросов.</p>`; return; }
+            if (!t.used) {
+                box.innerHTML = `<p class="text-sm text-gray-400">Ответы по вопросам не сохранялись — по этому заданию виден только общий результат.</p>`;
+                return;
+            }
+            box.innerHTML = t.items.map(it => renderItem(it)).join('');
+            icons();
+        }
+
+        function renderItem(it) {
             const reliable = it.answered >= MIN_ATTEMPTS;
-            const opts = it.options.map((o, oi) => {
+            const opts = it.q.options.map((o, oi) => {
                 const n = it.counts[oi] || 0;
                 const share = it.answered ? n / it.answered : 0;
-                const isCorrect = oi === Number(it.q.correct);
+                const ok = oi === it.q.correct;
                 return `
                     <div class="flex items-center gap-2 text-xs">
-                        <span class="w-5 font-bold ${isCorrect ? 'text-emerald-600' : 'text-gray-400'}">${String.fromCharCode(65 + oi)}</span>
-                        <div class="flex-1 h-4 bg-gray-100 rounded-md overflow-hidden">
-                            <div class="h-full ${isCorrect ? 'bg-emerald-400' : 'bg-slate-300'}" style="width:${Math.round(share * 100)}%"></div>
+                        <span class="w-4 font-bold ${ok ? 'text-emerald-600' : 'text-gray-400'}">${String.fromCharCode(65 + oi)}</span>
+                        <div class="flex-1 h-3.5 bg-gray-100 rounded-md overflow-hidden">
+                            <div class="h-full ${ok ? 'bg-emerald-400' : 'bg-slate-300'}" style="width:${Math.round(share * 100)}%"></div>
                         </div>
-                        <span class="w-10 text-right text-gray-500">${n}</span>
+                        <span class="w-8 text-right text-gray-500">${n}</span>
                         <span class="flex-1 truncate text-gray-600">${esc(o)}</span>
                     </div>`;
             }).join('');
-
-            const disc = it.discrimination === null ? '—'
-                : (it.discrimination > 0 ? '+' : '') + Math.round(it.discrimination * 100) + '%';
-
+            const disc = it.discrimination === null ? '—' : (it.discrimination > 0 ? '+' : '') + Math.round(it.discrimination * 100) + '%';
             return `
-            <div class="border border-gray-100 rounded-2xl p-4 mb-3">
+            <div class="border border-gray-100 rounded-2xl p-4 mb-2">
                 <div class="flex items-start gap-3 mb-3">
                     <span class="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded-lg shrink-0">${it.i + 1}</span>
                     <div class="min-w-0 flex-1">
@@ -476,25 +520,39 @@
                     </div>
                 </div>
                 <div class="space-y-1.5 mb-3">${opts}</div>
-                <div class="flex flex-wrap items-center gap-3 text-[11px] ${reliable ? 'text-gray-500' : 'text-gray-300'}">
+                <div class="flex flex-wrap gap-3 text-[11px] ${reliable ? 'text-gray-500' : 'text-gray-300'}">
                     <span>ответов: ${it.answered}</span>
                     <span>различающая способность: <b>${disc}</b></span>
-                    ${!reliable ? '<span>— данных мало, цифры пока ни о чём не говорят</span>' : ''}
+                    ${!reliable ? '<span>— данных мало</span>' : ''}
                 </div>
                 ${it.flags.length ? `<div class="flex flex-wrap gap-1.5 mt-2">${it.flags.map(f => `
                     <span class="text-[10px] font-bold px-2 py-1 rounded-lg ${f[1] === 'rose' ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-700'}">${esc(f[0])}</span>`).join('')}</div>` : ''}
             </div>`;
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('sortBy').addEventListener('change', renderTasks);
-            document.getElementById('sourceBy').addEventListener('change', e => {
-                sourceFilter = e.target.value;
+        async function load() {
+            const state = document.getElementById('state');
+            try {
+                const user = await requireAuth();
+                if (!user) return;
+                const byKey = {};
+                await loadReading(byKey);
+                await loadListening(byKey);
+                tasks = Object.values(byKey);
                 tasks.forEach(analyse);
-                renderSummary(); renderHealth(); renderTasks();
-            });
-            load();
-        });
+                renderHealth();
+                renderSections();
+                state.classList.add('hidden');
+                document.getElementById('body').classList.remove('hidden');
+                icons();
+            } catch (e) {
+                console.error(e);
+                state.innerHTML = `<p class="text-rose-600 font-medium">Не удалось загрузить данные.</p>
+                                   <p class="text-xs text-gray-400 mt-1">${esc(e.message || e)}</p>`;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', load);
     </script>
 </body>
 </html>
