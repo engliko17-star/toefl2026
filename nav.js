@@ -64,7 +64,7 @@
         'speaking_mini_mock_results.html': 'speaking.html',
         'review.html': 'vocabulary.html',
         'lesson-unit.html': 'lessons.html',
-        'student-profile.html': 'teacher-board.html',
+        'student-profile.html': 'teacher-board.html', 'content-lab.html': 'teacher-board.html',
 
         // Статьи обеих секций начинаются на article-, поэтому по префиксу их
         // не различить — каждая вписана явно. Новую статью добавлять сюда.
