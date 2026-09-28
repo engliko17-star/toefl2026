@@ -186,7 +186,7 @@ async function requireAuth() {
     const currentPath = window.location.pathname;
 
     // 2. Ученикам запрещены страницы преподавателя
-    const TEACHER_ONLY = ['teacher-board.html', 'student-profile.html', 'content-lab.html'];
+    const TEACHER_ONLY = ['teacher-board.html', 'student-profile.html', 'content-lab.html', 'mock-lab.html'];
     if (TEACHER_ONLY.some(p => currentPath.includes(p)) && !isTeacher) {
         window.location.href = 'index.html';
         return null;
