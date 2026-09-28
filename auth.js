@@ -67,6 +67,13 @@ const PAGE_SECTIONS = {
 
     // --- Speaking ---
     'speaking.html':    'speaking',
+    'general-speaking.html':     'speaking',
+    'article-speaking-listen-repeat.html': 'speaking',
+    'article-speaking-interview.html': 'speaking',
+    'article-speaking-personal-experience.html': 'speaking',
+    'article-speaking-plans-goals.html': 'speaking',
+    'article-speaking-preferences.html': 'speaking',
+    'speaking-articles.html':    'speaking',
     'speaking_player.html':     'speaking',
     'speaking_results.html':    'speaking',
     'interview.html':   'speaking',
