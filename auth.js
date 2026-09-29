@@ -111,12 +111,40 @@ async function requireAuth() {
         return null;
     }
     
-    // Получаем профиль текущего пользователя
-    const { data: profile } = await _supabase
+    // Получаем профиль текущего пользователя.
+    // ВАЖНО: ошибку запроса нельзя считать «нет доступа». Раньше error
+    // игнорировался, и при сбое связи преподавателю показывался экран
+    // «Аккаунт на проверке», будто он посторонний.
+    const fetchProfile = async () => await _supabase
         .from('profiles')
         .select('role, is_approved, access_reading, access_listening, access_speaking, access_writing, access_tests')
         .eq('id', session.user.id)
         .maybeSingle();
+
+    let { data: profile, error: profileError } = await fetchProfile();
+
+    if (profileError) {
+        // одна повторная попытка — сетевые сбои обычно разовые
+        await new Promise(r => setTimeout(r, 800));
+        ({ data: profile, error: profileError } = await fetchProfile());
+    }
+
+    if (profileError) {
+        console.error('Не удалось прочитать профиль:', profileError);
+        document.body.innerHTML = `
+            <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Plus Jakarta Sans',sans-serif;background:#f8f9fa;padding:24px;">
+                <div style="max-width:420px;text-align:center;background:#fff;padding:32px;border-radius:24px;border:1px solid #f0f0f0;">
+                    <h2 style="margin:0 0 12px;font-size:20px;font-weight:700;color:#1a1a1a;">Не удалось проверить доступ</h2>
+                    <p style="margin:0 0 20px;color:#666;font-size:14px;line-height:1.5;">
+                        Связь с базой прервалась. Это не значит, что с аккаунтом что-то не так — просто попробуйте ещё раз.
+                    </p>
+                    <button onclick="location.reload()" style="background:#0f172a;color:#fff;border:0;padding:12px 24px;border-radius:12px;font-weight:700;font-size:14px;cursor:pointer;">
+                        Обновить страницу
+                    </button>
+                </div>
+            </div>`;
+        return null;
+    }
 
     const isTeacher = profile && profile.role === 'teacher';
     const isGuest = profile && profile.role === 'guest';
