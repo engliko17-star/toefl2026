@@ -91,9 +91,9 @@ async function loadReading(byKey) {
         () => fetchAll('academic_tasks', 'id, title, questions, questions_count, is_mock_only'),
         () => fetchAll('daily_life_tasks', 'id, title, questions, questions_count, is_mock_only'),
         () => fetchAll('reading_results', 'task_id, task_type, user_answers, created_at', q => q.in('task_type', ['academic', 'daily'])),
-        fetchAll('mock_test_results', 'test_id, user_answers, created_at'),
-        fetchAll('big_mock_answers', 'attempt_id, answer_json, answer_text, is_correct, created_at', q => q.in('task_type', ['academic', 'daily', 'daily_life'])),
-        fetchAll('big_mock_attempts', 'id, test_id')
+        () => fetchAll('mock_test_results', 'test_id, user_answers, created_at'),
+        () => fetchAll('big_mock_answers', 'attempt_id, answer_json, answer_text, is_correct, created_at', q => q.in('task_type', ['academic', 'daily', 'daily_life'])),
+        () => fetchAll('big_mock_attempts', 'id, test_id')
     ]);
 
     const add = (rows, type) => (rows || []).forEach(t => {
