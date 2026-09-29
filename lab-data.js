@@ -46,13 +46,32 @@ function normQuestion(q) {
     };
 }
 
+// Если запрос завис, ждать вечно нельзя: страница должна сказать,
+// на чём именно она остановилась.
+// Последовательное выполнение вместо Promise.all: чуть медленнее,
+// но не забивает соединение десятком параллельных запросов.
+async function series(makers) {
+    const out = [];
+    // Каждый запрос запускается только когда дошла очередь: если передать
+    // готовые промисы, они стартуют все разом и очередь ничего не даёт.
+    for (const make of makers) out.push(await make());
+    return out;
+}
+
+function withTimeout(promise, ms, label) {
+    return Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Таймаут: ' + label)), ms))
+    ]);
+}
+
 async function fetchAll(table, columns, tune) {
     const PAGE = 1000;
     let rows = [], from = 0;
     while (true) {
         let q = db().from(table).select(columns).range(from, from + PAGE - 1);
         if (tune) q = tune(q);
-        const { data, error } = await q;
+        const { data, error } = await withTimeout(q, 25000, table);
         if (error) throw error;
         rows = rows.concat(data || []);
         if (!data || data.length < PAGE) return rows;
@@ -65,10 +84,13 @@ async function fetchAll(table, columns, tune) {
 // READING
 // ==========================================
 async function loadReading(byKey) {
-    const [acad, daily, res, mini, big, attemptsMap] = await Promise.all([
-        fetchAll('academic_tasks', 'id, title, questions, questions_count, is_mock_only'),
-        fetchAll('daily_life_tasks', 'id, title, questions, questions_count, is_mock_only'),
-        fetchAll('reading_results', 'task_id, task_type, user_answers, created_at', q => q.in('task_type', ['academic', 'daily'])),
+    // Раньше все запросы уходили разом. На больших таблицах это перегружало
+    // соединение: часть запросов подвисала, а заодно срывалась проверка
+    // профиля в auth.js и появлялся экран «Аккаунт на проверке».
+    const [acad, daily, res, mini, big, attemptsMap] = await series([
+        () => fetchAll('academic_tasks', 'id, title, questions, questions_count, is_mock_only'),
+        () => fetchAll('daily_life_tasks', 'id, title, questions, questions_count, is_mock_only'),
+        () => fetchAll('reading_results', 'task_id, task_type, user_answers, created_at', q => q.in('task_type', ['academic', 'daily'])),
         fetchAll('mock_test_results', 'test_id, user_answers, created_at'),
         fetchAll('big_mock_answers', 'attempt_id, answer_json, answer_text, is_correct, created_at', q => q.in('task_type', ['academic', 'daily', 'daily_life'])),
         fetchAll('big_mock_attempts', 'id, test_id')
@@ -143,13 +165,13 @@ function buildLookup(byKey, section) {
 // LISTENING
 // ==========================================
 async function loadListening(byKey) {
-    const [tests, shortQs, res, mini, big, lAttempts] = await Promise.all([
-        fetchAll('listening_tests', 'id, task_type, title, questions, is_mock_only'),
-        fetchAll('listening_questions', 'id, set_number, options, correct_answer, transcript, is_mock_only'),
-        fetchAll('listening_results', 'task_id, task_type, score_earned, score_total, user_answers, created_at'),
-        fetchAll('listening_mini_mock_results', 'mock_test_id, detailed_answers, completed_at'),
-        fetchAll('big_mock_listening_answers', 'attempt_id, user_answer, is_correct, created_at'),
-        fetchAll('big_mock_listening_attempts', 'id, test_id')
+    const [tests, shortQs, res, mini, big, lAttempts] = await series([
+        () => fetchAll('listening_tests', 'id, task_type, title, questions, is_mock_only'),
+        () => fetchAll('listening_questions', 'id, set_number, options, correct_answer, transcript, is_mock_only'),
+        () => fetchAll('listening_results', 'task_id, task_type, score_earned, score_total, user_answers, created_at'),
+        () => fetchAll('listening_mini_mock_results', 'mock_test_id, detailed_answers, completed_at'),
+        () => fetchAll('big_mock_listening_answers', 'attempt_id, user_answer, is_correct, created_at'),
+        () => fetchAll('big_mock_listening_attempts', 'id, test_id')
     ]);
     const respRes = await fetchAll('response_results', 'set_number, user_answers, created_at');
 
@@ -461,7 +483,8 @@ async function collectTests() {
         ['Speaking',  'big_mock_speaking_attempts',  'total_score', 'full_tests', 'title']
     ];
 
-    const build = async defs => Promise.all(defs.map(async ([name, attTable, scoreField, testTable, titleField]) => {
+    // Тоже по очереди: четыре секции разом давали восемь параллельных запросов
+    const build = async defs => series(defs.map(([name, attTable, scoreField, testTable, titleField]) => async () => {
         try {
             const idField = attTable === 'listening_mini_mock_results' ? 'mock_test_id' : 'test_id';
             const rows = await fetchAll(attTable, `user_id, ${idField}, ${scoreField}`);
@@ -506,14 +529,32 @@ async function collectTests() {
 
 
 // Загружает всё разом и возвращает готовые данные обеим страницам
-async function loadLabData() {
+async function loadLabData(onStep) {
     const byKey = {};
-    await loadReading(byKey);
-    await loadListening(byKey);
-    await loadManual(byKey);
+    const say = t => { if (onStep) onStep(t); console.log('[лаборатория]', t); };
+
+    const step = async (label, fn) => {
+        say(label + '…');
+        const t0 = Date.now();
+        try {
+            await fn();
+            say(label + ' — готово за ' + Math.round((Date.now() - t0) / 100) / 10 + ' с');
+        } catch (e) {
+            // Один сбойный источник не должен прятать остальные данные
+            console.error('[лаборатория] ' + label + ':', e);
+            say(label + ' — пропущено: ' + (e.message || e));
+        }
+    };
+
+    await step('Reading', () => loadReading(byKey));
+    await step('Listening', () => loadListening(byKey));
+    await step('Writing и Speaking', () => loadManual(byKey));
+
     const list = Object.values(byKey);
     list.forEach(analyse);
     tasks = list;
-    await collectTests();
+
+    await step('Пробники', () => collectTests());
+    say('Готово');
     return { tasks: list, testData };
 }
