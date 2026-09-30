@@ -41,12 +41,93 @@ let timeRemaining = 35 * 60;
 // Спецификация TOEFL 2026, Reading: роутер 18-21 мин, Модуль 2 = 9 мин
 // (для обеих ветвей). Состав по Technical Manual Table 1:
 // роутер 20 зачётных айтемов, Модуль 2 = 15, итого 35 в любом пути.
+// ВРЕМЯ. Раньше минуты были прибиты гвоздями, из-за чего модуль на 20 айтемов
+// получал столько же времени, сколько модуль на 35. Теперь время считается от
+// состава: у каждого типа задания своя цена за текст и за айтем.
+// timerMode: 'budget' — считать по составу, 'fixed' — старые жёсткие минуты.
+let timerMode = 'budget';
+
+// Калибровка под спеку: на составе Table 1 (20 айтемов) даёт 19 мин при норме
+// 18-21, на втором модуле (15 айтемов) — ровно 9.
+const TIME_BUDGET = {
+    complete_words: { passage: 45,  perItem: 12 },
+    daily_life:     { passage: 60,  perItem: 35 },
+    academic:       { passage: 120, perItem: 45 },
+    default:        { passage: 60,  perItem: 40 }
+};
+const MIN_MODULE_MINUTES = 4;
+const MAX_MODULE_MINUTES = 45;
+// Роутер по спеке щедрее второго модуля (~63 сек на айтем против ~36)
+const MODULE1_TIME_FACTOR = 1.35;
+
+function estimateMinutes(tasks, factor) {
+    let seconds = 0;
+    const counted = new Set();
+    (tasks || []).forEach(t => {
+        const b = TIME_BUDGET[t.type] || TIME_BUDGET.default;
+        const key = `${t.type}:${t.taskId}`;
+        if (!counted.has(key)) { seconds += b.passage; counted.add(key); }
+        seconds += b.perItem * taskItemCount(t);
+    });
+    const minutes = Math.ceil(seconds * (factor || 1) / 60);
+    return Math.min(MAX_MODULE_MINUTES, Math.max(MIN_MODULE_MINUTES, minutes));
+}
+
+function moduleMinutes(stagePrefix) {
+    const isModule1 = (stagePrefix === '1');
+    if (timerMode === 'fixed') return isModule1 ? module1TimeMinutes : module2TimeMinutes;
+    const slice = currentTasks.filter(t => isModule1 ? t.stage === '1' : String(t.stage).startsWith('2'));
+    const minutes = estimateMinutes(slice, isModule1 ? MODULE1_TIME_FACTOR : 1);
+    console.log(`[reading] Module ${isModule1 ? 1 : 2}: ${slice.reduce((n, t) => n + taskItemCount(t), 0)} айтемов -> ${minutes} мин`);
+    return minutes;
+}
+
+// Запасные значения для timerMode = 'fixed'
 let module1TimeMinutes = 21;
 let module2TimeMinutes = 9;
 
 // Индекс, с которого начинается Module 2 в currentTasks — нужен для кнопки Review,
 // чтобы не давать перепрыгивать обратно в Module 1 (как и на настоящем TOEFL)
 let module2StartIndex = null;
+
+// Complete the Words лежит в currentTasks ОДНИМ элементом, но это 10 отдельных
+// зачётных айтемов, поэтому счётчик и Review считают айтемы, а не элементы массива.
+function taskItemCount(t) {
+    if (!t) return 0;
+    if (t.type === 'complete_words') {
+        const n = (t.correctWords || []).length;
+        return n > 0 ? n : 1;
+    }
+    return 1;
+}
+
+// Модуль 2 нумеруется заново с единицы
+function numberingBaseFor(i) {
+    return (module2StartIndex !== null && i >= module2StartIndex) ? module2StartIndex : 0;
+}
+
+// Диапазон номеров элемента i: {first, last, count}
+function itemNumberRange(i) {
+    const base = numberingBaseFor(i);
+    let n = 0;
+    for (let k = base; k < i; k++) n += taskItemCount(currentTasks[k]);
+    const count = taskItemCount(currentTasks[i]);
+    return { first: n + 1, last: n + count, count: count };
+}
+
+// Подпись элемента: "1-10" для Complete the Words, "21" для обычного вопроса
+function itemNumberLabel(i) {
+    const r = itemNumberRange(i);
+    return r.count > 1 ? `${r.first}-${r.last}` : `${r.first}`;
+}
+
+// Всего айтемов в текущей области нумерации
+function numberingTotal(i) {
+    const base = numberingBaseFor(i);
+    let n = 0;
+    for (let k = base; k < currentTasks.length; k++) n += taskItemCount(currentTasks[k]);
+    return n;
+}
 
 function renderDailyLifeLayout(passage, layoutType, taskTitle) {
     if (!passage) return "";
@@ -79,6 +160,17 @@ function renderDailyLifeLayout(passage, layoutType, taskTitle) {
         }
         case 'advertisement': 
             return `<div class="max-w-md mx-auto bg-gradient-to-br from-yellow-50 to-orange-50 border-2 border-dashed border-orange-200 p-8 rounded-2xl shadow-sm font-sans text-center relative overflow-hidden"><div class="absolute top-0 right-0 bg-red-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg uppercase tracking-wider">Ad</div><h3 class="text-2xl font-extrabold text-orange-600 mb-4 tracking-tight">${taskTitle}</h3><div class="text-slate-700 space-y-3 font-medium text-sm leading-relaxed mb-6">${cleanPassage.replace(/\n/g, '<br>')}</div><button class="bg-orange-500 text-white font-bold py-2 px-6 rounded-full shadow-md text-sm cursor-default hover:bg-orange-600 transition">Learn More</button></div>`;
+        case 'article': {
+            // Газетная заметка: строка-датлайн вида "RICHMOND (APRIL 13)" уходит
+            // в шапку, остальное идёт абзацами под заголовком.
+            const lines = cleanPassage.split('\n').map(l => l.trim()).filter(Boolean);
+            let dateline = '';
+            if (lines.length && /^[A-Z0-9][A-Z0-9\s.,'\u2019-]*\([^)]+\)\s*$/.test(lines[0])) {
+                dateline = lines.shift();
+            }
+            const body = lines.map(p => `<p>${p}</p>`).join('');
+            return `<div class="max-w-xl mx-auto bg-white border border-slate-300 shadow-xs font-serif"><div class="px-8 pt-7 pb-4 border-b-4 border-double border-slate-800">${dateline ? `<div class="font-sans text-[10px] font-bold tracking-[0.2em] text-slate-500 uppercase mb-2">${dateline}</div>` : ''}<h3 class="text-2xl font-bold text-slate-900 leading-tight tracking-tight">${taskTitle}</h3></div><div class="px-8 py-6 text-slate-700 text-sm leading-relaxed space-y-4">${body}</div></div>`;
+        }
         default: 
             return `<div class="text-slate-700 space-y-4 font-normal leading-relaxed text-base">${cleanPassage.replace(/\n/g, '<br>')}</div>`;
     }
@@ -254,9 +346,10 @@ async function startExamEngine(testId, testTitle) {
 
         currentIndex = 0;
         module2StartIndex = null;
+        module2LoadPromise = null;
         document.getElementById('engine-title').innerText = testTitle;
         
-        timeRemaining = module1TimeMinutes * 60;
+        timeRemaining = moduleMinutes('1') * 60;
         startTimer();
         renderEngine();
 
@@ -331,7 +424,7 @@ function renderEngine() {
         // БЕЗОПАСНО: обновляем элементы, только если они физически есть на странице
         const progressEl = document.getElementById('engine-progress');
         if (progressEl) {
-            progressEl.innerText = `${currentIndex + 1} / ${currentTasks.length}`;
+            progressEl.innerText = `${itemNumberLabel(currentIndex)} / ${numberingTotal(currentIndex)}`;
         }
 
         const prevEl = document.getElementById('engine-prev');
@@ -363,8 +456,8 @@ function renderEngine() {
         else if (task.type === 'daily_life') {
             const renderedLayout = renderDailyLifeLayout(task.passage, task.layout, task.title);
             contentDiv.innerHTML = `
-                <section class="w-1/2 bg-white p-10 overflow-y-auto custom-scrollbar border-r border-slate-200 flex flex-col justify-center">
-                    <div>${renderedLayout}</div>
+                <section class="w-1/2 bg-white p-10 overflow-y-auto custom-scrollbar border-r border-slate-200 flex flex-col">
+                    <div class="my-auto w-full">${renderedLayout}</div>
                 </section>
                 <section class="w-1/2 bg-slate-50 p-10 overflow-y-auto custom-scrollbar">
                     <div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-xs max-w-xl mx-auto mt-10">
@@ -511,7 +604,21 @@ function highlightVocabWord(task, container) {
     }
 }
 
+// Модуль 2 запрашивают ДВА пути: клик по Next и истечение таймера. Оба проверяют
+// "модуль 1 закончен?" ДО await, поэтому при совпадении по времени оба видели true
+// и склеивали модуль дважды (в URANUS это давало 57 айтемов вместо 42).
+// Держим общий промис: второй вызов дожидается первого, а не грузит заново.
+let module2LoadPromise = null;
+
 async function loadModule2Tasks() {
+    if (module2LoadPromise) return module2LoadPromise;
+    module2LoadPromise = doLoadModule2Tasks();
+    const ok = await module2LoadPromise;
+    if (!ok) module2LoadPromise = null;
+    return ok;
+}
+
+async function doLoadModule2Tasks() {
     document.getElementById('engine-next').innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin mr-1"></i> Loading Module 2...';
     
     let correctCount = 0;
@@ -631,6 +738,10 @@ function renderModuleTransition() {
 }
 
 function startReadingModuleTwo() {
+    // Заставку могут вызвать и клик, и таймер: второй вызов сдвинул бы currentIndex
+    // ещё раз и перескочил первый айтем Модуля 2.
+    if (module2StartIndex !== null) return;
+
     const nextBtn = document.getElementById('engine-next');
     const prevBtn = document.getElementById('engine-prev');
     const reviewBtn = document.getElementById('engine-review');
@@ -644,7 +755,7 @@ function startReadingModuleTwo() {
     module2StartIndex = currentIndex; // с этого индекса начинается Module 2 — Review не пустит раньше
 
     // Отдельный, свежий таймер именно для Module 2
-    timeRemaining = module2TimeMinutes * 60;
+    timeRemaining = moduleMinutes('2') * 60;
     startTimer();
 
     renderEngine();
@@ -653,7 +764,16 @@ function startReadingModuleTwo() {
 // ---- Review в рамках текущего модуля (как в реальном TOEFL Reading) ----
 function isReadingTaskAnswered(t) {
     if (t.type === 'complete_words') {
-        return !!(t.userWords && t.userWords.some(w => w && w.length > 0));
+        // Блок = 10 айтемов и одна строка в Review, поэтому Answered только когда
+        // заполнены все пропуски: иначе ученик увидит галочку и не вернётся к пустым.
+        const total = (t.correctWords || []).length;
+        if (!total) return false;
+        const user = t.userWords || [];
+        for (let k = 0; k < total; k++) {
+            const w = user[k] ? String(user[k]) : '';
+            if (!w.length || w.indexOf('_') !== -1) return false;
+        }
+        return true;
     }
     return t.userAnswer !== null && t.userAnswer !== undefined && t.userAnswer !== '';
 }
@@ -670,26 +790,28 @@ function showReadingReview() {
     let listHTML = '';
     for (let i = startIdx; i < endIdx; i++) {
         const t = currentTasks[i];
-        const displayNum = i - startIdx + 1;
+        const displayNum = itemNumberLabel(i);
         const answered = isReadingTaskAnswered(t);
         listHTML += `
             <div class="flex justify-between items-center p-4 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0 transition" onclick="returnToReadingTask(${i})">
                 <div class="flex items-center gap-3">
-                    <span class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">${displayNum}</span>
-                    <span class="font-bold text-slate-700">Question ${displayNum}</span>
+                    <span class="min-w-8 h-8 px-2 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">${displayNum}</span>
+                    <span class="font-bold text-slate-700">${t.type === 'complete_words' ? `Complete the Words ${displayNum}` : `Question ${displayNum}`}</span>
                 </div>
                 ${answered
                     ? `<span class="text-emerald-500 bg-emerald-50 px-3 py-1 rounded-lg font-bold text-xs flex items-center"><i data-lucide="check" class="w-3 h-3 mr-1"></i> Answered</span>`
-                    : `<span class="text-rose-500 bg-rose-50 px-3 py-1 rounded-lg font-bold text-xs flex items-center"><i data-lucide="alert-circle" class="w-3 h-3 mr-1"></i> Skipped</span>`}
+                    : `<span class="text-rose-500 bg-rose-50 px-3 py-1 rounded-lg font-bold text-xs flex items-center"><i data-lucide="alert-circle" class="w-3 h-3 mr-1"></i> Not answered</span>`}
             </div>
         `;
     }
 
     document.getElementById('engine-content').innerHTML = `
-        <div class="p-4 md:p-8 max-w-3xl mx-auto w-full h-full flex flex-col flex-1 overflow-y-auto">
-            <h2 class="text-2xl font-black text-slate-900 mb-6 text-center">Module Review</h2>
-            <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex-1 shrink-0">
-                ${listHTML}
+        <div class="w-full h-full overflow-y-auto">
+            <div class="p-4 md:p-8 max-w-3xl mx-auto w-full">
+                <h2 class="text-2xl font-black text-slate-900 mb-6 text-center">Module Review</h2>
+                <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden mb-8">
+                    ${listHTML}
+                </div>
             </div>
         </div>
     `;
