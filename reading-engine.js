@@ -189,14 +189,12 @@ async function fetchAndParseTasks(testId, stageName) {
                 let parsedPassage = taskData.passage;
                 let qType = q.type || 'Standard';
 
+                // Разбор общий для всех страниц: метки разных типов больше
+                // не мешают друг другу. Раньше в режиме Insert Text метки
+                // [s1] тоже превращались в квадраты, и в одном пассаже
+                // нельзя было держать два особых типа вопросов.
                 if (step.task_type === 'academic') {
-                    if (qType === 'Select a Sentence') {
-                        parsedPassage = parsedPassage.replace(/\[s\d+\]\s*([^\[\n]+)/g, '<span class="clickable-sentence">$1</span>');
-                    } else if (qType === 'Insert Text') {
-                        parsedPassage = parsedPassage.replace(/\[s\d+\]/g, '<span class="insert-square">■</span>').replace(/\[■\]/g, '<span class="insert-square">■</span>');
-                    } else {
-                        parsedPassage = parsedPassage.replace(/\[s\d+\]\s*/g, '').replace(/\[■\]\s*/g, '');
-                    }
+                    parsedPassage = PassageMarkup.parsePassage(parsedPassage);
                 }
 
                 parsedTasks.push({
@@ -209,6 +207,8 @@ async function fetchAndParseTasks(testId, stageName) {
                     options: q.options || [],
                     qType: qType,
                     insertSentence: q.insertSentence || "",
+                    highlight: q.highlight || "",
+                    highlightOccurrence: q.highlight_occurrence || null,
                     stage: stageName,
                     correctAnswer: q.correct !== undefined ? q.options[q.correct] : null,
                     explanation: q.explanation || "",
@@ -390,7 +390,9 @@ function renderEngine() {
             if (task.qType === 'Select a Sentence') {
                 rightPanelContent = `<div class="bg-amber-50 border border-amber-100 p-3 rounded-xl mb-6 text-xs text-amber-800 flex items-center"><i data-lucide="mouse-pointer-click" class="w-4 h-4 mr-2"></i> Click a sentence on the left.</div><h3 class="font-bold text-slate-900">${task.question}</h3>`;
             } else if (task.qType === 'Insert Text') {
-                rightPanelContent = `<div class="bg-blue-50 border border-blue-100 p-3 rounded-xl mb-6 text-xs text-blue-800 flex items-center"><i data-lucide="mouse-pointer-click" class="w-4 h-4 mr-2"></i> Click on a square [■] to insert the sentence.</div><h3 class="font-bold text-slate-900 mb-4">${task.question}</h3><div class="p-4 bg-white border-2 border-dashed border-indigo-300 rounded-xl text-sm font-bold text-indigo-900 text-center shadow-xs">"${task.insertSentence}"</div>`;
+                // Кнопки позиций добавляются после отрисовки текста —
+                // буквы берутся из самого пассажа.
+                rightPanelContent = `<h3 class="font-bold text-slate-900 mb-4">${task.question}</h3><div id="insertOptions"></div>`;
             } else {
                 rightPanelContent = `<h3 class="font-bold text-slate-900 mb-6">${task.question}</h3><div class="space-y-3">${(task.options || []).map((opt) => `<label class="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer hover:bg-slate-50 transition"><input type="radio" name="q" value="${opt}" ${task.userAnswer === opt ? 'checked' : ''} onchange="currentTasks[${currentIndex}].userAnswer = this.value" class="w-4 h-4 text-indigo-600 mr-3"><span class="text-sm text-slate-700">${opt}</span></label>`).join('')}</div>`;
             }
@@ -417,15 +419,35 @@ function renderEngine() {
                     };
                 });
 
+                const passageBox = document.getElementById('academicPassageContainer');
+
+                // Выбор позиции вставки: и кликом по букве в тексте,
+                // и кнопкой справа — это один и тот же выбор.
+                window.chooseInsertPosition = function(pos) {
+                    currentTasks[currentIndex].userAnswer = String(pos);
+                    PassageMarkup.choosePosition(passageBox, pos, task.insertSentence);
+                };
+
                 document.querySelectorAll('.insert-square').forEach((el, index) => {
-                    const squareIndexStr = index.toString();
-                    if (task.userAnswer === squareIndexStr) el.classList.add('selected');
                     el.onclick = function() {
                         if (task.qType !== 'Insert Text') return;
-                        document.querySelectorAll('.insert-square').forEach(s => s.classList.remove('selected'));
-                        this.classList.add('selected');
-                        currentTasks[currentIndex].userAnswer = squareIndexStr;
+                        window.chooseInsertPosition(index);
                     };
+                });
+
+                if (task.qType === 'Insert Text') {
+                    const box = document.getElementById('insertOptions');
+                    if (box) box.innerHTML = PassageMarkup.positionButtons(passageBox, task.insertSentence, 'chooseInsertPosition');
+                    if (task.userAnswer !== undefined && task.userAnswer !== '') {
+                        PassageMarkup.choosePosition(passageBox, Number(task.userAnswer), task.insertSentence, { silent: true });
+                    }
+                }
+
+                // Подсветка фрагмента для Sentence Simplification и Reference
+                PassageMarkup.applyHighlight(passageBox, {
+                    type: task.qType,
+                    highlight: task.highlight,
+                    highlight_occurrence: task.highlightOccurrence
                 });
 
                 // Подсветка слова в тексте для Vocabulary-вопросов, как в реальном TOEFL
