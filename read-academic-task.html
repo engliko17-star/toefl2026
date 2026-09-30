@@ -23,6 +23,11 @@
         .select-sentence-mode .clickable-sentence:hover { background-color: #fee2e2; }
         .select-sentence-mode .clickable-sentence.selected { background-color: #4f46e5; color: white; }
 
+        /* Подсветка фрагмента: Sentence Simplification и Reference */
+        .q-highlight { border-radius: 4px; padding: 1px 2px; }
+        .simplify-highlight { background-color: #fef08a; box-shadow: 0 0 0 1px #fde047; }
+        .reference-highlight { background-color: #dbeafe; box-shadow: 0 0 0 1px #bfdbfe; font-weight: 600; }
+
         .insert-square { display: none; margin: 0 4px; cursor: pointer; font-size: 1.2em; color: #94a3b8; transition: all 0.2s; vertical-align: middle; line-height: 1; }
         .insert-text-mode .insert-square { display: inline-block; }
         .insert-text-mode .insert-square:hover { color: #4f46e5; transform: scale(1.3); }
@@ -330,15 +335,75 @@
             
             document.getElementById('passageTitle').innerText = currentTask.title;
 
+            // Метки разных типов вопросов больше не мешают друг другу:
+            // разбираем все, а показываем только те, что нужны текущему вопросу.
             let parsedText = (currentTask.passage || "")
-                .replace(/\[s(\d+)\](.*?)(?=\[s\d+\]|\[sq\d+\]|$)/gs, '<span class="clickable-sentence" data-id="$1">$2</span>')
-                .replace(/\[sq(\d+)\]/g, '<span class="insert-square" data-sq="$1">■</span>');
+                .replace(/\[s(\d+)\](.*?)(?=\[s\d+\]|\[sq\d+\]|\[■\]|$)/gs, '<span class="clickable-sentence" data-id="$1">$2</span>')
+                .replace(/\[sq(\d+)\]/g, '<span class="insert-square" data-sq="$1">■</span>')
+                .replace(/\[■\]/g, '<span class="insert-square" data-sq="auto">■</span>');
 
             parsedText = parsedText.split('\n\n').map(p => `<p class="mb-4">${p}</p>`).join('');
             document.getElementById('passageContent').innerHTML = parsedText;
 
             setupInteractiveClicks();
         }
+
+        // ===== Подсветка фрагмента для Sentence Simplification и Reference =====
+        // Фрагмент хранится в самом вопросе (поле highlight), а не в тексте:
+        // пассажи не нужно переразмечать, и типы не мешают друг другу.
+        function clearHighlight() {
+            document.querySelectorAll('.q-highlight').forEach(el => {
+                el.replaceWith(document.createTextNode(el.textContent));
+            });
+            document.getElementById('passageContent').normalize();
+        }
+
+        const normForSearch = t => String(t || '')
+            .replace(/[\u00A0\u2009\u202F]/g, ' ')
+            .replace(/[“”«»„]/g, '"').replace(/[‘’]/g, "'")
+            .replace(/\s+/g, ' ').trim();
+
+        function applyHighlight(q) {
+            clearHighlight();
+            const target = normForSearch(q.highlight);
+            if (!target) return;
+
+            const cls = q.type === 'Reference' ? 'reference-highlight' : 'simplify-highlight';
+            const want = Number(q.highlight_occurrence) > 0 ? Number(q.highlight_occurrence) : 1;
+
+            const root = document.getElementById('passageContent');
+            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+            let node, seen = 0;
+            while ((node = walker.nextNode())) {
+                const hay = normForSearch(node.nodeValue);
+                let from = 0, idx;
+                while ((idx = hay.indexOf(target, from)) !== -1) {
+                    seen++;
+                    if (seen === want) {
+                        // позиция в исходном тексте может отличаться из-за пробелов,
+                        // поэтому ищем ещё раз по «сырому» значению
+                        const raw = node.nodeValue;
+                        const rawIdx = raw.indexOf(q.highlight.trim());
+                        const start = rawIdx !== -1 ? rawIdx : idx;
+                        const len = rawIdx !== -1 ? q.highlight.trim().length : target.length;
+                        const after = node.splitText(start);
+                        after.splitText(Math.min(len, after.nodeValue.length));
+                        const mark = document.createElement('span');
+                        mark.className = 'q-highlight ' + cls;
+                        mark.textContent = after.nodeValue;
+                        after.replaceWith(mark);
+                        return;
+                    }
+                    from = idx + target.length;
+                }
+            }
+            // Не найдено — не молчим: иначе опечатка в контенте
+            // превратится в вопрос без выделения и никто не заметит.
+            console.warn('Не найден фрагмент для подсветки:', q.highlight);
+        }
+
+        // Режимы (квадраты / кликабельные предложения) страница уже
+        // переключает сама классами на контейнере — дублировать не нужно.
 
         function setupInteractiveClicks() {
             document.querySelectorAll('.clickable-sentence').forEach(el => {
@@ -423,6 +488,8 @@
             
             const qTypeBadgeText = document.getElementById('qTypeBadgeText');
             qTypeBadgeText.innerText = q.type || "Detail";
+
+            applyHighlight(q);
             
             // Сбрасываем плашку в скрытое состояние при каждом новом вопросе
             qTypeBadgeText.classList.add('bg-slate-200', 'text-transparent');
