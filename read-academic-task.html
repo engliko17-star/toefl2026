@@ -28,6 +28,10 @@
         .simplify-highlight { background-color: #fef08a; box-shadow: 0 0 0 1px #fde047; }
         .reference-highlight { background-color: #dbeafe; box-shadow: 0 0 0 1px #bfdbfe; font-weight: 600; }
 
+        .insert-preview { background-color: #eef2ff; border-bottom: 2px solid #6366f1; padding: 1px 3px; border-radius: 4px; }
+        .insert-square[data-letter] { font-weight: 700; font-size: 0.75em; border: 1px solid #cbd5e1; border-radius: 4px; padding: 0 4px; }
+        .insert-text-mode .insert-square.selected { background-color: #4f46e5; color: #fff; border-color: #4f46e5; }
+
         .insert-square { display: none; margin: 0 4px; cursor: pointer; font-size: 1.2em; color: #94a3b8; transition: all 0.2s; vertical-align: middle; line-height: 1; }
         .insert-text-mode .insert-square { display: inline-block; }
         .insert-text-mode .insert-square:hover { color: #4f46e5; transform: scale(1.3); }
@@ -342,10 +346,45 @@
                 .replace(/\[sq(\d+)\]/g, '<span class="insert-square" data-sq="$1">■</span>')
                 .replace(/\[■\]/g, '<span class="insert-square" data-sq="auto">■</span>');
 
+            // Позиции вставки нумеруем буквами, как на экзамене: A, B, C, D
+            parsedText = parsedText.replace(/<span class="insert-square" data-sq="[^"]*">■<\/span>/g,
+                (m, off, str) => {
+                    const n = (str.slice(0, off).match(/class="insert-square"/g) || []).length;
+                    const letter = String.fromCharCode(65 + n);
+                    return `<span class="insert-square" data-sq="${n}" data-letter="${letter}">${letter}</span>`;
+                });
+
             parsedText = parsedText.split('\n\n').map(p => `<p class="mb-4">${p}</p>`).join('');
             document.getElementById('passageContent').innerHTML = parsedText;
 
             setupInteractiveClicks();
+        }
+
+        // ===== Вставка предложения в текст (Insert Text) =====
+        // На экзамене выбранное предложение появляется прямо в пассаже
+        // и переезжает при смене позиции.
+        function chooseInsertPosition(qIdx, pos, silent) {
+            const q = currentTask.questions[qIdx];
+            userAnswers[qIdx] = pos;
+
+            document.querySelectorAll('.insert-preview').forEach(el => el.remove());
+            document.querySelectorAll('.insert-square').forEach((el, i) => {
+                el.classList.toggle('selected', i === pos);
+            });
+            document.querySelectorAll('.insert-option').forEach(b => {
+                const on = Number(b.dataset.pos) === pos;
+                b.className = 'insert-option w-full flex items-center gap-3 p-3 border rounded-xl transition text-left '
+                    + (on ? 'bg-indigo-50 border-indigo-400' : 'bg-white border-gray-200 hover:border-indigo-300');
+            });
+
+            const square = document.querySelectorAll('.insert-square')[pos];
+            if (square && q.insertSentence) {
+                const preview = document.createElement('span');
+                preview.className = 'insert-preview';
+                preview.textContent = ' ' + q.insertSentence + ' ';
+                square.after(preview);
+                if (!silent) preview.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            }
         }
 
         // ===== Подсветка фрагмента для Sentence Simplification и Reference =====
@@ -415,12 +454,10 @@
                 };
             });
 
-            document.querySelectorAll('.insert-square').forEach(el => {
+            document.querySelectorAll('.insert-square').forEach((el, i) => {
                 el.onclick = function() {
                     if (currentTask.questions[currentQuestionIdx].type !== "Insert Text") return;
-                    document.querySelectorAll('.insert-square').forEach(s => s.classList.remove('selected'));
-                    this.classList.add('selected');
-                    userAnswers[currentQuestionIdx] = parseInt(this.getAttribute('data-sq'));
+                    chooseInsertPosition(currentQuestionIdx, i);
                 };
             });
         }
@@ -520,8 +557,22 @@
                     if (userAnswers[idx] !== undefined) document.querySelector(`.clickable-sentence[data-id="${userAnswers[idx]}"]`)?.classList.add('selected');
                 } else {
                     passageContainer.classList.add('insert-text-mode');
-                    document.getElementById('instructionText').innerText = "Click on one of the squares [■] in the left passage to insert the sentence.";
-                    if (userAnswers[idx] !== undefined) document.querySelector(`.insert-square[data-sq="${userAnswers[idx]}"]`)?.classList.add('selected');
+                    document.getElementById('instructionText').innerText = "Выберите позицию — предложение подставится прямо в текст.";
+
+                    // Как на экзамене: справа буквы позиций, слева — сам текст.
+                    const letters = [...document.querySelectorAll('.insert-square')].map(el => el.dataset.letter);
+                    optionsContainer.innerHTML = `
+                        <div class="p-3 bg-indigo-50 border border-indigo-100 rounded-xl text-xs text-indigo-900 mb-3">
+                            "${q.insertSentence || ''}"
+                        </div>` + letters.map((L, i) => `
+                        <button type="button" onclick="chooseInsertPosition(${idx}, ${i})"
+                                class="insert-option w-full flex items-center gap-3 p-3 border rounded-xl transition text-left bg-white border-gray-200 hover:border-indigo-300"
+                                data-pos="${i}">
+                            <span class="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 font-bold text-xs flex items-center justify-center shrink-0">${L}</span>
+                            <span class="text-xs text-slate-600">Позиция ${L}</span>
+                        </button>`).join('');
+
+                    if (userAnswers[idx] !== undefined) chooseInsertPosition(idx, userAnswers[idx], true);
                 }
             } else {
                 instruction.classList.add('hidden');
