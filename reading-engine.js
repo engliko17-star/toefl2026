@@ -90,6 +90,38 @@ let module2TimeMinutes = 9;
 // чтобы не давать перепрыгивать обратно в Module 1 (как и на настоящем TOEFL)
 let module2StartIndex = null;
 
+// Эталонный ответ. Для обычных вопросов это текст выбранного варианта, но два
+// типа устроены иначе, и раньше они считались неверно:
+//   Insert Text — при клике в ответ пишется НОМЕР позиции ("1"), а не текст,
+//     поэтому сравнение с options[correct] ("Position B") не совпадало никогда.
+//   Select a Sentence — options пустой, options[correct] давало undefined,
+//     и вопрос молча выпадал из подсчёта вместе со своим баллом.
+function sentenceTextByMarker(passageHtml, markerNumber) {
+    const re = /<span[^>]*class="[^"]*clickable-sentence[^"]*"[^>]*>([\s\S]*?)<\/span>/g;
+    const found = [];
+    let m;
+    while ((m = re.exec(String(passageHtml || ''))) !== null) {
+        found.push(m[1].replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim());
+    }
+    // correct у этого типа считается с единицы — так размечен текст метками [sN]
+    return found[markerNumber - 1] || null;
+}
+
+function buildCorrectAnswer(q, qType, passageHtml) {
+    if (q.correct === undefined || q.correct === null) return null;
+
+    if (qType === 'Insert Text') return String(q.correct);
+
+    if (qType === 'Select a Sentence') {
+        const text = sentenceTextByMarker(passageHtml, q.correct);
+        if (!text) console.warn('[reading] Select a Sentence: не найдено предложение с меткой', q.correct);
+        return text;
+    }
+
+    const opts = q.options || [];
+    return opts[q.correct] !== undefined ? opts[q.correct] : null;
+}
+
 // Complete the Words лежит в currentTasks ОДНИМ элементом, но это 10 отдельных
 // зачётных айтемов, поэтому счётчик и Review считают айтемы, а не элементы массива.
 function taskItemCount(t) {
@@ -137,8 +169,24 @@ function renderDailyLifeLayout(passage, layoutType, taskTitle) {
     const safeLayout = (layoutType || 'notice').toLowerCase().trim();
 
     switch(safeLayout) {
-        case 'email': 
-            return `<div class="max-w-xl mx-auto bg-white border border-slate-200 rounded-lg overflow-hidden shadow-xs font-sans text-sm"><div class="bg-slate-50 p-4 border-b border-slate-200 space-y-1.5 text-slate-700"><div><span class="inline-block w-14 font-semibold text-slate-400">To:</span> <span class="bg-white px-2 py-0.5 border border-slate-200 rounded text-xs">student@toeflprep.com</span></div><div><span class="inline-block w-14 font-semibold text-slate-400">From:</span> <span class="text-slate-600">admin</span></div><div><span class="inline-block w-14 font-semibold text-slate-400">Subject:</span> <span class="font-medium text-slate-900">${taskTitle}</span></div></div><div class="p-6 text-slate-800 space-y-4 leading-relaxed font-normal bg-white">${cleanPassage.replace(/\n/g, '<br>')}</div></div>`;
+        case 'email': {
+            // Шапка берётся из первых строк текста (To:/From:/Date:/Subject:), а не
+            // подставляется жёстко: в заданиях письмо часто адресовано не студенту.
+            const lines = cleanPassage.split('\n');
+            const meta = {};
+            let bodyStart = 0;
+            for (let i = 0; i < lines.length; i++) {
+                const m = lines[i].match(/^\s*(To|From|Date|Subject)\s*:\s*(.*)$/i);
+                if (m) { meta[m[1].toLowerCase()] = m[2].trim(); bodyStart = i + 1; }
+                else if (!lines[i].trim()) { if (bodyStart === i) bodyStart = i + 1; }
+                else break;
+            }
+            const body = lines.slice(bodyStart).join('\n').replace(/^\n+/, '');
+            const row = (label, value) => value
+                ? `<div><span class="inline-block w-16 font-semibold text-slate-400">${label}:</span> <span class="text-slate-700">${value}</span></div>`
+                : '';
+            return `<div class="max-w-xl mx-auto bg-white border border-slate-200 rounded-lg overflow-hidden shadow-xs font-sans text-sm"><div class="bg-slate-50 p-4 border-b border-slate-200 space-y-1.5 text-slate-700"><div><span class="inline-block w-16 font-semibold text-slate-400">To:</span> <span class="bg-white px-2 py-0.5 border border-slate-200 rounded text-xs">${meta.to || 'student@toeflprep.com'}</span></div>${row('From', meta.from || 'admin')}${row('Date', meta.date)}<div><span class="inline-block w-16 font-semibold text-slate-400">Subject:</span> <span class="font-medium text-slate-900">${meta.subject || taskTitle}</span></div></div><div class="p-6 text-slate-800 space-y-4 leading-relaxed font-normal bg-white">${body.replace(/\n/g, '<br>')}</div></div>`;
+        }
         case 'social_media': 
             return `<div class="max-w-md mx-auto bg-white border border-slate-200 rounded-2xl p-5 shadow-xs font-sans"><div class="flex items-center space-x-3 mb-4"><div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-sm"><i data-lucide="user" class="w-5 h-5"></i></div><div><div class="font-bold text-sm text-slate-900">Community Board</div><div class="text-[11px] text-slate-400 font-normal">Posted recently</div></div></div><div class="text-slate-700 space-y-3 font-normal text-sm leading-relaxed mb-4">${cleanPassage.replace(/\n/g, '<br>')}</div></div>`;
         case 'notice': 
@@ -302,7 +350,7 @@ async function fetchAndParseTasks(testId, stageName) {
                     highlight: q.highlight || "",
                     highlightOccurrence: q.highlight_occurrence || null,
                     stage: stageName,
-                    correctAnswer: q.correct !== undefined ? q.options[q.correct] : null,
+                    correctAnswer: buildCorrectAnswer(q, qType, parsedPassage),
                     explanation: q.explanation || "",
                     userAnswer: null
                 });
