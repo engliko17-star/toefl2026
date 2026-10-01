@@ -155,6 +155,35 @@
     /* Страница может спрятать всё меню целиком (режим фокуса в упражнении) */
     .app-nav.hidden,.app-mnav.hidden{display:none !important}
     `;
+
+    // ---------- Иконка вкладки ----------
+    // Вшита прямо сюда: появляется на всех страницах, включая будущие,
+    // и не требует отдельного файла на сервере.
+    (function setFavicon() {
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+            <rect width="64" height="64" rx="14" fill="#0f172a"/>
+            <text x="29" y="45" font-family="Helvetica,Arial,sans-serif" font-size="38"
+                  font-weight="bold" fill="#ffffff" text-anchor="middle">T</text>
+            <circle cx="50" cy="20" r="6" fill="#4f46e5"/>
+        </svg>`;
+        const href = 'data:image/svg+xml,' + encodeURIComponent(svg.replace(/\s+/g, ' '));
+
+        document.querySelectorAll("link[rel~='icon']").forEach(l => l.remove());
+        const link = document.createElement('link');
+        link.rel = 'icon';
+        link.type = 'image/svg+xml';
+        link.href = href;
+        document.head.appendChild(link);
+
+        // Цвет адресной строки на телефоне — в тон логотипу
+        if (!document.querySelector("meta[name='theme-color']")) {
+            const meta = document.createElement('meta');
+            meta.name = 'theme-color';
+            meta.content = '#0f172a';
+            document.head.appendChild(meta);
+        }
+    })();
+
     const style = document.createElement('style');
     style.id = 'app-nav-styles';
     style.textContent = css;
