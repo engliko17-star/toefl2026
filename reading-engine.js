@@ -726,12 +726,59 @@ function scoreCompleteWords(task) {
 // Перекрытие 3.0-4.5 — зона, где обе ветки дают сопоставимую оценку,
 // что соответствует требованию мануала: один и тот же уровень владения
 // языком даёт один и тот же балл независимо от выданного модуля.
-function calculateTOEFLScore(correct, total, branch) {
-    if (total === 0) return "1.0";
-    const ratio = correct / total;
-    const [min, max] = (branch === '2_hard') ? [3.0, 6.0] : [1.0, 4.5];
-    const score = min + ratio * (max - min);
-    return (Math.round(score * 2) / 2).toFixed(1);
+// ==========================================================
+// ШКАЛА БАЛЛА READING
+//
+// Раньше было две шкалы: лёгкая ветка 1.0–4.5, трудная 3.0–6.0, а все
+// верные ответы складывались в один процент. На пороге это давало скачок:
+// ученица, перешагнувшая порог на один вопрос и проваившая трудный модуль,
+// получала 4.0–4.5, а та, что чуть не дотянула и решила лёгкий модуль
+// идеально, — 3.5. Меньше верных ответов — выше балл.
+//
+// Теперь шкала одна, 1.0–6.0, для всех. Ветка влияет только на ВЕС
+// вопросов второго модуля: трудный стоит дороже, лёгкий дешевле.
+// Вес берётся из этапа задания (stage), отдельно прописывать не нужно.
+//
+// Это приближение, а не шкала ETS: та строится по статистической модели
+// с калибровкой каждого вопроса. Веса стоит подстроить по реальным данным.
+// ==========================================================
+const ITEM_WEIGHT = { '1': 1.0, '2_easy': 0.5, '2_hard': 1.4 };
+// Знаменатель всегда считается по весу трудного модуля: так потолок
+// лёгкой ветки получается около 4.5, как и задумано по уровню B2.
+const MAX_MODULE2_WEIGHT = 1.4;
+
+function itemWeight(stage) {
+    return ITEM_WEIGHT[String(stage)] !== undefined ? ITEM_WEIGHT[String(stage)] : 1.0;
+}
+
+// Возвращает { score, points, maxPoints, correct, total }
+// или null, если в тесте нет ни одного вопроса с правильным ответом.
+function calculateWeightedScore(tasks) {
+    let points = 0, maxPoints = 0, correct = 0, total = 0;
+
+    (tasks || []).forEach(task => {
+        const stage = String(task.stage);
+        const w = itemWeight(stage);
+        const wMax = stage === '1' ? 1.0 : MAX_MODULE2_WEIGHT;
+
+        let c = 0, t = 0;
+        if (task.type === 'complete_words') {
+            const s = scoreCompleteWords(task);
+            c = s.correct; t = s.total;
+        } else if (task.correctAnswer !== null && task.correctAnswer !== undefined) {
+            t = 1;
+            if (task.userAnswer === task.correctAnswer) c = 1;
+        }
+
+        correct += c; total += t;
+        points += c * w;
+        maxPoints += t * wMax;
+    });
+
+    if (maxPoints === 0) return null;
+    const raw = 1 + 5 * (points / maxPoints);
+    const score = Math.min(6, Math.max(1, Math.round(raw * 2) / 2));
+    return { score: score.toFixed(1), points, maxPoints, correct, total };
 }
 
 async function nextTask() {
@@ -885,24 +932,24 @@ async function saveAttemptAndFinish() {
     engineContent.innerHTML = `<div class="m-auto flex flex-col items-center justify-center text-slate-500"><i data-lucide="loader-2" class="w-8 h-8 animate-spin mb-4 text-indigo-600"></i><p class="font-bold text-slate-700">Saving results to database...</p></div>`;
     lucide.createIcons();
 
-    let correctAnswers = 0;
-    let totalQuestions = 0;
+    const result = calculateWeightedScore(currentTasks);
 
-    // Подсчет баллов включая complete_words (по пропускам, а не целиком)
-    currentTasks.forEach((task) => {
-        if (task.type === 'complete_words') {
-            const s = scoreCompleteWords(task);
-            totalQuestions += s.total;
-            correctAnswers += s.correct;
-        } else if (task.correctAnswer !== null && task.correctAnswer !== undefined) { 
-            totalQuestions++;
-            if (task.userAnswer === task.correctAnswer) correctAnswers++;
-        }
-    });
+    // В тесте нет ни одного вопроса с отмеченным правильным ответом.
+    // Раньше движок молча ставил 1.0 — поломанный тест выглядел как самый
+    // низкий результат ученицы, и никто не догадывался, что виноват тест.
+    if (!result) {
+        clearInterval(timerInterval);
+        engineContent.innerHTML = `<div class="m-auto max-w-md text-center p-8">
+            <p class="text-lg font-bold text-rose-600 mb-2">Тест не удалось оценить</p>
+            <p class="text-sm text-slate-500">В нём нет вопросов с отмеченным правильным ответом.
+            Это ошибка в составе теста, а не в ваших ответах. Сообщите преподавателю.</p></div>`;
+        console.error('[reading] нет ни одного оцениваемого вопроса — проверьте поле correct в заданиях теста');
+        return;
+    }
 
-    // Ветка определяет шкалу балла: Lower 1.0–4.0, Upper 3.0–6.0
-    const branch = currentTasks.some(t => t.stage === '2_hard') ? '2_hard' : '2_easy';
-    const finalScore = calculateTOEFLScore(correctAnswers, totalQuestions, branch);
+    const correctAnswers = result.correct;
+    const totalQuestions = result.total;
+    const finalScore = result.score;
 
     try {
         const { data: attempt, error: attemptErr } = await supabaseClient
@@ -1194,4 +1241,4 @@ function closeResults() {
     document.getElementById('results-view').classList.remove('flex');
     document.getElementById('main-interface').classList.remove('hidden');
     loadTestsGrid(); 
-}
+            }
