@@ -72,6 +72,43 @@ window.engineType = null; // Глобальный флаг для роутинг
 // Флаг для предотвращения гонки состояний при переходах
 let isProcessingNextStep = false;
 
+// Номер сессии Listening: после каждого await проверяем, что ученица не ушла (Abort)
+let listeningSessionId = 0;
+function listeningAlive(id) { return id === listeningSessionId && window.engineType === 'listening'; }
+
+// ==========================================
+// ШКАЛА БАЛЛА LISTENING — та же, что в Reading
+//
+// Раньше здесь оставалась старая схема «лёгкая ветка 1.0–4.5, трудная
+// 3.0–6.0, один общий процент». В Reading её уже заменили, потому что на
+// пороге она давала парадокс: ученица, едва прошедшая порог и проваливая
+// трудный модуль (12 верных из 35), получала 4.0, а та, что чуть не
+// дотянула и решила лёгкий модуль идеально (26 из 35), — 3.5.
+// Теперь шкала одна, 1.0–6.0; ветка влияет только на вес вопросов Модуля 2.
+// ==========================================
+const LIST_ITEM_WEIGHT = { '1': 1.0, '2_lower': 0.5, '2_upper': 1.4 };
+const LIST_MAX_MODULE2_WEIGHT = 1.4;
+
+function calculateListeningScore(queue, answers) {
+    let points = 0, maxPoints = 0, correct = 0, total = 0;
+    (queue || []).forEach(block => {
+        const stage = String(block.stage);
+        const w = LIST_ITEM_WEIGHT[stage] !== undefined ? LIST_ITEM_WEIGHT[stage] : 1.0;
+        const wMax = stage === '1' ? 1.0 : LIST_MAX_MODULE2_WEIGHT;
+        (block.questions || []).forEach(q => {
+            const correctIdx = getCorrectIndex(q);
+            if (correctIdx === null || correctIdx === undefined) return; // вопрос без ключа не считаем
+            total++;
+            maxPoints += wMax;
+            if (answers[q.uniqueId] === correctIdx) { correct++; points += w; }
+        });
+    });
+    if (maxPoints === 0) return null;
+    const raw = 1 + 5 * (points / maxPoints);
+    const score = Math.min(6, Math.max(1, Math.round(raw * 2) / 2));
+    return { score, correct, total, points, maxPoints };
+}
+
 // Вспомогательная функция определения длительности таймера по типу задания
 function getQuestionTimerDuration(block) {
     if (!block || !block.block_type) return 20;
@@ -106,7 +143,9 @@ function startQuestionTimer(duration) {
     };
     updateDisplay();
     
+    const mySession = listeningSessionId;
     listQuestionTimerInterval = setInterval(() => {
+        if (!listeningAlive(mySession)) { stopQuestionTimer(); return; }
         listQuestionTimeRemaining--;
         updateDisplay();
         
@@ -211,8 +250,13 @@ async function fetchAndParseListeningTasks(testId, stageName) {
 // 2. Старт движка
 async function startListeningEngine(testId, testTitle) {
     window.engineType = 'listening';
+    listeningSessionId++;
+    const mySession = listeningSessionId;
+    if (typeof unlockGlobalAudio === 'function') unlockGlobalAudio(); // пока мы ещё внутри нажатия
     if (typeof resetEngineHeaderButtons === 'function') resetEngineHeaderButtons();
     isProcessingNextStep = false;
+    clearTimeout(listAutoplayTimeout);
+    stopQuestionTimer();
     
     const resultsView = document.getElementById('results-view');
     if (resultsView) {
@@ -237,13 +281,17 @@ async function startListeningEngine(testId, testTitle) {
     listQueue = [];
     listUserAnswers = {};
     currentActiveTestId = testId;
+    window.currentActiveTestTitle = testTitle;
     
     try {
-        listQueue = await fetchAndParseListeningTasks(testId, '1');
+        const loaded = await fetchAndParseListeningTasks(testId, '1');
+        if (!listeningAlive(mySession)) return; // нажали Abort во время загрузки
+        listQueue = loaded;
 
         if (listQueue.length === 0) {
-            alert("This listening section is empty! Please configure 'full_test_listening_tasks' in Supabase.");
-            exitExamEngine();
+            const msg = "В этом тесте нет заданий Listening (full_test_listening_tasks, stage = '1').";
+            if (typeof handleEmptySection === 'function') handleEmptySection('Listening', msg);
+            else { alert(msg); exitExamEngine(); }
             return;
         }
 
@@ -257,7 +305,8 @@ async function startListeningEngine(testId, testTitle) {
 
     } catch (err) {
         console.error("Listening Engine crash:", err);
-        alert("Error loading listening structure.");
+        if (!listeningAlive(mySession)) return;
+        alert("Не удалось загрузить Listening.\n\n" + (err.message || err));
         exitExamEngine();
     }
 }
@@ -440,8 +489,12 @@ function initListResponseLogic(question) {
         startQuestionTimer(duration);
     };
     
+    const mySession = listeningSessionId;
     clearTimeout(listAutoplayTimeout);
-    listAutoplayTimeout = setTimeout(() => { audioEl.play().then(() => {setPlayIcon('pause'); lucide.createIcons();}).catch(e=>console.log(e)); }, 500);
+    listAutoplayTimeout = setTimeout(() => {
+        if (!listeningAlive(mySession)) return;
+        audioEl.play().then(() => { setPlayIcon('pause'); lucide.createIcons(); }).catch(e => console.log('Autoplay blocked:', e));
+    }, 500);
 }
 
 function getListStandardAudioHTML(block) {
@@ -451,6 +504,7 @@ function getListStandardAudioHTML(block) {
             <div class="bg-white p-8 rounded-3xl border border-slate-200/60 w-full max-w-md text-center shadow-sm">
                 <span class="bg-amber-100 text-amber-800 text-[10px] font-bold px-3 py-1 rounded-md uppercase tracking-wider mb-4 inline-block">Active Listening</span>
                 <p class="text-sm font-bold text-slate-800 mb-6">Listen to the audio track. You cannot pause or skip.</p>
+                <p id="mainAudioHint" class="hidden text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2 mb-4">Tap the speaker button to start the audio.</p>
                 
                 <div class="flex items-center space-x-4 mb-4">
                     <button id="mainAudioBtn" class="w-14 h-14 shrink-0 rounded-full bg-emerald-600 text-white shadow-md flex items-center justify-center cursor-default">
@@ -501,8 +555,28 @@ function initListStandardAudioLogic(block) {
         }, 1500);
     };
 
+    const mySession = listeningSessionId;
+    const showTapToPlay = () => {
+        const btn = document.getElementById('mainAudioBtn');
+        const hint = document.getElementById('mainAudioHint');
+        if (!btn) return;
+        btn.classList.remove('cursor-default');
+        btn.classList.add('cursor-pointer', 'animate-pulse');
+        if (hint) hint.classList.remove('hidden');
+        btn.onclick = () => {
+            audioEl.play().then(() => {
+                btn.onclick = null;
+                btn.classList.remove('cursor-pointer', 'animate-pulse');
+                btn.classList.add('cursor-default');
+                if (hint) hint.classList.add('hidden');
+            }).catch(err => console.log('play still blocked', err));
+        };
+    };
     clearTimeout(listAutoplayTimeout);
-    listAutoplayTimeout = setTimeout(() => { audioEl.play().catch(e => { console.log(e); const btn = document.getElementById('engine-next'); if (btn) btn.disabled = false; }); }, 500);
+    listAutoplayTimeout = setTimeout(() => {
+        if (!listeningAlive(mySession)) return;
+        audioEl.play().catch(e => { console.log('Autoplay blocked:', e); showTapToPlay(); });
+    }, 500);
 }
 
 function getListStandardQuestionsHTML(block, qIdx) {
@@ -610,7 +684,9 @@ async function handleListeningNextStep() {
             const isStage1Finished = !listQueue.some(t => t.stage.startsWith('2'));
             if (isStage1Finished) {
                 document.getElementById('engine-next').innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin mr-1"></i> Adapting...';
+                const mySession = listeningSessionId;
                 const loaded = await loadListeningStage2();
+                if (!listeningAlive(mySession)) return;
                 if (loaded) {
                     listBlockIdx++;
                     listSubQIdx = 0;
@@ -670,56 +746,40 @@ async function saveListeningAttemptAndFinish() {
     `;
     lucide.createIcons();
 
-    let totalQuestions = 0;
-    let correctAnswers = 0;
-    let isUpperTrack = false;
-
-    listQueue.forEach(block => {
-        if (block.stage.includes('2_upper')) isUpperTrack = true;
-
-        block.questions.forEach(q => {
-            totalQuestions++;
-
-            const correctIdx = getCorrectIndex(q);
-
-            if (listUserAnswers[q.uniqueId] === correctIdx) {
-                correctAnswers++;
-            }
-        });
-    });
-
-    // Шкала по ветке — та же механика и те же числа, что в Reading,
-    // иначе общий балл (среднее по секциям) перекашивает: одинаково
-    // сильный ученик получал бы за Reading и Listening разные баллы.
-    //
-    // Обоснование по Technical Manual (Table 9, band -> CEFR):
-    //   Lower 1.0-4.5: роутер = B1/B2, лёгкий модуль ниже него, значит
-    //     максимум продемонстрированного уровня B2, а B2 = 4-4.5.
-    //   Upper 3.0-6.0: порог роутера B1/B2 уже пройден (B1 = 3-3.5),
-    //     верхний модуль содержит C1/C2-контент, отсюда потолок 6.0 (C2).
-    // Перекрытие 3.0-4.5 отвечает требованию мануала: один и тот же
-    // уровень владения языком даёт один и тот же балл независимо от
-    // того, какой второй модуль был выдан.
-    let finalCalculatedScore;
-    if (totalQuestions === 0) {
-        finalCalculatedScore = 1.0;
-    } else {
-        const ratio = correctAnswers / totalQuestions;
-        const [minBand, maxBand] = isUpperTrack ? [3.0, 6.0] : [1.0, 4.5];
-        const proportionalScore = minBand + ratio * (maxBand - minBand);
-        finalCalculatedScore = Math.min(Math.round(proportionalScore * 2) / 2, 6.0);
+    const saveSession = listeningSessionId;
+    const result = calculateListeningScore(listQueue, listUserAnswers);
+    if (!result) {
+        // Раньше в такой ситуации молча сохранялось 1.0 — сломанный тест
+        // выглядел как худший результат ученицы.
+        console.error('[listening] нет ни одного вопроса с ключом — проверьте correct_index/correct_answer');
+        document.getElementById('engine-content').innerHTML = `<div class="m-auto max-w-md text-center p-8">
+            <p class="text-lg font-bold text-rose-600 mb-2">Тест не удалось оценить</p>
+            <p class="text-sm text-slate-500">В нём нет вопросов с отмеченным правильным ответом. Это ошибка в составе теста, а не в ваших ответах. Сообщите преподавателю.</p></div>`;
+        if (window.fullTestMode && typeof continueFullTestSequence === 'function') {
+            alert('Listening: в тесте нет вопросов с отмеченным правильным ответом. Секция пропущена.');
+            continueFullTestSequence({ skipped: true });
+        }
+        return;
     }
+    const finalCalculatedScore = result.score;
+    const correctAnswers = result.correct;
+    const totalQuestions = result.total;
 
     try {
         const client = supabaseClient;
         if (client) {
-            const { data: { session } } = await client.auth.getSession();
-            if (session?.user) {
+            let userId = window.currentUser && window.currentUser.id;
+            if (!userId) {
+                const { data: { session } } = await client.auth.getSession();
+                userId = session && session.user ? session.user.id : null;
+            }
+            if (!userId) throw new Error('Сессия истекла — войдите заново и пройдите секцию ещё раз.');
+            {
                 const { data: attempt, error: attemptErr } = await client
                     .from('big_mock_listening_attempts')
                     .insert([{ 
                         test_id: currentActiveTestId, 
-                        user_id: session.user.id,
+                        user_id: userId,
                         total_score: finalCalculatedScore, 
                         // В таблице колонки называются raw_score и total_questions.
                         // Раньше сюда слались score_earned/score_total — база
@@ -750,6 +810,7 @@ async function saveListeningAttemptAndFinish() {
                                 unique_id: q.uniqueId,
                                 question_text: q.text,
                                 task_type: block.block_type,
+                                stage: block.stage,
                                 choice_index: listUserAnswers[q.uniqueId] !== undefined ? listUserAnswers[q.uniqueId] : null
                             },
                             is_correct: listUserAnswers[q.uniqueId] === correctIdx
@@ -769,6 +830,7 @@ async function saveListeningAttemptAndFinish() {
             + '\n\nПокажите это сообщение преподавателю, не закрывая страницу.');
     }
 
+    if (!listeningAlive(saveSession)) return;
     if (window.fullTestMode && typeof continueFullTestSequence === 'function') { continueFullTestSequence(); return; }
     renderListeningReview(finalCalculatedScore, correctAnswers, totalQuestions);
 }
@@ -776,61 +838,83 @@ async function saveListeningAttemptAndFinish() {
 // 7. Режим Ревью
 async function loadListeningReviewMode(attemptId, testId, testTitle) {
     window.engineType = 'listening';
-    
+    listeningSessionId++;
+    stopQuestionTimer();
+    clearTimeout(listAutoplayTimeout);
+
     const grid = document.getElementById('view-tests-grid');
     if (grid) grid.classList.add('hidden');
-    
     const mainInterface = document.getElementById('main-interface');
     if (mainInterface) mainInterface.classList.add('hidden');
 
     const resultsView = document.getElementById('results-view');
-    resultsView.classList.remove('hidden');
     resultsView.className = 'fixed inset-0 z-50 bg-[#f8f9fa] overflow-y-auto';
-    resultsView.innerHTML = `<div class="m-auto flex flex-col items-center justify-center text-slate-500"><i data-lucide="loader-2" class="w-10 h-10 animate-spin mb-4 text-emerald-600"></i><p class="font-bold">Reconstructing Listening attempt...</p></div>`;
+    resultsView.innerHTML = `<div class="min-h-full flex items-center justify-center text-slate-500"><div class="text-center"><i data-lucide="loader-2" class="w-10 h-10 animate-spin mb-4 text-emerald-600 mx-auto"></i><p class="font-bold">Reconstructing Listening attempt...</p></div></div>`;
     lucide.createIcons();
 
     try {
         currentActiveTestId = testId;
+        listUserAnswers = {}; // иначе в разбор протекают ответы из предыдущего прохождения
         const client = supabaseClient;
-        const { data: attempt } = await client.from('big_mock_listening_attempts').select('*').eq('id', attemptId).single();
-        const { data: answers } = await client.from('big_mock_listening_answers').select('*').eq('attempt_id', attemptId);
+        const { data: attempt, error: attErr } = await client.from('big_mock_listening_attempts').select('*').eq('id', attemptId).single();
+        if (attErr) throw attErr;
+        const { data: answersRaw, error: ansErr } = await client.from('big_mock_listening_answers').select('*').eq('attempt_id', attemptId);
+        if (ansErr) throw ansErr;
+        const answers = answersRaw || [];
 
-        const stage1 = await fetchAndParseListeningTasks(testId, '1');
-        const stage2L = await fetchAndParseListeningTasks(testId, '2_lower');
-        const stage2U = await fetchAndParseListeningTasks(testId, '2_upper');
+        const [stage1, stage2L, stage2U] = await Promise.all([
+            fetchAndParseListeningTasks(testId, '1'),
+            fetchAndParseListeningTasks(testId, '2_lower'),
+            fetchAndParseListeningTasks(testId, '2_upper')
+        ]);
+
+        // Новые попытки хранят ветку (stage) внутри user_answer — это точно.
+        // Для старых угадываем по номеру задания, исключая задания Модуля 1.
+        const ansData = a => a.user_answer || a.answer_json || {};
+        const savedStages = new Set(answers.map(a => ansData(a).stage).filter(Boolean).map(String));
+        let tookLower, tookUpper;
+        if (savedStages.size > 0) {
+            tookLower = savedStages.has('2_lower');
+            tookUpper = savedStages.has('2_upper');
+        } else {
+            const answerUids = new Set(answers.map(a => ansData(a).unique_id).filter(Boolean));
+            const stage1Uids = new Set(stage1.flatMap(b => b.questions.map(q => q.uniqueId)));
+            const took = blocks => blocks.some(b => b.questions.some(q => answerUids.has(q.uniqueId) && !stage1Uids.has(q.uniqueId)));
+            tookLower = took(stage2L);
+            tookUpper = took(stage2U);
+            if (tookLower && tookUpper) tookLower = false;
+        }
 
         listQueue = [...stage1];
-        const answerBlockIds = (answers.map(a => a.task_id)).map(String);
-        
-        const tookLower = stage2L.some(t => answerBlockIds.includes(String(t.db_id)));
-        const tookUpper = stage2U.some(t => answerBlockIds.includes(String(t.db_id)));
-        
         if (tookLower) listQueue = listQueue.concat(stage2L);
         if (tookUpper) listQueue = listQueue.concat(stage2U);
 
         listQueue.forEach(block => {
             block.questions.forEach(q => {
-                // Читаем из user_answer; старое поле answer_json оставляем на
-                // случай, если где-то остались записи прежнего формата.
-                let ansRow = answers.find(a => {
-                    const d = a.user_answer || a.answer_json;
-                    return d && d.unique_id === q.uniqueId;
+                const ansRow = answers.find(a => {
+                    const d = ansData(a);
+                    return d.unique_id === q.uniqueId && (!d.stage || String(d.stage) === String(block.stage));
                 });
                 if (ansRow) {
-                    const d = ansRow.user_answer || ansRow.answer_json;
+                    const d = ansData(ansRow);
                     listUserAnswers[q.uniqueId] = (d.choice_index !== undefined) ? d.choice_index : ansRow.user_choice_index;
                 }
             });
         });
 
-        // Колонки называются raw_score и total_questions — в этих же полях
-        // их пишет сохранение. Раньше разбор читал старые имена и показывал
-        // «undefined / undefined».
-        renderListeningReview(attempt.total_score, attempt.raw_score, attempt.total_questions);
+        // В таблице колонки raw_score / total_questions (score_earned/score_total
+        // не существуют — из-за этого в разборе было «undefined / undefined»).
+        let raw = attempt.raw_score, total = attempt.total_questions;
+        if (raw === null || raw === undefined || total === null || total === undefined) {
+            const r = calculateListeningScore(listQueue, listUserAnswers);
+            raw = r ? r.correct : 0;
+            total = r ? r.total : 0;
+        }
+        renderListeningReview(attempt.total_score, raw, total);
 
     } catch (err) {
         console.error("Error loading listening review:", err);
-        alert("Could not load review mode.");
+        alert("Не удалось открыть разбор Listening.\n\n" + (err.message || err));
         exitExamEngine();
     }
 }
@@ -846,7 +930,6 @@ function renderListeningReview(finalScore, correctAnswers, totalQuestions) {
     if (mainInterface) mainInterface.classList.add('hidden');
     
     const resultsView = document.getElementById('results-view');
-    resultsView.classList.remove('hidden');
     resultsView.className = 'fixed inset-0 z-50 bg-[#f8f9fa] overflow-y-auto';
 
     let blocksHtml = '';
