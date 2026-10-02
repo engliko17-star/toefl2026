@@ -800,7 +800,18 @@
             let fam = w && w.word_family;
             if (typeof fam === 'string') { try { fam = JSON.parse(fam); } catch (e) { fam = null; } }
             if (!Array.isArray(fam)) return '';
-            fam = fam.filter(f => f && f.w);
+            // Принимаем и {w, p}, и {word, part}, и строки «word (pos)» —
+            // данные залили как {word, part}, и раньше блок молча прятался
+            fam = fam.map(f => {
+                if (!f) return null;
+                if (typeof f === 'string') {
+                    const m = f.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+                    return m ? { w: m[1].trim(), p: m[2].trim() } : { w: f.trim(), p: '' };
+                }
+                const word = f.w || f.word || f.form || '';
+                const part = f.p || f.part || f.pos || f.part_of_speech || '';
+                return word ? { w: String(word), p: String(part) } : null;
+            }).filter(Boolean);
             if (!fam.length) return '';
             const c = onDark ? 'text-indigo-100' : 'text-slate-500';
             return `<p class="text-[11px] ${c} leading-relaxed">${fam.map(f => `${escH(f.w)}${f.p ? ` <span class="opacity-60">${escH(f.p)}</span>` : ''}`).join(' · ')}</p>`;
