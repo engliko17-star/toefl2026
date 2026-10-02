@@ -32,6 +32,39 @@ let writingSentenceAnswers = {};  // { taskId: "собранное предло�
 let writingTimerInterval = null;
 let writingSessionId = 0;         // защита от «призраков» после Abort
 let writingDragJustEnded = false; // чтобы клик после перетаскивания не сработал второй раз
+let writingSecondsLeft = 0;        // остаток таймера текущей фазы — для паузы при перезагрузке
+let writingTransitionNext = null;  // куда ведёт экран-переход ('email' | 'academic')
+
+// ------------------------------------------
+// Автосохранение (см. mtSaveProgress в tests.html)
+// ------------------------------------------
+function writingSlotsSnapshot() {
+    const snap = {};
+    sentencesData.forEach((q, i) => {
+        const slots = [...document.querySelectorAll(`[id^="wslot-${i}-"]`)];
+        if (slots.length) snap[q.id] = slots.map(sl => sl.children.length ? sl.children[0].textContent.trim() : null);
+    });
+    return snap;
+}
+
+function saveWritingProgress() {
+    if (window.engineType !== 'writing' || typeof mtSaveProgress !== 'function') return;
+    if (writingPhase === 'saving' || writingPhase === 'done') return;
+    if (!sentencesData.length && !emailData && !academicData) return;
+    const phase = writingPhase === 'sentence-review' ? 'sentence' : writingPhase;
+    const hint = phase === 'sentence' ? `Build a Sentence ${currentSentenceIndex + 1}/${sentencesData.length}`
+        : phase === 'email' ? 'Email' : phase === 'academic' ? 'Academic Discussion' : 'between tasks';
+    mtSaveProgress('writing', {
+        phase,
+        next: writingTransitionNext,
+        idx: currentSentenceIndex,
+        slots: phase === 'sentence' ? writingSlotsSnapshot() : null,
+        sentenceAnswers: writingSentenceAnswers,
+        texts: writingUserAnswers,
+        time: writingSecondsLeft,
+        ids: { s: sentencesData.map(q => q.id), e: emailData ? emailData.id : null, a: academicData ? academicData.id : null }
+    }, hint);
+}
 
 // ------------------------------------------
 // Вспомогательное
@@ -152,7 +185,7 @@ async function fetchAndParseWritingTasks(testId) {
 // ==========================================
 // 2. СТАРТ
 // ==========================================
-async function startWritingEngine(testId, testTitle) {
+async function startWritingEngine(testId, testTitle, resume) {
     window.engineType = 'writing';
     writingSessionId++;
     const mySession = writingSessionId;
@@ -214,6 +247,25 @@ async function startWritingEngine(testId, testTitle) {
 
     document.getElementById('engine-title').innerText = `Writing Section — ${window.currentActiveTestTitle}`;
 
+    if (resume && resume.ids) {
+        const sameTest = JSON.stringify(resume.ids.s || []) === JSON.stringify(sentencesData.map(q => q.id))
+            && (resume.ids.e || null) === (emailData ? emailData.id : null)
+            && (resume.ids.a || null) === (academicData ? academicData.id : null);
+        if (!sameTest) {
+            alert('Состав теста изменился с момента сохранения — секцию придётся начать заново.');
+            if (typeof mtClearProgress === 'function') mtClearProgress();
+        } else {
+            writingUserAnswers = Object.assign({}, resume.texts || {});
+            writingSentenceAnswers = Object.assign({}, resume.sentenceAnswers || {});
+            currentSentenceIndex = Math.min(Math.max(0, resume.idx || 0), Math.max(0, sentencesData.length - 1));
+            const left = resume.time && resume.time > 0 ? resume.time : null;
+            if (resume.phase === 'sentence' && sentencesData.length) return initPhaseSentence(resume.slots || {}, left);
+            if (resume.phase === 'transition' && resume.next) return showWritingPhaseTransition(resume.next);
+            if (resume.phase === 'email' && emailData) return initPhaseEmail(left);
+            if (resume.phase === 'academic' && academicData) return initPhaseAcademic(left);
+        }
+    }
+
     if (sentencesData.length > 0) initPhaseSentence();
     else if (emailData) initPhaseEmail();
     else initPhaseAcademic();
@@ -243,15 +295,16 @@ function setWritingHeader({ review, prev, next, prevDisabled, nextHtml }) {
 // ==========================================
 // 3. ТАЙМЕР ФАЗЫ
 // ==========================================
-function startWritingPhaseTimer(minutes, onTimeout) {
+function startWritingPhaseTimer(minutes, onTimeout, secondsOverride) {
     clearInterval(writingTimerInterval);
     const mySession = writingSessionId;
     const timerContainer = document.getElementById('engine-timer-container');
     const display = document.getElementById('engine-timer');
     if (timerContainer) timerContainer.classList.remove('hidden');
 
-    let seconds = Math.round(minutes * 60);
+    let seconds = secondsOverride ? Math.round(secondsOverride) : Math.round(minutes * 60);
     const update = () => {
+        writingSecondsLeft = seconds;
         const m = Math.floor(seconds / 60).toString().padStart(2, '0');
         const s = (seconds % 60).toString().padStart(2, '0');
         if (display) display.textContent = `${m}:${s}`;
@@ -262,6 +315,7 @@ function startWritingPhaseTimer(minutes, onTimeout) {
         if (!writingSessionAlive(mySession)) { clearInterval(writingTimerInterval); return; }
         seconds--;
         update();
+        saveWritingProgress();
         if (seconds <= 0) {
             clearInterval(writingTimerInterval);
             onTimeout();
@@ -278,7 +332,7 @@ function getWritingEndPunctuation(q) {
     return ['.', '?', '!'].includes(lastChar) ? lastChar : '.';
 }
 
-function initPhaseSentence() {
+function initPhaseSentence(savedSlots, secondsLeft) {
     writingPhase = 'sentence';
     const content = document.getElementById('engine-content');
     content.innerHTML = `<div id="sentencesWrapper" class="w-full h-full flex flex-col flex-1 overflow-y-auto"></div>`;
@@ -323,7 +377,7 @@ function initPhaseSentence() {
 
         // Перетаскивание (если SortableJS загрузился с CDN)
         if (typeof Sortable !== 'undefined') {
-            const onEnd = () => { writingDragJustEnded = true; setTimeout(() => { writingDragJustEnded = false; }, 80); };
+            const onEnd = () => { writingDragJustEnded = true; setTimeout(() => { writingDragJustEnded = false; }, 80); saveWritingProgress(); };
             new Sortable(div.querySelector(`#wbank-${index}`), { group: `wshared-${index}`, animation: 150, onEnd });
             div.querySelectorAll(`[id^="wslot-${index}-"]`).forEach(slot => {
                 new Sortable(slot, {
@@ -348,10 +402,23 @@ function initPhaseSentence() {
             } else {
                 bank.appendChild(word);
             }
+            saveWritingProgress();
         });
+
+        // Продолжение: расставляем сохранённые слова по ячейкам
+        const saved = savedSlots && savedSlots[q.id];
+        if (Array.isArray(saved)) {
+            const bank = div.querySelector(`#wbank-${index}`);
+            const slots = [...div.querySelectorAll(`[id^="wslot-${index}-"]`)];
+            saved.forEach((w, k) => {
+                if (!w || !slots[k]) return;
+                const el = [...bank.querySelectorAll('.writing-word')].find(x => x.textContent.trim() === w);
+                if (el) slots[k].appendChild(el);
+            });
+        }
     });
 
-    startWritingPhaseTimer(WRITING_PHASE_MINUTES.sentence, finishSentencePhase);
+    startWritingPhaseTimer(WRITING_PHASE_MINUTES.sentence, finishSentencePhase, secondsLeft);
     updateSentenceUI();
 }
 
@@ -377,6 +444,7 @@ function updateSentenceUI() {
             ? 'Next Part <i data-lucide="chevron-right" class="w-4 h-4 ml-1"></i>'
             : 'Next <i data-lucide="chevron-right" class="w-4 h-4 ml-1"></i>'
     });
+    saveWritingProgress();
 }
 
 function getSentenceAnswer(index) {
@@ -469,6 +537,7 @@ function finishSentencePhase() {
 // ==========================================
 function showWritingPhaseTransition(nextPhase) {
     writingPhase = 'transition';
+    writingTransitionNext = nextPhase;
     clearInterval(writingTimerInterval);
     setWritingHeader({ review: false, prev: false, next: false });
     const timerContainer = document.getElementById('engine-timer-container');
@@ -502,13 +571,15 @@ function showWritingPhaseTransition(nextPhase) {
         if (nextPhase === 'email') initPhaseEmail();
         else initPhaseAcademic();
     };
+    saveWritingProgress();
 }
 
 // ==========================================
 // ФАЗА 2: EMAIL
 // ==========================================
-function initPhaseEmail() {
+function initPhaseEmail(secondsLeft) {
     writingPhase = 'email';
+    writingTransitionNext = null;
     const essayCount = academicData ? 2 : 1;
     document.getElementById('engine-progress').innerText = `Task 1 of ${essayCount} (Email)`;
     setWritingHeader({
@@ -552,9 +623,11 @@ function initPhaseEmail() {
     ta.addEventListener('input', () => {
         writingUserAnswers[emailData.id] = ta.value;
         counter.textContent = countWords(ta.value);
+        saveWritingProgress();
     });
     if (typeof lucide !== 'undefined') lucide.createIcons();
-    startWritingPhaseTimer(WRITING_PHASE_MINUTES.email, finishEmailPhase);
+    startWritingPhaseTimer(WRITING_PHASE_MINUTES.email, finishEmailPhase, secondsLeft);
+    saveWritingProgress();
 }
 
 function finishEmailPhase() {
@@ -569,8 +642,9 @@ function finishEmailPhase() {
 // ==========================================
 // ФАЗА 3: ACADEMIC DISCUSSION
 // ==========================================
-function initPhaseAcademic() {
+function initPhaseAcademic(secondsLeft) {
     writingPhase = 'academic';
+    writingTransitionNext = null;
     const essayCount = emailData ? 2 : 1;
     document.getElementById('engine-progress').innerText = `Task ${essayCount} of ${essayCount} (Academic Discussion)`;
     setWritingHeader({
@@ -620,9 +694,11 @@ function initPhaseAcademic() {
     ta.addEventListener('input', () => {
         writingUserAnswers[academicData.id] = ta.value;
         counter.textContent = countWords(ta.value);
+        saveWritingProgress();
     });
     if (typeof lucide !== 'undefined') lucide.createIcons();
-    startWritingPhaseTimer(WRITING_PHASE_MINUTES.academic, finishAcademicPhase);
+    startWritingPhaseTimer(WRITING_PHASE_MINUTES.academic, finishAcademicPhase, secondsLeft);
+    saveWritingProgress();
 }
 
 function finishAcademicPhase() {
@@ -704,37 +780,24 @@ async function saveWritingAttemptAndFinish() {
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
     const responses = buildWritingResponses();
-    let attemptRow = { status: 'pending_review', total_score: null };
-
-    try {
-        const client = writingDb();
-        if (!client) throw new Error('Supabase client is not available');
-        if (!window.currentUser || !window.currentUser.id) throw new Error('Нет авторизованного пользователя');
-
-        const { data: attempt, error: attErr } = await client
-            .from('big_mock_writing_attempts')
-            .insert([{
-                test_id: currentActiveTestId,
-                user_id: window.currentUser.id,
-                total_score: null,
-                status: 'pending_review',
-                completed_at: new Date().toISOString()
-            }])
-            .select()
-            .single();
-        if (attErr) throw attErr;
-        attemptRow = attempt;
-
-        if (responses.length > 0) {
-            const { error: ansErr } = await client
-                .from('big_mock_writing_answers')
-                .insert(responses.map(r => ({ ...r, attempt_id: attempt.id })));
-            if (ansErr) throw ansErr;
-        }
-    } catch (e) {
-        console.error('Error saving Writing attempt:', e);
-        alert('Результат Writing не сохранился.\n\n' + (e.message || e)
-            + '\n\nПокажите это сообщение преподавателю, не закрывая страницу.');
+    const attemptId = mtUuid();
+    const attemptRow = {
+        id: attemptId,
+        test_id: currentActiveTestId,
+        user_id: window.currentUser ? window.currentUser.id : null,
+        total_score: null,
+        status: 'pending_review',
+        completed_at: new Date().toISOString()
+    };
+    const res = await mtSubmit({
+        section: 'writing',
+        attempt: { table: 'big_mock_writing_attempts', row: attemptRow },
+        answers: { table: 'big_mock_writing_answers', rows: responses.map(r => ({ ...r, id: mtUuid(), attempt_id: attemptId })) }
+    });
+    if (!res.ok) {
+        console.error('Error saving Writing attempt:', res.error);
+        alert('Нет связи с сервером — ответы Writing сохранены на этом устройстве и отправятся автоматически, когда интернет вернётся.\n\n'
+            + (res.error && res.error.message ? res.error.message : res.error));
     }
 
     if (!writingSessionAlive(mySession)) return; // ушли со страницы во время сохранения
