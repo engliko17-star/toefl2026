@@ -1220,11 +1220,26 @@
             try { localStorage.setItem(SHOW_TR_KEY, on ? '1' : '0'); } catch (e) {}
         }
 
+        // Словообразование в базе может храниться в разных видах.
+        // Страница раньше понимала только {w, p} и молча прятала блок,
+        // когда данные залили как {word, part} — так у 185 слов формы
+        // были в базе, но не показывались. Теперь принимаем все варианты.
         function parseFamily(raw) {
             if (!raw) return [];
             let arr = raw;
             if (typeof raw === 'string') { try { arr = JSON.parse(raw); } catch (e) { return []; } }
-            return Array.isArray(arr) ? arr.filter(f => f && f.w) : [];
+            if (!Array.isArray(arr)) return [];
+            return arr.map(f => {
+                if (!f) return null;
+                if (typeof f === 'string') {
+                    // вариант «management (n)»
+                    const m = f.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+                    return m ? { w: m[1].trim(), p: m[2].trim() } : { w: f.trim(), p: '' };
+                }
+                const w = f.w || f.word || f.form || '';
+                const p = f.p || f.part || f.pos || f.part_of_speech || '';
+                return w ? { w: String(w), p: String(p) } : null;
+            }).filter(Boolean);
         }
 
         function escText(t) {
