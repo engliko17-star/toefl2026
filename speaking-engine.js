@@ -28,6 +28,37 @@ function speakingDb() {
     return window.supabaseClient || null;
 }
 
+// Прогресс Speaking: попытка уже в базе, записи — тоже, поэтому на устройстве
+// достаточно помнить id попытки. Что уже записано, берём из базы при продолжении.
+function saveSpeakingProgress(nextIndex) {
+    if (window.engineType !== 'speaking' || typeof mtSaveProgress !== 'function' || !speakingAttemptId) return;
+    const scored = speakingItems.filter(it => it.task_type !== 'interview_intro');
+    const nextItem = speakingItems[nextIndex];
+    const num = nextItem ? scored.indexOf(nextItem) + 1 : scored.length;
+    mtSaveProgress('speaking', { attemptId: speakingAttemptId, next: nextIndex },
+        `question ${Math.max(1, num)} of ${scored.length}`);
+}
+
+// Пауза при обрыве связи: запись не теряется, ждём интернет и пробуем снова
+function speakingWaitForRetry(err) {
+    return new Promise((resolve) => {
+        setSpeakingStatus('Connection problem', 'bg-rose-100 text-rose-700 border-rose-200');
+        const content = document.getElementById('engine-content');
+        const box = document.createElement('div');
+        box.id = 'speakingRetryBox';
+        box.className = 'fixed inset-x-0 bottom-6 mx-auto w-[92%] max-w-md bg-white border border-rose-200 rounded-2xl shadow-lg p-5 text-center z-50';
+        box.innerHTML = `
+            <p class="font-bold text-slate-900 mb-1">Не удалось сохранить ответ</p>
+            <p class="text-sm text-slate-500 mb-4">Похоже, пропал интернет. Ваша запись не потеряна — нажмите «Повторить», когда связь вернётся.</p>
+            <p class="text-[11px] text-rose-500 mb-4">${(err && err.message ? err.message : String(err || '')).replace(/</g, '&lt;')}</p>
+            <button class="px-6 py-2.5 bg-slate-900 text-white rounded-xl font-bold text-sm cursor-pointer">Повторить</button>`;
+        (content || document.body).appendChild(box);
+        const done = () => { window.removeEventListener('online', done); box.remove(); resolve(); };
+        box.querySelector('button').onclick = done;
+        window.addEventListener('online', done);
+    });
+}
+
 async function speakingUserId(client) {
     if (window.currentUser && window.currentUser.id) return window.currentUser.id;
     const { data: { session } } = await client.auth.getSession();
@@ -57,7 +88,7 @@ async function fetchAndParseSpeakingTasks(testId) {
 // ==========================================
 // 2. СТАРТ ДВИЖКА (экран разрешения микрофона внутри engine-content)
 // ==========================================
-async function startSpeakingEngine(testId, testTitle) {
+async function startSpeakingEngine(testId, testTitle, resume) {
     window.engineType = 'speaking';
     speakingSessionId++;
     const mySession = speakingSessionId;
@@ -127,10 +158,18 @@ async function startSpeakingEngine(testId, testTitle) {
     }
 
     const btn = document.getElementById('speakingStartBtn');
-    if (btn) { btn.disabled = false; btn.onclick = beginSpeakingSection; }
+    if (resume && resume.attemptId) {
+        // Браузер требует нажатия, чтобы снова включить микрофон
+        const h = document.querySelector('#engine-content h2');
+        const ptxt = document.querySelector('#engine-content p');
+        if (h) h.innerText = 'Continue Speaking';
+        if (ptxt) ptxt.innerText = 'Your recorded answers are saved. Turn the microphone back on to continue from the next question.';
+        if (btn) btn.innerHTML = 'Allow Mic &amp; Continue';
+    }
+    if (btn) { btn.disabled = false; btn.onclick = () => beginSpeakingSection(resume && resume.attemptId ? resume : null); }
 }
 
-async function beginSpeakingSection() {
+async function beginSpeakingSection(resume) {
     const mySession = speakingSessionId;
     const startBtn = document.getElementById('speakingStartBtn');
     if (startBtn && startBtn.disabled) return;
@@ -156,10 +195,28 @@ async function beginSpeakingSection() {
         speakingMediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         if (!speakingAlive(mySession)) { speakingMediaStream.getTracks().forEach(t => t.stop()); return; }
 
+        const client = speakingDb();
+
+        // Продолжение: попытка уже есть — начинаем с первого вопроса без записи
+        if (resume && resume.attemptId) {
+            const { data: done, error: doneErr } = await client
+                .from('big_mock_speaking_answers').select('task_id').eq('attempt_id', resume.attemptId);
+            if (doneErr) throw Object.assign(new Error('Нет связи с сервером: ' + doneErr.message), { name: 'AuthError' });
+            if (!speakingAlive(mySession)) return;
+            speakingAttemptId = resume.attemptId;
+            const answered = new Set((done || []).map(a => String(a.task_id)));
+            let startAt = speakingItems.findIndex(it => it.task_type !== 'interview_intro' && !answered.has(String(it.task_id)));
+            if (startAt === -1) { finishSpeakingSection(); return; }
+            if (startAt > 0 && speakingItems[startAt - 1].task_type === 'interview_intro') startAt--; // сценарий интервью — ещё раз
+            speakingIndex = startAt;
+            saveSpeakingProgress(startAt);
+            loadSpeakingQuestion(startAt);
+            return;
+        }
+
         // Попытка создаётся БЕЗ completed_at: дата появится только когда все
         // ответы записаны. Брошенная попытка так и останется без даты, и
         // карточка теста её не покажет.
-        const client = speakingDb();
         const userId = await speakingUserId(client);
         if (!userId) throw Object.assign(new Error('Сессия истекла — войдите заново.'), { name: 'AuthError' });
         const { data: attemptData, error: attemptError } = await client
@@ -179,6 +236,7 @@ async function beginSpeakingSection() {
         speakingAttemptId = attemptData.id;
 
         speakingIndex = 0;
+        saveSpeakingProgress(0);
         loadSpeakingQuestion(0);
     } catch (err) {
         if (startBtn) startBtn.disabled = false;
@@ -256,6 +314,7 @@ function renderSpeakingScenario(i) {
         if (window.__speakingScenarioDone) return;
         window.__speakingScenarioDone = true;
         speakingIndex++;
+        saveSpeakingProgress(speakingIndex);
         if (speakingIndex < speakingItems.length) loadSpeakingQuestion(speakingIndex);
         else finishSpeakingSection();
     };
@@ -482,48 +541,57 @@ async function stopSpeakingRecording() {
     const itemIndex = speakingIndex;
     const attemptId = speakingAttemptId;
     speakingMediaRecorder.onstop = async () => {
-        try {
-            const client = speakingDb();
-            const mimeType = speakingMediaRecorder.mimeType || speakingRecordingMimeType || 'audio/webm';
-            let fileExt = 'webm';
-            if (mimeType.includes('mp4')) fileExt = 'm4a';
-            else if (mimeType.includes('aac')) fileExt = 'aac';
-            else if (mimeType.includes('ogg')) fileExt = 'ogg';
+        const client = speakingDb();
+        const mimeType = speakingMediaRecorder.mimeType || speakingRecordingMimeType || 'audio/webm';
+        let fileExt = 'webm';
+        if (mimeType.includes('mp4')) fileExt = 'm4a';
+        else if (mimeType.includes('aac')) fileExt = 'aac';
+        else if (mimeType.includes('ogg')) fileExt = 'ogg';
 
-            const currentItem = speakingItems[itemIndex];
-            const blob = new Blob(speakingAudioChunks, { type: mimeType });
-            const userId = await speakingUserId(client);
-            if (!userId) throw new Error('Сессия истекла — запись не сохранена.');
-            const fileName = `${userId}/big_mock_${currentItem.task_type}_item${currentItem.task_id}_${Date.now()}.${fileExt}`;
+        const currentItem = speakingItems[itemIndex];
+        const blob = new Blob(speakingAudioChunks, { type: mimeType });
+        let fileName = null;
+        let uploaded = false;
 
-            const { error: uploadError } = await client.storage
-                .from('student_recordings')
-                .upload(fileName, blob, { contentType: mimeType, upsert: true });
-
-            if (uploadError) {
-                console.error("Upload error:", uploadError);
-                alert("Ошибка загрузки файла в Storage: " + uploadError.message);
-            } else if (attemptId) {
-                const { error: dbError } = await client
-                    .from('big_mock_speaking_answers')
-                    .insert([{
-                        attempt_id: attemptId,
-                        task_id: currentItem.task_id,
-                        task_type: currentItem.task_type,
-                        audio_url: fileName
-                    }]);
-                if (dbError) {
-                    console.error("Database save error:", dbError);
-                    alert("Запись загружена, но не привязана к попытке: " + dbError.message);
+        // Повторяем, пока не получится (или пока ученица не выйдет из секции)
+        for (;;) {
+            try {
+                if (!fileName) {
+                    const userId = await speakingUserId(client);
+                    if (!userId) throw new Error('Сессия истекла — войдите заново.');
+                    fileName = `${userId}/big_mock_${currentItem.task_type}_item${currentItem.task_id}_${Date.now()}.${fileExt}`;
                 }
+                if (!uploaded) {
+                    const { error: uploadError } = await client.storage
+                        .from('student_recordings')
+                        .upload(fileName, blob, { contentType: mimeType, upsert: true });
+                    if (uploadError) throw uploadError;
+                    uploaded = true;
+                }
+                if (attemptId) {
+                    const { error: dbError } = await client
+                        .from('big_mock_speaking_answers')
+                        .insert([{
+                            attempt_id: attemptId,
+                            task_id: currentItem.task_id,
+                            task_type: currentItem.task_type,
+                            audio_url: fileName
+                        }]);
+                    if (dbError) throw dbError;
+                }
+                break;
+            } catch (err) {
+                console.error("Save process error:", err);
+                if (!speakingAlive(mySession)) return;
+                await speakingWaitForRetry(err);
+                if (!speakingAlive(mySession)) return;
+                setSpeakingStatus('Saving to Cloud...', 'bg-amber-100 text-amber-700 border-amber-200');
             }
-        } catch (err) {
-            console.error("Save process error:", err);
-            alert("Критическая ошибка сохранения: " + err.message);
         }
 
         if (!speakingAlive(mySession)) return; // Abort во время загрузки файла
         speakingIndex = itemIndex + 1;
+        saveSpeakingProgress(speakingIndex);
         if (speakingIndex < speakingItems.length) {
             loadSpeakingQuestion(speakingIndex);
         } else {
@@ -543,15 +611,19 @@ async function finishSpeakingSection() {
     try { if (speakingAudioCtx && speakingAudioCtx.state !== 'closed') speakingAudioCtx.close(); } catch (e) {}
     speakingAudioCtx = null;
 
-    const client = speakingDb();
-    if (speakingAttemptId && client) {
-        const { error } = await client
-            .from('big_mock_speaking_attempts')
-            .update({ status: 'pending_review', completed_at: new Date().toISOString() })
-            .eq('id', speakingAttemptId);
-        if (error) {
-            console.error("Ошибка обновления статуса попытки Speaking:", error);
-            alert('Speaking: записи сохранены, но попытка не отмечена как завершённая.\n\n' + error.message + '\n\nПокажите это сообщение преподавателю.');
+    if (speakingAttemptId) {
+        const res = await mtSubmit({
+            section: 'speaking',
+            update: { table: 'big_mock_speaking_attempts', id: speakingAttemptId,
+                      patch: { status: 'pending_review', completed_at: new Date().toISOString() } }
+        });
+        if (!res.ok) {
+            console.error("Ошибка обновления статуса попытки Speaking:", res.error);
+            alert('Все записи Speaking сохранены. Отметка о завершении не дошла до сервера и отправится автоматически, когда интернет вернётся.');
+            if (!speakingAlive(mySession)) return;
+            if (window.fullTestMode && typeof continueFullTestSequence === 'function') { continueFullTestSequence(); return; }
+            exitExamEngine();
+            return;
         }
     }
     if (!speakingAlive(mySession)) return;
