@@ -823,7 +823,10 @@ async function loadListeningReviewMode(attemptId, testId, testTitle) {
             });
         });
 
-        renderListeningReview(attempt.total_score, attempt.score_earned, attempt.score_total);
+        // Колонки называются raw_score и total_questions — в этих же полях
+        // их пишет сохранение. Раньше разбор читал старые имена и показывал
+        // «undefined / undefined».
+        renderListeningReview(attempt.total_score, attempt.raw_score, attempt.total_questions);
 
     } catch (err) {
         console.error("Error loading listening review:", err);
@@ -942,4 +945,4 @@ function renderListeningReview(finalScore, correctAnswers, totalQuestions) {
         </div>
     `;
     lucide.createIcons();
-            }
+}
