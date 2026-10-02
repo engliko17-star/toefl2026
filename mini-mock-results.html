@@ -8,6 +8,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="auth.js"></script>
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -20,8 +21,8 @@
     <!-- Header -->
     <header class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shadow-sm sticky top-0 z-50">
         <div class="flex items-center gap-4">
-            <a href="mini-mock-writing-list.html" class="text-sm font-bold text-gray-400 hover:text-slate-700 transition flex items-center">
-                <i data-lucide="arrow-left" class="w-4 h-4 mr-1"></i> Back to Dashboard
+            <a id="backLink" href="mini-mock-writing-list.html" class="text-sm font-bold text-gray-400 hover:text-slate-700 transition flex items-center">
+                <i data-lucide="arrow-left" class="w-4 h-4 mr-1"></i> <span id="backLabel">Back to Dashboard</span>
             </a>
             <div class="h-4 w-px bg-gray-200"></div>
             <h1 class="text-sm font-bold text-slate-900" id="headerTitle">Simulation Results</h1>
@@ -73,12 +74,30 @@
         const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ'; 
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        let isTeacherView = false;
 
         async function initResults() {
             try {
+                // Проверка входа и роли. Поле для правки показывается только
+                // преподавателю — ученица видит готовый комментарий.
+                const user = typeof requireAuth === 'function' ? await requireAuth() : null;
+                if (typeof requireAuth === 'function' && !user) return;
+                isTeacherView = !!(user && user.role === 'teacher');
+
                 const { data: { session } } = await supabaseClient.auth.getSession();
                 if (!session) return window.location.replace('index.html');
-                
+
+                // Возврат туда, откуда пришли: из CRM — к ученице, иначе в список мини-моков
+                const back = new URLSearchParams(location.search).get('back');
+                if (back) {
+                    const safe = decodeURIComponent(back);
+                    if (/^[a-z0-9_.-]+\.html(\?[^\s]*)?$/i.test(safe)) {
+                        document.getElementById('backLink').href = safe;
+                        document.getElementById('backLabel').innerText =
+                            safe.startsWith('student-profile') ? 'Назад к ученице' : 'Назад';
+                    }
+                }
+
                 document.getElementById('mainBody').classList.remove('opacity-0');
                 
                 const urlParams = new URLSearchParams(window.location.search);
@@ -416,7 +435,7 @@
                             <h3 class="text-xs font-black text-indigo-400 uppercase tracking-wider mb-4 flex items-center">
                                 <i data-lucide="pen-tool" class="w-4 h-4 mr-1.5"></i> Teacher's Correction & Feedback
                             </h3>
-                            ${response.teacher_correction 
+                            ${isTeacherView ? teacherEditorHTML(response) : response.teacher_correction 
                                 ? `<div class="correction-box bg-indigo-50 border border-indigo-100 rounded-xl p-5 text-sm text-indigo-900 leading-relaxed flex-1 shadow-inner">${response.teacher_correction}</div>`
                                 : `<div class="flex-1 border-2 border-dashed border-gray-100 rounded-xl flex items-center justify-center flex-col text-gray-400 p-8 text-center">
                                      <i data-lucide="clock" class="w-8 h-8 mb-2 opacity-50"></i>
