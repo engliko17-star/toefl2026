@@ -58,6 +58,7 @@
     <script src="nav.js"></script>
 
     <main id="main-interface" class="flex-1 p-6 overflow-y-auto bg-[#f8f9fa] h-screen custom-scrollbar relative">
+        <div id="resume-banner" class="max-w-6xl mx-auto"></div>
         <div id="view-tests-grid" class="max-w-6xl mx-auto transition-all duration-300">
             <div class="mb-8">
                 <h1 class="text-3xl font-bold text-slate-900 tracking-tight">Mock Tests</h1>
@@ -158,8 +159,8 @@
     <div id="exam-engine-view" class="fixed inset-0 z-50 bg-[#f8f9fa] flex-col hidden h-screen w-screen">
         <header class="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center shrink-0 shadow-sm relative z-20">
             <div class="flex items-center space-x-4">
-                <button onclick="exitExamEngine()" class="text-gray-400 hover:text-red-600 transition flex items-center text-sm font-bold cursor-pointer group">
-                    <i data-lucide="x-circle" class="w-4 h-4 mr-2 group-hover:scale-110 transition-transform"></i> Abort
+                <button onclick="mtExitClick()" class="text-gray-400 hover:text-red-600 transition flex items-center text-sm font-bold cursor-pointer group">
+                    <i data-lucide="x-circle" class="w-4 h-4 mr-2 group-hover:scale-110 transition-transform"></i> Exit
                 </button>
                 <div class="h-4 w-px bg-gray-200"></div>
                 <h1 id="engine-title" class="text-sm font-bold text-slate-900">Loading...</h1>
@@ -328,6 +329,254 @@
         window.resetEngineHeaderButtons = resetEngineHeaderButtons;
 
         // ==========================================
+        // АВТОСОХРАНЕНИЕ И ПРОДОЛЖЕНИЕ
+        // ==========================================
+        // 1) Прогресс текущей секции пишется в localStorage после каждого
+        //    действия (ответ, слово, текст эссе, каждая секунда таймера).
+        //    Таймер на паузе, пока ученика нет: сохраняется ОСТАТОК времени.
+        // 2) Готовый результат секции сначала кладётся в очередь отправки
+        //    (тоже localStorage), и только потом уходит в базу. Если интернета
+        //    нет — результат не теряется и отправится сам, когда сеть вернётся.
+        //    id попытки и ответов создаются на устройстве, поэтому повторная
+        //    отправка не создаёт дублей (дубль = ошибка 23505 = «уже есть»).
+        // Прогресс привязан к устройству и к ученице (ключ содержит user_id).
+        const MT_SECTION_LABELS = { reading: 'Reading', listening: 'Listening', writing: 'Writing', speaking: 'Speaking' };
+
+        function mtKey(kind) { return `mt_${kind}_v1:${window.currentUser ? window.currentUser.id : 'anon'}`; }
+        function mtRead(kind, fallback) {
+            try { const v = localStorage.getItem(mtKey(kind)); return v ? JSON.parse(v) : fallback; } catch (e) { return fallback; }
+        }
+        function mtWrite(kind, value) {
+            try {
+                if (value === null || value === undefined) localStorage.removeItem(mtKey(kind));
+                else localStorage.setItem(mtKey(kind), JSON.stringify(value));
+                return true;
+            } catch (e) { console.warn('[autosave] localStorage недоступен:', e); return false; }
+        }
+        function mtUuid() {
+            if (window.crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+                const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+            });
+        }
+
+        function mtLoadProgress() { return mtRead('progress', null); }
+
+        // Вызывают движки: section — 'reading'|'listening'|'writing'|'speaking'
+        // или null (экран между секциями Full Test); state — данные движка.
+        function mtSaveProgress(section, state, hint) {
+            if (!window.currentUser || !currentActiveTestId) return;
+            mtWrite('progress', {
+                v: 1,
+                testId: currentActiveTestId,
+                testTitle: window.currentActiveTestTitle || document.getElementById('dynamic-test-title').innerText,
+                testEmoji: document.getElementById('dynamic-emoji-container').innerText || '📝',
+                section,
+                hint: hint || '',
+                state: state || null,
+                fullTest: window.fullTestMode ? {
+                    sequence: window.fullTestSequence,
+                    stepIndex: window.fullTestStepIndex,
+                    skipped: window.fullTestSkipped || []
+                } : null,
+                savedAt: new Date().toISOString()
+            });
+        }
+        function mtClearProgress() { mtWrite('progress', null); }
+        window.mtSaveProgress = mtSaveProgress;
+        window.mtClearProgress = mtClearProgress;
+
+        // ---------- очередь отправки ----------
+        function mtPendingList() { return mtRead('pending', []); }
+        function mtPendingSave(list) { mtWrite('pending', list.length ? list : null); }
+        function mtPendingUpdate(item) {
+            const list = mtPendingList();
+            const i = list.findIndex(x => x.key === item.key);
+            if (i >= 0) list[i] = item; else list.push(item);
+            mtPendingSave(list);
+        }
+        function mtPendingRemove(key) { mtPendingSave(mtPendingList().filter(x => x.key !== key)); }
+
+        const mtIsDuplicate = (err) => err && (err.code === '23505' || /duplicate key/i.test(err.message || ''));
+
+        async function mtSend(item) {
+            if (item.update) {
+                const { error } = await supabaseClient.from(item.update.table).update(item.update.patch).eq('id', item.update.id);
+                if (error) throw error;
+            } else {
+                if (!item.attemptDone) {
+                    const { error } = await supabaseClient.from(item.attempt.table).insert([item.attempt.row]);
+                    if (error && !mtIsDuplicate(error)) throw error;
+                    item.attemptDone = true;
+                    mtPendingUpdate(item);
+                }
+                if (item.answers && item.answers.rows.length && !item.answersDone) {
+                    const { error } = await supabaseClient.from(item.answers.table).insert(item.answers.rows);
+                    if (error && !mtIsDuplicate(error)) throw error;
+                    item.answersDone = true;
+                }
+            }
+            mtPendingRemove(item.key);
+        }
+
+        // Движки вызывают это при завершении секции. Порядок важен: сначала
+        // результат в очередь и прогресс секции стирается, потом сеть.
+        async function mtSubmit(item) {
+            item.key = item.key || mtUuid();
+            item.createdAt = new Date().toISOString();
+            item.testTitle = window.currentActiveTestTitle || '';
+            mtPendingUpdate(item);
+            if (!window.fullTestMode) mtClearProgress();
+            try {
+                await mtSend(item);
+                mtRenderBanner();
+                return { ok: true };
+            } catch (e) {
+                item.lastError = e.message || String(e);
+                mtPendingUpdate(item);
+                mtRenderBanner();
+                return { ok: false, error: e };
+            }
+        }
+        window.mtSubmit = mtSubmit;
+        window.mtUuid = mtUuid;
+
+        let mtFlushing = false;
+        async function mtFlushPending() {
+            if (mtFlushing || !window.currentUser) return;
+            const list = mtPendingList();
+            if (!list.length) return;
+            mtFlushing = true;
+            let sent = 0;
+            for (const item of list) {
+                try { await mtSend(item); sent++; }
+                catch (e) { item.lastError = e.message || String(e); mtPendingUpdate(item); }
+            }
+            mtFlushing = false;
+            mtRenderBanner();
+            if (sent && currentActiveTestId && !window.engineType && !document.getElementById('view-test-detail').classList.contains('hidden')) {
+                openTestView(currentActiveTestId, document.getElementById('dynamic-test-title').innerText, document.getElementById('dynamic-emoji-container').innerText);
+            }
+        }
+        window.addEventListener('online', () => { mtFlushPending(); });
+
+        // ---------- баннер ----------
+        function mtRenderBanner() {
+            const el = document.getElementById('resume-banner');
+            if (!el || !window.currentUser) return;
+            let html = '';
+            const p = mtLoadProgress();
+            if (p) {
+                const t = new Date(p.savedAt);
+                const when = isNaN(t) ? '' : t.toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+                const what = p.section
+                    ? `${MT_SECTION_LABELS[p.section] || p.section}${p.hint ? ' · ' + mtEsc(p.hint) : ''}`
+                    : 'перерыв между секциями';
+                html += `
+                    <div class="bg-indigo-50 border border-indigo-200 rounded-2xl p-5 mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-2xl border border-indigo-100 shrink-0">${mtEsc(p.testEmoji || '📝')}</div>
+                            <div>
+                                <p class="text-[10px] font-bold text-indigo-500 uppercase tracking-wider mb-0.5">Unfinished ${p.fullTest ? 'Full Test' : 'section'}</p>
+                                <p class="font-bold text-slate-900">${mtEsc(p.testTitle)} — ${what}</p>
+                                <p class="text-xs text-slate-500 mt-0.5">Saved ${when}. You will continue exactly where you stopped.</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-3 shrink-0">
+                            <button onclick="mtDiscardProgress()" class="px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-slate-600 text-sm font-bold hover:bg-slate-50 transition cursor-pointer">Start over</button>
+                            <button id="mtResumeBtn" onclick="mtResume()" class="px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition shadow-sm cursor-pointer flex items-center">Continue <i data-lucide="arrow-right" class="w-4 h-4 ml-1.5"></i></button>
+                        </div>
+                    </div>`;
+            }
+            const pending = mtPendingList();
+            if (pending.length) {
+                const names = pending.map(x => `${mtEsc(x.testTitle || '')} ${MT_SECTION_LABELS[x.section] || ''}`.trim()).join(', ');
+                const err = pending.find(x => x.lastError);
+                html += `
+                    <div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-6 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                        <div>
+                            <p class="font-bold text-amber-900 text-sm">Results waiting to be sent: ${names}</p>
+                            <p class="text-xs text-amber-800 mt-0.5">They are saved on this device and will be sent automatically when the connection is back.${err ? ' Last error: ' + mtEsc(err.lastError) : ''}</p>
+                        </div>
+                        <button onclick="mtFlushPending()" class="px-4 py-2 rounded-xl bg-amber-600 text-white text-sm font-bold hover:bg-amber-700 transition shrink-0 cursor-pointer">Send now</button>
+                    </div>`;
+            }
+            el.innerHTML = html;
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+        window.mtRenderBanner = mtRenderBanner;
+
+        function mtDiscardProgress() {
+            if (!confirm('Удалить сохранённый прогресс и начать эту секцию заново?')) return;
+            mtClearProgress();
+            mtRenderBanner();
+        }
+
+        // ---------- продолжение ----------
+        function mtResume() {
+            const p = mtLoadProgress();
+            if (!p) { mtRenderBanner(); return; }
+            unlockGlobalAudio();
+            currentActiveTestId = p.testId;
+            window.currentActiveTestTitle = p.testTitle;
+            document.getElementById('dynamic-test-title').innerText = p.testTitle;
+            document.getElementById('dynamic-emoji-container').innerText = p.testEmoji || '📝';
+            if (p.fullTest) {
+                window.fullTestMode = true;
+                window.fullTestSequence = p.fullTest.sequence;
+                window.fullTestStepIndex = p.fullTest.stepIndex;
+                window.fullTestSkipped = p.fullTest.skipped || [];
+            } else {
+                window.fullTestMode = false;
+            }
+            if (!p.section) { showFullTestSectionTransition(false); return; }
+            const starters = { reading: 'startExamEngine', listening: 'startListeningEngine', writing: 'startWritingEngine', speaking: 'startSpeakingEngine' };
+            const fn = window[starters[p.section]];
+            if (fn) fn(p.testId, p.testTitle, p.state || {});
+        }
+
+        // Старт секции с карточки: если есть незаконченная — спрашиваем
+        function mtStartSection(fnName, testId, title) {
+            const p = mtLoadProgress();
+            if (p) {
+                const same = String(p.testId) === String(testId) && p.section && starterName(p.section) === fnName && !p.fullTest;
+                if (same) {
+                    if (confirm('Эта секция уже начата. Продолжить с сохранённого места?\n\nОК — продолжить, Отмена — выбрать «начать заново».')) { mtResume(); return; }
+                    if (!confirm('Начать секцию заново? Сохранённые ответы будут удалены.')) return;
+                } else {
+                    const what = `${p.testTitle} — ${p.section ? (MT_SECTION_LABELS[p.section] || p.section) : 'Full Test'}`;
+                    if (!confirm(`У вас есть незаконченная секция: ${what}.\n\nНачать новую? Сохранённый прогресс будет удалён.`)) return;
+                }
+                mtClearProgress();
+            }
+            unlockGlobalAudio();
+            const fn = window[fnName];
+            if (typeof fn !== 'function') return;
+            fn(testId, title);
+        }
+        function starterName(section) {
+            return { reading: 'startExamEngine', listening: 'startListeningEngine', writing: 'startWritingEngine', speaking: 'startSpeakingEngine' }[section];
+        }
+
+        // Exit во время теста = пауза: ответы уже сохранены на устройстве
+        function mtExitClick() {
+            const inProgress = !!window.engineType && !!mtLoadProgress();
+            const msg = inProgress
+                ? 'Выйти из теста?\n\nВаши ответы сохранены — вы сможете продолжить с этого же места (кнопка Continue на странице тестов).'
+                : 'Выйти из теста?';
+            if (!confirm(msg)) return;
+            exitExamEngine();
+        }
+
+        // Случайная перезагрузка/закрытие вкладки во время теста — браузер переспросит
+        window.addEventListener('beforeunload', (e) => {
+            if (window.engineType && document.getElementById('exam-engine-view').classList.contains('flex')) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+
+        // ==========================================
         // ПОСЛЕДНЯЯ ПОПЫТКА ПО СЕКЦИИ
         // Одна функция для карточек секций И для общего балла — раньше это были
         // два разных запроса с разными фильтрами, и они расходились.
@@ -409,6 +658,14 @@
 
         function startFullTest(testId, testTitle) {
             if (!testId) return;
+            const existing = mtLoadProgress();
+            if (existing) {
+                if (existing.fullTest && String(existing.testId) === String(testId)) {
+                    if (confirm('Full Test уже начат. Продолжить с сохранённого места?\n\nОК — продолжить, Отмена — начать заново.')) { mtResume(); return; }
+                }
+                if (!confirm('Начать Full Test заново? Сохранённый прогресс будет удалён.')) return;
+                mtClearProgress();
+            }
             unlockGlobalAudio();
             window.fullTestMode = true;
             window.fullTestSequence = ['reading', 'listening', 'writing', 'speaking'];
@@ -440,6 +697,7 @@
             const sequence = window.fullTestSequence || [];
             if (opts && opts.skipped) (window.fullTestSkipped = window.fullTestSkipped || []).push(sequence[window.fullTestStepIndex]);
             window.fullTestStepIndex++;
+            mtSaveProgress(null, null, 'between sections'); // перезагрузка здесь вернёт на этот же экран
             showFullTestSectionTransition(!!(opts && opts.skipped));
         }
 
@@ -496,6 +754,7 @@
             document.getElementById('fullTestContinueBtn').onclick = async () => {
                 if (isDone) {
                     window.fullTestMode = false;
+                    mtClearProgress();
                     // Если это был гость — фиксируем, что бесплатная попытка использована
                     if (window.currentUser && window.currentUser.role === 'guest') {
                         try {
@@ -626,7 +885,7 @@
             if (myToken !== mtOpenTestViewToken) return; // пока ждали — открыли другой тест
 
             const startBtn = (sec) => `
-                <button onclick="unlockGlobalAudio(); ${sec.startFn}(${mtJsArg(testId)}, ${mtJsArg(title)})" class="w-full text-center py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition text-sm flex items-center justify-center shadow-xs">
+                <button onclick="mtStartSection('${sec.startFn}', ${mtJsArg(testId)}, ${mtJsArg(title)})" class="w-full text-center py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition text-sm flex items-center justify-center shadow-xs">
                     Start Section <i data-lucide="arrow-right" class="w-4 h-4 ml-1.5"></i>
                 </button>`;
 
@@ -654,7 +913,7 @@
                             <button onclick="${sec.reviewFn}(${mtJsArg(attempt.id)}, ${mtJsArg(testId)}, ${mtJsArg(title)})" class="flex-1 py-2.5 bg-white border border-gray-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition text-sm flex items-center justify-center shadow-xs">
                                 <i data-lucide="search" class="w-4 h-4 mr-1.5"></i> Review
                             </button>
-                            <button onclick="unlockGlobalAudio(); ${sec.startFn}(${mtJsArg(testId)}, ${mtJsArg(title)})" class="flex-1 py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition text-sm flex items-center justify-center shadow-xs">
+                            <button onclick="mtStartSection('${sec.startFn}', ${mtJsArg(testId)}, ${mtJsArg(title)})" class="flex-1 py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition text-sm flex items-center justify-center shadow-xs">
                                 Retake <i data-lucide="rotate-cw" class="w-4 h-4 ml-1.5"></i>
                             </button>
                         `;
@@ -749,6 +1008,7 @@
             document.getElementById('main-interface').classList.remove('hidden');
             window.engineType = null;
             resetEngineHeaderButtons();
+            mtRenderBanner();
 
             if (currentActiveTestId) {
                 openTestView(currentActiveTestId, document.getElementById('dynamic-test-title').innerText, document.getElementById('dynamic-emoji-container').innerText);
@@ -776,6 +1036,8 @@
                     });
                 }
 
+                mtRenderBanner();
+                mtFlushPending();
                 loadTestsGrid();
             } catch (err) {
                 console.error("Auth error on tests.html:", err);
