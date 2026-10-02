@@ -76,6 +76,32 @@ let isProcessingNextStep = false;
 let listeningSessionId = 0;
 function listeningAlive(id) { return id === listeningSessionId && window.engineType === 'listening'; }
 
+// ---- Автосохранение (см. mtSaveProgress в tests.html) ----
+let listeningSubmitting = false;     // после начала сохранения прогресс больше не пишем
+let listResumeQuestionTime = null;   // остаток таймера вопроса при продолжении
+
+function saveListeningProgress() {
+    if (window.engineType !== 'listening' || typeof mtSaveProgress !== 'function') return;
+    if (!listQueue.length || listeningSubmitting) return;
+    const stages = ['1'];
+    const s2 = listQueue.find(b => String(b.stage).startsWith('2'));
+    if (s2) stages.push(String(s2.stage));
+    const total = listQueue.reduce((n, b) => n + b.questions.length, 0);
+    let passed = 0;
+    for (let i = 0; i < listBlockIdx; i++) passed += listQueue[i].questions.length;
+    const hint = listPhase === 'transition' ? 'Module 2 is ready'
+        : (listPhase === 'audio' ? `audio before question ${passed + 1} of ${total}` : `question ${passed + listSubQIdx + 1} of ${total}`);
+    mtSaveProgress('listening', {
+        stages,
+        count: listQueue.length,
+        answers: listUserAnswers,
+        block: listBlockIdx,
+        sub: listSubQIdx,
+        phase: listPhase,
+        qtime: (listPhase === 'questions' && listQuestionTimerInterval) ? listQuestionTimeRemaining : null
+    }, hint);
+}
+
 // ==========================================
 // ШКАЛА БАЛЛА LISTENING — та же, что в Reading
 //
@@ -148,6 +174,7 @@ function startQuestionTimer(duration) {
         if (!listeningAlive(mySession)) { stopQuestionTimer(); return; }
         listQuestionTimeRemaining--;
         updateDisplay();
+        saveListeningProgress();
         
         // Когда остается 5 секунд или меньше - таймер становится красным и пульсирует
         if (listQuestionTimeRemaining <= 5 && listQuestionTimeRemaining > 0) {
@@ -248,7 +275,7 @@ async function fetchAndParseListeningTasks(testId, stageName) {
 }
 
 // 2. Старт движка
-async function startListeningEngine(testId, testTitle) {
+async function startListeningEngine(testId, testTitle, resume) {
     window.engineType = 'listening';
     listeningSessionId++;
     const mySession = listeningSessionId;
@@ -283,10 +310,32 @@ async function startListeningEngine(testId, testTitle) {
     currentActiveTestId = testId;
     window.currentActiveTestTitle = testTitle;
     
+    listeningSubmitting = false;
+    listResumeQuestionTime = null;
     try {
-        const loaded = await fetchAndParseListeningTasks(testId, '1');
+        let loaded = await fetchAndParseListeningTasks(testId, '1');
+        if (resume && resume.stages && resume.stages[1]) {
+            loaded = loaded.concat(await fetchAndParseListeningTasks(testId, resume.stages[1]));
+        }
         if (!listeningAlive(mySession)) return; // нажали Abort во время загрузки
         listQueue = loaded;
+
+        if (resume && resume.answers) {
+            if (resume.count !== listQueue.length) {
+                alert('Состав теста изменился с момента сохранения — секцию придётся начать заново.');
+                if (typeof mtClearProgress === 'function') mtClearProgress();
+                listQueue = listQueue.filter(b => b.stage === '1');
+            } else {
+                listUserAnswers = Object.assign({}, resume.answers);
+                listBlockIdx = Math.min(Math.max(0, resume.block || 0), listQueue.length - 1);
+                listSubQIdx = Math.max(0, resume.sub || 0);
+                listPhase = resume.phase || (listQueue[listBlockIdx].block_type === 'response' ? 'questions' : 'audio');
+                if (listPhase === 'questions' && resume.qtime) listResumeQuestionTime = resume.qtime;
+                document.getElementById('engine-title').innerText = `Listening Section — ${testTitle}`;
+                renderListeningEngine();
+                return;
+            }
+        }
 
         if (listQueue.length === 0) {
             const msg = "В этом тесте нет заданий Listening (full_test_listening_tasks, stage = '1').";
@@ -369,6 +418,7 @@ function renderListeningEngine() {
         document.getElementById('engine-progress').innerText = "Module 2 Ready";
         nextBtn.style.display = 'none';
         lucide.createIcons();
+        saveListeningProgress();
         return;
     } else {
         nextBtn.style.display = 'flex';
@@ -385,11 +435,13 @@ function renderListeningEngine() {
         } else {
             contentDiv.innerHTML = getListStandardQuestionsHTML(block, listSubQIdx);
             
-            const duration = getQuestionTimerDuration(block);
+            const duration = listResumeQuestionTime || getQuestionTimerDuration(block);
+            listResumeQuestionTime = null;
             startQuestionTimer(duration);
         }
     }
     lucide.createIcons();
+    saveListeningProgress();
 }
 
 function getListResponseHTML(question, qIdx, totalInBlock) {
@@ -687,6 +739,12 @@ async function handleListeningNextStep() {
                 const mySession = listeningSessionId;
                 const loaded = await loadListeningStage2();
                 if (!listeningAlive(mySession)) return;
+                if (loaded === 'error') {
+                    const nb = document.getElementById('engine-next');
+                    if (nb) { nb.disabled = false; nb.innerHTML = 'Next <i data-lucide="chevron-right" class="w-4 h-4 ml-1"></i>'; lucide.createIcons(); }
+                    alert('Не удалось загрузить Модуль 2 — нет связи с сервером.\n\nОтветы сохранены. Проверьте интернет и нажмите Next ещё раз.');
+                    return;
+                }
                 if (loaded) {
                     listBlockIdx++;
                     listSubQIdx = 0;
@@ -730,7 +788,7 @@ async function loadListeningStage2() {
             listQueue = listQueue.concat(stage2Blocks);
             return true; 
         }
-    } catch(e) { console.error("Error loading Listening Stage 2:", e); }
+    } catch(e) { console.error("Error loading Listening Stage 2:", e); return 'error'; }
     return false;
 }
 
@@ -765,69 +823,46 @@ async function saveListeningAttemptAndFinish() {
     const correctAnswers = result.correct;
     const totalQuestions = result.total;
 
-    try {
-        const client = supabaseClient;
-        if (client) {
-            let userId = window.currentUser && window.currentUser.id;
-            if (!userId) {
-                const { data: { session } } = await client.auth.getSession();
-                userId = session && session.user ? session.user.id : null;
-            }
-            if (!userId) throw new Error('Сессия истекла — войдите заново и пройдите секцию ещё раз.');
-            {
-                const { data: attempt, error: attemptErr } = await client
-                    .from('big_mock_listening_attempts')
-                    .insert([{ 
-                        test_id: currentActiveTestId, 
-                        user_id: userId,
-                        total_score: finalCalculatedScore, 
-                        // В таблице колонки называются raw_score и total_questions.
-                        // Раньше сюда слались score_earned/score_total — база
-                        // отклоняла вставку, и результат Listening НЕ сохранялся.
-                        raw_score: correctAnswers,
-                        total_questions: totalQuestions,
-                        status: 'completed',
-                        completed_at: new Date().toISOString()
-                    }])
-                    .select()
-                    .single();
+    listeningSubmitting = true;
+    const attemptId = mtUuid();
+    const answersToSave = listQueue.flatMap(block => block.questions.map(q => {
+        const correctIdx = getCorrectIndex(q);
+        // В таблице четыре поля: attempt_id, task_id (text), user_answer (jsonb),
+        // is_correct. Всё нужное для разбора лежит внутри user_answer.
+        return {
+            id: mtUuid(),
+            attempt_id: attemptId,
+            task_id: String(block.db_id),
+            user_answer: {
+                question_id: q.id,
+                unique_id: q.uniqueId,
+                question_text: q.text,
+                task_type: block.block_type,
+                stage: block.stage,
+                choice_index: listUserAnswers[q.uniqueId] !== undefined ? listUserAnswers[q.uniqueId] : null
+            },
+            is_correct: listUserAnswers[q.uniqueId] === correctIdx
+        };
+    }));
 
-                if (attemptErr) throw attemptErr;
-
-                const answersToSave = listQueue.flatMap(block => {
-                    return block.questions.map(q => {
-                        const correctIdx = getCorrectIndex(q);
-                        // В таблице всего четыре поля: attempt_id, task_id,
-                        // user_answer (jsonb) и is_correct. Раньше движок слал
-                        // task_type, answer_json и user_choice_index — таких
-                        // колонок нет, и ответы не сохранялись вовсе.
-                        // Всё, что нужно для разбора, кладём внутрь user_answer.
-                        return {
-                            attempt_id: attempt.id,
-                            task_id: String(block.db_id),   // колонка text: номер задания строкой
-                            user_answer: {
-                                question_id: q.id,
-                                unique_id: q.uniqueId,
-                                question_text: q.text,
-                                task_type: block.block_type,
-                                stage: block.stage,
-                                choice_index: listUserAnswers[q.uniqueId] !== undefined ? listUserAnswers[q.uniqueId] : null
-                            },
-                            is_correct: listUserAnswers[q.uniqueId] === correctIdx
-                        };
-                    });
-                });
-
-                const { error: answersErr } = await client.from('big_mock_listening_answers').insert(answersToSave);
-                if (answersErr) throw answersErr;
-            }
-        }
-    } catch(e) {
-        // Раньше ошибка уходила только в консоль: тест выглядел завершённым,
-        // а результата в базе не появлялось.
-        console.error("Error saving Listening test:", e);
-        alert('Результат Listening не сохранился.\n\n' + (e.message || e)
-            + '\n\nПокажите это сообщение преподавателю, не закрывая страницу.');
+    const res = await mtSubmit({
+        section: 'listening',
+        attempt: { table: 'big_mock_listening_attempts', row: {
+            id: attemptId,
+            test_id: currentActiveTestId,
+            user_id: window.currentUser.id,
+            total_score: finalCalculatedScore,
+            raw_score: correctAnswers,
+            total_questions: totalQuestions,
+            status: 'completed',
+            completed_at: new Date().toISOString()
+        } },
+        answers: { table: 'big_mock_listening_answers', rows: answersToSave }
+    });
+    if (!res.ok) {
+        console.error("Error saving Listening test:", res.error);
+        alert('Нет связи с сервером — результат Listening сохранён на этом устройстве и отправится автоматически, когда интернет вернётся.\n\n'
+            + (res.error && res.error.message ? res.error.message : res.error));
     }
 
     if (!listeningAlive(saveSession)) return;
