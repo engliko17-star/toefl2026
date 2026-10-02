@@ -201,7 +201,9 @@
     <script src="speaking-engine.js"></script>
 
     <script>
-        // ГЛОБАЛЬНЫЙ РОУТЕР
+        // ==========================================
+        // ГЛОБАЛЬНЫЙ РОУТЕР кнопок хедера
+        // ==========================================
         function globalNext() {
             if (window.engineType === 'reading') {
                 if (typeof nextTask === 'function') nextTask();
@@ -230,70 +232,159 @@
             }
         }
 
+        // ==========================================
+        // ОБЩИЕ ПОМОЩНИКИ
+        // ==========================================
+        function mtEsc(s) {
+            return String(s === null || s === undefined ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+        // Строка как JS-литерал внутри onclick="...": безопасна для любых кавычек в названии
+        function mtJsArg(s) {
+            return mtEsc(JSON.stringify(String(s === null || s === undefined ? '' : s)));
+        }
+
+        // Номер «сессии движка». Каждый старт секции и каждый выход его меняют.
+        // Движки запоминают номер перед await и после await проверяют, что он
+        // тот же: иначе ученица уже нажала Abort, и продолжать (запускать
+        // таймер, рисовать экран, сохранять попытку) нельзя.
+        window.examSessionId = 0;
+        function beginExamSession() { window.examSessionId++; return window.examSessionId; }
+        function isExamSessionActive(id) { return id === window.examSessionId; }
+        window.beginExamSession = beginExamSession;
+        window.isExamSessionActive = isExamSessionActive;
+
+        // iOS/Safari разрешает звук только если play() вызван прямо в обработчике
+        // нажатия. Секции стартуют после загрузки из базы (это уже не «нажатие»),
+        // поэтому «разблокируем» общий audio-элемент синхронно в момент клика.
+        const MT_SILENT_WAV = 'data:audio/wav;base64,UklGRnQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVAAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==';
+        function unlockGlobalAudio() {
+            const a = document.getElementById('globalAudio');
+            if (!a || a.dataset.unlocked === '1') return;
+            // Safari засчитывает «разблокировку», только если элементу есть что играть,
+            // поэтому подставляем 10 мс тишины (если сейчас у него нет своего источника).
+            const hadSrc = !!a.getAttribute('src');
+            try {
+                if (!hadSrc) a.src = MT_SILENT_WAV;
+                a.muted = true;
+                const p = a.play();
+                const done = () => {
+                    try { a.pause(); } catch (e) {}
+                    a.muted = false;
+                    a.dataset.unlocked = '1';
+                    if (!hadSrc && a.src === MT_SILENT_WAV) { a.removeAttribute('src'); try { a.load(); } catch (e) {} }
+                };
+                if (p && typeof p.then === 'function') p.then(done).catch(() => { a.muted = false; });
+                else done();
+            } catch (e) { a.muted = false; }
+        }
+        window.unlockGlobalAudio = unlockGlobalAudio;
+
+        // Секция без заданий: в обычном режиме — сообщение и выход,
+        // в режиме Full Test — пропускаем её и идём дальше, а не обрываем весь тест.
+        function handleEmptySection(sectionLabel, message) {
+            if (window.fullTestMode && typeof continueFullTestSequence === 'function') {
+                alert(message + '\n\nСекция ' + sectionLabel + ' будет пропущена.');
+                continueFullTestSequence({ skipped: true });
+            } else {
+                alert(message);
+                exitExamEngine();
+            }
+        }
+        window.handleEmptySection = handleEmptySection;
+
+        // Исходный вид кнопок хедера (Listening перекрашивает их в зелёный,
+        // таймер — в красный мигающий). Запоминаем, чтобы вернуть.
+        const MT_DEFAULT_HEADER_CLASSES = {
+            next: document.getElementById('engine-next').className,
+            prev: document.getElementById('engine-prev').className,
+            timer: document.getElementById('engine-timer-container').className
+        };
+
         // Приводит кнопки хедера (Review/Back/Next/таймер) к дефолтному видимому
-        // состоянию. Нужно вызывать в начале КАЖДОГО startXEngine(), иначе состояние
-        // от предыдущей секции (например, Speaking или Writing/Email прячут Back)
-        // "утекает" в следующую, даже если та ничего подобного не ожидает.
+        // состоянию. Вызывается в начале КАЖДОГО startXEngine(), иначе состояние
+        // от предыдущей секции «утекает» в следующую.
         function resetEngineHeaderButtons() {
             const reviewBtn = document.getElementById('engine-review');
             const prevBtn = document.getElementById('engine-prev');
             const nextBtn = document.getElementById('engine-next');
             const timerContainer = document.getElementById('engine-timer-container');
-            if (reviewBtn) reviewBtn.classList.add('hidden');
-            if (prevBtn) { prevBtn.style.display = 'flex'; prevBtn.disabled = false; }
+            const timerText = document.getElementById('engine-timer');
+            if (reviewBtn) { reviewBtn.classList.add('hidden'); reviewBtn.classList.remove('flex'); }
+            if (prevBtn) { prevBtn.className = MT_DEFAULT_HEADER_CLASSES.prev; prevBtn.style.display = 'flex'; prevBtn.disabled = false; }
             if (nextBtn) {
+                nextBtn.className = MT_DEFAULT_HEADER_CLASSES.next;
                 nextBtn.style.display = 'flex';
                 nextBtn.disabled = false;
                 nextBtn.innerHTML = 'Next <i data-lucide="chevron-right" class="w-4 h-4 ml-1"></i>';
             }
-            if (timerContainer) timerContainer.classList.remove('hidden');
+            if (timerContainer) timerContainer.className = MT_DEFAULT_HEADER_CLASSES.timer;
+            if (timerText) timerText.textContent = '--:--';
+            const progress = document.getElementById('engine-progress');
+            if (progress) progress.innerText = '';
             if (typeof lucide !== 'undefined') lucide.createIcons();
         }
         window.resetEngineHeaderButtons = resetEngineHeaderButtons;
 
         // ==========================================
-        // ОБЩИЙ БАЛЛ (агрегирует последние попытки по всем 4 секциям)
-        // Reading/Listening — считаются автоматически.
-        // Writing — Sentence автоматически, Email/Academic вручную учителем
-        //           (поэтому итог по Writing "pending" пока учитель не проверит).
-        // Speaking — целиком вручную учителем.
+        // ПОСЛЕДНЯЯ ПОПЫТКА ПО СЕКЦИИ
+        // Одна функция для карточек секций И для общего балла — раньше это были
+        // два разных запроса с разными фильтрами, и они расходились.
         // ==========================================
-        async function computeOverallScore(testId) {
-            const sectionTables = [
-                { name: 'reading', table: 'big_mock_attempts', extraFilter: { section_name: 'reading' } },
-                { name: 'listening', table: 'big_mock_listening_attempts' },
-                { name: 'writing', table: 'big_mock_writing_attempts' },
-                { name: 'speaking', table: 'big_mock_speaking_attempts' }
-            ];
+        const MT_SECTION_TABLES = {
+            reading:   { table: 'big_mock_attempts', extra: { section_name: 'reading' } },
+            listening: { table: 'big_mock_listening_attempts' },
+            writing:   { table: 'big_mock_writing_attempts' },
+            speaking:  { table: 'big_mock_speaking_attempts' }
+        };
+        const MT_FINISHED_STATUSES = ['completed', 'pending_review', 'reviewed'];
 
-            // Все 4 запроса идут ПАРАЛЛЕЛЬНО (Promise.all), а не по очереди —
-            // иначе общее время ожидания складывается из всех четырёх задержек сети,
-            // и бейдж кажется "зависшим", пока не помогает только перезагрузка страницы.
-            const results = await Promise.all(sectionTables.map(async (sec) => {
-                try {
-                    let query = supabaseClient.from(sec.table).select('total_score, status')
-                        .eq('test_id', testId).eq('user_id', window.currentUser.id)
-                        .order('completed_at', { ascending: false }).limit(1);
-                    if (sec.extraFilter) {
-                        Object.entries(sec.extraFilter).forEach(([k, v]) => { query = query.eq(k, v); });
-                    }
-                    const { data } = await query;
-                    return { name: sec.name, value: (data && data.length > 0) ? data[0] : null };
-                } catch (e) {
-                    return { name: sec.name, value: null };
-                }
-            }));
+        async function mtFetchLatestAttempt(sectionName, testId) {
+            const cfg = MT_SECTION_TABLES[sectionName];
+            if (!cfg || !window.currentUser) return null;
+            let query = supabaseClient.from(cfg.table).select('*')
+                .eq('test_id', testId)
+                .eq('user_id', window.currentUser.id)
+                .in('status', MT_FINISHED_STATUSES)
+                // Брошенная на середине попытка Speaking создаётся заранее и
+                // остаётся без completed_at. В сортировке по убыванию NULL идёт
+                // ПЕРВЫМ, и такая попытка закрывала собой настоящую.
+                .not('completed_at', 'is', null)
+                .order('completed_at', { ascending: false })
+                .limit(1);
+            if (cfg.extra) Object.entries(cfg.extra).forEach(([k, v]) => { query = query.eq(k, v); });
+            const { data, error } = await query;
+            if (error) throw error;
+            return (data && data.length > 0) ? data[0] : null;
+        }
 
-            const scores = {};
-            results.forEach(r => { scores[r.name] = r.value; });
+        // ==========================================
+        // ОБЩИЙ БАЛЛ: среднее по секциям, округлённое до 0.5 (как у ETS)
+        // ==========================================
+        function mtRoundToHalf(x) { return Math.round(x * 2) / 2; }
 
-            const attempted = Object.values(scores).filter(s => s !== null);
-            const graded = attempted.filter(s => s.total_score !== null && s.total_score !== undefined);
-            const overall = graded.length > 0
+        function mtSummarizeOverall(scores) {
+            const attempted = Object.values(scores).filter(s => s !== null && s !== undefined);
+            const graded = attempted.filter(s => s.total_score !== null && s.total_score !== undefined && !isNaN(parseFloat(s.total_score)));
+            const avg = graded.length > 0
                 ? graded.reduce((sum, s) => sum + parseFloat(s.total_score), 0) / graded.length
                 : null;
+            return {
+                scores,
+                attemptedCount: attempted.length,
+                gradedCount: graded.length,
+                overall: avg === null ? null : mtRoundToHalf(avg),
+                rawAverage: avg
+            };
+        }
 
-            return { scores, attemptedCount: attempted.length, gradedCount: graded.length, overall };
+        async function computeOverallScore(testId) {
+            const names = Object.keys(MT_SECTION_TABLES);
+            const values = await Promise.all(names.map(n => mtFetchLatestAttempt(n, testId).catch(() => null)));
+            const scores = {};
+            names.forEach((n, i) => { scores[n] = values[i]; });
+            return mtSummarizeOverall(scores);
         }
 
         function renderOverallScoreBadge(result, size) {
@@ -317,19 +408,23 @@
         window.fullTestMode = false;
 
         function startFullTest(testId, testTitle) {
+            if (!testId) return;
+            unlockGlobalAudio();
             window.fullTestMode = true;
             window.fullTestSequence = ['reading', 'listening', 'writing', 'speaking'];
             window.fullTestStepIndex = 0;
-            window.currentActiveTestId = testId;
+            window.fullTestSkipped = [];
+            currentActiveTestId = testId;
             window.currentActiveTestTitle = testTitle;
             runNextFullTestSection();
         }
 
         function runNextFullTestSection() {
             const sequence = window.fullTestSequence || [];
-            const testId = window.currentActiveTestId;
+            const testId = currentActiveTestId;
             const testTitle = window.currentActiveTestTitle;
             const section = sequence[window.fullTestStepIndex];
+            unlockGlobalAudio();
 
             if (section === 'reading' && typeof startExamEngine === 'function') startExamEngine(testId, testTitle);
             else if (section === 'listening' && typeof startListeningEngine === 'function') startListeningEngine(testId, testTitle);
@@ -339,25 +434,25 @@
 
         // Вызывается ИЗ каждого движка (вместо показа собственного экрана результатов),
         // когда идёт прохождение Full Test целиком, а не отдельной секции.
-        function continueFullTestSequence() {
+        function continueFullTestSequence(opts) {
+            if (!window.fullTestMode) return;
+            beginExamSession(); // старая секция больше не должна ничего рисовать
+            const sequence = window.fullTestSequence || [];
+            if (opts && opts.skipped) (window.fullTestSkipped = window.fullTestSkipped || []).push(sequence[window.fullTestStepIndex]);
             window.fullTestStepIndex++;
-            showFullTestSectionTransition();
+            showFullTestSectionTransition(!!(opts && opts.skipped));
         }
 
-        function showFullTestSectionTransition() {
+        function showFullTestSectionTransition(lastWasSkipped) {
             const sequence = window.fullTestSequence || [];
             const nextIndex = window.fullTestStepIndex;
             const isDone = nextIndex >= sequence.length;
 
-            const labels = {
-                reading: { name: 'Reading' },
-                listening: { name: 'Listening' },
-                writing: { name: 'Writing' },
-                speaking: { name: 'Speaking' }
-            };
-            const justFinished = labels[sequence[nextIndex - 1]] || { name: 'Section' };
+            const labels = { reading: 'Reading', listening: 'Listening', writing: 'Writing', speaking: 'Speaking' };
+            const justFinished = labels[sequence[nextIndex - 1]] || 'Section';
             const upNext = isDone ? null : labels[sequence[nextIndex]];
 
+            window.engineType = null;
             document.getElementById('engine-title').innerText = 'Full Test';
             const reviewBtn = document.getElementById('engine-review');
             const prevBtn = document.getElementById('engine-prev');
@@ -375,19 +470,24 @@
             document.getElementById('results-view').classList.remove('flex');
             document.getElementById('main-interface').classList.add('hidden');
 
+            const skippedNote = (window.fullTestSkipped && window.fullTestSkipped.length && isDone)
+                ? `<br><span class="text-amber-600">Skipped (no tasks configured): ${window.fullTestSkipped.map(s => labels[s]).join(', ')}.</span>`
+                : '';
+
             document.getElementById('engine-content').innerHTML = `
                 <div class="m-auto text-center max-w-md p-6">
-                    <div class="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <i data-lucide="check-circle-2" class="w-8 h-8"></i>
+                    <div class="w-16 h-16 ${lastWasSkipped ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'} rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i data-lucide="${lastWasSkipped ? 'skip-forward' : 'check-circle-2'}" class="w-8 h-8"></i>
                     </div>
-                    <h2 class="text-2xl font-bold text-slate-900 mb-2">${justFinished.name} section complete</h2>
+                    <h2 class="text-2xl font-bold text-slate-900 mb-2">${justFinished} section ${lastWasSkipped ? 'skipped' : 'complete'}</h2>
                     <p class="text-sm text-slate-500 mb-8">
                         ${isDone
                             ? 'You have completed all sections of the Full Test.'
-                            : `Take a short breath. Next up: <b>${upNext.name}</b>.`}
+                            : `Take a short breath. Next up: <b>${upNext}</b>.`}
+                        ${skippedNote}
                     </p>
                     <button id="fullTestContinueBtn" class="bg-slate-900 hover:bg-indigo-600 transition text-white px-8 py-3 rounded-xl font-bold flex items-center justify-center shadow-md mx-auto cursor-pointer">
-                        ${isDone ? 'Finish' : `Start ${upNext.name}`} <i data-lucide="arrow-right" class="w-4 h-4 ml-2"></i>
+                        ${isDone ? 'Finish' : `Start ${upNext}`} <i data-lucide="arrow-right" class="w-4 h-4 ml-2"></i>
                     </button>
                 </div>
             `;
@@ -414,6 +514,9 @@
             };
         }
 
+        // ==========================================
+        // СЕТКА ТЕСТОВ
+        // ==========================================
         async function loadTestsGrid() {
             const container = document.getElementById('tests-container');
             try {
@@ -434,7 +537,7 @@
                             <a href="https://t.me/" target="_blank" class="inline-flex items-center justify-center bg-slate-900 hover:bg-indigo-600 transition text-white px-6 py-3 rounded-xl font-bold shadow-md">Написать в Telegram</a>
                         </div>
                     `;
-                    lucide.createIcons();
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
                     return;
                 }
 
@@ -450,161 +553,139 @@
                     return;
                 }
 
-                container.innerHTML = tests.map(test => {
-                    return `
-                        <div onclick="openTestView(${test.id}, '${test.title}', '${test.emoji}')" class="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm hover:shadow-md hover:-translate-y-1 hover:border-indigo-200 transition-all cursor-pointer group flex flex-col h-full">
-                            <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center text-3xl mb-5 group-hover:scale-110 transition-transform">${test.emoji || '📝'}</div>
-                            <h3 class="text-xl font-bold text-slate-900 mb-1">${test.title}</h3>
-                            <p class="text-xs text-gray-400 mb-4">Complete TOEFL Simulation</p>
-                            <div id="grid-overall-${test.id}" class="min-h-[2rem] mb-2"></div>
-                            <div class="flex items-center justify-between border-t border-gray-50 pt-4 mt-auto">
-                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">All Sections</span>
-                                <span class="px-2.5 py-1 bg-indigo-50 text-indigo-600 font-bold text-[10px] rounded-lg uppercase tracking-wider">Open</span>
-                            </div>
+                container.innerHTML = tests.map(test => `
+                    <div onclick="openTestView(${mtJsArg(test.id)}, ${mtJsArg(test.title)}, ${mtJsArg(test.emoji || '📝')})" class="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm hover:shadow-md hover:-translate-y-1 hover:border-indigo-200 transition-all cursor-pointer group flex flex-col h-full">
+                        <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center text-3xl mb-5 group-hover:scale-110 transition-transform">${mtEsc(test.emoji || '📝')}</div>
+                        <h3 class="text-xl font-bold text-slate-900 mb-1">${mtEsc(test.title)}</h3>
+                        <p class="text-xs text-gray-400 mb-4">Complete TOEFL Simulation</p>
+                        <div id="grid-overall-${mtEsc(test.id)}" class="min-h-[2rem] mb-2"></div>
+                        <div class="flex items-center justify-between border-t border-gray-50 pt-4 mt-auto">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">All Sections</span>
+                            <span class="px-2.5 py-1 bg-indigo-50 text-indigo-600 font-bold text-[10px] rounded-lg uppercase tracking-wider">Open</span>
                         </div>
-                    `;
-                }).join('');
-                lucide.createIcons();
+                    </div>
+                `).join('');
+                if (typeof lucide !== 'undefined') lucide.createIcons();
 
                 // Догружаем общий балл по каждой карточке отдельно (не блокируя рендер сетки)
                 tests.forEach(async (test) => {
-                    const result = await computeOverallScore(test.id);
-                    const el = document.getElementById(`grid-overall-${test.id}`);
-                    if (el) {
-                        el.innerHTML = renderOverallScoreBadge(result);
-                        lucide.createIcons();
-                    }
+                    try {
+                        const result = await computeOverallScore(test.id);
+                        const el = document.getElementById(`grid-overall-${test.id}`);
+                        if (el) el.innerHTML = renderOverallScoreBadge(result);
+                    } catch (e) { console.warn('overall score for test', test.id, e); }
                 });
             } catch (err) {
                 console.error("Error loading tests:", err);
-                container.innerHTML = `<div class="col-span-full text-red-500 font-bold">Error loading tests. Check console.</div>`;
+                container.innerHTML = `<div class="col-span-full text-red-500 font-bold">Error loading tests: ${mtEsc(err.message || err)}</div>`;
             }
         }
 
+        // ==========================================
+        // СТРАНИЦА ТЕСТА (4 карточки секций)
+        // ==========================================
+        // Токен защищает от гонки: если ученица открыла URANUS, сразу вернулась
+        // и открыла Fox, ответы на запросы URANUS приходили ПОЗЖЕ и перерисовывали
+        // кнопки Fox своими — и «Start Section» у Fox запускал URANUS.
+        let mtOpenTestViewToken = 0;
+
+        const MT_SECTION_CARDS = [
+            { name: 'reading',   scoreId: 'reading-score-container',   actionId: 'reading-action-buttons',   startFn: 'startExamEngine',      reviewFn: 'loadReviewMode' },
+            { name: 'listening', scoreId: 'listening-score-container', actionId: 'listening-action-buttons', startFn: 'startListeningEngine', reviewFn: 'loadListeningReviewMode' },
+            { name: 'writing',   scoreId: 'writing-score-container',   actionId: 'writing-action-buttons',   startFn: 'startWritingEngine',   reviewFn: 'loadWritingReviewMode' },
+            { name: 'speaking',  scoreId: 'speaking-score-container',  actionId: 'speaking-action-buttons',  startFn: 'startSpeakingEngine',  reviewFn: 'loadSpeakingReviewMode' }
+        ];
+
         async function openTestView(testId, title, emoji) {
+            const myToken = ++mtOpenTestViewToken;
             currentActiveTestId = testId;
+            window.currentActiveTestTitle = title;
             document.getElementById('view-tests-grid').classList.add('hidden');
             document.getElementById('view-test-detail').classList.remove('hidden');
-            
+
             document.getElementById('dynamic-test-title').innerText = title;
             document.getElementById('dynamic-emoji-container').innerText = emoji || '📝';
 
             const overallContainer = document.getElementById('overall-score-container');
             if (overallContainer) overallContainer.innerHTML = '';
 
-            const safeTitle = (title || '').replace(/'/g, "\\'");
+            MT_SECTION_CARDS.forEach(sec => {
+                const scoreEl = document.getElementById(sec.scoreId);
+                const actionEl = document.getElementById(sec.actionId);
+                if (scoreEl) scoreEl.innerHTML = '<div class="text-xs text-gray-400 flex items-center"><i data-lucide="loader-2" class="w-3 h-3 mr-1 animate-spin"></i> Checking...</div>';
+                if (actionEl) actionEl.innerHTML = '';
+            });
+            if (typeof lucide !== 'undefined') lucide.createIcons();
 
-            // Единый список секций: специфичная таблица проверяется первой,
-            // а общая big_mock_attempts — как запасной вариант (для секций
-            // без своей отдельной таблицы). Готово для Speaking — как только
-            // появятся сама секция в HTML и её движок, просто добавь запись сюда.
-            const sections = [
-                { name: 'reading', scoreId: 'reading-score-container', actionId: 'reading-action-buttons', startFn: 'startExamEngine', reviewFn: 'loadReviewMode', table: 'big_mock_attempts' },
-                { name: 'listening', scoreId: 'listening-score-container', actionId: 'listening-action-buttons', startFn: 'startListeningEngine', reviewFn: 'loadListeningReviewMode', table: 'big_mock_listening_attempts' },
-                { name: 'writing', scoreId: 'writing-score-container', actionId: 'writing-action-buttons', startFn: 'startWritingEngine', reviewFn: 'loadWritingReviewMode', table: 'big_mock_writing_attempts' },
-                { name: 'speaking', scoreId: 'speaking-score-container', actionId: 'speaking-action-buttons', startFn: 'startSpeakingEngine', reviewFn: 'loadSpeakingReviewMode', table: 'big_mock_speaking_attempts' }
-            ];
+            // Все 4 секции запрашиваются параллельно
+            const results = await Promise.all(MT_SECTION_CARDS.map(async sec => {
+                try { return { ok: true, attempt: await mtFetchLatestAttempt(sec.name, testId) }; }
+                catch (e) { console.error(`Error checking attempt for section ${sec.name}:`, e); return { ok: false, attempt: null }; }
+            }));
 
-            for (let sec of sections) {
+            if (myToken !== mtOpenTestViewToken) return; // пока ждали — открыли другой тест
+
+            const startBtn = (sec) => `
+                <button onclick="unlockGlobalAudio(); ${sec.startFn}(${mtJsArg(testId)}, ${mtJsArg(title)})" class="w-full text-center py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition text-sm flex items-center justify-center shadow-xs">
+                    Start Section <i data-lucide="arrow-right" class="w-4 h-4 ml-1.5"></i>
+                </button>`;
+
+            const scores = {};
+            MT_SECTION_CARDS.forEach((sec, i) => {
+                const attempt = results[i].attempt;
+                scores[sec.name] = attempt;
                 const scoreEl = document.getElementById(sec.scoreId);
                 const actionEl = document.getElementById(sec.actionId);
 
-                if (scoreEl) scoreEl.innerHTML = '<div class="text-xs text-gray-400 flex items-center"><i data-lucide="loader-2" class="w-3 h-3 mr-1 animate-spin"></i> Checking...</div>';
-                if (actionEl) actionEl.innerHTML = '';
-
-                try {
-                    let attempt = null;
-
-                    // Сначала пробуем специфичную таблицу секции (только попытки ТЕКУЩЕГО пользователя!)
-                    const { data: specificData } = await supabaseClient
-                        .from(sec.table)
-                        .select('*')
-                        .eq('test_id', testId)
-                        .eq('user_id', window.currentUser.id)
-                        .order('completed_at', { ascending: false })
-                        .limit(1);
-
-                    if (specificData && specificData.length > 0) {
-                        attempt = specificData[0];
-                    } else {
-                        // Иначе проверяем общую таблицу big_mock_attempts
-                        const { data: commonData } = await supabaseClient
-                            .from('big_mock_attempts')
-                            .select('*')
-                            .eq('test_id', testId)
-                            .eq('section_name', sec.name)
-                            .eq('user_id', window.currentUser.id)
-                            .order('completed_at', { ascending: false })
-                            .limit(1);
-
-                        if (commonData && commonData.length > 0) attempt = commonData[0];
+                if (attempt) {
+                    if (scoreEl) {
+                        const hasScore = attempt.total_score !== null && attempt.total_score !== undefined;
+                        scoreEl.innerHTML = hasScore
+                            ? `<div class="inline-flex items-center bg-green-50 border border-green-200 px-3 py-1.5 rounded-lg shadow-xs">
+                                    <span class="text-[10px] font-bold text-green-800 uppercase tracking-wider mr-2">${attempt.status === 'reviewed' ? 'Score' : 'Est. Score'}</span>
+                                    <span class="text-lg font-extrabold text-green-600">${parseFloat(attempt.total_score).toFixed(1)}</span>
+                               </div>`
+                            : `<div class="inline-flex items-center bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg shadow-xs">
+                                    <span class="text-[10px] font-bold text-amber-800 uppercase tracking-wider">Pending Teacher Review</span>
+                               </div>`;
                     }
-
-                    if (attempt && (attempt.status === 'completed' || attempt.status === 'pending_review' || attempt.status === 'reviewed')) {
-                        if (scoreEl) {
-                            const hasScore = attempt.total_score !== null && attempt.total_score !== undefined;
-                            scoreEl.innerHTML = hasScore
-                                ? `
-                                    <div class="inline-flex items-center bg-green-50 border border-green-200 px-3 py-1.5 rounded-lg shadow-xs">
-                                        <span class="text-[10px] font-bold text-green-800 uppercase tracking-wider mr-2">Est. Score</span>
-                                        <span class="text-lg font-extrabold text-green-600">${parseFloat(attempt.total_score).toFixed(1)}</span>
-                                    </div>
-                                `
-                                : `
-                                    <div class="inline-flex items-center bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg shadow-xs">
-                                        <span class="text-[10px] font-bold text-amber-800 uppercase tracking-wider">Pending Teacher Review</span>
-                                    </div>
-                                `;
-                        }
-                        if (actionEl) {
-                            actionEl.innerHTML = `
-                                <button onclick="${sec.reviewFn}('${attempt.id}', '${testId}', '${safeTitle}')" class="flex-1 py-2.5 bg-white border border-gray-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition text-sm flex items-center justify-center shadow-xs">
-                                    <i data-lucide="search" class="w-4 h-4 mr-1.5"></i> Review
-                                </button>
-                                <button onclick="${sec.startFn}('${testId}', '${safeTitle}')" class="flex-1 py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition text-sm flex items-center justify-center shadow-xs">
-                                    Retake <i data-lucide="rotate-cw" class="w-4 h-4 ml-1.5"></i>
-                                </button>
-                            `;
-                        }
-                    } else {
-                        if (scoreEl) scoreEl.innerHTML = '';
-                        if (actionEl) {
-                            actionEl.innerHTML = `
-                                <button onclick="${sec.startFn}('${testId}', '${safeTitle}')" class="w-full text-center py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition text-sm flex items-center justify-center shadow-xs">
-                                    Start Section <i data-lucide="arrow-right" class="w-4 h-4 ml-1.5"></i>
-                                </button>
-                            `;
-                        }
-                    }
-                } catch (e) {
-                    console.error(`Error checking attempt for section ${sec.name}:`, e);
-                    if (scoreEl) scoreEl.innerHTML = '';
                     if (actionEl) {
                         actionEl.innerHTML = `
-                            <button onclick="${sec.startFn}('${testId}', '${safeTitle}')" class="w-full text-center py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition text-sm flex items-center justify-center shadow-xs">
-                                Start Section <i data-lucide="arrow-right" class="w-4 h-4 ml-1.5"></i>
+                            <button onclick="${sec.reviewFn}(${mtJsArg(attempt.id)}, ${mtJsArg(testId)}, ${mtJsArg(title)})" class="flex-1 py-2.5 bg-white border border-gray-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition text-sm flex items-center justify-center shadow-xs">
+                                <i data-lucide="search" class="w-4 h-4 mr-1.5"></i> Review
+                            </button>
+                            <button onclick="unlockGlobalAudio(); ${sec.startFn}(${mtJsArg(testId)}, ${mtJsArg(title)})" class="flex-1 py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition text-sm flex items-center justify-center shadow-xs">
+                                Retake <i data-lucide="rotate-cw" class="w-4 h-4 ml-1.5"></i>
                             </button>
                         `;
                     }
+                } else {
+                    if (scoreEl) scoreEl.innerHTML = results[i].ok ? '' : '<div class="text-xs text-rose-500">Could not load your result</div>';
+                    if (actionEl) actionEl.innerHTML = startBtn(sec);
                 }
-            }
-            lucide.createIcons();
+            });
+            if (typeof lucide !== 'undefined') lucide.createIcons();
 
-            const overallResult = await computeOverallScore(testId);
-            if (overallContainer) overallContainer.innerHTML = renderOverallScoreBadge(overallResult, 'lg');
+            // Общий балл считаем из тех же попыток — без повторных запросов
+            if (overallContainer) overallContainer.innerHTML = renderOverallScoreBadge(mtSummarizeOverall(scores), 'lg');
         }
 
         function closeTestView() {
+            mtOpenTestViewToken++; // запоздавшие ответы старого теста больше не рисуем
             document.getElementById('view-test-detail').classList.add('hidden');
             document.getElementById('view-tests-grid').classList.remove('hidden');
             currentActiveTestId = null;
             loadTestsGrid();
         }
 
+        // ==========================================
+        // ВЫХОД ИЗ ДВИЖКА (Abort / Back to Dashboard / конец Full Test)
+        // ==========================================
         function exitExamEngine() {
             window.fullTestMode = false; // на случай выхода посреди прохождения Full Test
+            beginExamSession();          // всё, что ещё «в полёте», должно остановиться
 
-            // Очистка всех возможных таймеров
+            // Таймеры всех движков
             if (typeof timerInterval !== 'undefined') clearInterval(timerInterval);
             if (typeof listTimerInterval !== 'undefined') clearInterval(listTimerInterval);
             if (typeof stopQuestionTimer === 'function') {
@@ -614,23 +695,31 @@
             }
             if (typeof isProcessingNextStep !== 'undefined') isProcessingNextStep = false;
             if (typeof listAutoplayTimeout !== 'undefined') clearTimeout(listAutoplayTimeout);
-            if (typeof writingTimerInterval !== 'undefined') clearInterval(writingTimerInterval); // Очистка таймера Writing
+            if (typeof writingTimerInterval !== 'undefined') clearInterval(writingTimerInterval);
+            if (typeof writingSessionId !== 'undefined') writingSessionId++;
             if (typeof speakingQuestionTimerInterval !== 'undefined') clearInterval(speakingQuestionTimerInterval);
+            if (typeof speakingFailsafeTimer !== 'undefined') clearTimeout(speakingFailsafeTimer);
+            if (typeof speakingMediaRecorder !== 'undefined' && speakingMediaRecorder && speakingMediaRecorder.state !== 'inactive') {
+                try { speakingMediaRecorder.onstop = null; speakingMediaRecorder.stop(); } catch (e) {}
+            }
             if (typeof speakingMediaStream !== 'undefined' && speakingMediaStream) {
                 speakingMediaStream.getTracks().forEach(track => track.stop());
                 speakingMediaStream = null;
             }
-            if (typeof speakingMediaRecorder !== 'undefined' && speakingMediaRecorder && speakingMediaRecorder.state !== 'inactive') {
-                try { speakingMediaRecorder.stop(); } catch (e) {}
+            if (typeof speakingAudioCtx !== 'undefined' && speakingAudioCtx && speakingAudioCtx.state !== 'closed') {
+                try { speakingAudioCtx.close(); } catch (e) {}
+                speakingAudioCtx = null;
             }
 
             const globalAudio = document.getElementById('globalAudio');
-            if (globalAudio) { 
-                globalAudio.pause(); 
-                globalAudio.src = '';
-                globalAudio.onended = null; 
+            if (globalAudio) {
+                globalAudio.pause();
+                globalAudio.onended = null;
                 globalAudio.ontimeupdate = null;
                 globalAudio.onerror = null;
+                globalAudio.onloadedmetadata = null;
+                globalAudio.removeAttribute('src');
+                try { globalAudio.load(); } catch (e) {}
             }
 
             if (typeof audioPlayer !== 'undefined' && audioPlayer !== null) {
@@ -638,27 +727,35 @@
                 audioPlayer.currentTime = 0;
             }
 
+            // Видео интервью Speaking жило внутри engine-content и продолжало
+            // играть со звуком после Abort — очищаем область движка целиком.
+            const engineContent = document.getElementById('engine-content');
+            if (engineContent) {
+                engineContent.querySelectorAll('audio, video').forEach(m => { try { m.pause(); m.removeAttribute('src'); m.load(); } catch (e) {} });
+                engineContent.innerHTML = '';
+            }
+
             document.getElementById('exam-engine-view').classList.add('hidden');
             document.getElementById('exam-engine-view').classList.remove('flex');
 
-            // Экран результатов — отдельный слой поверх всей страницы
-            // (fixed, z-50). Раньше выход его не прятал: дашборд открывался
-            // ПОД результатами, и кнопка «Back to Dashboard» выглядела мёртвой.
-            // Очищаем содержимое, чтобы заодно остановить плееры с записями.
+            // Экран результатов — отдельный слой поверх всей страницы.
             const resultsView = document.getElementById('results-view');
             if (resultsView) {
-                resultsView.querySelectorAll('audio').forEach(a => { try { a.pause(); } catch (e) {} });
-                resultsView.classList.add('hidden');
-                resultsView.classList.remove('flex');
+                resultsView.querySelectorAll('audio, video').forEach(a => { try { a.pause(); } catch (e) {} });
+                resultsView.className = 'fixed inset-0 z-50 bg-[#f8f9fa] hidden flex-col w-screen h-screen overflow-hidden';
                 resultsView.innerHTML = '';
             }
 
             document.getElementById('main-interface').classList.remove('hidden');
-            
             window.engineType = null;
+            resetEngineHeaderButtons();
 
             if (currentActiveTestId) {
                 openTestView(currentActiveTestId, document.getElementById('dynamic-test-title').innerText, document.getElementById('dynamic-emoji-container').innerText);
+            } else {
+                document.getElementById('view-test-detail').classList.add('hidden');
+                document.getElementById('view-tests-grid').classList.remove('hidden');
+                loadTestsGrid();
             }
         }
 
