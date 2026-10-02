@@ -26,9 +26,28 @@ window.onerror = function (message, source, lineno, colno, error) {
 const supabaseUrl = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
 
-const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+// Один клиент на страницу: если auth.js уже создал свой — используем его,
+// иначе в браузере живут два GoTrue-клиента на одном хранилище сессии.
+const supabaseClient = (window.supabaseClient && typeof window.supabaseClient.from === 'function')
+    ? window.supabaseClient
+    : window.supabase.createClient(supabaseUrl, supabaseKey);
+window.supabaseClient = supabaseClient;
 
-lucide.createIcons();
+// Общая точка доступа к базе для всех движков (writing/speaking используют её)
+function getSupabaseClient() { return supabaseClient; }
+
+if (typeof lucide !== 'undefined') lucide.createIcons();
+
+// Экранирование для HTML-атрибутов и текста
+function readingEsc(s) {
+    return String(s === null || s === undefined ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Номер сессии Reading: после await проверяем, что ученица не нажала Abort
+let readingSessionId = 0;
+function readingAlive(id) { return id === readingSessionId && window.engineType === 'reading'; }
 
 let currentActiveTestId = null;
 let currentTasks = [];
@@ -362,6 +381,9 @@ async function fetchAndParseTasks(testId, stageName) {
 
 async function startExamEngine(testId, testTitle) {
     window.engineType = 'reading';
+    readingSessionId++;
+    const mySession = readingSessionId;
+    clearInterval(timerInterval);
     if (typeof resetEngineHeaderButtons === 'function') resetEngineHeaderButtons();
     const reviewBtn = document.getElementById('engine-review');
     if (reviewBtn) reviewBtn.classList.remove('hidden'); // в Reading Review доступна всегда (кроме заставки)
@@ -382,13 +404,19 @@ async function startExamEngine(testId, testTitle) {
     
     currentTasks = [];
     currentActiveTestId = testId;
+    window.currentActiveTestTitle = testTitle;
+    module2StartIndex = null;
+    module2LoadPromise = null;
     
     try {
-        currentTasks = await fetchAndParseTasks(testId, '1');
+        const loaded = await fetchAndParseTasks(testId, '1');
+        if (!readingAlive(mySession)) return; // нажали Abort, пока шла загрузка
+        currentTasks = loaded;
 
         if (currentTasks.length === 0) {
-            alert("This test is empty! Please add tasks in Supabase 'full_test_tasks'.");
-            exitExamEngine();
+            const msg = "В этом тесте нет заданий Reading (full_test_tasks, stage = '1').";
+            if (typeof handleEmptySection === 'function') handleEmptySection('Reading', msg);
+            else { alert(msg); exitExamEngine(); }
             return;
         }
 
@@ -403,28 +431,33 @@ async function startExamEngine(testId, testTitle) {
 
     } catch (err) {
         console.error("Engine crash:", err);
-        alert("Error loading test structure.");
+        if (!readingAlive(mySession)) return;
+        alert("Не удалось загрузить Reading.\n\n" + (err.message || err));
         exitExamEngine();
     }
 }
 
+function renderReadingTimer() {
+    const timerEl = document.getElementById('engine-timer');
+    if (!timerEl) return;
+    const m = Math.floor(Math.max(0, timeRemaining) / 60);
+    const s = Math.max(0, timeRemaining) % 60;
+    timerEl.innerText = `${m}:${s < 10 ? '0' : ''}${s}`;
+}
+
 function startTimer() {
     clearInterval(timerInterval);
+    const mySession = readingSessionId;
+    renderReadingTimer(); // сразу показать полное время, а не остаток от прошлой секции
     timerInterval = setInterval(() => {
+        if (!readingAlive(mySession)) { clearInterval(timerInterval); return; }
         timeRemaining--;
         if (timeRemaining <= 0) {
             clearInterval(timerInterval);
             handleReadingTimeUp();
             return;
         }
-        let m = Math.floor(timeRemaining / 60);
-        let s = timeRemaining % 60;
-        
-        // БЕЗОПАСНО: обновляем таймер, только если элемент присутствует в HTML
-        const timerEl = document.getElementById('engine-timer');
-        if (timerEl) {
-            timerEl.innerText = `${m}:${s < 10 ? '0' : ''}${s}`;
-        }
+        renderReadingTimer();
     }, 1000);
 }
 
@@ -436,8 +469,10 @@ function startTimer() {
 async function handleReadingTimeUp() {
     const isModule1Finished = !currentTasks.some(t => t.stage.startsWith('2'));
 
+    const mySession = readingSessionId;
     if (isModule1Finished) {
         const loaded = await loadModule2Tasks();
+        if (!readingAlive(mySession)) return;
         if (loaded) {
             // Неотвеченные айтемы Модуля 1 так и остаются неотвеченными —
             // роутер и итоговый балл корректно считают их как неверные.
@@ -511,11 +546,11 @@ function renderEngine() {
                     <div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-xs max-w-xl mx-auto mt-10">
                         <h3 class="font-bold text-slate-900 mb-6">${task.question}</h3>
                         <div class="space-y-3">
-                            ${(task.options || []).map((opt) => `
+                            ${(task.options || []).map((opt, oi) => `
                                 <label class="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer hover:bg-slate-50 transition">
-                                    <input type="radio" name="q" value="${opt}"
+                                    <input type="radio" name="q" value="${oi}"
                                         ${task.userAnswer === opt ? 'checked' : ''}
-                                        onchange="currentTasks[${currentIndex}].userAnswer = this.value"
+                                        onchange="currentTasks[${currentIndex}].userAnswer = currentTasks[${currentIndex}].options[${oi}]"
                                         class="w-4 h-4 text-indigo-600 mr-3">
                                     <span class="text-sm text-slate-700">${opt}</span>
                                 </label>
@@ -535,7 +570,7 @@ function renderEngine() {
                 // буквы берутся из самого пассажа.
                 rightPanelContent = `<h3 class="font-bold text-slate-900 mb-4">${task.question}</h3><div id="insertOptions"></div>`;
             } else {
-                rightPanelContent = `<h3 class="font-bold text-slate-900 mb-6">${task.question}</h3><div class="space-y-3">${(task.options || []).map((opt) => `<label class="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer hover:bg-slate-50 transition"><input type="radio" name="q" value="${opt}" ${task.userAnswer === opt ? 'checked' : ''} onchange="currentTasks[${currentIndex}].userAnswer = this.value" class="w-4 h-4 text-indigo-600 mr-3"><span class="text-sm text-slate-700">${opt}</span></label>`).join('')}</div>`;
+                rightPanelContent = `<h3 class="font-bold text-slate-900 mb-6">${task.question}</h3><div class="space-y-3">${(task.options || []).map((opt, oi) => `<label class="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer hover:bg-slate-50 transition"><input type="radio" name="q" value="${oi}" ${task.userAnswer === opt ? 'checked' : ''} onchange="currentTasks[${currentIndex}].userAnswer = currentTasks[${currentIndex}].options[${oi}]" class="w-4 h-4 text-indigo-600 mr-3"><span class="text-sm text-slate-700">${opt}</span></label>`).join('')}</div>`;
             }
 
             contentDiv.innerHTML = `
@@ -787,8 +822,10 @@ async function nextTask() {
         renderEngine();
     } else {
         const isModule1Finished = !currentTasks.some(t => t.stage.startsWith('2'));
+        const mySession = readingSessionId;
         if (isModule1Finished) {
             const loaded = await loadModule2Tasks();
+            if (!readingAlive(mySession)) return;
             if (loaded) {
                 renderModuleTransition();
                 return;
@@ -927,6 +964,10 @@ function prevTask() {
 
 async function saveAttemptAndFinish() {
     clearInterval(timerInterval);
+    const saveSession = readingSessionId;
+    // Повторный вызов (таймер + клик одновременно) не должен сохранить попытку дважды
+    if (window.__readingSaving === saveSession) return;
+    window.__readingSaving = saveSession;
     
     const engineContent = document.getElementById('engine-content');
     engineContent.innerHTML = `<div class="m-auto flex flex-col items-center justify-center text-slate-500"><i data-lucide="loader-2" class="w-8 h-8 animate-spin mb-4 text-indigo-600"></i><p class="font-bold text-slate-700">Saving results to database...</p></div>`;
@@ -944,6 +985,10 @@ async function saveAttemptAndFinish() {
             <p class="text-sm text-slate-500">В нём нет вопросов с отмеченным правильным ответом.
             Это ошибка в составе теста, а не в ваших ответах. Сообщите преподавателю.</p></div>`;
         console.error('[reading] нет ни одного оцениваемого вопроса — проверьте поле correct в заданиях теста');
+        if (window.fullTestMode && typeof continueFullTestSequence === 'function') {
+            alert('Reading: в тесте нет вопросов с отмеченным правильным ответом. Секция пропущена.');
+            continueFullTestSequence({ skipped: true });
+        }
         return;
     }
 
@@ -967,10 +1012,10 @@ async function saveAttemptAndFinish() {
 
         if (attemptErr) throw attemptErr;
 
-        const answersToSave = currentTasks.map(task => {
+        const answersToSave = currentTasks.map((task, idx) => {
             let isCorrect = false;
             let answerText = null;
-            let answerJson = { question: task.question }; 
+            let answerJson = { question: task.question, stage: task.stage, order: idx }; 
 
             if (task.type === 'complete_words') {
                 // Кладём частичный результат, чтобы потом было видно «7 из 10»,
@@ -999,6 +1044,7 @@ async function saveAttemptAndFinish() {
         const { error: answersErr } = await supabaseClient.from('big_mock_answers').insert(answersToSave);
         if (answersErr) throw answersErr;
 
+        if (!readingAlive(saveSession)) return;
         if (window.fullTestMode && typeof continueFullTestSequence === 'function') { continueFullTestSequence(); return; }
         renderResultsUI(currentTasks, finalScore, correctAnswers, totalQuestions);
 
@@ -1006,6 +1052,7 @@ async function saveAttemptAndFinish() {
         console.error("Error saving test:", e);
         alert('Результат Reading не сохранился в базу — балл на экране показан, но его не будет в отчёте.\n\n'
             + (e.message || e) + '\n\nПокажите это сообщение преподавателю.');
+        if (!readingAlive(saveSession)) return;
         if (window.fullTestMode && typeof continueFullTestSequence === 'function') { continueFullTestSequence(); return; }
         renderResultsUI(currentTasks, finalScore, correctAnswers, totalQuestions);
     }
@@ -1013,52 +1060,77 @@ async function saveAttemptAndFinish() {
 
 async function loadReviewMode(attemptId, testId, testTitle) {
     window.engineType = 'reading';
+    readingSessionId++;
+    clearInterval(timerInterval);
     document.getElementById('view-tests-grid').classList.add('hidden');
     document.getElementById('main-interface').classList.add('hidden');
 
     const resultsView = document.getElementById('results-view');
-    resultsView.classList.remove('hidden');
     resultsView.className = 'fixed inset-0 z-50 bg-[#f8f9fa] overflow-y-auto';
-    
-    resultsView.innerHTML = `<div class="m-auto flex flex-col items-center justify-center text-slate-500"><i data-lucide="loader-2" class="w-8 h-8 animate-spin mb-4 text-indigo-600"></i><p class="font-bold">Reconstructing your past attempt...</p></div>`;
-    lucide.createIcons();
+    resultsView.innerHTML = `<div class="min-h-full flex items-center justify-center text-slate-500"><div class="text-center"><i data-lucide="loader-2" class="w-8 h-8 animate-spin mb-4 text-indigo-600 mx-auto"></i><p class="font-bold">Reconstructing your past attempt...</p></div></div>`;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
 
     try {
         currentActiveTestId = testId;
-        document.getElementById('dynamic-test-title').innerText = testTitle;
+        if (testTitle) document.getElementById('dynamic-test-title').innerText = testTitle;
 
-        const { data: attempt } = await supabaseClient.from('big_mock_attempts').select('*').eq('id', attemptId).single();
-        const { data: answers } = await supabaseClient.from('big_mock_answers').select('*').eq('attempt_id', attemptId);
+        const { data: attempt, error: attErr } = await supabaseClient.from('big_mock_attempts').select('*').eq('id', attemptId).single();
+        if (attErr) throw attErr;
+        const { data: answersRaw, error: ansErr } = await supabaseClient.from('big_mock_answers').select('*').eq('attempt_id', attemptId);
+        if (ansErr) throw ansErr;
+        const answers = answersRaw || [];
 
-        const stage1 = await fetchAndParseTasks(testId, '1');
-        const stage2E = await fetchAndParseTasks(testId, '2_easy');
-        const stage2H = await fetchAndParseTasks(testId, '2_hard');
+        const [stage1, stage2E, stage2H] = await Promise.all([
+            fetchAndParseTasks(testId, '1'),
+            fetchAndParseTasks(testId, '2_easy'),
+            fetchAndParseTasks(testId, '2_hard')
+        ]);
+
+        // Какая ветка была у ученицы. Новые попытки хранят stage в answer_json —
+        // это точно. Для старых попыток угадываем по task_id (как раньше).
+        const savedStages = new Set(answers.map(a => a.answer_json && a.answer_json.stage).filter(Boolean).map(String));
+        let tookEasy, tookHard;
+        if (savedStages.size > 0) {
+            tookEasy = savedStages.has('2_easy');
+            tookHard = savedStages.has('2_hard');
+        } else {
+            const stage1Ids = new Set(stage1.map(t => String(t.taskId)));
+            const answerTaskIds = new Set(answers.map(a => String(a.task_id)));
+            const onlyIn = (tasks) => tasks.some(t => answerTaskIds.has(String(t.taskId)) && !stage1Ids.has(String(t.taskId)));
+            tookEasy = onlyIn(stage2E);
+            tookHard = onlyIn(stage2H);
+            if (tookEasy && tookHard) tookEasy = false; // обе ветки сразу быть не может
+        }
 
         let reconstructedTasks = [...stage1];
-        const answerTaskIds = answers.map(a => a.task_id);
-        const tookEasy = stage2E.some(t => answerTaskIds.includes(t.taskId));
-        const tookHard = stage2H.some(t => answerTaskIds.includes(t.taskId));
-        
         if (tookEasy) reconstructedTasks = reconstructedTasks.concat(stage2E);
         if (tookHard) reconstructedTasks = reconstructedTasks.concat(stage2H);
+
+        // Каждый сохранённый ответ используем один раз: если в пассаже два
+        // вопроса с одинаковым текстом, они больше не получают один и тот же ответ.
+        const used = new Set();
+        const takeAnswer = (pred) => {
+            const idx = answers.findIndex((a, i) => !used.has(i) && pred(a));
+            if (idx === -1) return null;
+            used.add(idx);
+            return answers[idx];
+        };
+        const stageMatches = (a, task) => !(a.answer_json && a.answer_json.stage) || String(a.answer_json.stage) === String(task.stage);
 
         let correctCount = 0;
         let totalCount = 0;
 
-        // Восстановление результатов с учетом complete_words (по пропускам)
         reconstructedTasks.forEach(task => {
             if (task.type === 'complete_words') {
-                let ans = answers.find(a => a.task_id === task.taskId && a.task_type === 'complete_words');
+                const ans = takeAnswer(a => String(a.task_id) === String(task.taskId) && a.task_type === 'complete_words' && stageMatches(a, task));
                 if (ans && ans.answer_json) task.userWords = ans.answer_json.userWords || [];
-
-                const s = scoreCompleteWords(task);
-                totalCount += s.total;
-                correctCount += s.correct;
+                const sc = scoreCompleteWords(task);
+                totalCount += sc.total;
+                correctCount += sc.correct;
             } else {
-                let ans = answers.find(a => a.task_id === task.taskId && a.answer_json && a.answer_json.question === task.question);
+                const ans = takeAnswer(a => String(a.task_id) === String(task.taskId) && a.answer_json && a.answer_json.question === task.question && stageMatches(a, task));
                 if (ans) task.userAnswer = ans.answer_text;
-                
-                if (task.correctAnswer !== null && task.correctAnswer !== undefined) { 
+                if (task.correctAnswer !== null && task.correctAnswer !== undefined) {
                     totalCount++;
                     if (task.userAnswer === task.correctAnswer) correctCount++;
                 }
@@ -1069,7 +1141,7 @@ async function loadReviewMode(attemptId, testId, testTitle) {
 
     } catch (err) {
         console.error("Error loading review:", err);
-        alert("Could not load review mode from database.");
+        alert("Не удалось открыть разбор Reading.\n\n" + (err.message || err));
         closeResults();
     }
 }
@@ -1080,7 +1152,6 @@ function renderResultsUI(tasksArray, finalScore, correctAnswers, totalQuestions)
     document.getElementById('main-interface').classList.add('hidden');
     
     const resultsView = document.getElementById('results-view');
-    resultsView.classList.remove('hidden');
     resultsView.className = 'fixed inset-0 z-50 bg-[#f8f9fa] overflow-y-auto';
 
     const modules = {};
@@ -1237,8 +1308,9 @@ function renderResultsUI(tasksArray, finalScore, correctAnswers, totalQuestions)
 }
 
 function closeResults() {
+    if (typeof exitExamEngine === 'function') { exitExamEngine(); return; }
     document.getElementById('results-view').classList.add('hidden');
     document.getElementById('results-view').classList.remove('flex');
     document.getElementById('main-interface').classList.remove('hidden');
-    loadTestsGrid(); 
-            }
+    loadTestsGrid();
+}
