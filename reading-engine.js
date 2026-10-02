@@ -49,6 +49,33 @@ function readingEsc(s) {
 let readingSessionId = 0;
 function readingAlive(id) { return id === readingSessionId && window.engineType === 'reading'; }
 
+// Фаза Reading для автосохранения: 'task' | 'transition' | 'saving' | 'done'
+let readingPhase = 'task';
+
+// Пишет прогресс на устройство после каждого действия (см. tests.html, mtSaveProgress)
+function saveReadingProgress() {
+    if (window.engineType !== 'reading' || typeof mtSaveProgress !== 'function') return;
+    if (!currentTasks.length || readingPhase === 'saving' || readingPhase === 'done') return;
+    const stages = ['1'];
+    const m2task = currentTasks.find(t => String(t.stage).startsWith('2'));
+    if (m2task) stages.push(String(m2task.stage));
+    const inModule2 = module2StartIndex !== null && currentIndex >= module2StartIndex;
+    const hint = readingPhase === 'transition'
+        ? 'Module 2 is ready'
+        : `${inModule2 ? 'Module 2' : 'Module 1'}, question ${itemNumberLabel(currentIndex)}`;
+    mtSaveProgress('reading', {
+        stages,
+        count: currentTasks.length,
+        answers: currentTasks.map(t => t.type === 'complete_words'
+            ? { w: (t.userWords || []).slice() }
+            : { a: (t.userAnswer === undefined ? null : t.userAnswer) }),
+        index: currentIndex,
+        m2: module2StartIndex,
+        phase: readingPhase,
+        time: timeRemaining
+    }, hint);
+}
+
 let currentActiveTestId = null;
 let currentTasks = [];
 let currentIndex = 0;
@@ -286,6 +313,7 @@ function updateCompleteWordsState() {
         userWords.push(word);
     });
     task.userWords = userWords;
+    saveReadingProgress();
 }
 
 async function fetchAndParseTasks(testId, stageName) {
@@ -379,7 +407,7 @@ async function fetchAndParseTasks(testId, stageName) {
     return parsedTasks;
 }
 
-async function startExamEngine(testId, testTitle) {
+async function startExamEngine(testId, testTitle, resume) {
     window.engineType = 'reading';
     readingSessionId++;
     const mySession = readingSessionId;
@@ -408,10 +436,38 @@ async function startExamEngine(testId, testTitle) {
     module2StartIndex = null;
     module2LoadPromise = null;
     
+    readingPhase = 'task';
     try {
-        const loaded = await fetchAndParseTasks(testId, '1');
+        let loaded = await fetchAndParseTasks(testId, '1');
+        if (resume && resume.stages && resume.stages[1]) {
+            loaded = loaded.concat(await fetchAndParseTasks(testId, resume.stages[1]));
+        }
         if (!readingAlive(mySession)) return; // нажали Abort, пока шла загрузка
         currentTasks = loaded;
+
+        // Продолжение сохранённой попытки
+        if (resume && Array.isArray(resume.answers)) {
+            if (resume.count !== currentTasks.length) {
+                alert('Состав теста изменился с момента сохранения — секцию придётся начать заново.');
+                if (typeof mtClearProgress === 'function') mtClearProgress();
+                currentTasks = currentTasks.filter(t => t.stage === '1');
+            } else {
+                currentTasks.forEach((t, i) => {
+                    const a = resume.answers[i] || {};
+                    if (t.type === 'complete_words') t.userWords = Array.isArray(a.w) ? a.w : t.userWords;
+                    else t.userAnswer = (a.a === undefined ? null : a.a);
+                });
+                currentIndex = Math.min(Math.max(0, resume.index || 0), currentTasks.length - 1);
+                module2StartIndex = (resume.m2 === null || resume.m2 === undefined) ? null : resume.m2;
+                if (resume.stages && resume.stages[1]) module2LoadPromise = Promise.resolve(true);
+                timeRemaining = Math.max(1, resume.time || 60);
+                document.getElementById('engine-title').innerText = testTitle;
+                if (resume.phase === 'transition') { renderModuleTransition(); return; }
+                startTimer();
+                renderEngine();
+                return;
+            }
+        }
 
         if (currentTasks.length === 0) {
             const msg = "В этом тесте нет заданий Reading (full_test_tasks, stage = '1').";
@@ -458,6 +514,7 @@ function startTimer() {
             return;
         }
         renderReadingTimer();
+        saveReadingProgress();
     }, 1000);
 }
 
@@ -473,6 +530,7 @@ async function handleReadingTimeUp() {
     if (isModule1Finished) {
         const loaded = await loadModule2Tasks();
         if (!readingAlive(mySession)) return;
+        if (loaded === 'error') { readingModule2NetworkError(); return; }
         if (loaded) {
             // Неотвеченные айтемы Модуля 1 так и остаются неотвеченными —
             // роутер и итоговый балл корректно считают их как неверные.
@@ -550,7 +608,7 @@ function renderEngine() {
                                 <label class="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer hover:bg-slate-50 transition">
                                     <input type="radio" name="q" value="${oi}"
                                         ${task.userAnswer === opt ? 'checked' : ''}
-                                        onchange="currentTasks[${currentIndex}].userAnswer = currentTasks[${currentIndex}].options[${oi}]"
+                                        onchange="currentTasks[${currentIndex}].userAnswer = currentTasks[${currentIndex}].options[${oi}]; saveReadingProgress()"
                                         class="w-4 h-4 text-indigo-600 mr-3">
                                     <span class="text-sm text-slate-700">${opt}</span>
                                 </label>
@@ -570,7 +628,7 @@ function renderEngine() {
                 // буквы берутся из самого пассажа.
                 rightPanelContent = `<h3 class="font-bold text-slate-900 mb-4">${task.question}</h3><div id="insertOptions"></div>`;
             } else {
-                rightPanelContent = `<h3 class="font-bold text-slate-900 mb-6">${task.question}</h3><div class="space-y-3">${(task.options || []).map((opt, oi) => `<label class="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer hover:bg-slate-50 transition"><input type="radio" name="q" value="${oi}" ${task.userAnswer === opt ? 'checked' : ''} onchange="currentTasks[${currentIndex}].userAnswer = currentTasks[${currentIndex}].options[${oi}]" class="w-4 h-4 text-indigo-600 mr-3"><span class="text-sm text-slate-700">${opt}</span></label>`).join('')}</div>`;
+                rightPanelContent = `<h3 class="font-bold text-slate-900 mb-6">${task.question}</h3><div class="space-y-3">${(task.options || []).map((opt, oi) => `<label class="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer hover:bg-slate-50 transition"><input type="radio" name="q" value="${oi}" ${task.userAnswer === opt ? 'checked' : ''} onchange="currentTasks[${currentIndex}].userAnswer = currentTasks[${currentIndex}].options[${oi}]; saveReadingProgress()" class="w-4 h-4 text-indigo-600 mr-3"><span class="text-sm text-slate-700">${opt}</span></label>`).join('')}</div>`;
             }
 
             contentDiv.innerHTML = `
@@ -592,6 +650,7 @@ function renderEngine() {
                         document.querySelectorAll('.clickable-sentence').forEach(s => s.classList.remove('selected'));
                         this.classList.add('selected');
                         currentTasks[currentIndex].userAnswer = this.textContent.trim();
+                        saveReadingProgress();
                     };
                 });
 
@@ -602,6 +661,7 @@ function renderEngine() {
                 window.chooseInsertPosition = function(pos) {
                     currentTasks[currentIndex].userAnswer = String(pos);
                     PassageMarkup.choosePosition(passageBox, pos, task.insertSentence);
+                    saveReadingProgress();
                 };
 
                 document.querySelectorAll('.insert-square').forEach((el, index) => {
@@ -638,6 +698,8 @@ function renderEngine() {
         if (typeof lucide !== 'undefined' && lucide.createIcons) {
             lucide.createIcons();
         }
+        readingPhase = 'task';
+        saveReadingProgress();
     } catch (err) {
         console.error("Critical render error:", err);
         alert("Render error: " + err.message);
@@ -697,8 +759,16 @@ async function loadModule2Tasks() {
     if (module2LoadPromise) return module2LoadPromise;
     module2LoadPromise = doLoadModule2Tasks();
     const ok = await module2LoadPromise;
-    if (!ok) module2LoadPromise = null;
+    if (ok !== true) module2LoadPromise = null;
     return ok;
+}
+
+// Модуль 2 не загрузился из-за сети: остаёмся на последнем вопросе Модуля 1
+function readingModule2NetworkError() {
+    const module1Count = currentTasks.filter(t => t.stage === '1').length;
+    currentIndex = Math.max(0, module1Count - 1);
+    renderEngine();
+    alert('Не удалось загрузить Модуль 2 — нет связи с сервером.\n\nОтветы сохранены. Проверьте интернет и нажмите Next ещё раз.');
 }
 
 async function doLoadModule2Tasks() {
@@ -735,7 +805,7 @@ async function doLoadModule2Tasks() {
             currentTasks = currentTasks.concat(module2Tasks);
             return true; 
         }
-    } catch(e) { console.error("Error loading module 2:", e); }
+    } catch(e) { console.error("Error loading module 2:", e); return 'error'; }
     return false; 
 }
 
@@ -826,6 +896,7 @@ async function nextTask() {
         if (isModule1Finished) {
             const loaded = await loadModule2Tasks();
             if (!readingAlive(mySession)) return;
+            if (loaded === 'error') { readingModule2NetworkError(); return; }
             if (loaded) {
                 renderModuleTransition();
                 return;
@@ -838,6 +909,8 @@ async function nextTask() {
 // Экран-заставка между Module 1 и Module 2 (как в Listening)
 function renderModuleTransition() {
     clearInterval(timerInterval); // таймер Module 1 больше не должен тикать на заставке
+    readingPhase = 'transition';
+    saveReadingProgress();
     const timerContainer = document.getElementById('engine-timer-container');
     if (timerContainer) timerContainer.classList.add('hidden');
 
@@ -996,66 +1069,63 @@ async function saveAttemptAndFinish() {
     const totalQuestions = result.total;
     const finalScore = result.score;
 
-    try {
-        const { data: attempt, error: attemptErr } = await supabaseClient
-            .from('big_mock_attempts')
-            .insert([{ 
-                test_id: currentActiveTestId, 
-                section_name: 'reading', 
-                user_id: window.currentUser.id,
-                total_score: parseFloat(finalScore), 
-                status: 'completed',
-                completed_at: new Date().toISOString()
-            }])
-            .select()
-            .single();
+    readingPhase = 'saving';
+    const attemptId = mtUuid();
+    const answersToSave = currentTasks.map((task, idx) => {
+        let isCorrect = false;
+        let answerText = null;
+        let answerJson = { question: task.question, stage: task.stage, order: idx };
 
-        if (attemptErr) throw attemptErr;
+        if (task.type === 'complete_words') {
+            // Кладём частичный результат, чтобы потом было видно «7 из 10»,
+            // а не только голое true/false.
+            const sc = scoreCompleteWords(task);
+            answerJson.userWords = task.userWords;
+            answerJson.correctWords = task.correctWords;
+            answerJson.correctCount = sc.correct;
+            answerJson.totalCount = sc.total;
+            isCorrect = sc.correct === sc.total && sc.total > 0;
+        } else {
+            answerText = task.userAnswer;
+            isCorrect = task.userAnswer === task.correctAnswer;
+        }
 
-        const answersToSave = currentTasks.map((task, idx) => {
-            let isCorrect = false;
-            let answerText = null;
-            let answerJson = { question: task.question, stage: task.stage, order: idx }; 
+        return {
+            id: mtUuid(),
+            attempt_id: attemptId,
+            task_id: task.taskId || 0,
+            task_type: task.type,
+            answer_text: answerText,
+            answer_json: answerJson,
+            is_correct: isCorrect
+        };
+    });
 
-            if (task.type === 'complete_words') {
-                // Кладём частичный результат, чтобы потом было видно «7 из 10»,
-                // а не только голое true/false.
-                const s = scoreCompleteWords(task);
-                answerJson.userWords = task.userWords;
-                answerJson.correctWords = task.correctWords;
-                answerJson.correctCount = s.correct;
-                answerJson.totalCount = s.total;
-                isCorrect = s.correct === s.total && s.total > 0;
-            } else {
-                answerText = task.userAnswer;
-                isCorrect = task.userAnswer === task.correctAnswer;
-            }
-
-            return {
-                attempt_id: attempt.id,
-                task_id: task.taskId || 0,
-                task_type: task.type,
-                answer_text: answerText,
-                answer_json: answerJson,
-                is_correct: isCorrect
-            };
-        });
-
-        const { error: answersErr } = await supabaseClient.from('big_mock_answers').insert(answersToSave);
-        if (answersErr) throw answersErr;
-
-        if (!readingAlive(saveSession)) return;
-        if (window.fullTestMode && typeof continueFullTestSequence === 'function') { continueFullTestSequence(); return; }
-        renderResultsUI(currentTasks, finalScore, correctAnswers, totalQuestions);
-
-    } catch(e) {
-        console.error("Error saving test:", e);
-        alert('Результат Reading не сохранился в базу — балл на экране показан, но его не будет в отчёте.\n\n'
-            + (e.message || e) + '\n\nПокажите это сообщение преподавателю.');
-        if (!readingAlive(saveSession)) return;
-        if (window.fullTestMode && typeof continueFullTestSequence === 'function') { continueFullTestSequence(); return; }
-        renderResultsUI(currentTasks, finalScore, correctAnswers, totalQuestions);
+    // Сначала результат ложится в очередь на устройстве, потом уходит в базу.
+    // Если связи нет — он отправится сам, когда интернет вернётся.
+    const res = await mtSubmit({
+        section: 'reading',
+        attempt: { table: 'big_mock_attempts', row: {
+            id: attemptId,
+            test_id: currentActiveTestId,
+            section_name: 'reading',
+            user_id: window.currentUser.id,
+            total_score: parseFloat(finalScore),
+            status: 'completed',
+            completed_at: new Date().toISOString()
+        } },
+        answers: { table: 'big_mock_answers', rows: answersToSave }
+    });
+    readingPhase = 'done';
+    if (!res.ok) {
+        console.error("Error saving test:", res.error);
+        alert('Нет связи с сервером — результат Reading сохранён на этом устройстве и отправится автоматически, когда интернет вернётся.\n\n'
+            + (res.error && res.error.message ? res.error.message : res.error));
     }
+
+    if (!readingAlive(saveSession)) return;
+    if (window.fullTestMode && typeof continueFullTestSequence === 'function') { continueFullTestSequence(); return; }
+    renderResultsUI(currentTasks, finalScore, correctAnswers, totalQuestions);
 }
 
 async function loadReviewMode(attemptId, testId, testTitle) {
