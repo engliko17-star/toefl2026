@@ -16,11 +16,29 @@ let speakingAudioCtx = null;
 let speakingRecordingMimeType = '';
 let speakingQuestionTimerInterval = null;
 
+// Номер сессии Speaking. Abort посреди сохранения раньше не останавливал
+// цепочку: после загрузки файла движок открывал следующий вопрос уже на
+// дашборде, играл аудио и пытался писать с выключенного микрофона.
+let speakingSessionId = 0;
+function speakingAlive(id) { return id === speakingSessionId && window.engineType === 'speaking'; }
+
+function speakingDb() {
+    if (typeof getSupabaseClient === 'function') return getSupabaseClient();
+    if (typeof supabaseClient !== 'undefined') return supabaseClient;
+    return window.supabaseClient || null;
+}
+
+async function speakingUserId(client) {
+    if (window.currentUser && window.currentUser.id) return window.currentUser.id;
+    const { data: { session } } = await client.auth.getSession();
+    return session && session.user ? session.user.id : null;
+}
+
 // ==========================================
 // 1. ЗАГРУЗКА ЗАДАНИЙ
 // ==========================================
 async function fetchAndParseSpeakingTasks(testId) {
-    const client = getSupabaseClient();
+    const client = speakingDb();
     if (!client) return [];
 
     const { data: items, error } = await client
@@ -31,7 +49,7 @@ async function fetchAndParseSpeakingTasks(testId) {
 
     if (error) {
         console.error('Error loading speaking tasks:', error);
-        return [];
+        throw error;
     }
     return items || [];
 }
@@ -41,8 +59,15 @@ async function fetchAndParseSpeakingTasks(testId) {
 // ==========================================
 async function startSpeakingEngine(testId, testTitle) {
     window.engineType = 'speaking';
+    speakingSessionId++;
+    const mySession = speakingSessionId;
+    speakingAttemptId = null;   // иначе при сбое создания новой попытки записи уходили в старую
+    speakingItems = [];
+    speakingIndex = 0;
+    clearInterval(speakingQuestionTimerInterval);
+    clearTimeout(speakingFailsafeTimer);
     if (typeof resetEngineHeaderButtons === 'function') resetEngineHeaderButtons();
-    window.currentActiveTestId = testId;
+    currentActiveTestId = testId;
     window.currentActiveTestTitle = testTitle || 'Speaking Section';
 
     const resultsView = document.getElementById('results-view');
@@ -60,9 +85,12 @@ async function startSpeakingEngine(testId, testTitle) {
     const reviewBtn = document.getElementById('engine-review');
     const prevBtn = document.getElementById('engine-prev');
     const nextBtn = document.getElementById('engine-next');
+    const timerContainer = document.getElementById('engine-timer-container');
     if (reviewBtn) reviewBtn.classList.add('hidden');
     if (prevBtn) prevBtn.style.display = 'none';
     if (nextBtn) nextBtn.style.display = 'none';
+    if (timerContainer) timerContainer.classList.add('hidden'); // в Speaking свой таймер на каждый вопрос
+    document.getElementById('engine-progress').innerText = '';
 
     document.getElementById('engine-content').innerHTML = `
         <div class="m-auto text-center max-w-sm p-6">
@@ -71,31 +99,42 @@ async function startSpeakingEngine(testId, testTitle) {
             </div>
             <h2 class="text-xl font-bold text-slate-800 mb-2">Ready to start Speaking?</h2>
             <p class="text-sm text-slate-500 mb-6">Make sure you are in a quiet place and your microphone works. This section mixes Listen &amp; Repeat and Interview questions, with no way to go back once started.</p>
-            <button id="speakingStartBtn" class="bg-slate-900 hover:bg-indigo-600 transition text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center shadow-md mx-auto cursor-pointer">
+            <button id="speakingStartBtn" disabled class="bg-slate-900 hover:bg-indigo-600 disabled:opacity-40 transition text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center shadow-md mx-auto cursor-pointer">
                 Allow Mic &amp; Start <i data-lucide="play" class="w-4 h-4 ml-2 fill-current"></i>
             </button>
         </div>
     `;
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
+    let items;
     try {
-        speakingItems = await fetchAndParseSpeakingTasks(testId);
-        if (speakingItems.length === 0) {
-            alert("This Speaking section has no tasks configured in Supabase (full_test_speaking_tasks / speaking_questions)!");
-            if (typeof exitExamEngine === 'function') exitExamEngine();
-            return;
-        }
+        items = await fetchAndParseSpeakingTasks(testId);
     } catch (err) {
         console.error("Speaking Engine crash:", err);
-        alert("Error loading Speaking tasks structure.");
+        if (!speakingAlive(mySession)) return;
+        alert("Не удалось загрузить Speaking.\n\n" + (err.message || err));
         if (typeof exitExamEngine === 'function') exitExamEngine();
         return;
     }
+    if (!speakingAlive(mySession)) return; // нажали Abort во время загрузки — кнопки уже нет
 
-    document.getElementById('speakingStartBtn').onclick = beginSpeakingSection;
+    speakingItems = items;
+    if (speakingItems.length === 0) {
+        const msg = 'В этом тесте нет заданий Speaking (full_test_speaking_tasks / speaking_questions).';
+        if (typeof handleEmptySection === 'function') handleEmptySection('Speaking', msg);
+        else { alert(msg); if (typeof exitExamEngine === 'function') exitExamEngine(); }
+        return;
+    }
+
+    const btn = document.getElementById('speakingStartBtn');
+    if (btn) { btn.disabled = false; btn.onclick = beginSpeakingSection; }
 }
 
 async function beginSpeakingSection() {
+    const mySession = speakingSessionId;
+    const startBtn = document.getElementById('speakingStartBtn');
+    if (startBtn && startBtn.disabled) return;
+    if (typeof unlockGlobalAudio === 'function') unlockGlobalAudio();
     if (!window.isSecureContext && location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
         alert(`ОШИБКА БЕЗОПАСНОСТИ:\nБраузеры блокируют микрофон на сайтах без HTTPS!\n\nПожалуйста, откройте сайт по безопасному адресу https:// (не http://).`);
         return;
@@ -106,30 +145,44 @@ async function beginSpeakingSection() {
         return;
     }
 
+    if (startBtn) startBtn.disabled = true; // двойной клик создавал две попытки
     speakingRecordingMimeType = getSpeakingSupportedMimeType();
+    try {
+        if (speakingAudioCtx && speakingAudioCtx.state !== 'closed') speakingAudioCtx.close();
+    } catch (e) {}
     speakingAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
     try {
         speakingMediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (!speakingAlive(mySession)) { speakingMediaStream.getTracks().forEach(t => t.stop()); return; }
 
-        const client = getSupabaseClient();
-        const { data: { session } } = await client.auth.getSession();
+        // Попытка создаётся БЕЗ completed_at: дата появится только когда все
+        // ответы записаны. Брошенная попытка так и останется без даты, и
+        // карточка теста её не покажет.
+        const client = speakingDb();
+        const userId = await speakingUserId(client);
+        if (!userId) throw Object.assign(new Error('Сессия истекла — войдите заново.'), { name: 'AuthError' });
         const { data: attemptData, error: attemptError } = await client
             .from('big_mock_speaking_attempts')
-            .insert([{ test_id: window.currentActiveTestId, user_id: session.user.id, status: 'pending_review' }])
+            .insert([{ test_id: currentActiveTestId, user_id: userId, status: 'pending_review' }])
             .select()
             .single();
 
-        if (attemptError) {
+        if (attemptError || !attemptData) {
+            // Без попытки записи некуда привязать — не заставляем ученицу говорить 8 минут впустую
             console.error("Ошибка создания попытки Speaking:", attemptError);
-            alert("Ошибка базы данных (big_mock_speaking_attempts): " + attemptError.message);
-        } else if (attemptData) {
-            speakingAttemptId = attemptData.id;
+            alert("Не удалось начать Speaking — попытка не создана в базе.\n\n" + (attemptError ? attemptError.message : '') + "\n\nПокажите это сообщение преподавателю.");
+            if (typeof exitExamEngine === 'function') exitExamEngine();
+            return;
         }
+        if (!speakingAlive(mySession)) return;
+        speakingAttemptId = attemptData.id;
 
         speakingIndex = 0;
         loadSpeakingQuestion(0);
     } catch (err) {
+        if (startBtn) startBtn.disabled = false;
+        if (err && err.name === 'AuthError') { alert(err.message); return; }
         console.error("Media access error:", err);
         let details = "";
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
@@ -158,7 +211,8 @@ function getSpeakingSupportedMimeType() {
 
 function playSpeakingBeep() {
     return new Promise((resolve) => {
-        if (speakingAudioCtx && speakingAudioCtx.state === 'suspended') speakingAudioCtx.resume();
+        if (!speakingAudioCtx || speakingAudioCtx.state === 'closed') { setTimeout(resolve, 400); return; }
+        if (speakingAudioCtx.state === 'suspended') speakingAudioCtx.resume();
         const oscillator = speakingAudioCtx.createOscillator();
         const gainNode = speakingAudioCtx.createGain();
         oscillator.type = 'sine';
@@ -220,12 +274,16 @@ function renderSpeakingScenario(i) {
         const p = audio.play();
         // если автовоспроизведение заблокировано, показываем кнопку
         if (p !== undefined) p.catch(() => { if (btn) btn.classList.remove('hidden'); });
+        // если событие окончания не пришло — тоже показываем кнопку
+        armSpeakingFailsafe(audio, () => { if (btn) btn.classList.remove('hidden'); });
     } else if (btn) {
         btn.classList.remove('hidden');
     }
 }
 
 function loadSpeakingQuestion(i) {
+    if (window.engineType !== 'speaking') return;
+    const mySession = speakingSessionId;
     speakingIndex = i;
     const item = speakingItems[i];
     const q = item.question || {};
@@ -282,8 +340,10 @@ function loadSpeakingQuestion(i) {
         setSpeakingStatus('Listening to Question...', 'bg-sky-100 text-sky-700 border-sky-200');
         video.onerror = () => alert("Ошибка загрузки видео:\n" + q.media_url);
         video.onended = async () => {
+            if (!speakingAlive(mySession)) return;
             setSpeakingStatus('Get Ready...', 'bg-amber-100 text-amber-700 border-amber-200');
             await playSpeakingBeep();
+            if (!speakingAlive(mySession)) return;
             startSpeakingRecording(q.time_limit || 45);
         };
         // Страховка: на части устройств событие окончания не приходит,
@@ -308,8 +368,10 @@ function loadSpeakingQuestion(i) {
             audio.load();
             audio.onerror = () => alert("Ошибка загрузки аудио:\n" + q.audio_prompt_url);
             audio.onended = async () => {
+                if (!speakingAlive(mySession)) return;
                 setSpeakingStatus('Get Ready...', 'bg-amber-100 text-amber-700 border-amber-200');
                 await playSpeakingBeep();
+                if (!speakingAlive(mySession)) return;
                 startSpeakingRecording(q.time_limit || (isInterview ? 45 : 8));
             };
             armSpeakingFailsafe(audio, () => startSpeakingRecording(q.time_limit || (isInterview ? 45 : 8)));
@@ -328,7 +390,9 @@ function armSpeakingFailsafe(media, start) {
     const arm = () => {
         const dur = isFinite(media.duration) && media.duration > 0 ? media.duration : 20;
         clearTimeout(speakingFailsafeTimer);
+        const mySession = speakingSessionId;
         speakingFailsafeTimer = setTimeout(() => {
+            if (!speakingAlive(mySession)) return;
             if (!speakingMediaRecorder || speakingMediaRecorder.state === 'inactive') {
                 console.warn('Событие окончания вопроса не пришло — запускаем запись по страховке');
                 start();
@@ -350,6 +414,9 @@ function setSpeakingStatus(text, classes) {
 // 4. ЗАПИСЬ ОТВЕТА
 // ==========================================
 function startSpeakingRecording(limit) {
+    if (window.engineType !== 'speaking' || !speakingMediaStream) return;
+    if (speakingMediaRecorder && speakingMediaRecorder.state === 'recording') return;
+    clearTimeout(speakingFailsafeTimer);
     setSpeakingStatus('Recording...', 'bg-red-500 text-white border-red-500');
     const micIcon = document.getElementById('speakingMicIcon');
     if (micIcon) { micIcon.classList.remove('bg-gray-100', 'text-slate-400'); micIcon.classList.add('bg-transparent', 'text-white'); }
@@ -411,19 +478,23 @@ async function stopSpeakingRecording() {
     const micIcon = document.getElementById('speakingMicIcon');
     if (micIcon) { micIcon.classList.remove('bg-transparent', 'text-white'); micIcon.classList.add('bg-amber-100', 'text-amber-500'); }
 
+    const mySession = speakingSessionId;
+    const itemIndex = speakingIndex;
+    const attemptId = speakingAttemptId;
     speakingMediaRecorder.onstop = async () => {
         try {
-            const client = getSupabaseClient();
+            const client = speakingDb();
             const mimeType = speakingMediaRecorder.mimeType || speakingRecordingMimeType || 'audio/webm';
             let fileExt = 'webm';
             if (mimeType.includes('mp4')) fileExt = 'm4a';
             else if (mimeType.includes('aac')) fileExt = 'aac';
             else if (mimeType.includes('ogg')) fileExt = 'ogg';
 
-            const currentItem = speakingItems[speakingIndex];
+            const currentItem = speakingItems[itemIndex];
             const blob = new Blob(speakingAudioChunks, { type: mimeType });
-            const { data: { session } } = await client.auth.getSession();
-            const fileName = `${session.user.id}/big_mock_${currentItem.task_type}_item${currentItem.task_id}_${Date.now()}.${fileExt}`;
+            const userId = await speakingUserId(client);
+            if (!userId) throw new Error('Сессия истекла — запись не сохранена.');
+            const fileName = `${userId}/big_mock_${currentItem.task_type}_item${currentItem.task_id}_${Date.now()}.${fileExt}`;
 
             const { error: uploadError } = await client.storage
                 .from('student_recordings')
@@ -432,23 +503,27 @@ async function stopSpeakingRecording() {
             if (uploadError) {
                 console.error("Upload error:", uploadError);
                 alert("Ошибка загрузки файла в Storage: " + uploadError.message);
-            } else if (speakingAttemptId) {
+            } else if (attemptId) {
                 const { error: dbError } = await client
                     .from('big_mock_speaking_answers')
                     .insert([{
-                        attempt_id: speakingAttemptId,
+                        attempt_id: attemptId,
                         task_id: currentItem.task_id,
                         task_type: currentItem.task_type,
                         audio_url: fileName
                     }]);
-                if (dbError) console.error("Database save error:", dbError);
+                if (dbError) {
+                    console.error("Database save error:", dbError);
+                    alert("Запись загружена, но не привязана к попытке: " + dbError.message);
+                }
             }
         } catch (err) {
             console.error("Save process error:", err);
             alert("Критическая ошибка сохранения: " + err.message);
         }
 
-        speakingIndex++;
+        if (!speakingAlive(mySession)) return; // Abort во время загрузки файла
+        speakingIndex = itemIndex + 1;
         if (speakingIndex < speakingItems.length) {
             loadSpeakingQuestion(speakingIndex);
         } else {
@@ -461,23 +536,28 @@ async function stopSpeakingRecording() {
 // 5. ЗАВЕРШЕНИЕ
 // ==========================================
 async function finishSpeakingSection() {
-    if (speakingMediaStream) speakingMediaStream.getTracks().forEach(track => track.stop());
+    const mySession = speakingSessionId;
+    if (speakingMediaStream) { speakingMediaStream.getTracks().forEach(track => track.stop()); speakingMediaStream = null; }
     clearInterval(speakingQuestionTimerInterval);
+    clearTimeout(speakingFailsafeTimer);
+    try { if (speakingAudioCtx && speakingAudioCtx.state !== 'closed') speakingAudioCtx.close(); } catch (e) {}
+    speakingAudioCtx = null;
 
-    const client = getSupabaseClient();
+    const client = speakingDb();
     if (speakingAttemptId && client) {
-        try {
-            await client
-                .from('big_mock_speaking_attempts')
-                .update({ status: 'pending_review', completed_at: new Date().toISOString() })
-                .eq('id', speakingAttemptId);
-        } catch (err) {
-            console.error("Ошибка обновления статуса попытки Speaking:", err);
+        const { error } = await client
+            .from('big_mock_speaking_attempts')
+            .update({ status: 'pending_review', completed_at: new Date().toISOString() })
+            .eq('id', speakingAttemptId);
+        if (error) {
+            console.error("Ошибка обновления статуса попытки Speaking:", error);
+            alert('Speaking: записи сохранены, но попытка не отмечена как завершённая.\n\n' + error.message + '\n\nПокажите это сообщение преподавателю.');
         }
     }
+    if (!speakingAlive(mySession)) return;
 
     if (window.fullTestMode && typeof continueFullTestSequence === 'function') { continueFullTestSequence(); return; }
-    await loadSpeakingReviewMode(speakingAttemptId, window.currentActiveTestId, window.currentActiveTestTitle);
+    await loadSpeakingReviewMode(speakingAttemptId, currentActiveTestId, window.currentActiveTestTitle);
 }
 
 // ==========================================
@@ -485,24 +565,28 @@ async function finishSpeakingSection() {
 // ==========================================
 async function loadSpeakingReviewMode(attemptId, testId, testTitle) {
     window.engineType = 'speaking';
-    const client = getSupabaseClient();
+    speakingSessionId++;
+    const client = speakingDb();
 
     const mainInterface = document.getElementById('main-interface');
     if (mainInterface) mainInterface.classList.add('hidden');
 
     const resultsView = document.getElementById('results-view');
-    resultsView.classList.remove('hidden');
     resultsView.className = 'fixed inset-0 z-50 bg-[#f8f9fa] overflow-y-auto';
-    resultsView.innerHTML = `<div class="m-auto flex flex-col items-center justify-center text-slate-500"><i data-lucide="loader-2" class="w-10 h-10 animate-spin mb-4 text-indigo-600"></i><p class="font-bold">Loading Speaking results...</p></div>`;
+    resultsView.innerHTML = `<div class="min-h-full flex items-center justify-center text-slate-500"><div class="text-center"><i data-lucide="loader-2" class="w-10 h-10 animate-spin mb-4 text-indigo-600 mx-auto"></i><p class="font-bold">Loading Speaking results...</p></div></div>`;
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
     try {
-        window.currentActiveTestId = testId;
+        currentActiveTestId = testId;
+        if (testTitle) window.currentActiveTestTitle = testTitle;
+        if (!attemptId) throw new Error('Попытка не была создана в базе.');
 
-        const { data: attemptRow } = await client.from('big_mock_speaking_attempts').select('*').eq('id', attemptId).single();
+        const { data: attemptRow, error: attErr } = await client.from('big_mock_speaking_attempts').select('*').eq('id', attemptId).single();
+        if (attErr) throw attErr;
 
         const items = await fetchAndParseSpeakingTasks(testId);
-        const { data: answers } = await client.from('big_mock_speaking_answers').select('*').eq('attempt_id', attemptId);
+        const { data: answers, error: ansErr } = await client.from('big_mock_speaking_answers').select('*').eq('attempt_id', attemptId);
+        if (ansErr) throw ansErr;
 
         const signedUrls = {};
         await Promise.all((answers || []).map(async (a) => {
@@ -514,7 +598,7 @@ async function loadSpeakingReviewMode(attemptId, testId, testTitle) {
         renderSpeakingReviewUI(attemptRow, items, answers || [], signedUrls);
     } catch (err) {
         console.error("Error loading speaking review:", err);
-        alert("Could not load Speaking review mode.");
+        alert("Не удалось открыть разбор Speaking.\n\n" + (err.message || err));
         if (typeof exitExamEngine === 'function') exitExamEngine();
     }
 }
@@ -527,17 +611,26 @@ function renderSpeakingReviewUI(attemptRow, items, answers, signedUrls) {
     if (mainInterface) mainInterface.classList.add('hidden');
 
     const resultsView = document.getElementById('results-view');
-    resultsView.classList.remove('hidden');
     resultsView.className = 'fixed inset-0 z-50 bg-[#f8f9fa] overflow-y-auto';
 
     const statusHtml = (attemptRow && attemptRow.status === 'reviewed')
         ? `<div class="text-lg font-bold text-emerald-600">${attemptRow.total_score !== null && attemptRow.total_score !== undefined ? Number(attemptRow.total_score).toFixed(1) : 'Reviewed'}</div><div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Teacher Score</div>`
         : `<div class="text-lg font-bold text-amber-600">Pending</div><div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Teacher Review</div>`;
 
-    let itemsHtml = items.map((item, i) => {
+    let questionNo = 0;
+    let itemsHtml = items.map((item) => {
         const q = item.question || {};
+        if (item.task_type === 'interview_intro') {
+            return q.transcript ? `
+                <div class="bg-indigo-50/60 p-5 rounded-2xl border border-indigo-100 mb-4">
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-indigo-500">Interview Scenario</span>
+                    <p class="text-sm text-slate-700 leading-relaxed mt-2">${q.transcript}</p>
+                </div>` : '';
+        }
+        questionNo++;
+        const i = questionNo - 1;
         const isInterview = item.task_type === 'interview';
-        const answer = answers.find(a => a.task_id === item.task_id);
+        const answer = answers.find(a => String(a.task_id) === String(item.task_id));
         const audioUrl = answer ? signedUrls[item.task_id] : null;
 
         return `
@@ -575,10 +668,10 @@ function renderSpeakingReviewUI(attemptRow, items, answers, signedUrls) {
                         <div class="px-8 text-center">${statusHtml}</div>
                     </div>
                     <div class="flex justify-center space-x-3">
-                        <button onclick="startSpeakingEngine('${window.currentActiveTestId}', document.getElementById('dynamic-test-title').innerText)" class="px-6 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition shadow-md text-sm flex items-center cursor-pointer">
+                        <button onclick="unlockGlobalAudio(); startSpeakingEngine(currentActiveTestId, document.getElementById('dynamic-test-title').innerText)" class="px-6 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition shadow-md text-sm flex items-center cursor-pointer">
                             <i data-lucide="rotate-ccw" class="w-4 h-4 mr-2"></i> Retake Speaking
                         </button>
-                        <button onclick="typeof exitExamEngine === 'function' ? exitExamEngine() : console.log('Exit requested')" class="px-6 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition shadow-sm text-sm cursor-pointer">
+                        <button onclick="exitExamEngine()" class="px-6 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition shadow-sm text-sm cursor-pointer">
                             Back to Dashboard
                         </button>
                     </div>
