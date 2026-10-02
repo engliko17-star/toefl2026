@@ -744,7 +744,7 @@ async function saveListeningAttemptAndFinish() {
                         // Всё, что нужно для разбора, кладём внутрь user_answer.
                         return {
                             attempt_id: attempt.id,
-                            task_id: block.db_id,
+                            task_id: String(block.db_id),   // колонка text: номер задания строкой
                             user_answer: {
                                 question_id: q.id,
                                 unique_id: q.uniqueId,
@@ -800,10 +800,10 @@ async function loadListeningReviewMode(attemptId, testId, testTitle) {
         const stage2U = await fetchAndParseListeningTasks(testId, '2_upper');
 
         listQueue = [...stage1];
-        const answerBlockIds = answers.map(a => a.task_id);
+        const answerBlockIds = (answers.map(a => a.task_id)).map(String);
         
-        const tookLower = stage2L.some(t => answerBlockIds.includes(t.db_id));
-        const tookUpper = stage2U.some(t => answerBlockIds.includes(t.db_id));
+        const tookLower = stage2L.some(t => answerBlockIds.includes(String(t.db_id)));
+        const tookUpper = stage2U.some(t => answerBlockIds.includes(String(t.db_id)));
         
         if (tookLower) listQueue = listQueue.concat(stage2L);
         if (tookUpper) listQueue = listQueue.concat(stage2U);
@@ -942,4 +942,4 @@ function renderListeningReview(finalScore, correctAnswers, totalQuestions) {
         </div>
     `;
     lucide.createIcons();
-}
+            }
