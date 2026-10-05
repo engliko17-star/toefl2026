@@ -142,15 +142,22 @@ let module2StartIndex = null;
 //     поэтому сравнение с options[correct] ("Position B") не совпадало никогда.
 //   Select a Sentence — options пустой, options[correct] давало undefined,
 //     и вопрос молча выпадал из подсчёта вместе со своим баллом.
+// Текст предложения сравниваем без учёта переносов строк и повторных пробелов:
+// в пассаже предложение может переноситься (\n), и раньше клик по правильному
+// предложению давал "vital\npollinators", а эталон — "vital pollinators".
+function normSentence(t) {
+    return String(t || '').replace(/[\u00A0\u2009\u202F]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Эталон берём из той же разметки, по которой кликает ученица (через DOM, а не
+// регуляркой): так совпадают и сущности (&amp;), и вложенные теги.
+// Номер — из метки [sN] (data-id), а не порядковый: метки не обязаны идти подряд.
 function sentenceTextByMarker(passageHtml, markerNumber) {
-    const re = /<span[^>]*class="[^"]*clickable-sentence[^"]*"[^>]*>([\s\S]*?)<\/span>/g;
-    const found = [];
-    let m;
-    while ((m = re.exec(String(passageHtml || ''))) !== null) {
-        found.push(m[1].replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim());
-    }
-    // correct у этого типа считается с единицы — так размечен текст метками [sN]
-    return found[markerNumber - 1] || null;
+    const box = document.createElement('div');
+    box.innerHTML = String(passageHtml || '');
+    const spans = [...box.querySelectorAll('.clickable-sentence')];
+    const el = spans.find(s => String(s.getAttribute('data-id')) === String(markerNumber)) || spans[markerNumber - 1];
+    return el ? normSentence(el.textContent) : null;
 }
 
 function buildCorrectAnswer(q, qType, passageHtml) {
@@ -455,7 +462,7 @@ async function startExamEngine(testId, testTitle, resume) {
                 currentTasks.forEach((t, i) => {
                     const a = resume.answers[i] || {};
                     if (t.type === 'complete_words') t.userWords = Array.isArray(a.w) ? a.w : t.userWords;
-                    else t.userAnswer = (a.a === undefined ? null : a.a);
+                    else t.userAnswer = (a.a === undefined ? null : (t.qType === 'Select a Sentence' && a.a ? normSentence(a.a) : a.a));
                 });
                 currentIndex = Math.min(Math.max(0, resume.index || 0), currentTasks.length - 1);
                 module2StartIndex = (resume.m2 === null || resume.m2 === undefined) ? null : resume.m2;
@@ -643,13 +650,13 @@ function renderEngine() {
 
             setTimeout(() => {
                 document.querySelectorAll('.clickable-sentence').forEach(el => {
-                    const sentenceText = el.textContent.trim();
+                    const sentenceText = normSentence(el.textContent);
                     if (task.userAnswer === sentenceText) el.classList.add('selected');
                     el.onclick = function() {
                         if (task.qType !== 'Select a Sentence') return;
                         document.querySelectorAll('.clickable-sentence').forEach(s => s.classList.remove('selected'));
                         this.classList.add('selected');
-                        currentTasks[currentIndex].userAnswer = this.textContent.trim();
+                        currentTasks[currentIndex].userAnswer = normSentence(this.textContent);
                         saveReadingProgress();
                     };
                 });
@@ -1199,7 +1206,7 @@ async function loadReviewMode(attemptId, testId, testTitle) {
                 correctCount += sc.correct;
             } else {
                 const ans = takeAnswer(a => String(a.task_id) === String(task.taskId) && a.answer_json && a.answer_json.question === task.question && stageMatches(a, task));
-                if (ans) task.userAnswer = ans.answer_text;
+                if (ans) task.userAnswer = (task.qType === 'Select a Sentence' && ans.answer_text) ? normSentence(ans.answer_text) : ans.answer_text;
                 if (task.correctAnswer !== null && task.correctAnswer !== undefined) {
                     totalCount++;
                     if (task.userAnswer === task.correctAnswer) correctCount++;
