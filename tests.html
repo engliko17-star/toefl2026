@@ -6,6 +6,11 @@
     <title>Mock Tests — TOEFL Prep</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        // Если CDN иконок не загрузился, движки не должны падать на lucide.createIcons():
+        // без этой заглушки Listening не запускался вовсе. Иконок не будет, тест — будет.
+        if (!window.lucide || typeof window.lucide.createIcons !== 'function') window.lucide = { createIcons: function () {} };
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
@@ -1028,12 +1033,21 @@
                 if (!window.currentUser) return; // requireAuth сам перенаправит на логин
 
                 // Гостю прячем ссылки на разделы, которые ему всё равно не откроются
+                // (и в боковом меню, и в нижнем мобильном — раньше прятался только боковой)
                 if (window.currentUser.role === 'guest') {
-                    document.querySelectorAll('aside nav a').forEach(a => {
+                    document.querySelectorAll('aside nav a, #mobileBottomNav a').forEach(a => {
                         if (!a.getAttribute('href') || !a.getAttribute('href').includes('tests.html')) {
                             a.style.display = 'none';
                         }
                     });
+                    // auth.js загружает профиль без поля guest_completed_demo, поэтому
+                    // экран «бесплатная попытка уже использована» не появлялся никогда —
+                    // гость мог проходить бесплатный тест сколько угодно раз.
+                    try {
+                        const { data: g } = await supabaseClient.from('profiles')
+                            .select('guest_completed_demo').eq('id', window.currentUser.id).maybeSingle();
+                        if (g) window.currentUser.profile = Object.assign({}, window.currentUser.profile, { guest_completed_demo: !!g.guest_completed_demo });
+                    } catch (e) { console.warn('guest_completed_demo не загрузился:', e); }
                 }
 
                 mtRenderBanner();
@@ -1046,4 +1060,4 @@
         document.addEventListener('DOMContentLoaded', initTestsPage);
     </script>
 </body>
-</html>
+    </html>
