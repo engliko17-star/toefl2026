@@ -6,6 +6,10 @@
     <title>TOEFL Reading Practice with Explanations</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        // Если CDN иконок не ответил, страница не должна падать на lucide.createIcons()
+        if (!window.lucide || typeof window.lucide.createIcons !== 'function') window.lucide = { createIcons: function () {} };
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <script src="auth.js"></script>
@@ -194,6 +198,37 @@
 
         const db = getDatabaseClient();
 
+        // Шапка письма берётся из первых строк текста (To:/From:/Date:/Subject:), как в
+        // большом тесте. Раньше она была прописана жёстко (student@toeflprep.com), а строки
+        // шапки из текста дублировались в теле письма.
+        function parseEmailHeader(text) {
+            const lines = String(text || '').split('\n');
+            const meta = {};
+            let bodyStart = 0;
+            for (let i = 0; i < lines.length; i++) {
+                const m = lines[i].match(/^\s*(To|From|Date|Subject)\s*:\s*(.*)$/i);
+                if (m) { meta[m[1].toLowerCase()] = m[2].trim(); bodyStart = i + 1; }
+                else if (!lines[i].trim()) { if (bodyStart === i) bodyStart = i + 1; }
+                else break;
+            }
+            return { meta, body: lines.slice(bodyStart).join('\n').replace(/^\n+/, '') };
+        }
+
+        // Реплика чата: «Имя: текст» или «Имя (время): текст». Имя не может содержать
+        // двоеточие — раньше «Anna: meet at 3:30» разбиралось как автор «Anna: meet at 3».
+        function parseChatLine(line) {
+            const m = String(line).match(/^([^:(]+?)\s*(\([^)]*\))?\s*:\s*(.*)$/);
+            if (!m) return null;
+            return { name: (m[1] + (m[2] ? ' ' + m[2] : '')).trim(), text: m[3] };
+        }
+
+        // Ключ в базе может быть числом (1) или строкой ("1") — это один и тот же ответ
+        function sameAnswer(a, b) {
+            if (a === undefined || a === null || b === undefined || b === null || a === '' || b === '') return false;
+            return Number(a) === Number(b);
+        }
+        let submitted = false; // защита от двойного нажатия Submit
+
         // Функция переключения видимости типа вопроса
         window.toggleQuestionType = function() {
             const badge = document.getElementById('qTypeBadgeText');
@@ -209,20 +244,24 @@
             const cleanPassage = passage.replace(/[\[\]]/g, ''); 
 
             switch(layoutType) {
-                case 'email':
+                case 'email': {
+                    const { meta, body } = parseEmailHeader(cleanPassage);
+                    const row = (label, value) => value
+                        ? `<div><span class="inline-block w-14 font-semibold text-slate-400">${label}:</span> <span class="text-slate-600">${value}</span></div>` : '';
                     return `
                         <div class="max-w-xl mx-auto bg-white border border-slate-200 rounded-lg overflow-hidden shadow-xs font-sans text-sm">
                             <div class="bg-slate-50 p-4 border-b border-slate-200 space-y-1.5 text-slate-700">
-                                <div><span class="inline-block w-14 font-semibold text-slate-400">To:</span> <span class="bg-white px-2 py-0.5 border border-slate-200 rounded text-xs">student@toeflprep.com</span></div>
-                                <div><span class="inline-block w-14 font-semibold text-slate-400">From:</span> <span class="text-slate-600">newsletter@companyname.com</span></div>
-                                <div><span class="inline-block w-14 font-semibold text-slate-400">Date:</span> 09/26/2026</div>
-                                <div><span class="inline-block w-14 font-semibold text-slate-400">Subject:</span> <span class="font-medium text-slate-900">${taskTitle}</span></div>
+                                <div><span class="inline-block w-14 font-semibold text-slate-400">To:</span> <span class="bg-white px-2 py-0.5 border border-slate-200 rounded text-xs">${meta.to || 'student@toeflprep.com'}</span></div>
+                                ${row('From', meta.from || 'newsletter@companyname.com')}
+                                ${row('Date', meta.date)}
+                                <div><span class="inline-block w-14 font-semibold text-slate-400">Subject:</span> <span class="font-medium text-slate-900">${meta.subject || taskTitle}</span></div>
                             </div>
                             <div class="p-6 text-slate-800 space-y-4 leading-relaxed font-normal bg-white">
-                                ${cleanPassage.replace(/\n/g, '<br>')}
+                                ${body.replace(/\n/g, '<br>')}
                             </div>
                         </div>
                     `;
+                }
                 case 'social_media':
                     return `
                         <div class="max-w-md mx-auto bg-white border border-slate-200 rounded-2xl p-5 shadow-xs font-sans">
@@ -258,13 +297,13 @@
                     const lines = cleanPassage.split('\n');
                     const chatHtml = lines.map(line => {
                         if(!line.trim()) return '';
-                        const match = line.match(/^([^\(]+(?:\([^)]+\))?):\s*(.*)$/);
+                        const match = parseChatLine(line);
                         if (match) {
                             return `
                                 <div class="mb-4 font-sans">
-                                    <div class="text-[11px] font-bold text-slate-500 mb-0.5 px-1">${match[1].trim()}</div>
+                                    <div class="text-[11px] font-bold text-slate-500 mb-0.5 px-1">${match.name}</div>
                                     <div class="inline-block bg-white border border-slate-200 text-slate-800 rounded-2xl rounded-tl-none px-4 py-2.5 max-w-[90%] text-sm font-normal shadow-2xs">
-                                        ${match[2]}
+                                        ${match.text}
                                     </div>
                                 </div>
                             `;
@@ -518,13 +557,21 @@
                 timerContainer.style.display = 'none';
             }
 
+            if (!isReviewOnly) {
+                if (submitted) return;
+                submitted = true;
+            }
+            // В разборе со страницы списка ответы ученицы загружены — показываем,
+            // где верно, а где нет (раньше у всех вопросов было просто «Review»)
+            const showVerdict = !isReviewOnly || Object.keys(userAnswers).length > 0;
+
             let correctCount = 0;
             let categoryStats = {};
             explanationsList.innerHTML = ''; 
 
             currentTask.questions.forEach((q, idx) => {
                 const userAns = userAnswers[idx];
-                const isCorrect = userAns === q.correct;
+                const isCorrect = sameAnswer(userAns, q.correct);
                 if (isCorrect) correctCount++;
 
                 const qType = q.type || 'Detail';
@@ -542,10 +589,10 @@
                     let bgStyle = 'bg-slate-50 text-slate-600 border border-slate-100';
                     let icon = '';
 
-                    if (i === q.correct) {
+                    if (sameAnswer(i, q.correct)) {
                         bgStyle = 'bg-emerald-50 text-emerald-900 border border-emerald-200 font-medium';
                         icon = '<i data-lucide="check" class="w-3.5 h-3.5 text-emerald-600 mr-2 shrink-0"></i>';
-                    } else if (i === userAns) {
+                    } else if (sameAnswer(i, userAns)) {
                         bgStyle = 'bg-rose-50 text-rose-900 border border-rose-200 line-through';
                         icon = '<i data-lucide="x" class="w-3.5 h-3.5 text-rose-600 mr-2 shrink-0"></i>';
                     }
@@ -558,10 +605,10 @@
                 });
 
                 const qCard = `
-                    <div class="bg-white rounded-2xl border ${isReviewOnly ? 'border-slate-200 shadow-sm' : (isCorrect ? 'border-emerald-100 shadow-emerald-50/10' : 'border-rose-100 shadow-rose-50/10')} p-5 shadow-xs">
+                    <div class="bg-white rounded-2xl border ${!showVerdict ? 'border-slate-200 shadow-sm' : (isCorrect ? 'border-emerald-100 shadow-emerald-50/10' : 'border-rose-100 shadow-rose-50/10')} p-5 shadow-xs">
                         <div class="flex items-center justify-between mb-3">
-                            <span class="text-[10px] font-bold ${isReviewOnly ? 'text-slate-600' : (isCorrect ? 'text-emerald-600' : 'text-rose-600')} uppercase tracking-wider">
-                                Question ${idx + 1} — ${isReviewOnly ? 'Review' : (isCorrect ? 'Correct' : 'Incorrect')}
+                            <span class="text-[10px] font-bold ${!showVerdict ? 'text-slate-600' : (isCorrect ? 'text-emerald-600' : 'text-rose-600')} uppercase tracking-wider">
+                                Question ${idx + 1} — ${!showVerdict ? 'Review' : (isCorrect ? 'Correct' : 'Incorrect')}
                             </span>
                             <span class="text-[9px] px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md font-medium uppercase">${q.type}</span>
                         </div>
@@ -604,10 +651,12 @@
                     if (error) {
                         console.error("Ошибка сохранения в базу:", error);
                         alert("Тест не сохранился! Ошибка БД: " + error.message);
+                        submitted = false;
                     }
                 } catch (err) {
                     console.error("Сбой сети/базы:", err);
                     alert("Сбой сети: не удалось сохранить результаты.");
+                    submitted = false;
                 }
             }
 
