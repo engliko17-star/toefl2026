@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="theme-color" content="#f5f6fa">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -28,7 +28,9 @@ body.dyslexia-mode .ex, body.dyslexia-mode em{font-style:normal}
 body.dyslexia-mode p{line-height:1.75}
 *,*::before,*::after{box-sizing:border-box}
 html,body{height:100%}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased;overscroll-behavior:none}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased;overscroll-behavior:none;
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation}
+input{-webkit-user-select:text;user-select:text}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
 input{font:inherit;color:inherit}
 p,h1,h2,h3{margin:0}
@@ -50,8 +52,11 @@ a{color:inherit;text-decoration:none}
 .s-tag{display:flex;align-items:center;justify-content:center;gap:8px;min-height:26px;font-size:13px;font-weight:700;color:var(--muted);padding:4px 16px 0}
 .retry{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:11px;background:var(--amber-soft);color:var(--amber-ink);font-size:11.5px;font-weight:800}
 .stage{flex:1;min-height:0;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;justify-content:center;-webkit-overflow-scrolling:touch}
-.stage.top{justify-content:flex-start;padding-top:20px}
-.s-actions{padding:10px 16px calc(var(--safe-b) + 16px);display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:10px;min-height:20px}
+.stage.top{justify-content:flex-start;padding-top:16px}
+.stage.split{justify-content:flex-start;padding-top:16px}
+.stage.split .bottom{margin-top:auto;padding-top:14px}
+.stage.split .reveal{margin-top:12px}
+.s-actions{padding:8px 16px calc(var(--safe-b) + 14px);display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:10px;min-height:20px}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:54px;padding:0 18px;border-radius:17px;font-weight:800;font-size:16px;white-space:nowrap;transition:transform .08s}
 .btn:active{transform:scale(.98)}
 .btn-sm{height:42px;font-size:14px;border-radius:13px;padding:0 14px}
@@ -226,7 +231,6 @@ const SRS_INTERVALS_MIN = { 1: 15, 2: 30, 3: 60, 4: 180, 5: 360, 6: 720, 7: 1440
 const SRS_MASTERED_BOX = 13;
 const POOL_SIZE = 3;          // при заучивании в работе одновременно 3 слова
 const MAX_REVIEWS = 50;
-const AUTO_NEXT_MS = 1100;    // после верного ответа — сам переход дальше
 
 /* ---------- иконки (встроенные, без внешней библиотеки) ---------- */
 const ICONS = {
@@ -273,7 +277,8 @@ function lev(a, b) {
    ===================================================================== */
 let user = null, cfg = null;
 let items = [], idx = 0;                 // очередь показа (повторение / пролистывание)
-let isLearn = false, isBrowse = false;
+let isLearn = false, isBrowse = false, isPractice = false;   // practice = трудные слова, без зачёта
+let modeUse = {}, lastFamily = null;                         // чтобы в «Авто» режимы чередовались
 let srs = {};                            // norm(word) → строка прогресса
 let recorded = new Set();                // по каким словам оценка уже записана в этой сессии
 let results = new Map();                 // norm(word) → { w, first, tries }
@@ -390,6 +395,7 @@ async function boot() {
   if (!cfg) { fail('Тренировка не выбрана'); return; }
   isBrowse = cfg.mode === 'browse' || cfg.kind === 'browse';
   isLearn = !isBrowse && (cfg.kind === 'learn' || (!cfg.v && cfg.practiceScope === 'new'));
+  isPractice = cfg.kind === 'hard';
 
   await loadProgress();
   let base = Array.isArray(cfg.words) ? await fetchWordsByNames(cfg.words) : await legacySelect();
@@ -439,13 +445,26 @@ function pickDistractors(w, n) {
   return same.concat(rest).slice(0, n);
 }
 function canChoice(w) { return pickDistractors(w, 3).length === 3; }
+// «Авто»: для каждого слова — набор подходящих упражнений по его зрелости,
+// а из набора берём то, что в этой тренировке встречалось реже всего и не
+// совпадает с предыдущим заданием. Так за 10 слов ученик видит 4–5 разных режимов.
+const AUTO_POOLS = [
+  [1, ['flashcards_rev', 'choice', 'letters', 'flashcards']],      // только выучили
+  [3, ['choice', 'letters', 'typing', 'flashcards_rev']],
+  [7, ['letters', 'typing', 'dictation', 'choice']],
+  [99, ['typing', 'dictation', 'letters']]                          // зрелые слова — вспомнить самому
+];
+const family = m => (m || '').startsWith('flashcards') ? 'cards' : m;
 function autoModeFor(w) {
   const b = box(w);
-  if (b <= 2) return Math.random() < .5 ? 'flashcards' : 'flashcards_rev';
-  if (b <= 4) return 'choice';
-  if (b <= 6) return canLetters(w) && Math.random() < .5 ? 'letters' : 'typing';
-  if (b <= 9) return 'typing';
-  return Math.random() < .5 ? 'dictation' : 'typing';
+  let pool = AUTO_POOLS.find(([max]) => b <= max)[1]
+    .filter(m => (m !== 'choice' || canChoice(w)) && (m !== 'letters' || canLetters(w)));
+  if (!pool.length) pool = ['typing'];
+  let cands = pool.filter(m => family(m) !== lastFamily);
+  if (!cands.length) cands = pool;
+  const least = Math.min(...cands.map(m => modeUse[family(m)] || 0));
+  cands = cands.filter(m => (modeUse[family(m)] || 0) === least);
+  return cands[Math.floor(Math.random() * cands.length)];
 }
 // Заучивание — как было: знакомство карточкой, потом проверка, и слово
 // уходит из пула только когда его написали сами. Между ними — выбор ответа.
@@ -488,9 +507,10 @@ function show() {
   if (isLearn) { item = pickNextLearn(); if (!item) return finish(); lastShown = norm(item.w.word); }
   else { if (idx >= items.length) return finish(); item = items[idx]; }
   cur = { item, w: item.w, mode: effectiveMode(item), done: false, attempts: 0, hint: false, flipped: false };
+  const fam = family(cur.mode); modeUse[fam] = (modeUse[fam] || 0) + 1; lastFamily = fam;
   updateTop();
   const st = $('#stage');
-  st.className = 'stage' + (['typing', 'dictation', 'letters', 'choice'].includes(cur.mode) ? ' top' : '');
+  st.className = 'stage' + (['typing', 'dictation'].includes(cur.mode) ? ' top' : ['letters', 'choice'].includes(cur.mode) ? ' split' : '');
   st.scrollTop = 0;
   ({ flashcards: () => renderCard(false), flashcards_rev: () => renderCard(true), browse: () => renderCard(false),
      choice: renderChoice, letters: renderLetters, typing: renderTyping, dictation: renderDictation })[cur.mode]();
@@ -507,7 +527,7 @@ function updateTop() {
   }
   $('#pbar').style.width = (pct * 100) + '%';
   $('#ptext').textContent = txt;
-  $('#modeTag').innerHTML = esc(TAGS[cur.mode] || '') + (cur.item.isRetry ? ' <span class="retry">ещё раз</span>' : '') + (isLearn ? ' <span class="retry" style="background:var(--mint-soft);color:var(--mint-ink)">новое</span>' : '');
+  $('#modeTag').innerHTML = esc(TAGS[cur.mode] || '') + (cur.item.isRetry ? ' <span class="retry">ещё раз</span>' : '') + (isLearn ? ' <span class="retry" style="background:var(--mint-soft);color:var(--mint-ink)">новое</span>' : '') + (isPractice ? ' <span class="retry" style="background:var(--rose-soft);color:var(--rose-ink)">без зачёта</span>' : '');
   updateModeChip();
 }
 
@@ -655,8 +675,9 @@ function renderChoice() {
   const w = cur.w;
   cur.options = shuffle([w].concat(pickDistractors(w, 3)));
   $('#stage').innerHTML = `<div class="prompt"><div class="prompt-top"><span class="pill">${esc(w.part || '')}</span></div><p class="def-text">${esc(w.definition || '')}</p>${trHtml(w)}</div>
-    <div class="options" id="opts">${cur.options.map((o, i) => `<button class="opt" data-pick="${i}"><span class="opt-k">${i + 1}</span>${esc(o.word)}</button>`).join('')}</div>
-    <button class="skip" data-pick="-1">Не знаю</button><div id="after"></div>`;
+    <div id="after"></div>
+    <div class="bottom"><div class="options" id="opts" style="margin-top:0">${cur.options.map((o, i) => `<button class="opt" data-pick="${i}"><span class="opt-k">${i + 1}</span>${esc(o.word)}</button>`).join('')}</div>
+    <button class="skip" data-pick="-1">Не знаю</button></div>`;
   $('#actions').innerHTML = '';
 }
 function pick(i) {
@@ -677,7 +698,8 @@ function renderLetters() {
   while (mixed.join('') === letters.join('') && letters.length > 1 && guard++ < 10) mixed = shuffle(letters);
   cur.tiles = mixed.map((ch, id) => ({ ch, id, used: false }));
   $('#stage').innerHTML = `<div class="prompt"><div class="prompt-top"><span class="pill">${esc(w.part || '')}</span></div><p class="def-text">${esc(w.definition || '')}</p>${trHtml(w)}${exMasked(w)}</div>
-    <div class="answer-zone"><div class="slots" id="slots"></div><div class="tiles" id="tiles"></div><div class="feedback" id="fb"></div><div id="after"></div></div>`;
+    <div id="after"></div>
+    <div class="answer-zone bottom"><div class="slots" id="slots"></div><div class="feedback" id="fb"></div><div class="tiles" id="tiles" style="margin-top:10px"></div></div>`;
   $('#actions').innerHTML = `<button class="btn btn-soft" data-a="erase">${ic('back', 20)}Стереть</button><button class="btn btn-soft" data-a="giveup">Не знаю</button>`;
   drawLetters();
 }
@@ -797,11 +819,7 @@ function answered(ok, inc) {
   } else {
     judge(ok, inc);
   }
-  if (ok) {
-    autoTimer = setTimeout(next, AUTO_NEXT_MS);
-    // Ученик тянется что-то рассмотреть — автопереход отменяем
-    $('#stage').addEventListener('pointerdown', () => clearTimeout(autoTimer), { once: true });
-  }
+  // Дальше — только по кнопке: правильный ответ и пример успевают прочитать
 }
 function next() {
   clearTimeout(autoTimer);
@@ -823,8 +841,9 @@ function judge(ok, inc) {
   const w = cur.w, k = norm(w.word);
   trackResult(w, ok);
   const first = !recorded.has(k);
-  if (first) { recorded.add(k); recordWordProgress(w, ok, inc); if (ok) correctFirst++; }
-  logAct({ reviews: 1, correct: first && ok ? 1 : 0, wrong: first && !ok ? 1 : 0 });
+  if (first) { recorded.add(k); if (!isPractice) recordWordProgress(w, ok, inc); if (ok) correctFirst++; }
+  // Тренировка трудных слов идёт в серию и календарь, но не в точность и не в расписание
+  logAct(isPractice ? { reviews: 1 } : { reviews: 1, correct: first && ok ? 1 : 0, wrong: first && !ok ? 1 : 0 });
   if (!ok) { const copy = { w, isRetry: true }; items.push(copy); }
 }
 function learnLearned(item) {
@@ -873,12 +892,12 @@ function undo() {
   if (!u.wasRecorded) {
     recorded.delete(u.k);
     if (u.ok) correctFirst--;
-    if (u.prev) {
+    if (u.prev && !isPractice) {
       srs[u.k] = u.prev;
       const f = {}; ['correct_count', 'box', 'due_at', 'lapses', 'last_result', 'last_reviewed_at'].forEach(x => { f[x] = u.prev[x] === undefined ? null : u.prev[x]; });
       writeRow(u.prev.word || u.w.word, f);
     }
-    logAct({ reviews: -1, correct: u.ok ? -1 : 0, wrong: u.ok ? 0 : -1 });
+    logAct(isPractice ? { reviews: -1 } : { reviews: -1, correct: u.ok ? -1 : 0, wrong: u.ok ? 0 : -1 });
   } else logAct({ reviews: -1 });
   items.length = u.itemsLen;
   results.set(u.k, u.res);
@@ -909,7 +928,7 @@ async function finish() {
     if (isLearn) {
       hero = ringSvg(1, 'var(--mint)') + `<h1>${learnDone.length} ${plural(learnDone.length, 'новое слово', 'новых слова', 'новых слов')}</h1><p>Ушли в повторение — вернутся по расписанию</p>`;
     } else {
-      hero = ringSvg(pct / 100, pct >= 80 ? 'var(--mint)' : pct >= 50 ? 'var(--primary)' : 'var(--amber)') + `<h1>${pct >= 90 ? 'Отлично!' : pct >= 70 ? 'Хорошо!' : 'Готово'}</h1><p>С первой попытки: ${correctFirst} из ${total}</p>`;
+      hero = ringSvg(pct / 100, pct >= 80 ? 'var(--mint)' : pct >= 50 ? 'var(--primary)' : 'var(--amber)') + `<h1>${pct >= 90 ? 'Отлично!' : pct >= 70 ? 'Хорошо!' : 'Готово'}</h1><p>С первой попытки: ${correctFirst} из ${total}${isPractice ? '<br>Тренировка без зачёта — расписание повторений не менялось' : ''}</p>`;
     }
     const retries = list.filter(x => x.tries > 1).length;
     stats = `<div class="res-stats"><div class="res-stat"><b>${total}</b><span>${plural(total, 'слово', 'слова', 'слов')}</span></div><div class="res-stat"><b>${retries}</b><span>с повтором</span></div><div class="res-stat"><b>${mins}</b><span>мин</span></div></div>`;
@@ -1075,6 +1094,7 @@ document.addEventListener('keydown', e => {
 });
 function applyDyslexia() { let on = false; try { on = localStorage.getItem('dyslexiaMode') === 'true'; } catch (e) {} document.body.classList.toggle('dyslexia-mode', on); }
 
+['gesturestart', 'gesturechange'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 boot();
 </script>
 </body>
