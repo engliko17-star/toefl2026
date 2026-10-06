@@ -251,9 +251,12 @@ function renderDailyLifeLayout(passage, layoutType, taskTitle) {
             const lines = cleanPassage.split('\n');
             const chatHtml = lines.map(line => {
                 if (!line.trim()) return '';
-                const match = line.match(/^([^\(]+(?:\([^)]+\))?):\s*(.*)$/);
+                // Имя не может содержать двоеточие: раньше «Anna: meet at 3:30»
+                // разбиралось как автор «Anna: meet at 3» и текст «30».
+                const match = line.match(/^([^:(]+?)\s*(\([^)]*\))?\s*:\s*(.*)$/);
                 if (match) {
-                    return `<div class="mb-4 font-sans"><div class="text-[11px] font-bold text-slate-500 mb-0.5 px-1">${match[1].trim()}</div><div class="inline-block bg-white border border-slate-200 text-slate-800 rounded-2xl rounded-tl-none px-4 py-2.5 max-w-[90%] text-sm font-normal shadow-2xs">${match[2]}</div></div>`;
+                    const name = (match[1] + (match[2] ? ' ' + match[2] : '')).trim();
+                    return `<div class="mb-4 font-sans"><div class="text-[11px] font-bold text-slate-500 mb-0.5 px-1">${name}</div><div class="inline-block bg-white border border-slate-200 text-slate-800 rounded-2xl rounded-tl-none px-4 py-2.5 max-w-[90%] text-sm font-normal shadow-2xs">${match[3]}</div></div>`;
                 }
                 return `<p class="text-xs text-slate-400 italic my-2 text-center">${line}</p>`;
             }).join('');
