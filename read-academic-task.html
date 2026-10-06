@@ -6,6 +6,10 @@
     <title>Academic Reading Task — TOEFL</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        // Если CDN иконок не ответил, страница не должна падать на lucide.createIcons()
+        if (!window.lucide || typeof window.lucide.createIcons !== 'function') window.lucide = { createIcons: function () {} };
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <script src="auth.js"></script>
@@ -193,6 +197,13 @@
         let userAnswers = {}; 
         let startTime = Date.now();
         let currentUser = null;
+
+        // Ключ в базе может быть записан и числом (1), и строкой ("1") —
+        // при строгом === строковый ключ давал «неверно» на любой ответ.
+        function sameAnswer(a, b) {
+            if (a === undefined || a === null || b === undefined || b === null || a === '' || b === '') return false;
+            return Number(a) === Number(b);
+        }
 
         const topNavButtons = document.getElementById('topNavButtons');
         const headerSeparator = document.getElementById('headerSeparator');
@@ -639,6 +650,8 @@
             document.querySelectorAll('.insert-square').forEach(el => {
                 el.classList.remove('review-square-correct', 'review-square-wrong', 'selected');
             });
+            // Вставленное в прошлый раз предложение оставалось в тексте — готовая подсказка
+            document.querySelectorAll('.insert-preview').forEach(el => el.remove());
 
             document.getElementById('resultsContainer').classList.add('hidden');
             document.getElementById('quizContainer').classList.remove('hidden');
@@ -670,17 +683,27 @@
                 try {
                     const { data, error } = await db
                         .from('reading_results')
-                        .select('score_earned, score_total')
+                        .select('*')
                         .eq('user_id', currentUser.id)
                         .eq('task_id', parseInt(taskId))
                         .eq('task_type', 'academic')
-                        .order('id', { ascending: false })
+                        .order('created_at', { ascending: false })
                         .limit(1)
                         .maybeSingle();
 
                     if (!error && data) {
                         scoreEarned = data.score_earned;
                         scoreTotal = data.score_total;
+                        // Ответы по вопросам сохраняются (user_answers), но разбор их
+                        // не читал — поэтому все вопросы показывались как «Practice Question».
+                        let saved = data.user_answers;
+                        if (typeof saved === 'string') { try { saved = JSON.parse(saved); } catch (e) { saved = null; } }
+                        if (saved && typeof saved === 'object') {
+                            userAnswers = {};
+                            Object.entries(saved).forEach(([k, v]) => {
+                                if (v !== null && v !== undefined && v !== '') userAnswers[Number(k)] = Number(v);
+                            });
+                        }
                     }
                 } catch (err) {
                     console.error("Error fetching results for review:", err);
@@ -700,7 +723,7 @@
 
             currentTask.questions.forEach((q, idx) => {
                 const userAns = userAnswers[idx];
-                const isCorrect = hasUserAnswers ? (userAns === q.correct) : true;
+                const isCorrect = hasUserAnswers ? sameAnswer(userAns, q.correct) : true;
 
                 let optionsReviewHtml = '';
                 
@@ -726,20 +749,24 @@
                         if (hasUserAnswers && userAns !== undefined && !isCorrect) {
                             document.querySelector(`.insert-square[data-sq="${userAns}"]`)?.classList.add('review-square-wrong');
                         }
-                        [1, 2, 3, 4].forEach(sqNum => {
+                        // Раньше список был [sq1]..[sq4] и сравнивался с ключом как с номером
+                        // «с единицы», а ключ и ответ ученицы считаются с нуля (A = 0, B = 1).
+                        // Из-за этого при правильном ответе B зелёным горел «[sq1]».
+                        const letters = [...document.querySelectorAll('#passageContent .insert-square')].map(el => el.dataset.letter);
+                        letters.forEach((L, i) => {
                             let bgStyle = 'bg-slate-50 text-slate-600 border border-slate-100';
                             let icon = '';
 
-                            if (sqNum === q.correct) {
+                            if (sameAnswer(i, q.correct)) {
                                 bgStyle = 'bg-emerald-50 text-emerald-900 border border-emerald-200 font-medium';
                                 icon = '<i data-lucide="check" class="w-3.5 h-3.5 text-emerald-600 mr-2 shrink-0"></i>';
-                            } else if (hasUserAnswers && sqNum === userAns) {
+                            } else if (hasUserAnswers && sameAnswer(i, userAns)) {
                                 bgStyle = 'bg-rose-50 text-rose-900 border border-rose-200 line-through';
                                 icon = '<i data-lucide="x" class="w-3.5 h-3.5 text-rose-600 mr-2 shrink-0"></i>';
                             }
                             optionsReviewHtml += `
                                 <div class="flex items-center p-2.5 rounded-lg text-[11px] ${bgStyle}">
-                                    ${icon} <span>Square [sq${sqNum}]</span>
+                                    ${icon} <span>Position ${L}</span>
                                 </div>
                             `;
                         });
@@ -750,10 +777,10 @@
                             let bgStyle = 'bg-slate-50 text-slate-600 border border-slate-100';
                             let icon = '';
 
-                            if (i === q.correct) {
+                            if (sameAnswer(i, q.correct)) {
                                 bgStyle = 'bg-emerald-50 text-emerald-900 border border-emerald-200 font-medium';
                                 icon = '<i data-lucide="check" class="w-3.5 h-3.5 text-emerald-600 mr-2 shrink-0"></i>';
-                            } else if (hasUserAnswers && i === userAns) {
+                            } else if (hasUserAnswers && sameAnswer(i, userAns)) {
                                 bgStyle = 'bg-rose-50 text-rose-900 border border-rose-200 line-through';
                                 icon = '<i data-lucide="x" class="w-3.5 h-3.5 text-rose-600 mr-2 shrink-0"></i>';
                             }
@@ -819,12 +846,15 @@
             lucide.createIcons();
         }
 
+        let finishing = false;
         async function finishTest() {
+            if (finishing) return;
             if (userAnswers[currentQuestionIdx] === undefined) {
                 alert("Please select an answer for the final question!");
                 return;
             }
 
+            finishing = true;
             stopTimer(); 
             const timerContainer = document.getElementById('timerContainer');
             if (timerContainer) {
@@ -838,7 +868,7 @@
 
             currentTask.questions.forEach((q, idx) => {
                 const userAns = userAnswers[idx];
-                const isCorrect = userAns === q.correct;
+                const isCorrect = sameAnswer(userAns, q.correct);
                 if (isCorrect) score++;
 
                 const qType = q.type || 'Detail';
@@ -883,6 +913,7 @@
             }
 
             renderReviewUI(score, currentTask.questions.length);
+            finishing = false;
         }
     </script>
 </body>
