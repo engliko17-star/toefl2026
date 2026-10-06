@@ -6,6 +6,10 @@
     <title>Practice Task — TOEFL</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        // Если CDN иконок не ответил, страница не должна падать на lucide.createIcons()
+        if (!window.lucide || typeof window.lucide.createIcons !== 'function') window.lucide = { createIcons: function () {} };
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <script src="auth.js"></script>
@@ -268,28 +272,20 @@
                 document.getElementById('textContent').innerHTML = htmlWithInputs;
                 setupInputs();
 
-                const { data: progress, error: progressError } = await db
+                // select('*') — чтобы получить и ответы ученицы, если колонка user_answers уже есть.
+                // Без maybeSingle: если в базе остались дубли, страница не должна ломаться.
+                const { data: progressRows, error: progressError } = await db
                     .from('complete_words_results')
-                    .select('score_percent')
+                    .select('*')
                     .eq('task_id', taskId)
-                    .eq('user_id', currentUser.id)
-                    .maybeSingle();
+                    .eq('user_id', currentUser.id);
 
-                if (!progressError && progress) {
-                    const savedScore = progress.score_percent;
-                    const inputs = document.querySelectorAll('.letter-input');
-                    inputs.forEach(input => {
-                        input.disabled = true;
-                        const correctAnswer = input.getAttribute('data-answer');
-                        input.value = correctAnswer; 
-                        input.classList.add('correct');
-                    });
+                const progress = (!progressError && progressRows && progressRows.length)
+                    ? [...progressRows].sort((x, y) => String(x.created_at || '').localeCompare(String(y.created_at || ''))).pop()
+                    : null;
 
-                    document.getElementById('scoreDisplay').innerText = `Saved Score: ${savedScore}%`;
-                    document.getElementById('submitContainer').classList.add('hidden');
-                    document.getElementById('resultBlock').classList.remove('hidden');
-                    
-                    // Если задание уже выполнено, таймер не запускаем (он останется скрытым)
+                if (progress) {
+                    showSavedAttempt(progress);
                 } else {
                     // Задание не выполнено - запускаем таймер
                     startTimer();
@@ -300,6 +296,59 @@
             } catch (err) {
                 showError(err.message);
             }
+        }
+
+        // Показ сохранённой попытки. Раньше все пропуски заполнялись правильными
+        // буквами и красились зелёным — разбор выглядел как 100% при любом балле.
+        function showSavedAttempt(progress) {
+            let saved = progress.user_answers;
+            if (typeof saved === 'string') { try { saved = JSON.parse(saved); } catch (e) { saved = null; } }
+            const words = document.querySelectorAll('.puzzle-word');
+            let correctWords = 0;
+            words.forEach((wordEl, w) => {
+                const letters = Array.isArray(saved) && Array.isArray(saved[w]) ? saved[w] : null;
+                let wordOk = true;
+                wordEl.querySelectorAll('.letter-input').forEach((input, i) => {
+                    input.disabled = true;
+                    const right = input.getAttribute('data-answer');
+                    if (letters) {
+                        const typed = String(letters[i] || '').toLowerCase();
+                        const ok = typed === right.toLowerCase();
+                        if (!ok) wordOk = false;
+                        input.value = right;
+                        input.classList.add(ok ? 'correct' : 'wrong');
+                    } else {
+                        input.value = right; // ответы этой попытки не сохранялись — только правильные буквы, без оценки
+                    }
+                });
+                if (letters && wordOk) correctWords++;
+            });
+
+            document.getElementById('scoreDisplay').innerText = (Array.isArray(saved) && words.length)
+                ? `Saved Score: ${progress.score_percent}% (${correctWords} / ${words.length} correct)`
+                : `Saved Score: ${progress.score_percent}% — your letters for this attempt were not saved, correct letters are shown`;
+            document.getElementById('submitContainer').classList.add('hidden');
+            document.getElementById('resultBlock').classList.remove('hidden');
+        }
+
+        // Сохраняет результат. Работает и без уникального ключа (user_id, task_id) в базе
+        // (тогда старый результат удаляется и пишется новый), и без колонки user_answers
+        // (тогда сохраняется только балл, как раньше).
+        async function saveCompleteWordsResult(scorePercent, userWords) {
+            const base = { task_id: taskId, user_id: currentUser.id, score_percent: scorePercent };
+            const variants = [{ ...base, user_answers: userWords }, base];
+            let lastErr = null;
+            for (const row of variants) {
+                let { error } = await db.from('complete_words_results').upsert([row], { onConflict: 'user_id, task_id' });
+                if (error && !/user_answers/i.test(error.message || '')) {
+                    const del = await db.from('complete_words_results').delete().eq('task_id', taskId).eq('user_id', currentUser.id);
+                    if (!del.error) ({ error } = await db.from('complete_words_results').insert([row]));
+                }
+                if (!error) return { ok: true };
+                lastErr = error;
+                if (!/user_answers/i.test(error.message || '')) break; // ошибка не про колонку — второй вариант не поможет
+            }
+            return { ok: false, error: lastErr };
         }
 
         function showError(msg) {
@@ -326,18 +375,23 @@
             });
         }
 
+        let checking = false;
         document.getElementById('submitBtn').addEventListener('click', async () => {
+            if (checking) return;
             const puzzleWords = document.querySelectorAll('.puzzle-word');
             const totalWords = puzzleWords.length;
             
             if (totalWords === 0) return;
+            checking = true;
             
             stopTimer(); // Останавливаем таймер при проверке ответов
 
             let correctWordsCount = 0;
+            const userWords = []; // буквы ученицы по словам — для разбора
 
             puzzleWords.forEach(wordContainer => {
                 const inputs = wordContainer.querySelectorAll('.letter-input');
+                userWords.push(Array.from(inputs).map(i => i.value.toLowerCase()));
                 let isWordCorrect = true;
 
                 inputs.forEach(input => {
@@ -361,23 +415,17 @@
 
             const scorePercent = Math.round((correctWordsCount / totalWords) * 100);
             
-            try {
-                const { error } = await db
-                    .from('complete_words_results')
-                    .upsert([{ 
-                        task_id: taskId, 
-                        user_id: currentUser.id, 
-                        score_percent: scorePercent 
-                    }], { onConflict: 'user_id, task_id' });
-
-                if (error) throw error;
-            } catch (dbErr) {
-                console.error("Error saving progress to Supabase:", dbErr.message);
+            const saved = await saveCompleteWordsResult(scorePercent, userWords);
+            if (!saved.ok) {
+                console.error("Error saving progress to Supabase:", saved.error);
+                alert('Результат не сохранился в базу — балл на экране показан, но его не будет в статистике.\n\n'
+                    + (saved.error && saved.error.message ? saved.error.message : saved.error));
             }
 
             document.getElementById('scoreDisplay').innerText = `${scorePercent}% (${correctWordsCount} / ${totalWords} correct)`;
             document.getElementById('submitContainer').classList.add('hidden');
             document.getElementById('resultBlock').classList.remove('hidden');
+            checking = false;
             
             lucide.createIcons();
         });
@@ -411,4 +459,3 @@
     </script>
 </body>
 </html>
-
