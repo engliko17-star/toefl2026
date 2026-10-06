@@ -22,13 +22,30 @@
             <div class="font-bold text-3xl tracking-tighter flex items-center justify-center space-x-2 mb-2">
                 <span>TOEFL</span><span class="w-2 h-2 bg-indigo-600 rounded-full mt-2"></span>
             </div>
-            <p class="text-sm text-gray-500">Welcome back! Please enter your details.</p>
+            <p id="subtitle" class="text-sm text-gray-500">Войдите, чтобы продолжить занятия</p>
+
+            <!-- Явный выбор режима: раньше обе кнопки были в одной форме,
+                 и человек не понимал, регистрируется он или входит. -->
+            <div class="mt-5 bg-gray-100 p-1 rounded-2xl flex text-sm font-bold">
+                <button type="button" id="tabLogin" onclick="setMode('login')"
+                        class="flex-1 py-2 rounded-xl transition bg-white text-slate-900 shadow-xs">Вход</button>
+                <button type="button" id="tabSignup" onclick="setMode('signup')"
+                        class="flex-1 py-2 rounded-xl transition text-gray-500">Регистрация</button>
+            </div>
         </div>
 
-        <form id="authForm" class="space-y-5" onsubmit="event.preventDefault();">
+        <form id="authForm" class="space-y-5" onsubmit="event.preventDefault(); submitForm();">
             
             <div id="errorMsg" class="hidden bg-rose-50 text-rose-600 text-sm p-3 rounded-xl border border-rose-100 text-center font-medium">
                 Error message goes here
+            </div>
+
+            <div id="nameField" class="hidden">
+                <label class="block text-sm font-bold text-slate-700 mb-1.5">Имя и фамилия</label>
+                <input type="text" id="fullName"
+                       class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-50 transition text-slate-700 bg-gray-50 focus:bg-white"
+                       placeholder="Анна Иванова">
+                <p class="text-[11px] text-gray-400 mt-1">Чтобы преподаватель узнал вас в списке</p>
             </div>
 
             <div>
@@ -43,18 +60,20 @@
                 <input type="password" id="password" required 
                        class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-50 transition text-slate-700 bg-gray-50 focus:bg-white" 
                        placeholder="••••••••">
+                <p id="passHint" class="hidden text-[11px] text-gray-400 mt-1">Не короче шести символов</p>
             </div>
 
-            <div class="pt-2 space-y-3">
-                <button onclick="handleLogin()" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 rounded-2xl transition text-sm flex justify-center items-center">
-                    <span id="loginText">Sign In</span>
+            <div id="signupNote" class="hidden bg-indigo-50 border border-indigo-100 text-indigo-900 text-xs p-3 rounded-xl leading-relaxed">
+                После регистрации преподаватель откроет вам доступ к разделам.
+                Обычно это занимает несколько часов.
+            </div>
+
+            <div class="pt-2">
+                <button type="submit" id="submitBtn"
+                        class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 rounded-2xl transition text-sm flex justify-center items-center disabled:opacity-60">
+                    <span id="submitText">Войти</span>
                     <i data-lucide="arrow-right" class="w-4 h-4 ml-2"></i>
                 </button>
-                
-                <div class="text-center">
-                    <span class="text-sm text-gray-400">Don't have an account?</span>
-                    <button type="button" id="signupBtn" onclick="handleSignup()" class="text-sm font-bold text-indigo-600 hover:text-indigo-700 ml-1 transition">Sign Up</button>
-                </div>
             </div>
         </form>
     </div>
@@ -62,83 +81,113 @@
     <script>
         lucide.createIcons();
 
+        let mode = 'login';
+
         // Проверяем сессию при загрузке
         window.onload = async () => {
             const { data: { session } } = await _supabase.auth.getSession();
-            if (session) {
-                window.location.href = 'index.html';
-            }
+            if (session) window.location.href = 'index.html';
         };
 
-        function showError(msg) {
-            const errorDiv = document.getElementById('errorMsg');
-            errorDiv.innerText = msg;
-            errorDiv.classList.remove('hidden');
-            
-            // Сбрасываем текст на кнопках, если произошла ошибка
-            document.getElementById('loginText').innerText = "Sign In";
-            const signupBtn = document.getElementById('signupBtn');
-            if(signupBtn) {
-                signupBtn.innerText = "Sign Up";
-                signupBtn.disabled = false;
-            }
+        // Переключение режима. Раньше обе кнопки жили в одной форме, и человек
+        // нажимал «Sign Up», не понимая, что поля заполняются заранее.
+        function setMode(next) {
+            mode = next;
+            const signup = next === 'signup';
+
+            document.getElementById('tabLogin').className =
+                'flex-1 py-2 rounded-xl transition ' + (signup ? 'text-gray-500' : 'bg-white text-slate-900 shadow-xs');
+            document.getElementById('tabSignup').className =
+                'flex-1 py-2 rounded-xl transition ' + (signup ? 'bg-white text-slate-900 shadow-xs' : 'text-gray-500');
+
+            document.getElementById('subtitle').innerText = signup
+                ? 'Создайте аккаунт — это займёт минуту'
+                : 'Войдите, чтобы продолжить занятия';
+            document.getElementById('submitText').innerText = signup ? 'Зарегистрироваться' : 'Войти';
+
+            ['nameField', 'passHint', 'signupNote'].forEach(id =>
+                document.getElementById(id).classList.toggle('hidden', !signup));
+
+            hideError();
         }
 
-        async function handleSignup() {
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            
-            if(!email || !password) return showError("Please fill in both fields (min 6 chars for password)");
+        function showError(msg) {
+            const el = document.getElementById('errorMsg');
+            el.innerText = msg;
+            el.classList.remove('hidden');
+            setBusy(false);
+        }
+        function hideError() { document.getElementById('errorMsg').classList.add('hidden'); }
 
-            // Показываем процесс регистрации
-            const signupBtn = document.getElementById('signupBtn');
-            signupBtn.innerText = "Creating account...";
-            signupBtn.disabled = true;
+        function setBusy(on) {
+            const btn = document.getElementById('submitBtn');
+            btn.disabled = on;
+            document.getElementById('submitText').innerText = on
+                ? (mode === 'signup' ? 'Создаём аккаунт…' : 'Входим…')
+                : (mode === 'signup' ? 'Зарегистрироваться' : 'Войти');
+        }
 
-            // Команда Supabase создать нового пользователя
-            const { data, error } = await _supabase.auth.signUp({
-                email: email,
-                password: password,
-            });
+        function submitForm() {
+            hideError();
+            return mode === 'signup' ? handleSignup() : handleLogin();
+        }
 
-            if (error) {
-                showError(error.message);
-            } else {
-                // Если регистрация успешна — логиним автоматически
-                const { error: loginError } = await _supabase.auth.signInWithPassword({
-                    email: email,
-                    password: password,
-                });
-                
-                if (loginError) {
-                    showError("Account created. Please sign in manually.");
-                } else {
-                    window.location.href = 'index.html';
-                }
-            }
+        // Понятные сообщения вместо английских от Supabase
+        function humanError(error) {
+            const m = (error && error.message || '').toLowerCase();
+            if (m.includes('invalid login')) return 'Неверная почта или пароль.';
+            if (m.includes('already registered') || m.includes('already exists'))
+                return 'Такая почта уже зарегистрирована. Переключитесь на «Вход».';
+            if (m.includes('password') && m.includes('6')) return 'Пароль должен быть не короче шести символов.';
+            if (m.includes('email') && (m.includes('invalid') || m.includes('validate')))
+                return 'Проверьте адрес почты — похоже, он введён с опечаткой.';
+            if (m.includes('rate limit')) return 'Слишком много попыток подряд. Подождите минуту.';
+            return error && error.message ? error.message : 'Что-то пошло не так. Попробуйте ещё раз.';
         }
 
         async function handleLogin() {
-            const email = document.getElementById('email').value;
+            const email = document.getElementById('email').value.trim();
             const password = document.getElementById('password').value;
-            
-            if(!email || !password) return showError("Please fill in both fields");
-            
-            const btnText = document.getElementById('loginText');
-            btnText.innerText = "Signing in...";
+            if (!email || !password) return showError('Введите почту и пароль.');
 
-            const { data, error } = await _supabase.auth.signInWithPassword({
-                email: email,
-                password: password,
-            });
-
-            if (error) {
-                showError("Invalid email or password.");
-            } else {
-                window.location.href = 'index.html';
-            }
+            setBusy(true);
+            const { error } = await _supabase.auth.signInWithPassword({ email, password });
+            if (error) return showError(humanError(error));
+            window.location.href = 'index.html';
         }
+
+        async function handleSignup() {
+            const name = document.getElementById('fullName').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+
+            if (!name) return showError('Укажите имя и фамилию — так преподаватель найдёт вас в списке.');
+            if (!email || !password) return showError('Введите почту и пароль.');
+            if (password.length < 6) return showError('Пароль должен быть не короче шести символов.');
+
+            setBusy(true);
+            // Имя передаём сразу при регистрации, чтобы оно попало в профиль
+            const { data, error } = await _supabase.auth.signUp({
+                email, password, options: { data: { full_name: name } }
+            });
+            if (error) return showError(humanError(error));
+
+            const { error: loginError } = await _supabase.auth.signInWithPassword({ email, password });
+            if (loginError) {
+                setMode('login');
+                return showError('Аккаунт создан. Теперь войдите с этой почтой и паролем.');
+            }
+
+            // Записываем имя в профиль: триггер мог создать строку без него
+            try {
+                const { data: { user } } = await _supabase.auth.getUser();
+                if (user) await _supabase.from('profiles').update({ full_name: name }).eq('id', user.id);
+            } catch (e) { console.warn('Имя не сохранилось в профиль:', e); }
+
+            window.location.href = 'index.html';
+        }
+
+        setMode('login');
     </script>
 </body>
 </html>
-
