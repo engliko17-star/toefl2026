@@ -1,984 +1,1081 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Review Session — TOEFL</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    
-    <script src="auth.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#f5f6fa">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="vocab-manifest.json">
+<title>Тренировка — Слова</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Lexend:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="auth.js"></script>
+<style>
+:root{
+  --bg:#f5f6fa; --surface:#fff; --surface-2:#f0f2f7; --ink:#0f172a; --ink-2:#334155; --muted:#64748b; --faint:#94a3b8; --line:#e6e9f0;
+  --primary:#4f46e5; --primary-ink:#4338ca; --primary-soft:#eef2ff;
+  --mint:#10b981; --mint-ink:#047857; --mint-soft:#e9fbf3;
+  --amber:#f59e0b; --amber-ink:#b45309; --amber-soft:#fff6e5;
+  --rose:#e11d48; --rose-ink:#be123c; --rose-soft:#fff1f3;
+  --font:'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --safe-b:env(safe-area-inset-bottom, 0px); --safe-t:env(safe-area-inset-top, 0px);
+}
+body.dyslexia-mode{--font:'Lexend', system-ui, sans-serif; --bg:#fbf6ec; --surface:#fffdf8; --surface-2:#f5efe3; --line:#ece4d4; --ink:#2b2b2b; letter-spacing:.01em}
+body.dyslexia-mode .ex, body.dyslexia-mode em{font-style:normal}
+body.dyslexia-mode p{line-height:1.75}
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased;overscroll-behavior:none}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+input{font:inherit;color:inherit}
+p,h1,h2,h3{margin:0}
+a{color:inherit;text-decoration:none}
+.ic{display:inline-block;vertical-align:middle;flex:none}
+[hidden]{display:none!important}
+:focus-visible{outline:3px solid #a5b4fc;outline-offset:2px;border-radius:10px}
 
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght=400;500;600;700&display=swap');
-        @import url('https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&display=swap');
-        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+/* ---------- Каркас сессии ---------- */
+.session{height:100vh;height:100dvh;display:flex;flex-direction:column;max-width:640px;margin:0 auto}
+.s-top{display:flex;align-items:center;gap:10px;padding:calc(var(--safe-t) + 10px) 12px 6px}
+.icon-btn{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;color:var(--ink-2);flex:none}
+.icon-btn:active{background:var(--surface-2)}
+.s-bar{flex:1;height:10px;border-radius:5px;background:#e3e6ee;overflow:hidden}
+.s-bar i{display:block;height:100%;width:0;border-radius:5px;background:var(--primary);transition:width .35s cubic-bezier(.2,.8,.2,1)}
+.s-bar.learn i{background:var(--mint)}
+.s-count{font-size:13px;font-weight:800;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.mode-chip{display:inline-flex;align-items:center;gap:4px;height:34px;padding:0 10px;border-radius:17px;background:var(--surface);border:1px solid var(--line);font-size:13px;font-weight:700;color:var(--ink-2);flex:none}
+.s-tag{display:flex;align-items:center;justify-content:center;gap:8px;min-height:26px;font-size:13px;font-weight:700;color:var(--muted);padding:4px 16px 0}
+.retry{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:11px;background:var(--amber-soft);color:var(--amber-ink);font-size:11.5px;font-weight:800}
+.stage{flex:1;min-height:0;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;justify-content:center;-webkit-overflow-scrolling:touch}
+.stage.top{justify-content:flex-start;padding-top:20px}
+.s-actions{padding:10px 16px calc(var(--safe-b) + 16px);display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:10px;min-height:20px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:54px;padding:0 18px;border-radius:17px;font-weight:800;font-size:16px;white-space:nowrap;transition:transform .08s}
+.btn:active{transform:scale(.98)}
+.btn-sm{height:42px;font-size:14px;border-radius:13px;padding:0 14px}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-dark{background:var(--ink);color:#fff}
+.btn-soft{background:var(--surface);border:1px solid var(--line);color:var(--ink-2)}
+.btn-mint{background:var(--mint);color:#fff}
+.btn-rose{background:var(--rose-soft);color:var(--rose-ink)}
+.btn-amber{background:var(--amber-soft);color:var(--amber-ink)}
+.btn[disabled]{opacity:.4;pointer-events:none}
+.pill{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:12px;font-size:12px;font-weight:700;background:var(--surface-2);color:var(--muted)}
+.say{width:48px;height:48px;border-radius:16px;display:grid;place-items:center;background:var(--primary-soft);color:var(--primary)}
+.say.on-dark{background:rgba(255,255,255,.16);color:#fff}
 
-        /* === Режим чтения (для дислексии) === */
-        body.dyslexia-mode {
-            font-family: 'Lexend', sans-serif !important;
-            background-color: #fbf6ec !important;
-            letter-spacing: 0.01em;
-        }
-        body.dyslexia-mode * {
-            font-family: 'Lexend', sans-serif !important;
-        }
-        body.dyslexia-mode p,
-        body.dyslexia-mode span,
-        body.dyslexia-mode div,
-        body.dyslexia-mode input,
-        body.dyslexia-mode button {
-            line-height: 1.75 !important;
-            letter-spacing: 0.01em !important;
-        }
-        body.dyslexia-mode .italic { font-style: normal !important; }
-        body.dyslexia-mode .text-xs { font-size: 0.85rem !important; }
-        body.dyslexia-mode .text-sm { font-size: 0.95rem !important; }
-        body.dyslexia-mode .text-\[10px\],
-        body.dyslexia-mode .text-\[11px\] { font-size: 0.8rem !important; }
-        body.dyslexia-mode .uppercase { letter-spacing: 0.04em !important; }
-        body.dyslexia-mode .tracking-tight,
-        body.dyslexia-mode .tracking-tighter { letter-spacing: 0.01em !important; }
-        body.dyslexia-mode .bg-white { background-color: #fffdf8 !important; }
-        body.dyslexia-mode .text-slate-900, body.dyslexia-mode .text-slate-800 { color: #2b2b2b !important; }
+/* ---------- Карточка с переворотом и свайпом ---------- */
+.card-zone{width:100%;max-width:520px;margin:0 auto;perspective:1400px}
+.swipe-wrap{position:relative;touch-action:pan-y;will-change:transform;user-select:none;-webkit-user-select:none}
+.fcard{position:relative;height:min(58vh,440px);min-height:290px;transform-style:preserve-3d;transition:transform .5s cubic-bezier(.2,.8,.2,1);cursor:pointer}
+.fcard.flipped{transform:rotateY(180deg)}
+.face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:30px;padding:24px 22px;display:flex;flex-direction:column;overflow-y:auto;text-align:center}
+.face-in{margin:auto 0;width:100%;display:flex;flex-direction:column;align-items:center;gap:12px}
+.front{background:var(--surface);border:1px solid var(--line);box-shadow:0 12px 34px rgba(15,23,42,.07)}
+.back{background:radial-gradient(130% 90% at 100% 0%,#7c74ff 0%,rgba(124,116,255,0) 55%),var(--primary);color:#fff;transform:rotateY(180deg)}
+.back.browse{background:#334155}
+.big-word{font-size:clamp(30px,9vw,44px);font-weight:800;letter-spacing:-.03em;line-height:1.05;word-break:break-word}
+.def-text{font-size:19px;line-height:1.5;font-weight:600}
+.back .def-text{font-weight:600}
+.tap-hint{font-size:12.5px;color:var(--faint);font-weight:700;margin-top:6px}
+.fam{font-size:13px;opacity:.85;line-height:1.6}
+.ex{font-size:14.5px;line-height:1.55;font-style:italic;opacity:.92;border-top:1px solid rgba(255,255,255,.22);padding-top:12px;width:100%}
+.front .ex{border-color:var(--line)}
+.ex mark{background:transparent;color:inherit;font-weight:800;font-style:normal;text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:3px}
+.tr-btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:11px;background:var(--surface-2);color:var(--muted);font-size:13px;font-weight:700}
+.on-dark .tr-btn, .back .tr-btn{background:rgba(255,255,255,.16);color:#fff}
+.tr-text{font-size:16px;font-weight:600;opacity:.85}
+.stamp{position:absolute;top:22px;padding:6px 12px;border-radius:12px;font-weight:800;font-size:15px;border:3px solid;opacity:0;pointer-events:none;z-index:2;background:rgba(255,255,255,.9)}
+.stamp-l{right:20px;color:var(--rose);border-color:var(--rose);transform:rotate(10deg)}
+.stamp-r{left:20px;color:var(--mint-ink);border-color:var(--mint);transform:rotate(-10deg)}
+.swipe-help{text-align:center;font-size:12px;color:var(--faint);font-weight:600;margin-top:12px;min-height:18px}
 
-        #dyslexiaToggle.active {
-            background-color: #eef2ff;
-            color: #4f46e5;
-            border-color: #c7d2fe;
-        }
+/* ---------- Задание с определением ---------- */
+.prompt{width:100%;max-width:520px;margin:0 auto;background:var(--surface);border:1px solid var(--line);border-radius:26px;padding:20px}
+.prompt .def-text{font-size:18px}
+.prompt-top{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.answer-zone{width:100%;max-width:520px;margin:14px auto 0}
+.inp{width:100%;height:58px;border-radius:18px;border:2px solid var(--line);background:var(--surface);padding:0 18px;font-size:20px;font-weight:700;letter-spacing:.01em;outline:none;transition:border-color .15s, background .15s}
+.inp:focus{border-color:#a5b4fc}
+.inp.ok{border-color:var(--mint);background:var(--mint-soft);color:var(--mint-ink)}
+.inp.bad{border-color:#fda4af;background:var(--rose-soft);color:var(--rose-ink)}
+.inp.center{text-align:center}
+.mask{font-size:20px;font-weight:800;letter-spacing:.32em;color:var(--primary-ink);text-align:center;margin-top:10px}
+.feedback{font-size:15px;font-weight:700;margin-top:12px;min-height:22px;text-align:center}
+.feedback.ok{color:var(--mint-ink)} .feedback.bad{color:var(--rose-ink)} .feedback.almost{color:var(--amber-ink)}
+.inline-actions{display:grid;grid-template-columns:auto 1fr;gap:10px;margin-top:12px}
+.inline-actions.one{grid-template-columns:1fr}
+.reveal{width:100%;max-width:520px;margin:14px auto 0;background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:16px;display:grid;gap:10px;animation:pop .25s ease-out}
+.reveal .ex{border:0;padding:0;opacity:1;color:var(--ink-2)}
+.reveal .ex mark{color:var(--primary-ink)}
+.reveal-word{display:flex;align-items:center;gap:12px}
+.reveal-word b{font-size:24px;font-weight:800;letter-spacing:-.02em;flex:1}
+@keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes shake{0%,100%{transform:none}20%{transform:translateX(-8px)}40%{transform:translateX(7px)}60%{transform:translateX(-5px)}80%{transform:translateX(3px)}}
+.shake{animation:shake .4s}
 
-        /* Стили для 3D переворота карточки */
-        .perspective { perspective: 1000px; }
-        .card-inner {
-            transition: transform 0.6s;
-            transform-style: preserve-3d;
-        }
-        .card-flipped { transform: rotateY(180deg); }
-        .card-front, .card-back {
-            backface-visibility: hidden;
-            -webkit-backface-visibility: hidden;
-        }
-        .card-back { transform: rotateY(180deg); }
+/* выбор ответа */
+.options{display:grid;gap:10px;width:100%;max-width:520px;margin:14px auto 0}
+.opt{display:flex;align-items:center;gap:12px;min-height:58px;padding:10px 16px;border-radius:18px;background:var(--surface);border:2px solid var(--line);font-size:18px;font-weight:700;text-align:left;transition:background .15s,border-color .15s,opacity .15s}
+.opt:active{transform:scale(.99)}
+.opt-k{width:26px;height:26px;border-radius:8px;background:var(--surface-2);display:grid;place-items:center;font-size:12px;font-weight:800;color:var(--faint);flex:none}
+.opt.good{border-color:var(--mint);background:var(--mint-soft);color:var(--mint-ink)}
+.opt.bad{border-color:#fda4af;background:var(--rose-soft);color:var(--rose-ink)}
+.opt.dim{opacity:.45}
+.skip{display:block;margin:14px auto 0;font-size:14px;font-weight:700;color:var(--muted);padding:8px 12px;border-radius:10px}
 
-        /* Анимация плавного появления */
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(6px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fade-in {
-            animation: fadeIn 0.4s ease-out forwards;
-        }
-    </style>
+/* собрать из букв */
+.slots{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin:6px auto 0;max-width:520px}
+.slot{width:38px;height:50px;border-radius:12px;background:var(--surface);border:2px dashed #d3d8e3;display:grid;place-items:center;font-size:22px;font-weight:800;text-transform:lowercase}
+.slot.filled{border-style:solid;border-color:#a5b4fc;color:var(--primary-ink)}
+.slot.fixed{border:0;background:transparent;width:14px}
+.slot.ok{border-color:var(--mint);background:var(--mint-soft);color:var(--mint-ink)}
+.slot.bad{border-color:#fda4af;background:var(--rose-soft);color:var(--rose-ink)}
+.tiles{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin:22px auto 0;max-width:460px}
+.tile{width:48px;height:54px;border-radius:14px;background:var(--surface);border:1px solid var(--line);box-shadow:0 3px 0 #e0e4ee;font-size:22px;font-weight:800;text-transform:lowercase;transition:transform .1s, opacity .15s}
+.tile:active{transform:translateY(2px);box-shadow:0 1px 0 #e0e4ee}
+.tile.used{opacity:.18;pointer-events:none;box-shadow:none}
+
+/* диктант */
+.listen{display:flex;flex-direction:column;align-items:center;gap:14px;margin:6px 0 4px}
+.play-big{width:108px;height:108px;border-radius:50%;background:var(--primary);color:#fff;display:grid;place-items:center;box-shadow:0 14px 34px rgba(79,70,229,.32)}
+.play-big:active{transform:scale(.97)}
+.play-row{display:flex;gap:8px}
+
+/* ---------- Итоги ---------- */
+.results{min-height:100vh;min-height:100dvh;max-width:560px;margin:0 auto;padding:calc(var(--safe-t) + 28px) 18px calc(var(--safe-b) + 24px);display:flex;flex-direction:column;gap:14px}
+.res-hero{text-align:center;padding:10px 0 4px}
+.res-hero h1{font-size:28px;font-weight:800;letter-spacing:-.025em;margin-top:14px}
+.res-hero p{color:var(--muted);margin-top:4px}
+.ring{position:relative;display:grid;place-items:center;margin:0 auto}
+.ring svg{position:absolute;inset:0;transform:rotate(-90deg)}
+.ring b{position:relative;font-size:30px;font-weight:800;letter-spacing:-.03em}
+.res-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.res-stat{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:12px;text-align:center}
+.res-stat b{display:block;font-size:22px;font-weight:800}
+.res-stat span{font-size:12px;color:var(--muted);font-weight:600}
+.streak-box{display:flex;align-items:center;gap:12px;background:var(--amber-soft);color:var(--amber-ink);border-radius:18px;padding:14px 16px;font-weight:800}
+.res-list{background:var(--surface);border:1px solid var(--line);border-radius:20px;overflow:hidden}
+.res-row{display:flex;align-items:center;gap:10px;padding:11px 14px}
+.res-row + .res-row{border-top:1px solid var(--line)}
+.res-row b{flex:1;font-size:15.5px}
+.res-row small{font-size:12.5px;font-weight:700}
+.res-sec{font-size:14px;font-weight:700;color:var(--muted);margin:6px 4px -4px}
+
+/* ---------- Шторка, тост, загрузка ---------- */
+.sheet-wrap{position:fixed;inset:0;z-index:60;display:flex;align-items:flex-end;justify-content:center}
+.sheet-backdrop{position:absolute;inset:0;background:rgba(15,23,42,.42);opacity:0;transition:opacity .25s}
+.sheet{position:relative;width:100%;max-width:560px;max-height:90dvh;overflow-y:auto;background:var(--surface);border-radius:26px 26px 0 0;padding:10px 18px calc(var(--safe-b) + 18px);transform:translateY(100%);transition:transform .3s cubic-bezier(.2,.85,.25,1)}
+.sheet::before{content:'';display:block;width:40px;height:5px;border-radius:3px;background:#d5dae4;margin:0 auto 12px}
+.sheet-wrap.open .sheet{transform:none}.sheet-wrap.open .sheet-backdrop{opacity:1}
+.sheet h3{font-size:19px;font-weight:800;margin-bottom:4px}
+.m-row{display:flex;align-items:center;gap:12px;width:100%;padding:12px 4px;text-align:left;border-radius:14px}
+.m-row + .m-row{border-top:1px solid var(--line)}
+.m-ico{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:var(--surface-2);color:var(--ink-2);flex:none}
+.m-row.on .m-ico{background:var(--primary);color:#fff}
+.m-row b{display:block;font-size:15.5px}
+.m-row span{display:block;font-size:12.5px;color:var(--muted)}
+.check{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:14px;font-weight:600;color:var(--ink-2)}
+.check input{width:20px;height:20px;accent-color:var(--primary)}
+.toast{position:fixed;left:50%;bottom:calc(var(--safe-b) + 92px);transform:translate(-50%,14px);opacity:0;pointer-events:none;background:#111a2e;color:#fff;border-radius:16px;padding:10px 10px 10px 16px;display:flex;gap:12px;align-items:center;font-size:14px;font-weight:600;z-index:80;transition:opacity .2s,transform .2s;max-width:calc(100% - 28px)}
+.toast.show{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.toast button{color:#a5b4fc;font-weight:800;padding:6px 8px}
+.loader{height:100vh;height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:var(--muted);font-weight:600;font-size:14px;padding:24px;text-align:center}
+.spin{width:34px;height:34px;border-radius:50%;border:4px solid #dfe3ff;border-top-color:var(--primary);animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (min-width:1024px){
+  .sheet-wrap{align-items:center}.sheet{border-radius:26px;transform:translateY(16px);opacity:0;transition:transform .2s, opacity .2s}.sheet-wrap.open .sheet{opacity:1;transform:none}.sheet::before{display:none}
+  .stage{padding:16px 24px}
+}
+@media (max-height:640px){ .fcard{height:52vh;min-height:250px} .s-tag{min-height:20px} }
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
 </head>
-<body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex items-center justify-center p-4">
-
-    <a href="vocabulary.html" class="absolute top-6 left-6 flex items-center space-x-2 text-sm font-semibold text-gray-400 hover:text-slate-700 transition">
-        <i data-lucide="arrow-left" class="w-4 h-4"></i>
-        <span>Exit Review</span>
-    </a>
-
-    <button id="dyslexiaToggle" onclick="toggleDyslexiaMode()" title="Dyslexia-friendly reading mode" class="absolute top-6 right-6 flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-500 hover:bg-gray-50 transition cursor-pointer shadow-xs">
-        <i data-lucide="type" class="w-4 h-4"></i>
-        <span class="hidden sm:inline">Dyslexia</span>
-    </button>
-
-    <div id="sessionContainer" class="w-full max-w-lg bg-white rounded-3xl border border-gray-100 shadow-xl p-6 md:p-8 space-y-6 relative hidden animate-fade-in">
-        
-        <div class="space-y-2">
-            <div class="flex justify-between items-center text-xs font-bold text-gray-400 uppercase tracking-wider">
-                <span id="sessionModeBadge" class="bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-lg">Flashcards</span>
-                <span id="progressText">Word 1 of 10</span>
-            </div>
-            <div class="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div id="progressBar" class="h-full bg-indigo-600 transition-all duration-300" style="width: 0%"></div>
-            </div>
-        </div>
-
-        <div id="quizArea" class="min-h-[280px] flex items-center justify-center flex-col">
-            </div>
-
-        <p id="bottomHint" class="text-center text-[11px] text-gray-400 font-medium h-4">
-            Кликните на карточку, чтобы перевернуть её
-        </p>
-    </div>
-
-    <div id="resultsContainer" class="w-full max-w-sm bg-white rounded-3xl border border-gray-100 shadow-xl p-8 text-center space-y-6 hidden animate-fade-in">
-        <div class="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center mx-auto text-indigo-600">
-            <i data-lucide="trophy" class="w-8 h-8"></i>
-        </div>
-        <div>
-            <h2 class="text-2xl font-bold text-slate-900 tracking-tight">Review Completed!</h2>
-            <p class="text-xs text-gray-400 mt-1">Отличная работа!</p>
-        </div>
-
-        <div class="bg-gray-50 rounded-2xl p-4 grid grid-cols-2 gap-4">
-            <div>
-                <span class="block text-2xl font-extrabold text-indigo-600" id="resCorrectCount">0</span>
-                <span id="resCorrectLabel" class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Правильно</span>
-            </div>
-            <div class="border-l border-gray-200/60">
-                <span class="block text-2xl font-extrabold text-slate-700" id="resTotalCount">0</span>
-                <span id="resTotalLabel" class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Всего ответов</span>
-            </div>
-        </div>
-
-        <div class="space-y-2">
-            <a href="vocabulary.html" class="w-full block py-3 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition shadow-md cursor-pointer text-center">
-                Готово
-            </a>
-            <p class="text-[11px] text-gray-400 text-center">Выученные слова отправлены в повторение — они вернутся по расписанию.</p>
-        </div>
-    </div>
-
-    <div id="loader" class="text-center space-y-3">
-        <div class="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
-        <p class="text-xs text-gray-400 font-medium">Preparing your study set...</p>
-    </div>
-
-    <script>
-        const supabaseClient = window.supabaseClient || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-        let reviewWords = [];
-        let currentIndex = 0;
-
-        // ==========================================
-        // РЕЖИМ ЗАУЧИВАНИЯ (как в ReWord).
-        // Слова подаются маленькими порциями, а не все сразу: в работе
-        // одновременно POOL_SIZE слов, каждое возвращается в разных
-        // режимах, пока ученик сам не отметит «Выучил». Только тогда оно
-        // уходит в интервальное повторение, а на освободившееся место
-        // встаёт следующее слово из дневной нормы.
-        // ==========================================
-        let isLearnMode = false;
-        const POOL_SIZE = 3;
-        let learnPool = [];       // слова в активной работе
-        let learnQueue = [];      // ещё не введённые в работу
-        let learnDone = [];       // отмеченные «Выучил»
-        let learnSeenCount = {};  // сколько раз показали слово (для смены режима)
-        let learnReady = {};      // ученик нажал «Помню» — следующий показ будет вводом
-        let lastShownWord = null; // чтобы одно и то же слово не шло два раза подряд
-        let recordedInSession = new Set(); // слова, по которым прогресс уже записан в этой сессии
-        let correctAnswers = 0;
-        let sessionSettings = null;
-        let currentMode = ''; 
-        let currentUser = null;
-        let wordProgressMap = {}; // { word: correct_count }  (legacy, для совместимости)
-        let srsMap = {};          // { word: { box, due_at, lapses } }
-
-        // Лестница интервалов. Верный ответ поднимает на ступень,
-        // ошибка роняет на 1. Дошёл до 6 (два месяца) — слово выучено.
-        // Лестница интервалов. В начале показы частые — слово нужно увидеть
-        // несколько раз в первый же день, иначе оно не закрепляется. Дальше
-        // промежутки растут. Верный ответ поднимает на ступень, ошибка роняет.
-        const SRS_INTERVALS_MIN = {
-            1: 15,            // 15 минут
-            2: 30,            // 30 минут
-            3: 60,            // 1 час
-            4: 180,           // 3 часа
-            5: 360,           // 6 часов
-            6: 720,           // 12 часов
-            7: 1440,          // 1 день
-            8: 2160,          // 1.5 дня
-            9: 4320,          // 3 дня
-            10: 10080,        // 7 дней
-            11: 20160,        // 14 дней
-            12: 43200,        // 30 дней
-            13: 86400         // 60 дней = ВЫУЧЕНО
-        };
-        const SRS_MASTERED_BOX = 13;
-
-        function nextDueDate(box) {
-            const minutes = SRS_INTERVALS_MIN[box] || 10;
-            return new Date(Date.now() + minutes * 60000).toISOString();
-        }
-
-        // Режим для конкретного слова: в 'auto' сложность растёт по зрелости,
-        // иначе используется режим, который ученик выбрал сам.
-        function modeForWord(word) {
-            const configured = sessionSettings.mode || 'auto';
-            if (configured !== 'auto') return configured;
-
-            // Движок умеет только flashcards / typing / dictation —
-            // других вариантов возвращать нельзя, иначе карточка будет пустой.
-            const box = (srsMap[word] && srsMap[word].box) || 0;
-            if (box <= 3) return 'flashcards';   // знакомство и первые показы
-            if (box <= 8) return 'typing';       // закрепилось — ввод с клавиатуры
-            return 'dictation';                  // зрелые слова — на слух
-        }
-        let wordManualMap = {}; // { word: отмечено ли вручную как "уже знаю" }
-        let sessionStartProgressMap = {}; // снимок прогресса на момент начала сессии (для правила "первый раз не считается")
-        const LEARNED_THRESHOLD = 10;
-
-        function applyDyslexiaMode() {
-            const isOn = localStorage.getItem('dyslexiaMode') === 'true';
-            document.body.classList.toggle('dyslexia-mode', isOn);
-            const btn = document.getElementById('dyslexiaToggle');
-            if (btn) btn.classList.toggle('active', isOn);
-        }
-
-        function toggleDyslexiaMode() {
-            const isOn = localStorage.getItem('dyslexiaMode') === 'true';
-            localStorage.setItem('dyslexiaMode', (!isOn).toString());
-            applyDyslexiaMode();
-        }
-
-        window.addEventListener('DOMContentLoaded', async () => {
-            lucide.createIcons();
-            applyDyslexiaMode();
-            
-            currentUser = await requireAuth();
-            if (!currentUser) return; 
-
-            sessionSettings = JSON.parse(localStorage.getItem('reviewSettings'));
-            
-            if (!sessionSettings || !sessionSettings.lists || sessionSettings.lists.length === 0) {
-                alert("Настройки сессии не найдены. Выберите списки для повторения.");
-                window.location.href = 'vocabulary.html';
-                return;
-            }
-
-            await loadWordProgress();
-            await loadSessionWords();
-        });
-
-        function shuffle(array) {
-            for (let i = array.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [array[i], array[j]] = [array[j], array[i]];
-            }
-            return array;
-        }
-
-        async function loadWordProgress() {
-            // Читаем страницами: одним запросом Supabase отдаёт максимум 1000 строк,
-            // и часть прогресса терялась молча.
-            const PAGE = 1000;
-            let data = [], from = 0;
-            while (true) {
-                const res = await supabaseClient
-                    .from('user_word_progress')
-                    .select('word, correct_count, manually_marked, box, due_at, lapses')
-                    .eq('user_id', currentUser.id)
-                    .order('word', { ascending: true })
-                    .range(from, from + PAGE - 1);
-                if (res.error) {
-                    console.error("Ошибка загрузки прогресса слов:", res.error);
-                    if (!data.length) return;
-                    break;
-                }
-                data = data.concat(res.data || []);
-                if (!res.data || res.data.length < PAGE) break;
-                from += PAGE;
-                if (from > 50000) break;
-            }
-            wordProgressMap = {};
-            wordManualMap = {};
-            (data || []).forEach(row => {
-                wordProgressMap[row.word] = row.correct_count;
-                srsMap[row.word] = {
-                    box: row.box || 0,
-                    due_at: row.due_at,
-                    lapses: row.lapses || 0
-                };
-                wordManualMap[row.word] = !!row.manually_marked;
-            });
-            // Снимок состояния ДО начала этой сессии — по нему определяем,
-            // встречает ли ученик слово впервые (тогда сессия не даёт прогресса,
-            // а только "регистрирует" слово — реальный счёт пойдёт со следующего раза)
-            sessionStartProgressMap = { ...wordProgressMap };
-        }
-
-        // Движение по лестнице интервалов.
-        // Раньше: ошибка игнорировалась, верный ответ прибавлял к счётчику,
-        // и 10 верных подряд за одну сессию помечали слово выученным.
-        // Теперь ошибка роняет слово вниз, а верный ответ поднимает на
-        // ступень и назначает дату следующего показа.
-        function recordWordProgress(word, wasCorrect, increment) {
-            const prev = srsMap[word] || { box: 0, lapses: 0 };
-            const isFirstTime = !prev.box;   // слово берётся в изучение впервые
-            let box = prev.box || 0;
-            let lapses = prev.lapses || 0;
-
-            if (wasCorrect) {
-                box = Math.min(box + 1, SRS_MASTERED_BOX);
-            } else {
-                // Срыв: слово возвращается в начало лестницы.
-                if (box > 0) lapses += 1;
-                box = 1;
-            }
-
-            const due_at = nextDueDate(box);
-            srsMap[word] = { box: box, due_at: due_at, lapses: lapses };
-
-            // correct_count оставляем — на него ещё смотрят другие страницы
-            if (wasCorrect) {
-                const inc = increment || 1;
-                wordProgressMap[word] = Math.round(((wordProgressMap[word] || 0) + inc) * 10) / 10;
-            }
-
-            // Пишем в фоне, не блокируя интерфейс
-            supabaseClient
-                .from('user_word_progress')
-                .upsert(Object.assign({
-                    user_id: currentUser.id,
-                    word: word,
-                    correct_count: wordProgressMap[word] || 0,
-                    box: box,
-                    due_at: due_at,
-                    lapses: lapses,
-                    last_result: wasCorrect,
-                    last_reviewed_at: new Date().toISOString()
-                }, isFirstTime ? { first_seen_at: new Date().toISOString() } : {}),
-                { onConflict: 'user_id,word' })
-                .then(({ error }) => { if (error) console.error("Ошибка сохранения прогресса:", error); });
-        }
-
-        async function loadSessionWords() {
-            const { data: userVocabData, error: vocabError } = await supabaseClient
-                .from('user_vocabulary')
-                .select('word, list_name')
-                .eq('user_id', currentUser.id);
-
-            if (vocabError) {
-                console.error("Ошибка user_vocabulary:", vocabError);
-                alert("Не удалось загрузить списки слов из вашего личного кабинета.");
-                return;
-            }
-
-            let uniqueWordNames = new Set();
-            userVocabData.forEach(row => {
-                if (sessionSettings.lists.includes(row.list_name)) {
-                    uniqueWordNames.add(row.word);
-                }
-            });
-
-            if (uniqueWordNames.size === 0) {
-                alert("В выбранных списках нет слов для повторения!");
-                window.location.href = 'vocabulary.html';
-                return;
-            }
-
-            // Загружаем только нужные слова (постранично, чтобы не упереться в лимит Supabase на .in())
-            const wordNamesArray = Array.from(uniqueWordNames);
-            let wordsTableData = [];
-            const chunkSize = 200;
-            for (let i = 0; i < wordNamesArray.length; i += chunkSize) {
-                const chunk = wordNamesArray.slice(i, i + chunkSize);
-                const { data, error: wordsError } = await supabaseClient
-                    .from('words')
-                    .select('*')
-                    .in('word', chunk);
-
-                if (wordsError) {
-                    console.error("Ошибка таблицы words:", wordsError);
-                    alert("Ошибка загрузки данных из основной базы слов.");
-                    return;
-                }
-                wordsTableData = wordsTableData.concat(data || []);
-            }
-
-            // Получаем чистый список уникальных объектов слов для этой сессии
-            let baseWords = wordsTableData.filter(w => uniqueWordNames.has(w.word));
-
-            // Слова, отмеченные вручную как "уже знаю" (Mark as learned), никогда не
-            // попадают ни в "Учить", ни в "Повторить" — ученик явно сказал, что их знает
-            baseWords = baseWords.filter(w => !wordManualMap[w.word]);
-
-            // ОТБОР СЛОВ ПО ИНТЕРВАЛЬНОМУ ПОВТОРЕНИЮ.
-            // Сначала то, что реально созрело к повторению (due_at прошёл),
-            // затем добираем новыми до дневной цели. Раньше бралось просто
-            // «сначала невыученные», из-за чего одни и те же слова крутились
-            // в каждой сессии, а созревшие могли не показаться неделями.
-            const now = Date.now();
-            const MAX_REVIEWS = 50;   // страховка от завала после перерыва
-
-            const dueWords = shuffle(baseWords.filter(w => {
-                const p = srsMap[w.word];
-                if (!p || !p.box) return false;                 // новое — не сюда
-                if (p.box >= SRS_MASTERED_BOX) return false;    // выучено
-                return !p.due_at || new Date(p.due_at).getTime() <= now;
-            })).slice(0, MAX_REVIEWS);
-
-            const newWords = shuffle(baseWords.filter(w => {
-                const p = srsMap[w.word];
-                return !p || !p.box;
-            }));
-
-            const scope = sessionSettings.practiceScope || 'all';
-            const dailyGoal = sessionSettings.dailyGoal || 10;
-
-            if (scope === 'new') {
-                baseWords = newWords.slice(0, dailyGoal);
-            } else if (scope === 'in_progress') {
-                baseWords = dueWords;
-            } else {
-                // Обычный режим: всё созревшее + новые до дневной цели
-                baseWords = [...dueWords, ...newWords.slice(0, dailyGoal)];
-            }
-
-            if (baseWords.length === 0) {
-                alert('На сегодня всё повторено 🎉 Новые слова появятся, когда добавите их в списки, а созревшие — по расписанию.');
-                window.location.href = 'vocabulary.html';
-                return;
-            }
-
-            // Явный лимит (Browse и ручной выбор) по-прежнему уважаем
-            const wordLimit = sessionSettings.wordLimit;
-            if (wordLimit && wordLimit !== 'all' && baseWords.length > wordLimit) {
-                baseWords = baseWords.slice(0, wordLimit);
-            }
-
-            // --- НОВАЯ ЛОГИКА ДЛЯ РЕЖИМА MIXED ---
-            if (sessionSettings.mode === 'mixed') {
-                reviewWords = [];
-                baseWords.forEach(wordObj => {
-                    // Создаем 3 копии слова, жестко закрепляя за каждой её формат
-                    reviewWords.push({ ...wordObj, fixedMode: 'flashcards' });
-                    reviewWords.push({ ...wordObj, fixedMode: 'typing' });
-                    reviewWords.push({ ...wordObj, fixedMode: 'dictation' });
-                });
-            } else if (sessionSettings.mode === 'auto') {
-                // АВТО: режим подбирается под зрелость каждого слова отдельно.
-                // Без этой ветки карточкам доставался бы mode 'auto',
-                // которого движок не знает — и они оставались пустыми.
-                reviewWords = baseWords.map(wordObj => ({
-                    ...wordObj,
-                    fixedMode: modeForWord(wordObj.word)
-                }));
-            } else {
-                // Явно выбранный режим — используем как есть
-                reviewWords = baseWords.map(wordObj => ({ ...wordObj, fixedMode: sessionSettings.mode }));
-            }
-
-            // Перемешиваем весь итоговый массив, чтобы форматы шли вразброс
-            reviewWords = shuffle(reviewWords);
-
-            // Сессия «Учить новые» идёт по другому сценарию: порциями,
-            // с самооценкой и повторами внутри сессии.
-            isLearnMode = (sessionSettings.practiceScope === 'new' && sessionSettings.mode !== 'browse');
-            if (isLearnMode) {
-                learnQueue = [...reviewWords];
-                learnPool = learnQueue.splice(0, POOL_SIZE);
-                learnDone = [];
-                learnSeenCount = {};
-            }
-
-            document.getElementById('loader').classList.add('hidden');
-            document.getElementById('sessionContainer').classList.remove('hidden');
-
-            initSession();
-        }
-
-        function initSession() {
-            currentIndex = 0;
-            correctAnswers = 0;
-            showWord();
-        }
-
-        // Какой режим показать слову на этом круге: сначала карточка,
-        // потом узнавание, потом ввод. Один и тот же набор слов
-        // прокручивается по-разному, а не читается один раз подряд.
-        // Заучивание чередует три упражнения: карточку «слово → определение»,
-        // карточку «определение → слово» и ввод слова по определению.
-        // Одних карточек мало: слово закрепляется, когда его вспоминают и пишут.
-        function learnModeFor(word) {
-            if (learnReady[word]) return 'typing';       // ученик нажал «Помню» — проверяем вводом
-            const seen = learnSeenCount[word] || 0;
-            if (seen === 0) return 'flashcards';         // знакомство
-            if (seen === 1) return 'flashcards_rev';     // вспомнить слово по определению
-            return seen % 2 === 0 ? 'typing' : 'flashcards_rev';
-        }
-
-        function pickNextLearnWord() {
-            if (!learnPool.length) return null;
-            // Берём то, что показывали реже всего — чтобы слова чередовались
-            // Не показываем одно и то же слово два раза подряд, если есть выбор
-            const pool = learnPool.length > 1 ? learnPool.filter(w => w.word !== lastShownWord) : learnPool;
-            let best = pool[0], bestSeen = learnSeenCount[best.word] || 0;
-            for (const w of pool) {
-                const seen = learnSeenCount[w.word] || 0;
-                if (seen < bestSeen) { best = w; bestSeen = seen; }
-            }
-            return best;
-        }
-
-        // «Выучил» — слово уходит в интервальное повторение,
-        // на его место встаёт следующее из дневной нормы.
-        function markLearned() {
-            const w = reviewWords[currentIndex];
-            if (!w) return;
-            recordWordProgress(w.word, true, 1);
-            correctAnswers++;
-            learnPool = learnPool.filter(x => x.word !== w.word);
-            learnDone.push(w);
-            if (learnQueue.length) learnPool.push(learnQueue.shift());
-            showWord();
-        }
-
-        // «Ещё повторить» — слово остаётся в пуле и вернётся в этой же сессии
-        function markAgain() {
-            const w = reviewWords[currentIndex];
-            if (!w) return;
-            learnSeenCount[w.word] = (learnSeenCount[w.word] || 0) + 1;
-            learnReady[w.word] = false;
-            showWord();
-        }
-
-        // «Помню» на карточке ещё не закрывает слово: следующим показом
-        // будет ввод, и выученным слово станет, только если его написать.
-        function markRemember() {
-            const w = reviewWords[currentIndex];
-            if (!w) return;
-            learnSeenCount[w.word] = (learnSeenCount[w.word] || 0) + 1;
-            learnReady[w.word] = true;
-            showWord();
-        }
-
-        function showWord() {
-            window.speechSynthesis.cancel();
-
-            let currentWordObj;
-
-            if (isLearnMode) {
-                // Заучивание: сессия кончается, когда ВСЕ слова отмечены «Выучил»,
-                // а не когда список прокручен один раз.
-                const next = pickNextLearnWord();
-                if (!next) { showResults(); return; }
-
-                currentWordObj = next;
-                currentIndex = reviewWords.findIndex(w => w.word === next.word);
-
-                const totalLearn = learnDone.length + learnPool.length + learnQueue.length;
-                document.getElementById('progressText').innerText =
-                    `Выучено ${learnDone.length} из ${totalLearn}`;
-                document.getElementById('progressBar').style.width =
-                    `${totalLearn ? (learnDone.length / totalLearn) * 100 : 0}%`;
-
-                currentMode = learnModeFor(next.word);
-                lastShownWord = next.word;
-            } else {
-                if (currentIndex >= reviewWords.length) {
-                    showResults();
-                    return;
-                }
-
-                const total = reviewWords.length;
-                const retryNote = reviewWords[currentIndex] && reviewWords[currentIndex].isRetry ? ' · ещё раз' : '';
-                document.getElementById('progressText').innerText = `Word ${currentIndex + 1} of ${total}${retryNote}`;
-                document.getElementById('progressBar').style.width = `${(currentIndex / total) * 100}%`;
-
-                currentWordObj = reviewWords[currentIndex];
-                currentMode = currentWordObj.fixedMode;
-                // В повторении карточка тоже идёт то от слова, то от определения
-                if (currentMode === 'flashcards') {
-                    if (currentWordObj.cardDir === undefined) currentWordObj.cardDir = Math.random() < 0.5 ? 'rev' : 'fwd';
-                    if (currentWordObj.cardDir === 'rev') currentMode = 'flashcards_rev';
-                }
-            }
-
-            const quizArea = document.getElementById('quizArea');
-            const bottomHint = document.getElementById('bottomHint');
-            quizArea.innerHTML = '';
-
-            const safeExample = currentWordObj.example ? currentWordObj.example.replace(/"/g, '&quot;') : '';
-
-            // --- КАРТОЧКИ ---
-            if (currentMode === 'flashcards') {
-                document.getElementById('sessionModeBadge').innerText = "Word → Meaning";
-                bottomHint.innerText = "Кликните на карточку, чтобы перевернуть её";
-                
-                quizArea.innerHTML = `
-                    <div class="w-full h-64 perspective cursor-pointer" onclick="flipCard()">
-                        <div id="cardInner" class="w-full h-full card-inner relative rounded-2xl border border-gray-100 shadow-xs bg-white">
-                            <div class="card-front absolute inset-0 flex flex-col items-center justify-center p-6 bg-slate-50/50 rounded-2xl">
-                                <span class="text-3xl font-extrabold text-slate-900 tracking-tight">${currentWordObj.word}</span>
-                                <span class="text-xs font-bold text-gray-400 uppercase tracking-wider mt-2 bg-white px-2.5 py-1 rounded-md border border-gray-100">${currentWordObj.part}</span>
-                                <div class="mt-3">${audioBtn('bg-indigo-50 text-indigo-600 hover:bg-indigo-100')}</div>
-                            </div>
-                            <div class="card-back absolute inset-0 flex flex-col justify-center p-6 bg-indigo-600 rounded-2xl text-white text-center space-y-2 overflow-y-auto">
-                                <p class="text-base font-medium leading-relaxed">${currentWordObj.definition}</p>
-                                ${translationHtml(currentWordObj, true)}
-                                ${familyHtml(currentWordObj, true)}
-                                ${currentWordObj.example ? `<p class="text-xs text-indigo-100 italic opacity-90 border-t border-indigo-500/40 pt-2 font-light">"${currentWordObj.example}"</p>` : ''}
-                            </div>
-                        </div>
-                    </div>
-                `;
-
-                const actionButtons = document.createElement('div');
-                actionButtons.className = "flex justify-center space-x-3 w-full mt-4 animate-fade-in";
-                // В заучивании ученик сам решает судьбу слова: «Выучил» уводит
-                // его в интервальное повторение, «Ещё повторить» оставляет
-                // в пуле до конца сессии.
-                actionButtons.innerHTML = isLearnMode ? learnCardButtons() : `
-                    <button onclick="event.stopPropagation(); nextWord(false)" class="px-5 py-2.5 bg-gray-50 text-slate-500 rounded-xl text-xs font-bold hover:bg-gray-100 transition flex items-center space-x-1 cursor-pointer">
-                        <i data-lucide="frown" class="w-4 h-4 text-red-400"></i> <span>Forgot</span>
-                    </button>
-                    <button onclick="event.stopPropagation(); nextWord(true)" class="px-5 py-2.5 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100 transition flex items-center space-x-1 cursor-pointer">
-                        <i data-lucide="smile" class="w-4 h-4 text-green-500"></i> <span>Knew it</span>
-                    </button>
-                `;
-                quizArea.appendChild(actionButtons);
-                setTimeout(playCurrentWordAudio, 300);   // слово видно сразу — сразу и звучит
-
-            // --- КАРТОЧКА «ОПРЕДЕЛЕНИЕ → СЛОВО» ---
-            } else if (currentMode === 'flashcards_rev') {
-                document.getElementById('sessionModeBadge').innerText = "Meaning → Word";
-                bottomHint.innerText = "Вспомните слово по определению и переверните карточку";
-
-                quizArea.innerHTML = `
-                    <div class="w-full h-64 perspective cursor-pointer" onclick="flipCard()">
-                        <div id="cardInner" class="w-full h-full card-inner relative rounded-2xl border border-gray-100 shadow-xs bg-white">
-                            <div class="card-front absolute inset-0 flex flex-col justify-center p-6 bg-slate-50/50 rounded-2xl text-center space-y-3">
-                                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">${currentWordObj.part}</span>
-                                <p class="text-base font-medium text-slate-800 leading-relaxed">${currentWordObj.definition}</p>
-                                ${translationHtml(currentWordObj, false)}
-                            </div>
-                            <div class="card-back absolute inset-0 flex flex-col items-center justify-center p-6 bg-indigo-600 rounded-2xl text-white text-center space-y-2 overflow-y-auto">
-                                <span class="text-3xl font-extrabold tracking-tight">${currentWordObj.word}</span>
-                                ${audioBtn('bg-white/15 text-white hover:bg-white/25')}
-                                ${familyHtml(currentWordObj, true)}
-                                ${currentWordObj.example ? `<p class="text-xs text-indigo-100 italic opacity-90 border-t border-indigo-500/40 pt-2 font-light">"${currentWordObj.example}"</p>` : ''}
-                            </div>
-                        </div>
-                    </div>
-                `;
-                const revButtons = document.createElement('div');
-                revButtons.className = "flex justify-center space-x-3 w-full mt-4 animate-fade-in";
-                revButtons.innerHTML = isLearnMode ? learnCardButtons() : reviewCardButtons();
-                quizArea.appendChild(revButtons);
-
-            // --- НАПИСАНИЕ ПО ОПРЕДЕЛЕНИЮ ---
-            } else if (currentMode === 'typing') {
-                document.getElementById('sessionModeBadge').innerText = "Type the Word";
-                bottomHint.innerText = "Прочтите определение и введите слово";
-
-                quizArea.innerHTML = `
-                    <div class="w-full bg-slate-50/60 border border-gray-100 rounded-2xl p-6 space-y-5 animate-fade-in">
-                        <div class="space-y-1">
-                            <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Definition (${currentWordObj.part})</span>
-                            <p class="text-slate-800 font-medium text-sm leading-relaxed">${currentWordObj.definition}</p>
-                            ${translationHtml(currentWordObj, false)}
-                        </div>
-                        <div class="space-y-2">
-                            <input type="text" id="typingInput" placeholder="Type your answer here..." autocomplete="off" class="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 font-bold tracking-wide">
-                            <div id="typingFeedback" class="text-xs font-bold hidden transition-all"></div>
-                        </div>
-                        <button id="checkBtn" onclick="checkAnswer('typing')" class="w-full py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition shadow-xs cursor-pointer">
-                            Check Answer
-                        </button>
-                    </div>
-                `;
-                setupEnterKey('typingInput', 'typing');
-
-            // --- АУДИО-ДИКТАНТ ---
-            } else if (currentMode === 'dictation') {
-                document.getElementById('sessionModeBadge').innerText = "Listen & Type";
-                bottomHint.innerText = "Послушайте произношение и введите слово";
-
-                quizArea.innerHTML = `
-                    <div class="w-full bg-slate-50/60 border border-gray-100 rounded-2xl p-6 space-y-6 flex flex-col items-center animate-fade-in">
-                        <button onclick="playCurrentWordAudio()" class="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center hover:bg-indigo-200 transition shadow-sm cursor-pointer group">
-                            <i data-lucide="volume-2" class="w-8 h-8 group-hover:scale-110 transition-transform"></i>
-                        </button>
-                        <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-[-10px]">Play Audio</p>
-
-                        <div class="w-full space-y-2">
-                            <input type="text" id="dictationInput" placeholder="Type what you hear..." autocomplete="off" class="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-center focus:outline-none focus:ring-2 focus:ring-indigo-100 font-bold tracking-wide">
-                            <div id="dictationFeedback" class="text-xs font-bold hidden transition-all text-center"></div>
-                            
-                            <div id="dictationReveal" class="hidden mt-3 p-4 bg-white border border-gray-100 rounded-xl text-left w-full space-y-1">
-                                <div class="flex justify-between items-center">
-                                    <span class="text-lg font-extrabold text-slate-900" id="revealWord"></span>
-                                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">${currentWordObj.part}</span>
-                                </div>
-                                <p class="text-sm text-slate-600 font-medium">${currentWordObj.definition}</p>
-                            </div>
-                        </div>
-
-                        <button id="checkDictationBtn" onclick="checkAnswer('dictation')" class="w-full py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition shadow-xs cursor-pointer mt-2">
-                            Check Answer
-                        </button>
-                    </div>
-                `;
-
-                setupEnterKey('dictationInput', 'dictation');
-                setTimeout(playCurrentWordAudio, 400); 
-
-            // --- ПРОСТО ЛИСТАТЬ (без баллов) ---
-            } else if (currentMode === 'browse') {
-                document.getElementById('sessionModeBadge').innerText = "Browse";
-                bottomHint.innerText = "Кликните на карточку, чтобы перевернуть её — прогресс не считается";
-
-                quizArea.innerHTML = `
-                    <div class="w-full h-64 perspective cursor-pointer" onclick="flipCard()">
-                        <div id="cardInner" class="w-full h-full card-inner relative rounded-2xl border border-gray-100 shadow-xs bg-white">
-                            <div class="card-front absolute inset-0 flex flex-col items-center justify-center p-6 bg-slate-50/50 rounded-2xl">
-                                <span class="text-3xl font-extrabold text-slate-900 tracking-tight">${currentWordObj.word}</span>
-                                <span class="text-xs font-bold text-gray-400 uppercase tracking-wider mt-2 bg-white px-2.5 py-1 rounded-md border border-gray-100">${currentWordObj.part}</span>
-                                <div class="mt-3">${audioBtn('bg-slate-100 text-slate-600 hover:bg-slate-200')}</div>
-                            </div>
-                            <div class="card-back absolute inset-0 flex flex-col justify-center p-6 bg-slate-700 rounded-2xl text-white text-center space-y-2 overflow-y-auto">
-                                <p class="text-base font-medium leading-relaxed">${currentWordObj.definition}</p>
-                                ${translationHtml(currentWordObj, true)}
-                                ${familyHtml(currentWordObj, true)}
-                                ${currentWordObj.example ? `<p class="text-xs text-slate-200 italic opacity-90 border-t border-slate-500/40 pt-2 font-light">"${currentWordObj.example}"</p>` : ''}
-                            </div>
-                        </div>
-                    </div>
-                `;
-
-                const nextBtnWrap = document.createElement('div');
-                nextBtnWrap.className = "flex justify-center w-full mt-4 animate-fade-in";
-                nextBtnWrap.innerHTML = `
-                    <button onclick="event.stopPropagation(); currentIndex++; showWord();" class="px-6 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition flex items-center space-x-1.5 cursor-pointer">
-                        <span>Next</span> <i data-lucide="arrow-right" class="w-4 h-4"></i>
-                    </button>
-                `;
-                quizArea.appendChild(nextBtnWrap);
-                setTimeout(playCurrentWordAudio, 300);
-            }
-
-            lucide.createIcons();
-            
-            const inputField = document.getElementById(currentMode === 'typing' ? 'typingInput' : (currentMode === 'dictation' ? 'dictationInput' : null));
-            if(inputField) inputField.focus();
-        }
-
-        // Явно выбираем «чистый» английский голос. Одного lang = 'en-US'
-        // мало: браузер может взять голос с индийским или французским акцентом.
-        let _voice = null;
-        function pickVoice() {
-            if (_voice) return _voice;
-            const vs = (window.speechSynthesis && speechSynthesis.getVoices()) || [];
-            const en = vs.filter(v => /^en[-_]/i.test(v.lang || ''));
-            if (!en.length) return null;
-            const pref = ['Google US English', 'Microsoft Aria', 'Microsoft Jenny', 'Samantha', 'Alex', 'Google UK English Female'];
-            for (const n of pref) { const hit = en.find(v => (v.name || '').includes(n)); if (hit) return (_voice = hit); }
-            return (_voice = en.find(v => /en[-_](US|GB)/i.test(v.lang)) || en[0]);
-        }
-        if (window.speechSynthesis) speechSynthesis.onvoiceschanged = () => { _voice = null; pickVoice(); };
-
-        function speakWord(text) {
-            try {
-                if (!window.speechSynthesis || !text) return;
-                speechSynthesis.cancel();
-                const u = new SpeechSynthesisUtterance(text);
-                u.lang = 'en-US'; u.rate = 0.9;
-                const v = pickVoice(); if (v) u.voice = v;
-                speechSynthesis.speak(u);
-            } catch (e) {}
-        }
-
-        function playCurrentWordAudio() {
-            const w = reviewWords[currentIndex];
-            if (w) speakWord(w.word);
-        }
-
-        // ===== Перевод и формы слова =====
-        function escH(t) {
-            return String(t == null ? '' : t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-        }
-        function showTranslationByDefault() {
-            try { return localStorage.getItem('vocabShowTranslation') === '1'; } catch (e) { return false; }
-        }
-        // Перевод спрятан под кнопкой (или открыт сразу, если так выбрано в настройках).
-        // stopPropagation — чтобы нажатие не переворачивало карточку.
-        function translationHtml(w, onDark) {
-            if (!w || !w.translation_ru) return '';
-            const txt = onDark ? 'text-indigo-100' : 'text-slate-500';
-            const btn = onDark ? 'text-indigo-200 hover:text-white' : 'text-gray-400 hover:text-indigo-600';
-            if (showTranslationByDefault()) return `<p class="text-sm ${txt}">${escH(w.translation_ru)}</p>`;
-            return `<span><button type="button" onclick="event.stopPropagation(); this.nextElementSibling.classList.remove('hidden'); this.remove()"
-                        class="text-[11px] font-bold ${btn} transition cursor-pointer">перевод</button><span class="hidden text-sm ${txt}">${escH(w.translation_ru)}</span></span>`;
-        }
-        // Формы слова показываем только когда само слово уже открыто —
-        // иначе они подсказали бы ответ.
-        function familyHtml(w, onDark) {
-            let fam = w && w.word_family;
-            if (typeof fam === 'string') { try { fam = JSON.parse(fam); } catch (e) { fam = null; } }
-            if (!Array.isArray(fam)) return '';
-            // Принимаем и {w, p}, и {word, part}, и строки «word (pos)» —
-            // данные залили как {word, part}, и раньше блок молча прятался
-            fam = fam.map(f => {
-                if (!f) return null;
-                if (typeof f === 'string') {
-                    const m = f.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
-                    return m ? { w: m[1].trim(), p: m[2].trim() } : { w: f.trim(), p: '' };
-                }
-                const word = f.w || f.word || f.form || '';
-                const part = f.p || f.part || f.pos || f.part_of_speech || '';
-                return word ? { w: String(word), p: String(part) } : null;
-            }).filter(Boolean);
-            if (!fam.length) return '';
-            const c = onDark ? 'text-indigo-100' : 'text-slate-500';
-            return `<p class="text-[11px] ${c} leading-relaxed">${fam.map(f => `${escH(f.w)}${f.p ? ` <span class="opacity-60">${escH(f.p)}</span>` : ''}`).join(' · ')}</p>`;
-        }
-
-        // Кнопка озвучки, которая не переворачивает карточку при нажатии
-        function audioBtn(extra) {
-            return `<button onclick="event.stopPropagation(); playCurrentWordAudio()" title="Прослушать"
-                        class="${extra || ''} w-9 h-9 rounded-full flex items-center justify-center transition cursor-pointer">
-                        <i data-lucide="volume-2" class="w-4 h-4"></i></button>`;
-        }
-
-        function flipCard() {
-            const cardInner = document.getElementById('cardInner');
-            if (!cardInner) return;
-            cardInner.classList.toggle('card-flipped');
-            // В карточке «определение → слово» слово появляется только на обороте —
-            // тогда и звучит, иначе озвучка подсказала бы ответ заранее.
-            if (currentMode === 'flashcards_rev' && cardInner.classList.contains('card-flipped')) playCurrentWordAudio();
-        }
-
-        function learnCardButtons() {
-            return `
-                <button onclick="event.stopPropagation(); markAgain()" class="px-5 py-2.5 bg-amber-50 text-amber-700 rounded-xl text-xs font-bold hover:bg-amber-100 transition flex items-center space-x-1.5 cursor-pointer">
-                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i> <span>Ещё повторить</span>
-                </button>
-                <button onclick="event.stopPropagation(); markRemember()" class="px-5 py-2.5 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold hover:bg-emerald-100 transition flex items-center space-x-1.5 cursor-pointer">
-                    <i data-lucide="check" class="w-4 h-4"></i> <span>Помню — проверить</span>
-                </button>`;
-        }
-
-        function reviewCardButtons() {
-            return `
-                <button onclick="event.stopPropagation(); nextWord(false)" class="px-5 py-2.5 bg-gray-50 text-slate-500 rounded-xl text-xs font-bold hover:bg-gray-100 transition flex items-center space-x-1 cursor-pointer">
-                    <i data-lucide="frown" class="w-4 h-4 text-red-400"></i> <span>Forgot</span>
-                </button>
-                <button onclick="event.stopPropagation(); nextWord(true)" class="px-5 py-2.5 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100 transition flex items-center space-x-1 cursor-pointer">
-                    <i data-lucide="smile" class="w-4 h-4 text-green-500"></i> <span>Knew it</span>
-                </button>`;
-        }
-
-        // Прогресс по слову пишется один раз за сессию — по первой попытке.
-        // Повторные показы забытого слова — тренировка, а не новая оценка:
-        // иначе слово поднималось бы по лестнице просто за то, что его показали дважды.
-        function recordOnce(word, ok, inc) {
-            if (recordedInSession.has(word)) return false;
-            recordedInSession.add(word);
-            recordWordProgress(word, ok, inc);
-            if (ok) correctAnswers++;
-            return true;
-        }
-
-        // Забытое слово возвращается в конец сессии и показывается, пока не вспомнится
-        function requeue(wordObj) {
-            const copy = Object.assign({}, wordObj, { isRetry: true });
-            delete copy.cardDir;
-            reviewWords.push(copy);
-        }
-
-        function setupEnterKey(inputId, mode) {
-            document.getElementById(inputId).addEventListener('keypress', function (e) {
-                if (e.key === 'Enter') {
-                    const btnId = mode === 'typing' ? 'checkBtn' : 'checkDictationBtn';
-                    const btn = document.getElementById(btnId);
-                    if (btn.innerText === 'Check Answer') {
-                        checkAnswer(mode);
-                    } else {
-                        btn.click();
-                    }
-                }
-            });
-        }
-
-        function checkAnswer(mode) {
-            const inputId = mode === 'typing' ? 'typingInput' : 'dictationInput';
-            const feedbackId = mode === 'typing' ? 'typingFeedback' : 'dictationFeedback';
-            const btnId = mode === 'typing' ? 'checkBtn' : 'checkDictationBtn';
-            
-            const input = document.getElementById(inputId);
-            const feedback = document.getElementById(feedbackId);
-            const checkBtn = document.getElementById(btnId);
-            const currentWordObj = reviewWords[currentIndex];
-
-            const userAnswer = input.value.trim().toLowerCase();
-            const correctAnswer = currentWordObj.word.trim().toLowerCase();
-
-            input.disabled = true;
-            feedback.classList.remove('hidden');
-
-            const isCorrect = (userAnswer === correctAnswer);
-            // В заучивании прогресс пишет только markLearned — раньше здесь он
-            // записывался второй раз. В повторении — одна оценка за сессию.
-            if (!isLearnMode) recordOnce(currentWordObj.word, isCorrect, mode === 'typing' ? 2 : 1);
-            speakWord(currentWordObj.word);   // после ответа слово звучит во всех режимах
-
-            if (isCorrect) {
-                input.className = `w-full px-4 py-3 bg-green-50 border border-green-300 rounded-xl text-sm font-bold tracking-wide text-green-700 ${mode === 'dictation' ? 'text-center' : ''}`;
-                feedback.innerText = "✨ Correct! Excellent spelling.";
-                feedback.className = "text-xs font-bold text-green-600 mt-1";
-            } else {
-                input.className = `w-full px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm font-bold tracking-wide text-red-700 ${mode === 'dictation' ? 'text-center' : ''}`;
-                feedback.innerHTML = `❌ Incorrect. Correct spelling is: <span class="underline">${currentWordObj.word}</span>`;
-                feedback.className = "text-xs font-bold text-red-500 mt-1";
-            }
-
-            if (mode === 'dictation') {
-                document.getElementById('dictationReveal').classList.remove('hidden');
-                document.getElementById('revealWord').innerText = currentWordObj.word;
-            }
-            // После ответа слово открыто — теперь можно показать перевод и формы
-            const extras = translationHtml(currentWordObj, false) + familyHtml(currentWordObj, false);
-            if (extras) feedback.insertAdjacentHTML('afterend', `<div class="mt-2 space-y-1">${mode === 'typing' ? familyHtml(currentWordObj, false) : extras}</div>`);
-
-            checkBtn.innerText = "Continue";
-            checkBtn.className = "w-full py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition shadow-xs cursor-pointer mt-4";
-            checkBtn.onclick = () => nextWord(isCorrect);
-        }
-
-        function nextWord(wasCorrect) {
-            const currentWordObj = reviewWords[currentIndex];
-
-            if (isLearnMode) {
-                // В заучивании прогресс пишется только по кнопке «Выучил»,
-                // а ответ на ввод просто крутит слово дальше по пулу.
-                if (currentWordObj) {
-                    learnSeenCount[currentWordObj.word] = (learnSeenCount[currentWordObj.word] || 0) + 1;
-                    if (wasCorrect) {
-                        // Ввёл верно сам — это достаточное доказательство, слово закрываем
-                        markLearned();
-                        return;
-                    }
-                    learnReady[currentWordObj.word] = false;   // ошибся во вводе — назад к карточкам
-                }
-                showWord();
-                return;
-            }
-
-            if ((currentMode === 'flashcards' || currentMode === 'flashcards_rev') && currentWordObj) {
-                recordOnce(currentWordObj.word, wasCorrect, 1); // самооценка весит меньше, чем typing (2)
-            }
-            // «Forgot» или ошибка во вводе — слово вернётся в конце сессии
-            if (!wasCorrect && currentWordObj && sessionSettings.mode !== 'browse') requeue(currentWordObj);
-            currentIndex++;
-            showWord();
-        }
-
-        function showResults() {
-            window.speechSynthesis.cancel();
-            document.getElementById('sessionContainer').classList.add('hidden');
-            document.getElementById('bottomHint').classList.add('hidden');
-
-            if (sessionSettings.mode === 'browse') {
-                document.getElementById('resCorrectCount').innerText = reviewWords.length;
-                document.getElementById('resCorrectLabel').innerText = 'Просмотрено слов';
-                document.getElementById('resTotalCount').innerText = '—';
-                document.getElementById('resTotalLabel').innerText = 'Прогресс не считался';
-            } else {
-                document.getElementById('resCorrectCount').innerText = correctAnswers;
-                document.getElementById('resCorrectLabel').innerText = 'Правильно';
-                // Повторы забытых слов не раздувают итог: считаем уникальные слова
-                document.getElementById('resTotalCount').innerText = new Set(reviewWords.map(w => w.word)).size;
-                document.getElementById('resTotalLabel').innerText = 'Всего слов';
-            }
-
-            document.getElementById('resultsContainer').classList.remove('hidden');
-            lucide.createIcons();
-        }
-    </script>
+<body>
+<div id="loader" class="loader"><div class="spin"></div><span id="loaderText">Готовим слова…</span></div>
+
+<div id="session" class="session" hidden>
+  <header class="s-top">
+    <button class="icon-btn" id="btnClose" aria-label="Закончить"></button>
+    <div class="s-bar" id="sbar"><i id="pbar"></i></div>
+    <span class="s-count" id="ptext"></span>
+    <button class="mode-chip" id="btnMode" hidden></button>
+  </header>
+  <div class="s-tag" id="modeTag"></div>
+  <main class="stage" id="stage"></main>
+  <footer class="s-actions" id="actions"></footer>
+</div>
+
+<div id="results" class="results" hidden></div>
+<div id="toast" class="toast" role="status"></div>
+
+<script>
+'use strict';
+/* =====================================================================
+   НАСТРОЙКИ
+   ===================================================================== */
+const VOCAB_SB_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
+const VOCAB_SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
+const sb = window.supabaseClient || window.supabase.createClient(VOCAB_SB_URL, VOCAB_SB_KEY);
+
+// Лестница интервалов — та же, что была. Верный ответ поднимает на ступень,
+// ошибка возвращает на первую. 13-я ступень (60 дней) = выучено.
+const SRS_INTERVALS_MIN = { 1: 15, 2: 30, 3: 60, 4: 180, 5: 360, 6: 720, 7: 1440, 8: 2160, 9: 4320, 10: 10080, 11: 20160, 12: 43200, 13: 86400 };
+const SRS_MASTERED_BOX = 13;
+const POOL_SIZE = 3;          // при заучивании в работе одновременно 3 слова
+const MAX_REVIEWS = 50;
+const AUTO_NEXT_MS = 1100;    // после верного ответа — сам переход дальше
+
+/* ---------- иконки (встроенные, без внешней библиотеки) ---------- */
+const ICONS = {
+  x: '<path d="M18 6 6 18M6 6l12 12"/>', volume: '<path d="M11 5 6 9H2.5v6H6l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>', undo: '<path d="M3 12a9 9 0 1 0 2.8-6.5L3 8"/><path d="M3 3v5h5"/>', chevD: '<path d="m6 9 6 6 6-6"/>',
+  chevL: '<path d="m15 18-6-6 6-6"/>', chevR: '<path d="m9 18 6-6-6-6"/>', bulb: '<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3z"/>',
+  back: '<path d="M21 5H9l-6 7 6 7h12z"/><path d="m16 9-4 6M12 9l4 6"/>', flame: '<path d="M12 22c4.2 0 7-2.9 7-6.9 0-3.4-2-5.7-4-7.9-.5 1.9-1.6 3.2-2.9 3.2.1-2.9-1.2-5.6-3.4-8.4C8.3 5.3 5 8.7 5 15.1 5 19.1 7.8 22 12 22z"/>',
+  sparkles: '<path d="M12 3l1.8 4.7 4.7 1.8-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 14.5l.8 2.2 2.2.8-2.2.8L19 20.5l-.8-2.2-2.2-.8 2.2-.8z"/>',
+  cards: '<rect x="3" y="7" width="13" height="14" rx="2"/><path d="M7.5 3.5H19a2 2 0 0 1 2 2V17"/>', listCheck: '<path d="M11 6h10M11 12h10M11 18h10"/><path d="m3 6 1.6 1.6L7.5 4.7M3 12l1.6 1.6 2.9-2.9M3 18l1.6 1.6 2.9-2.9"/>',
+  tiles: '<rect x="2.5" y="8" width="5.5" height="8" rx="1.5"/><rect x="9.25" y="8" width="5.5" height="8" rx="1.5"/><rect x="16" y="8" width="5.5" height="8" rx="1.5"/>',
+  keyboard: '<rect x="2" y="6" width="20" height="12" rx="2.5"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
+  headphones: '<path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1v-6h3zM3 19a2 2 0 0 0 2 2h1v-6H3z"/>',
+  eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>', repeat: '<path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/>',
+  turtle: '<path d="M4 14a8 6 0 0 1 16 0z"/><path d="M20 14h1.5a1.5 1.5 0 0 0 0-3H19"/><path d="M6 14v3M18 14v3"/>'
+};
+function ic(n, s) { s = s || 20; return `<svg class="ic" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n] || ''}</svg>`; }
+
+/* ---------- утилиты ---------- */
+const $ = s => document.querySelector(s);
+function esc(t) { return String(t == null ? '' : t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function norm(w) { return String(w || '').trim().toLowerCase(); }
+function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function plural(n, one, few, many) { const a = Math.abs(n) % 100, b = a % 10; if (a > 10 && a < 20) return many; if (b > 1 && b < 5) return few; if (b === 1) return one; return many; }
+function dayKey(d) { d = d instanceof Date ? d : new Date(d); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function haptic(p) { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} }
+function normCat(c) { return String(c == null ? '' : c).replace(/\s+/g, ' ').trim().replace(/^[AaАа]([12])$/, 'A$1'); }
+// Ответ сравниваем без учёта регистра, лишних пробелов и «кривых» апострофов
+function normAns(s) { return String(s || '').toLowerCase().replace(/[’‘`´]/g, "'").replace(/[.!?]+$/, '').replace(/\s+/g, ' ').trim(); }
+function lev(a, b) {
+  if (Math.abs(a.length - b.length) > 1) return 2;
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+  {
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    // переставленные соседние буквы («journye») — тоже одна опечатка
+    if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+  }
+  return d[a.length][b.length];
+}
+
+/* =====================================================================
+   СОСТОЯНИЕ СЕССИИ
+   ===================================================================== */
+let user = null, cfg = null;
+let items = [], idx = 0;                 // очередь показа (повторение / пролистывание)
+let isLearn = false, isBrowse = false;
+let srs = {};                            // norm(word) → строка прогресса
+let recorded = new Set();                // по каким словам оценка уже записана в этой сессии
+let results = new Map();                 // norm(word) → { w, first, tries }
+let correctFirst = 0;
+let modeOverride = null;
+let distractors = [];
+let cur = null;                          // текущее задание
+let autoTimer = null;
+let lastUndo = null;
+let answeredAny = false;
+const startedAt = Date.now();
+// заучивание
+let learnPool = [], learnQueue = [], learnDone = [], learnSeen = {}, learnReady = {}, lastShown = null;
+
+const MODES = {
+  auto: { t: 'Авто', i: 'sparkles', h: 'Сложность растёт вместе с запоминанием' },
+  flashcards: { t: 'Карточки', i: 'cards', h: 'Перевернуть и оценить себя' },
+  choice: { t: 'Выбор ответа', i: 'listCheck', h: 'Найти слово среди четырёх' },
+  letters: { t: 'Собрать из букв', i: 'tiles', h: 'Правописание без клавиатуры' },
+  typing: { t: 'Написать', i: 'keyboard', h: 'Ввести слово по определению' },
+  dictation: { t: 'На слух', i: 'headphones', h: 'Услышать и написать' }
+};
+const TAGS = {
+  flashcards: 'Слово → значение', flashcards_rev: 'Значение → слово', choice: 'Выберите слово',
+  letters: 'Соберите слово из букв', typing: 'Напишите слово', dictation: 'Напишите, что слышите', browse: 'Просмотр без оценки'
+};
+
+/* =====================================================================
+   ЗАГРУЗКА
+   ===================================================================== */
+async function getUser() {
+  try { if (typeof requireAuth === 'function') return (await requireAuth()) || null; } catch (e) { console.warn(e); }
+  const { data } = await sb.auth.getSession();
+  return data && data.session ? data.session.user : null;
+}
+function fail(msg) {
+  $('#loader').innerHTML = `<b style="color:var(--ink);font-size:17px">${esc(msg)}</b><a class="btn btn-primary btn-sm" href="vocabulary.html#home">К словам</a>`;
+}
+async function loadProgress() {
+  const PAGE = 1000; let rows = [], from = 0;
+  while (true) {
+    const { data, error } = await sb.from('user_word_progress')
+      .select('word, correct_count, manually_marked, box, due_at, lapses, first_seen_at, last_result, last_reviewed_at')
+      .eq('user_id', user.id).order('word', { ascending: true }).range(from, from + PAGE - 1);
+    if (error) { console.error('Ошибка загрузки прогресса:', error); break; }
+    rows = rows.concat(data || []);
+    if (!data || data.length < PAGE) break;
+    from += PAGE; if (from > 100000) break;
+  }
+  srs = {};
+  rows.forEach(r => { const k = norm(r.word), p = srs[k]; if (p && (p.box || 0) >= (r.box || 0)) return; srs[k] = r; });
+}
+async function fetchWordsByNames(names) {
+  const uniq = Array.from(new Set(names.filter(Boolean)));
+  let rows = [];
+  for (let i = 0; i < uniq.length; i += 150) {
+    const { data, error } = await sb.from('words').select('*').in('word', uniq.slice(i, i + 150));
+    if (error) { console.error('Ошибка таблицы words:', error); return null; }
+    rows = rows.concat(data || []);
+  }
+  const byKey = new Map();
+  rows.forEach(w => { const k = norm(w.word); if (!byKey.has(k)) byKey.set(k, w); });
+  const out = [], seen = new Set();
+  uniq.forEach(n => { const k = norm(n); if (byKey.has(k) && !seen.has(k)) { out.push(byKey.get(k)); seen.add(k); } });
+  return out;
+}
+const box = w => ((srs[norm(w.word)] || {}).box) || 0;
+const manual = w => !!(srs[norm(w.word)] || {}).manually_marked;
+
+// Старый формат настроек (классическая страница): выбираем слова по спискам сами
+async function legacySelect() {
+  const { data, error } = await sb.from('user_vocabulary').select('word, list_name').eq('user_id', user.id);
+  if (error) { fail('Не удалось загрузить ваши списки'); return null; }
+  const names = (data || []).filter(r => (cfg.lists || []).includes(r.list_name)).map(r => r.word);
+  let base = await fetchWordsByNames(names);
+  if (!base) return null;
+  if (isBrowse) {
+    if (cfg.practiceScope === 'in_progress') base = base.filter(w => box(w) > 0 && box(w) < SRS_MASTERED_BOX);
+    return shuffle(base);
+  }
+  base = base.filter(w => !manual(w));
+  const now = Date.now();
+  const due = shuffle(base.filter(w => { const p = srs[norm(w.word)]; return p && p.box && p.box < SRS_MASTERED_BOX && (!p.due_at || Date.parse(p.due_at) <= now); })).slice(0, MAX_REVIEWS);
+  const fresh = shuffle(base.filter(w => !box(w)));
+  const goal = cfg.dailyGoal || 10;
+  let out = cfg.practiceScope === 'new' ? fresh.slice(0, goal) : cfg.practiceScope === 'in_progress' ? due : due.concat(fresh.slice(0, goal));
+  if (cfg.wordLimit && cfg.wordLimit !== 'all') out = out.slice(0, Number(cfg.wordLimit));
+  return out;
+}
+// Слова-«обманки» для выбора ответа: из тех же категорий
+async function loadDistractors(base) {
+  const cats = Array.from(new Set(base.map(w => w.category).filter(Boolean)));
+  let pool = base.slice();
+  try {
+    if (cats.length) {
+      const { data } = await sb.from('words').select('word, part, definition, category').in('category', cats.slice(0, 30)).limit(500);
+      pool = pool.concat(data || []);
+    }
+    if (pool.length < 12) {
+      const { data } = await sb.from('words').select('word, part, definition, category').limit(300);
+      pool = pool.concat(data || []);
+    }
+  } catch (e) { console.warn('distractors:', e); }
+  const m = new Map(); pool.forEach(w => { const k = norm(w.word); if (k && !m.has(k)) m.set(k, w); });
+  distractors = Array.from(m.values());
+}
+
+async function boot() {
+  applyDyslexia();
+  $('#btnClose').innerHTML = ic('x', 24);
+  user = await getUser();
+  if (!user) { fail('Войдите в аккаунт'); return; }
+  try { cfg = JSON.parse(localStorage.getItem('reviewSettings') || 'null'); } catch (e) { cfg = null; }
+  if (!cfg) { fail('Тренировка не выбрана'); return; }
+  isBrowse = cfg.mode === 'browse' || cfg.kind === 'browse';
+  isLearn = !isBrowse && (cfg.kind === 'learn' || (!cfg.v && cfg.practiceScope === 'new'));
+
+  await loadProgress();
+  let base = Array.isArray(cfg.words) ? await fetchWordsByNames(cfg.words) : await legacySelect();
+  if (base === null) { if (!$('#loader a')) fail('Не удалось загрузить слова'); return; }
+
+  if (!isBrowse && cfg.v) {
+    if (isLearn) base = base.filter(w => !box(w) && !manual(w));          // за это время могли выучить на другом устройстве
+    else base = base.filter(w => box(w) > 0 && box(w) < SRS_MASTERED_BOX && !manual(w));
+  }
+  if (!base.length) { fail(isLearn ? 'Новых слов не осталось' : 'Сейчас нечего повторять 🎉'); return; }
+
+  if (!isBrowse) { $('#loaderText').textContent = 'Почти готово…'; await loadDistractors(base); }
+
+  if (isLearn) {
+    learnQueue = base.map(w => ({ w }));
+    learnPool = learnQueue.splice(0, POOL_SIZE);
+  } else {
+    const ordered = isBrowse ? base : shuffle(base);
+    items = ordered.map(w => ({ w }));
+  }
+  base.forEach(w => results.set(norm(w.word), { w, first: null, tries: 0 }));
+
+  $('#loader').hidden = true;
+  $('#session').hidden = false;
+  $('#sbar').classList.toggle('learn', isLearn);
+  setupModeChip();
+  history.pushState({ session: 1 }, '');   // «назад» на Android спросит, а не выкинет из тренировки
+  show();
+}
+let ignorePop = 0;
+window.addEventListener('popstate', () => {
+  if (ignorePop > 0) { ignorePop--; return; }
+  if (openSheetEl) { closeSheet(true); return; }
+  if (!$('#session').hidden) { history.pushState({ session: 1 }, ''); askExit(); }
+});
+
+/* =====================================================================
+   ВЫБОР РЕЖИМА ДЛЯ СЛОВА
+   ===================================================================== */
+const lettersOnly = w => (String(w.word).match(/[a-z]/gi) || []).length;
+function canLetters(w) { const n = lettersOnly(w); return n >= 2 && n <= 14 && /^[a-z' -]+$/i.test(String(w.word).trim()); }
+function pickDistractors(w, n) {
+  const k = norm(w.word), def = norm(w.definition);
+  const cands = distractors.filter(d => norm(d.word) !== k && norm(d.definition) !== def && !norm(d.word).includes(k) && !k.includes(norm(d.word)));
+  const same = shuffle(cands.filter(d => d.part && w.part && norm(d.part) === norm(w.part)));
+  const rest = shuffle(cands.filter(d => !(d.part && w.part && norm(d.part) === norm(w.part))));
+  return same.concat(rest).slice(0, n);
+}
+function canChoice(w) { return pickDistractors(w, 3).length === 3; }
+function autoModeFor(w) {
+  const b = box(w);
+  if (b <= 2) return Math.random() < .5 ? 'flashcards' : 'flashcards_rev';
+  if (b <= 4) return 'choice';
+  if (b <= 6) return canLetters(w) && Math.random() < .5 ? 'letters' : 'typing';
+  if (b <= 9) return 'typing';
+  return Math.random() < .5 ? 'dictation' : 'typing';
+}
+// Заучивание — как было: знакомство карточкой, потом проверка, и слово
+// уходит из пула только когда его написали сами. Между ними — выбор ответа.
+function learnModeFor(w) {
+  const k = norm(w.word);
+  if (learnReady[k]) return 'typing';
+  const seen = learnSeen[k] || 0;
+  if (seen === 0) return 'flashcards';
+  if (seen === 1) return canChoice(w) ? 'choice' : 'flashcards_rev';
+  return seen % 2 === 0 ? 'typing' : 'flashcards_rev';
+}
+function effectiveMode(item) {
+  if (isBrowse) return 'browse';
+  if (isLearn) return learnModeFor(item.w);
+  let chosen = modeOverride || cfg.mode || 'auto';
+  if (!MODES[chosen]) chosen = 'auto';            // старое значение 'mixed' и т.п.
+  let m;
+  if (chosen === 'auto') m = item.autoMode || (item.autoMode = autoModeFor(item.w));
+  else if (chosen === 'flashcards') m = item.dir || (item.dir = Math.random() < .5 ? 'flashcards' : 'flashcards_rev');
+  else m = chosen;
+  if (m === 'choice' && !canChoice(item.w)) m = 'typing';
+  if (m === 'letters' && !canLetters(item.w)) m = 'typing';
+  return m;
+}
+
+/* =====================================================================
+   ПОКАЗ ЗАДАНИЯ
+   ===================================================================== */
+function pickNextLearn() {
+  if (!learnPool.length) return null;
+  const pool = learnPool.length > 1 ? learnPool.filter(it => norm(it.w.word) !== lastShown) : learnPool;
+  let best = pool[0], bs = learnSeen[norm(best.w.word)] || 0;
+  pool.forEach(it => { const s = learnSeen[norm(it.w.word)] || 0; if (s < bs) { best = it; bs = s; } });
+  return best;
+}
+function show() {
+  clearTimeout(autoTimer);
+  try { speechSynthesis.cancel(); } catch (e) {}
+  let item;
+  if (isLearn) { item = pickNextLearn(); if (!item) return finish(); lastShown = norm(item.w.word); }
+  else { if (idx >= items.length) return finish(); item = items[idx]; }
+  cur = { item, w: item.w, mode: effectiveMode(item), done: false, attempts: 0, hint: false, flipped: false };
+  updateTop();
+  const st = $('#stage');
+  st.className = 'stage' + (['typing', 'dictation', 'letters', 'choice'].includes(cur.mode) ? ' top' : '');
+  st.scrollTop = 0;
+  ({ flashcards: () => renderCard(false), flashcards_rev: () => renderCard(true), browse: () => renderCard(false),
+     choice: renderChoice, letters: renderLetters, typing: renderTyping, dictation: renderDictation })[cur.mode]();
+}
+function updateTop() {
+  let pct, txt;
+  if (isLearn) {
+    const total = learnDone.length + learnPool.length + learnQueue.length;
+    pct = total ? learnDone.length / total : 0;
+    txt = `${learnDone.length} / ${total}`;
+  } else {
+    pct = items.length ? (isBrowse ? (idx + 1) / items.length : idx / items.length) : 0;
+    txt = `${Math.min(idx + 1, items.length)} / ${items.length}`;
+  }
+  $('#pbar').style.width = (pct * 100) + '%';
+  $('#ptext').textContent = txt;
+  $('#modeTag').innerHTML = esc(TAGS[cur.mode] || '') + (cur.item.isRetry ? ' <span class="retry">ещё раз</span>' : '') + (isLearn ? ' <span class="retry" style="background:var(--mint-soft);color:var(--mint-ink)">новое</span>' : '');
+  updateModeChip();
+}
+
+/* --- общие кусочки --- */
+function trMode() {
+  if (cfg && cfg.translation) return cfg.translation;
+  try { const p = JSON.parse(localStorage.getItem('vocabPrefs') || '{}'); if (p.translation) return p.translation; } catch (e) {}
+  try { return localStorage.getItem('vocabShowTranslation') === '1' ? 'always' : 'tap'; } catch (e) { return 'tap'; }
+}
+function autoplayOn() { return !cfg || cfg.autoplay !== false; }
+function trHtml(w) {
+  if (!w || !w.translation_ru) return '';
+  const m = trMode(), c = normCat(w.category);
+  if (m === 'always' || (m === 'basic' && (c === 'A1' || c === 'A2'))) return `<p class="tr-text">${esc(w.translation_ru)}</p>`;
+  return `<span><button type="button" class="tr-btn" data-tr>${ic('eye', 15)}перевод</button><p class="tr-text" hidden>${esc(w.translation_ru)}</p></span>`;
+}
+function famHtml(w) {
+  let f = w && w.word_family;
+  if (typeof f === 'string') { try { f = JSON.parse(f); } catch (e) { f = null; } }
+  if (!Array.isArray(f)) return '';
+  f = f.map(x => { if (!x) return null; if (typeof x === 'string') { const m = x.match(/^(.+?)\s*\(([^)]+)\)\s*$/); return m ? { w: m[1], p: m[2] } : { w: x, p: '' }; } const a = x.w || x.word || x.form || '', b = x.p || x.part || x.pos || ''; return a ? { w: a, p: b } : null; }).filter(Boolean);
+  if (!f.length) return '';
+  return `<p class="fam">${f.map(x => esc(x.w) + (x.p ? ` <span style="opacity:.6">${esc(x.p)}</span>` : '')).join(' · ')}</p>`;
+}
+function exHtml(w) {
+  if (!w.example) return '';
+  let safe = esc(w.example);
+  const base = String(w.word || '').trim();
+  if (base && !base.includes(' ')) {
+    const stem = base.length > 4 ? base.slice(0, base.length - (/(e|y)$/i.test(base) ? 1 : 0)) : base;
+    safe = safe.replace(new RegExp('\\b(' + stem.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[a-z]*)', 'ig'), '<mark>$1</mark>');
+  }
+  return `<p class="ex">${safe}</p>`;
+}
+// Пример с вырезанным словом — чтобы он не подсказывал ответ
+function exMasked(w) {
+  if (!w.example) return '';
+  const base = String(w.word || '').trim();
+  if (!base) return '';
+  const stem = base.length > 4 ? base.slice(0, base.length - (/(e|y)$/i.test(base) ? 1 : 0)) : base;
+  const re = new RegExp('\\b' + stem.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[a-z]*', 'ig');
+  if (!re.test(w.example)) return '';
+  return `<p class="ex" style="border:0;padding:0;color:var(--muted);margin-top:10px">${esc(w.example).replace(re, '_____')}</p>`;
+}
+function sayBtn(dark) { return `<button type="button" class="say ${dark ? 'on-dark' : ''}" data-say aria-label="Произнести">${ic('volume', 22)}</button>`; }
+
+/* ---------- КАРТОЧКИ ---------- */
+function renderCard(rev) {
+  const w = cur.w, browse = cur.mode === 'browse';
+  const wordFace = `<div class="face-in"><span class="pill">${esc(w.part || '')}</span><div class="big-word">${esc(w.word)}</div>${sayBtn(false)}<div class="tap-hint">Нажмите, чтобы перевернуть</div></div>`;
+  const defBack = `<div class="face-in"><p class="def-text">${esc(w.definition || '')}</p>${trHtml(w)}${famHtml(w)}${exHtml(w)}</div>`;
+  const defFace = `<div class="face-in"><span class="pill">${esc(w.part || '')}</span><p class="def-text">${esc(w.definition || '')}</p>${trHtml(w)}<div class="tap-hint">Вспомните слово и переверните</div></div>`;
+  const wordBack = `<div class="face-in"><div class="big-word">${esc(w.word)}</div>${sayBtn(true)}${famHtml(w)}${exHtml(w)}</div>`;
+  const left = isLearn ? 'Ещё раз' : 'Не помню', right = isLearn ? 'Помню' : 'Помню';
+  $('#stage').innerHTML = `<div class="card-zone"><div class="swipe-wrap" id="swipe">
+      <div class="fcard" id="fcard"><div class="face front">${rev ? defFace : wordFace}</div><div class="face back ${browse ? 'browse' : ''}">${rev ? wordBack : defBack}</div></div>
+      ${browse ? '' : `<div class="stamp stamp-l" id="stL">${left}</div><div class="stamp stamp-r" id="stR">${right}</div>`}
+    </div><p class="swipe-help" id="swipeHelp">${browse ? 'Смахните влево — следующее слово' : ''}</p></div>`;
+  cardActions();
+  attachSwipe($('#swipe'));
+  if (!rev && autoplayOn()) setTimeout(() => say(w.word), 250);
+}
+function flip() {
+  const c = $('#fcard'); if (!c) return;
+  c.classList.toggle('flipped');
+  if (!cur.flipped) {
+    cur.flipped = true;
+    if (cur.mode === 'flashcards_rev') say(cur.w.word);   // слово открылось — теперь можно и озвучить
+    cardActions();
+    const h = $('#swipeHelp'); if (h && cur.mode !== 'browse') h.textContent = 'Смахните вправо — помню, влево — нет';
+  }
+}
+function cardActions() {
+  const a = $('#actions');
+  if (cur.mode === 'browse') {
+    a.innerHTML = `<button class="btn btn-soft" data-a="prev" ${idx ? '' : 'disabled'}>${ic('chevL', 20)}Назад</button><button class="btn btn-dark" data-a="next">Дальше${ic('chevR', 20)}</button>`;
+    return;
+  }
+  if (!cur.flipped) { a.innerHTML = `<button class="btn btn-dark" data-a="flip">Показать ответ</button>`; return; }
+  a.innerHTML = isLearn
+    ? `<button class="btn btn-amber" data-a="again">${ic('repeat', 19)}Ещё раз</button><button class="btn btn-mint" data-a="remember">${ic('check', 19)}Помню</button>`
+    : `<button class="btn btn-rose" data-a="forgot">Не помню</button><button class="btn btn-mint" data-a="knew">${ic('check', 19)}Помню</button>`;
+}
+// Свайп карточки: вправо — «помню», влево — «не помню».
+// В пролистывании: влево — следующее, вправо — предыдущее.
+function attachSwipe(el) {
+  let x0 = 0, y0 = 0, dx = 0, pid = null, drag = false, moved = false;
+  const browse = cur.mode === 'browse';
+  const can = () => browse || cur.flipped;
+  const stL = $('#stL'), stR = $('#stR');
+  el.addEventListener('pointerdown', e => {
+    if (e.target.closest('button')) return;
+    x0 = e.clientX; y0 = e.clientY; dx = 0; pid = e.pointerId; drag = true; moved = false;
+    el.style.transition = 'none';
+  });
+  el.addEventListener('pointermove', e => {
+    if (!drag || e.pointerId !== pid) return;
+    dx = e.clientX - x0; const dy = e.clientY - y0;
+    if (!moved && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) { moved = true; try { el.setPointerCapture(pid); } catch (er) {} }
+    if (!moved) return;
+    const d = can() ? dx : dx * .18;
+    el.style.transform = `translateX(${d}px) rotate(${d / 22}deg)`;
+    if (stL && stR && can()) { stR.style.opacity = Math.max(0, Math.min(1, dx / 110)); stL.style.opacity = Math.max(0, Math.min(1, -dx / 110)); }
+  });
+  const end = e => {
+    if (!drag) return; drag = false;
+    el.style.transition = 'transform .25s ease-out';
+    if (!moved) { el.style.transform = ''; if (e.type === 'pointerup' && !e.target.closest('button')) flip(); return; }
+    if (can() && Math.abs(dx) > 95) {
+      const dir = dx > 0 ? 1 : -1;
+      el.style.transform = `translateX(${dir * window.innerWidth}px) rotate(${dir * 18}deg)`;
+      haptic(12);
+      setTimeout(() => browse ? (dir < 0 ? browseStep(1) : browseStep(-1)) : judgeCard(dir > 0), 170);
+    } else {
+      el.style.transform = '';
+      if (stL) stL.style.opacity = 0; if (stR) stR.style.opacity = 0;
+    }
+  };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+}
+function judgeCard(ok) {
+  if (cur.done) return; cur.done = true;
+  if (isLearn) {
+    const k = norm(cur.w.word);
+    learnSeen[k] = (learnSeen[k] || 0) + 1;
+    learnReady[k] = !!ok;            // «Помню» → следующим будет проверка письмом
+    logAct({ reviews: 1 });
+    show();
+    return;
+  }
+  const snap = makeUndo(ok);
+  judge(ok, 1);
+  next();
+  lastUndo = snap;
+  toast(ok ? 'Помню' : 'Не помню — вернётся в конце', 'Отменить', undo);
+}
+function browseStep(d) {
+  idx = Math.max(0, idx + d);
+  show();
+}
+
+/* ---------- ВЫБОР ОТВЕТА ---------- */
+function renderChoice() {
+  const w = cur.w;
+  cur.options = shuffle([w].concat(pickDistractors(w, 3)));
+  $('#stage').innerHTML = `<div class="prompt"><div class="prompt-top"><span class="pill">${esc(w.part || '')}</span></div><p class="def-text">${esc(w.definition || '')}</p>${trHtml(w)}</div>
+    <div class="options" id="opts">${cur.options.map((o, i) => `<button class="opt" data-pick="${i}"><span class="opt-k">${i + 1}</span>${esc(o.word)}</button>`).join('')}</div>
+    <button class="skip" data-pick="-1">Не знаю</button><div id="after"></div>`;
+  $('#actions').innerHTML = '';
+}
+function pick(i) {
+  if (cur.done) return;
+  const right = cur.options.findIndex(o => norm(o.word) === norm(cur.w.word));
+  const ok = i === right;
+  document.querySelectorAll('.opt').forEach((b, j) => b.classList.add(j === right ? 'good' : j === i ? 'bad' : 'dim'));
+  const sk = document.querySelector('.skip'); if (sk) sk.hidden = true;
+  answered(ok, 1);
+}
+
+/* ---------- СОБРАТЬ ИЗ БУКВ ---------- */
+function renderLetters() {
+  const w = cur.w, target = String(w.word).trim();
+  cur.slots = [...target].map(ch => /[a-z]/i.test(ch) ? { ch: ch.toLowerCase(), val: null, tile: null } : { ch, fixed: true });
+  const letters = cur.slots.filter(s => !s.fixed).map(s => s.ch);
+  let mixed = shuffle(letters), guard = 0;
+  while (mixed.join('') === letters.join('') && letters.length > 1 && guard++ < 10) mixed = shuffle(letters);
+  cur.tiles = mixed.map((ch, id) => ({ ch, id, used: false }));
+  $('#stage').innerHTML = `<div class="prompt"><div class="prompt-top"><span class="pill">${esc(w.part || '')}</span></div><p class="def-text">${esc(w.definition || '')}</p>${trHtml(w)}${exMasked(w)}</div>
+    <div class="answer-zone"><div class="slots" id="slots"></div><div class="tiles" id="tiles"></div><div class="feedback" id="fb"></div><div id="after"></div></div>`;
+  $('#actions').innerHTML = `<button class="btn btn-soft" data-a="erase">${ic('back', 20)}Стереть</button><button class="btn btn-soft" data-a="giveup">Не знаю</button>`;
+  drawLetters();
+}
+function drawLetters(state) {
+  $('#slots').innerHTML = cur.slots.map((s, i) => s.fixed ? `<span class="slot fixed">${s.ch === ' ' ? '' : esc(s.ch)}</span>` :
+    `<button class="slot ${s.val ? 'filled' : ''} ${state || ''}" data-slot="${i}" aria-label="буква ${i + 1}">${s.val ? esc(s.val) : ''}</button>`).join('');
+  $('#tiles').innerHTML = cur.tiles.map(t => `<button class="tile ${t.used ? 'used' : ''}" data-tile="${t.id}">${esc(t.ch)}</button>`).join('');
+}
+function placeTile(id) {
+  if (cur.done) return;
+  const t = cur.tiles.find(x => x.id === id && !x.used); if (!t) return;
+  const s = cur.slots.find(x => !x.fixed && !x.val); if (!s) return;
+  s.val = t.ch; s.tile = t.id; t.used = true; haptic(5);
+  drawLetters();
+  if (cur.slots.every(x => x.fixed || x.val)) {
+    const ans = cur.slots.map(x => x.fixed ? x.ch : x.val).join('');
+    const ok = normAns(ans) === normAns(cur.w.word);
+    if (ok) { drawLetters('ok'); answered(true, 1); }
+    else if (cur.attempts === 0) {
+      cur.attempts++;
+      drawLetters('bad'); $('#slots').classList.add('shake');
+      $('#fb').className = 'feedback almost'; $('#fb').textContent = 'Не совсем — поменяйте буквы местами';
+      setTimeout(() => { const el = $('#slots'); if (el) el.classList.remove('shake'); }, 450);
+    } else { revealLetters(); answered(false, 1); }
+  }
+}
+function unplace(i) {
+  if (cur.done) return;
+  const s = cur.slots[i]; if (!s || s.fixed || !s.val) return;
+  const t = cur.tiles.find(x => x.id === s.tile); if (t) t.used = false;
+  s.val = null; s.tile = null; drawLetters();
+}
+function eraseLast() {
+  for (let i = cur.slots.length - 1; i >= 0; i--) if (!cur.slots[i].fixed && cur.slots[i].val) { unplace(i); return; }
+}
+function revealLetters() {
+  cur.slots.forEach(s => { if (!s.fixed) s.val = s.ch; });
+  cur.tiles.forEach(t => t.used = true);
+  drawLetters('bad');
+}
+
+/* ---------- НАПИСАТЬ / НА СЛУХ ---------- */
+const INPUT_ATTRS = 'autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" enterkeyhint="done"';
+function renderTyping() {
+  const w = cur.w;
+  $('#stage').innerHTML = `<div class="prompt"><div class="prompt-top"><span class="pill">${esc(w.part || '')}</span></div><p class="def-text">${esc(w.definition || '')}</p>${trHtml(w)}${exMasked(w)}</div>
+    <div class="answer-zone"><input id="inp" class="inp" ${INPUT_ATTRS} placeholder="Ваш ответ" aria-label="Ответ">
+    <div class="mask" id="mask" hidden></div><div class="feedback" id="fb"></div>
+    <div class="inline-actions" id="ia"><button class="btn btn-soft" data-a="hint" aria-label="Подсказка">${ic('bulb', 20)}</button><button class="btn btn-dark" data-a="check">Проверить</button></div><div id="after"></div></div>`;
+  $('#actions').innerHTML = '';
+  focusInput();
+}
+function renderDictation() {
+  const w = cur.w;
+  $('#stage').innerHTML = `<div class="listen"><button class="play-big" data-a="play" aria-label="Прослушать">${ic('volume', 46)}</button>
+      <div class="play-row"><button class="btn btn-soft btn-sm" data-a="slow">${ic('turtle', 18)}Медленнее</button></div></div>
+    <div class="answer-zone"><input id="inp" class="inp center" ${INPUT_ATTRS} placeholder="Что вы услышали?" aria-label="Ответ">
+    <div class="feedback" id="fb"></div>
+    <div class="inline-actions one" id="ia"><button class="btn btn-dark" data-a="check">Проверить</button></div><div id="after"></div></div>`;
+  $('#actions').innerHTML = '';
+  focusInput();
+  setTimeout(() => say(w.word), 350);
+}
+function focusInput() {
+  const i = $('#inp'); if (!i) return;
+  // На телефоне клавиатура появляется только по касанию — фокус ставим
+  // сразу лишь на компьютере, чтобы экран не прыгал.
+  if (window.matchMedia('(hover:hover) and (pointer:fine)').matches) setTimeout(() => i.focus(), 60);
+}
+function hint() {
+  if (cur.done) return;
+  cur.hint = true;
+  const t = String(cur.w.word).trim();
+  const m = $('#mask'); m.hidden = false;
+  m.textContent = [...t].map((ch, i) => i === 0 ? ch : (/[a-z]/i.test(ch) ? '_' : ch)).join('');
+  $('#inp').focus();
+}
+function check() {
+  if (cur.done) { next(); return; }
+  const inp = $('#inp'), ans = normAns(inp.value), target = normAns(cur.w.word);
+  if (!ans) { inp.classList.add('shake'); setTimeout(() => inp.classList.remove('shake'), 420); inp.focus(); return; }
+  if (ans === target) { answered(true, cur.mode === 'typing' ? (cur.hint ? 1 : 2) : 1); return; }
+  // Одна опечатка в длинном слове — даём исправить, а не обнуляем прогресс
+  if (cur.attempts === 0 && target.length >= 4 && lev(ans, target) === 1) {
+    cur.attempts++;
+    const fb = $('#fb'); fb.className = 'feedback almost'; fb.textContent = 'Почти! Одна буква не та — попробуйте ещё раз';
+    inp.classList.add('shake'); setTimeout(() => inp.classList.remove('shake'), 420);
+    inp.focus(); inp.select(); haptic([8, 40, 8]);
+    return;
+  }
+  answered(false, 1);
+}
+
+/* ---------- ОТВЕТ ПРИНЯТ ---------- */
+function answered(ok, inc) {
+  if (cur.done) return;
+  cur.done = true;
+  const w = cur.w;
+  haptic(ok ? 15 : [20, 60, 20]);
+  say(w.word);
+  const inp = $('#inp');
+  if (inp) { inp.disabled = true; inp.classList.add(ok ? 'ok' : 'bad'); inp.blur(); }
+  const fb = $('#fb');
+  if (fb) { fb.className = 'feedback ' + (ok ? 'ok' : 'bad'); fb.innerHTML = ok ? 'Верно!' : 'Правильно: <b>' + esc(w.word) + '</b>'; }
+  const after = $('#after');
+  if (after) after.innerHTML = `<div class="reveal"><div class="reveal-word"><b>${esc(w.word)}</b>${sayBtn(false)}</div>
+      ${cur.mode === 'dictation' ? `<p style="color:var(--ink-2);font-weight:600">${esc(w.definition || '')}</p>` : ''}${trHtml(w)}${famHtml(w).replace('class="fam"', 'class="fam" style="color:var(--muted)"')}${exHtml(w)}</div>`;
+  const ia = $('#ia'); if (ia) ia.remove();
+  $('#actions').innerHTML = `<button class="btn ${ok ? 'btn-mint' : 'btn-dark'}" data-a="next">Дальше${ic('chevR', 20)}</button>`;
+
+  if (isLearn) {
+    const k = norm(w.word);
+    logAct({ reviews: 1 });
+    trackResult(w, ok);
+    if (cur.mode === 'typing' && ok) learnLearned(cur.item);         // написал сам — слово выучено
+    else { learnSeen[k] = (learnSeen[k] || 0) + 1; learnReady[k] = cur.mode === 'choice' ? ok : false; }
+  } else {
+    judge(ok, inc);
+  }
+  if (ok) {
+    autoTimer = setTimeout(next, AUTO_NEXT_MS);
+    // Ученик тянется что-то рассмотреть — автопереход отменяем
+    $('#stage').addEventListener('pointerdown', () => clearTimeout(autoTimer), { once: true });
+  }
+}
+function next() {
+  clearTimeout(autoTimer);
+  if (isLearn) { show(); return; }
+  idx++; show();
+}
+
+/* =====================================================================
+   ЗАПИСЬ ПРОГРЕССА
+   ===================================================================== */
+function trackResult(w, ok) {
+  const r = results.get(norm(w.word)); if (!r) return;
+  r.tries++; if (r.first === null) r.first = ok;
+}
+// Повторение: оценка пишется один раз за сессию — по первой попытке.
+// Забытое слово возвращается в конец и крутится, пока не вспомнится.
+function judge(ok, inc) {
+  answeredAny = true;
+  const w = cur.w, k = norm(w.word);
+  trackResult(w, ok);
+  const first = !recorded.has(k);
+  if (first) { recorded.add(k); recordWordProgress(w, ok, inc); if (ok) correctFirst++; }
+  logAct({ reviews: 1, correct: first && ok ? 1 : 0, wrong: first && !ok ? 1 : 0 });
+  if (!ok) { const copy = { w, isRetry: true }; items.push(copy); }
+}
+function learnLearned(item) {
+  answeredAny = true;
+  const k = norm(item.w.word);
+  recordWordProgress(item.w, true, 1);
+  correctFirst++;
+  learnPool = learnPool.filter(x => norm(x.w.word) !== k);
+  learnDone.push(item);
+  if (learnQueue.length) learnPool.push(learnQueue.shift());
+  logAct({ learned: 1 });
+}
+function nextDueDate(b) { return new Date(Date.now() + (SRS_INTERVALS_MIN[b] || 10) * 60000).toISOString(); }
+function recordWordProgress(w, ok, inc) {
+  const k = norm(w.word), prev = srs[k] || { box: 0, lapses: 0, correct_count: 0 };
+  const isFirst = !prev.box, now = new Date().toISOString();
+  let b = prev.box || 0, lapses = prev.lapses || 0;
+  if (ok) b = Math.min(b + 1, SRS_MASTERED_BOX);
+  else { if (b > 0) lapses++; b = 1; }
+  const due_at = nextDueDate(b);
+  const cc = ok ? Math.round(((prev.correct_count || 0) + (inc || 1)) * 10) / 10 : (prev.correct_count || 0);
+  srs[k] = Object.assign({}, prev, { word: prev.word || w.word, box: b, due_at, lapses, correct_count: cc, last_result: ok, last_reviewed_at: now }, isFirst ? { first_seen_at: now } : {});
+  writeRow(prev.word || w.word, Object.assign({ correct_count: cc, box: b, due_at, lapses, last_result: ok, last_reviewed_at: now }, isFirst ? { first_seen_at: now } : {}));
+}
+function writeRow(word, fields) {
+  return sb.from('user_word_progress').upsert(Object.assign({ user_id: user.id, word }, fields), { onConflict: 'user_id,word' })
+    .then(({ error }) => { if (error) { console.error('Ошибка сохранения прогресса:', error); toast('Ответ не сохранился — проверьте интернет'); } });
+}
+// Календарь активности: одна строка на день, счётчики растут на сервере
+let actDisabled = false;
+function logAct(d) {
+  if (actDisabled || !user) return;
+  sb.rpc('log_vocab_activity', { p_day: dayKey(new Date()), p_reviews: d.reviews || 0, p_learned: d.learned || 0, p_correct: d.correct || 0, p_wrong: d.wrong || 0 })
+    .then(({ error }) => { if (error) { actDisabled = true; console.info('log_vocab_activity недоступна (SQL не запущен?):', error.message); } });
+}
+
+/* --- «Отменить» для случайного свайпа --- */
+function makeUndo(ok) {
+  const k = norm(cur.w.word);
+  return { idx, k, w: cur.w, ok, prev: srs[k] ? Object.assign({}, srs[k]) : null, wasRecorded: recorded.has(k),
+           itemsLen: items.length, res: Object.assign({}, results.get(k)) };
+}
+function undo() {
+  const u = lastUndo; lastUndo = null;
+  if (!u || idx !== u.idx + 1) return;
+  if (!u.wasRecorded) {
+    recorded.delete(u.k);
+    if (u.ok) correctFirst--;
+    if (u.prev) {
+      srs[u.k] = u.prev;
+      const f = {}; ['correct_count', 'box', 'due_at', 'lapses', 'last_result', 'last_reviewed_at'].forEach(x => { f[x] = u.prev[x] === undefined ? null : u.prev[x]; });
+      writeRow(u.prev.word || u.w.word, f);
+    }
+    logAct({ reviews: -1, correct: u.ok ? -1 : 0, wrong: u.ok ? 0 : -1 });
+  } else logAct({ reviews: -1 });
+  items.length = u.itemsLen;
+  results.set(u.k, u.res);
+  idx = u.idx;
+  $('#results').hidden = true; $('#session').hidden = false;   // отмена после последней карточки
+  show();
+}
+
+/* =====================================================================
+   ИТОГИ
+   ===================================================================== */
+async function finish() {
+  clearTimeout(autoTimer);
+  try { speechSynthesis.cancel(); } catch (e) {}
+  $('#session').hidden = true;
+  const R = $('#results'); R.hidden = false;
+  const mins = Math.max(1, Math.round((Date.now() - startedAt) / 60000));
+  const list = Array.from(results.values());
+  let hero, stats;
+  if (isBrowse) {
+    hero = `<div class="ring" style="width:120px;height:120px;background:var(--surface-2);border-radius:50%">${ic('eye', 44)}</div><h1>Просмотрено</h1><p>${items.length} ${plural(items.length, 'слово', 'слова', 'слов')} · прогресс не менялся</p>`;
+    stats = '';
+  } else {
+    const total = isLearn ? learnDone.length : recorded.size;
+    const pct = total ? Math.round(correctFirst / total * 100) : 0;
+    const r = 52, c = 2 * Math.PI * r;
+    const ringSvg = (val, color) => `<div class="ring" style="width:124px;height:124px"><svg width="124" height="124"><circle cx="62" cy="62" r="${r}" fill="none" stroke="#e6e9f0" stroke-width="10"/><circle cx="62" cy="62" r="${r}" fill="none" stroke="${color}" stroke-width="10" stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - val)}"/></svg><b>${isLearn ? learnDone.length : pct + '%'}</b></div>`;
+    if (isLearn) {
+      hero = ringSvg(1, 'var(--mint)') + `<h1>${learnDone.length} ${plural(learnDone.length, 'новое слово', 'новых слова', 'новых слов')}</h1><p>Ушли в повторение — вернутся по расписанию</p>`;
+    } else {
+      hero = ringSvg(pct / 100, pct >= 80 ? 'var(--mint)' : pct >= 50 ? 'var(--primary)' : 'var(--amber)') + `<h1>${pct >= 90 ? 'Отлично!' : pct >= 70 ? 'Хорошо!' : 'Готово'}</h1><p>С первой попытки: ${correctFirst} из ${total}</p>`;
+    }
+    const retries = list.filter(x => x.tries > 1).length;
+    stats = `<div class="res-stats"><div class="res-stat"><b>${total}</b><span>${plural(total, 'слово', 'слова', 'слов')}</span></div><div class="res-stat"><b>${retries}</b><span>с повтором</span></div><div class="res-stat"><b>${mins}</b><span>мин</span></div></div>`;
+  }
+  const rows = isBrowse ? '' : list.filter(x => x.tries > 0).sort((a, b) => (a.first === b.first ? b.tries - a.tries : a.first ? 1 : -1)).map(x => `<div class="res-row">
+      <span style="color:${x.first ? 'var(--mint)' : 'var(--amber)'}">${x.first ? ic('check', 20) : ic('repeat', 20)}</span><b>${esc(x.w.word)}</b>
+      <small style="color:${x.first ? 'var(--mint-ink)' : 'var(--amber-ink)'}">${x.first ? 'с первого раза' : (x.tries - 1) + ' ' + plural(x.tries - 1, 'повтор', 'повтора', 'повторов')}</small></div>`).join('');
+  const back = 'vocabulary.html' + (cfg.returnTo && cfg.returnTo.startsWith('#') ? cfg.returnTo : '#home');
+  R.innerHTML = `<div class="res-hero">${hero}</div>${stats}<div id="streakSlot"></div>
+    ${rows ? `<div class="res-sec">Слова тренировки</div><div class="res-list">${rows}</div>` : ''}
+    <a class="btn btn-primary" href="${back}" style="margin-top:6px">Готово</a>`;
+  if (!isBrowse && answeredAny) {
+    const n = await fetchStreak();
+    if (n) $('#streakSlot').innerHTML = `<div class="streak-box">${ic('flame', 26)}<div>${n} ${plural(n, 'день', 'дня', 'дней')} подряд<div style="font-weight:600;font-size:13px;opacity:.85">Сегодня засчитано — до завтра!</div></div></div>`;
+  }
+}
+async function fetchStreak() {
+  try {
+    const { data, error } = await sb.from('vocab_activity').select('day, reviews, learned').eq('user_id', user.id).order('day', { ascending: false }).limit(400);
+    if (error) return 0;
+    const days = new Set((data || []).filter(r => (r.reviews || 0) + (r.learned || 0) > 0).map(r => String(r.day).slice(0, 10)));
+    days.add(dayKey(new Date()));
+    let n = 0, d = new Date();
+    while (days.has(dayKey(d))) { n++; d.setDate(d.getDate() - 1); }
+    return n;
+  } catch (e) { return 0; }
+}
+
+/* =====================================================================
+   РЕЖИМ ПРЯМО ВО ВРЕМЯ ПОВТОРЕНИЯ
+   ===================================================================== */
+function setupModeChip() {
+  const b = $('#btnMode');
+  b.hidden = isLearn || isBrowse;
+}
+function updateModeChip() {
+  const b = $('#btnMode'); if (b.hidden) return;
+  const m = MODES[modeOverride || cfg.mode] || MODES.auto;
+  b.innerHTML = `${ic(m.i, 15)}${m.t}${ic('chevD', 15)}`;
+}
+let openSheetEl = null;
+function openModeSheet() {
+  const curMode = modeOverride || cfg.mode || 'auto';
+  const wrap = document.createElement('div');
+  wrap.className = 'sheet-wrap';
+  wrap.innerHTML = `<div class="sheet-backdrop"></div><div class="sheet" role="dialog" aria-label="Режим"><h3>Как повторять</h3><p style="color:var(--muted);font-size:13.5px;margin-bottom:6px">Меняется сразу, для оставшихся слов</p>
+    ${Object.entries(MODES).map(([id, m]) => `<button class="m-row ${id === curMode ? 'on' : ''}" data-mode="${id}"><span class="m-ico">${ic(m.i, 19)}</span><span style="flex:1"><b>${m.t}</b><span>${m.h}</span></span>${id === curMode ? `<span style="color:var(--primary)">${ic('check', 20)}</span>` : ''}</button>`).join('')}
+    <label class="check"><input type="checkbox" id="modeDefault"> Сделать режимом по умолчанию</label></div>`;
+  document.body.appendChild(wrap);
+  openSheetEl = wrap;
+  history.pushState({ sheet: 1 }, '');
+  wrap.querySelector('.sheet-backdrop').onclick = () => closeSheet();
+  wrap.querySelectorAll('[data-mode]').forEach(btn => btn.onclick = () => {
+    const id = btn.dataset.mode;
+    modeOverride = id;
+    if ($('#modeDefault').checked) { cfg.mode = id; sb.from('profiles').update({ vocab_mode: id }).eq('id', user.id).then(() => {}); }
+    closeSheet();
+    items.forEach(it => { if (id !== 'auto') delete it.dir; });
+    if (cur && !cur.done && !cur.flipped) { cur.mode = effectiveMode(cur.item); show(); }
+    else updateModeChip();
+  });
+  requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.add('open')));
+}
+function closeSheet(fromPop) {
+  const w = openSheetEl; if (!w) return;
+  openSheetEl = null;
+  w.classList.remove('open'); setTimeout(() => w.remove(), 300);
+  if (!fromPop) { ignorePop++; history.back(); }
+}
+function askExit() {
+  if (!answeredAny || isBrowse) { leave(); return; }
+  const wrap = document.createElement('div');
+  wrap.className = 'sheet-wrap';
+  wrap.innerHTML = `<div class="sheet-backdrop"></div><div class="sheet" role="dialog"><h3>Закончить сейчас?</h3><p style="color:var(--muted);margin-bottom:16px">Ответы уже сохранены — оставшиеся слова никуда не денутся.</p>
+    <div style="display:grid;gap:10px"><button class="btn btn-primary" data-x="stay">Продолжить</button><button class="btn btn-soft" data-x="leave">Выйти</button></div></div>`;
+  document.body.appendChild(wrap);
+  openSheetEl = wrap;
+  history.pushState({ sheet: 1 }, '');
+  wrap.querySelector('.sheet-backdrop').onclick = () => closeSheet();
+  wrap.querySelector('[data-x=stay]').onclick = () => closeSheet();
+  wrap.querySelector('[data-x=leave]').onclick = () => { openSheetEl = null; leave(); };
+  requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.add('open')));
+}
+function leave() { location.href = 'vocabulary.html' + (cfg && cfg.returnTo && cfg.returnTo.startsWith('#') ? cfg.returnTo : '#home'); }
+
+/* =====================================================================
+   ОЗВУЧКА
+   ===================================================================== */
+let _voice = null;
+function pickVoice() {
+  if (_voice) return _voice;
+  const vs = (window.speechSynthesis && speechSynthesis.getVoices()) || [];
+  const en = vs.filter(v => /^en[-_]/i.test(v.lang || ''));
+  if (!en.length) return null;
+  const pref = ['Google US English', 'Microsoft Aria', 'Microsoft Jenny', 'Samantha', 'Alex', 'Google UK English Female'];
+  for (const n of pref) { const h = en.find(v => (v.name || '').includes(n)); if (h) return (_voice = h); }
+  return (_voice = en.find(v => /en[-_](US|GB)/i.test(v.lang)) || en[0]);
+}
+if (window.speechSynthesis) speechSynthesis.onvoiceschanged = () => { _voice = null; pickVoice(); };
+function say(text, rate) {
+  try {
+    if (!window.speechSynthesis || !text) return;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text); u.lang = 'en-US'; u.rate = rate || 0.9;
+    const v = pickVoice(); if (v) u.voice = v;
+    speechSynthesis.speak(u);
+  } catch (e) {}
+}
+
+/* =====================================================================
+   ТОСТ
+   ===================================================================== */
+let toastTimer = null;
+function toast(msg, label, fn) {
+  const el = $('#toast');
+  el.innerHTML = `<span>${esc(msg)}</span>` + (label ? `<button type="button">${ic('undo', 15)} ${esc(label)}</button>` : '');
+  if (label) el.querySelector('button').onclick = () => { el.classList.remove('show'); fn && fn(); };
+  requestAnimationFrame(() => el.classList.add('show'));
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), label ? 3500 : 2600);
+}
+
+/* =====================================================================
+   УПРАВЛЕНИЕ: касания и клавиатура
+   ===================================================================== */
+document.addEventListener('click', e => {
+  const t = e.target;
+  if (t.closest('[data-tr]')) { const b = t.closest('[data-tr]'); b.hidden = true; const p = b.nextElementSibling; if (p) p.hidden = false; e.stopPropagation(); return; }
+  if (t.closest('[data-say]')) { say(cur && cur.w.word); return; }
+  const tile = t.closest('[data-tile]'); if (tile) { placeTile(Number(tile.dataset.tile)); return; }
+  const slot = t.closest('[data-slot]'); if (slot) { unplace(Number(slot.dataset.slot)); return; }
+  const pk = t.closest('[data-pick]'); if (pk) { pick(Number(pk.dataset.pick)); return; }
+  const a = t.closest('[data-a]'); if (!a) return;
+  ({
+    flip, next, check, hint,
+    prev: () => browseStep(-1),
+    knew: () => judgeCard(true), forgot: () => judgeCard(false),
+    remember: () => judgeCard(true), again: () => judgeCard(false),
+    erase: eraseLast,
+    giveup: () => { if (cur.done) return; revealLetters(); answered(false, 1); },
+    play: () => say(cur.w.word), slow: () => say(cur.w.word, 0.55)
+  })[a.dataset.a]?.();
+});
+$('#btnClose').addEventListener('click', askExit);
+$('#btnMode').addEventListener('click', openModeSheet);
+document.addEventListener('keydown', e => {
+  if (!cur || $('#session').hidden || openSheetEl) { if (e.key === 'Escape' && openSheetEl) closeSheet(); return; }
+  const inInput = e.target && e.target.id === 'inp';
+  if (inInput) { if (e.key === 'Enter') { e.preventDefault(); check(); } return; }
+  const m = cur.mode;
+  if (m === 'flashcards' || m === 'flashcards_rev' || m === 'browse') {
+    if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); if (m === 'browse' || !cur.flipped) flip(); else return; }
+    if (m === 'browse') { if (e.key === 'ArrowRight') browseStep(1); if (e.key === 'ArrowLeft') browseStep(-1); return; }
+    if (cur.flipped && e.key === 'ArrowRight') judgeCard(true);
+    if (cur.flipped && e.key === 'ArrowLeft') judgeCard(false);
+    return;
+  }
+  if (cur.done && e.key === 'Enter') { e.preventDefault(); next(); return; }
+  if (m === 'choice' && /^[1-4]$/.test(e.key)) pick(Number(e.key) - 1);
+  if (m === 'letters') {
+    if (e.key === 'Backspace') { e.preventDefault(); eraseLast(); return; }
+    if (/^[a-z]$/i.test(e.key)) { const t = cur.tiles.find(x => !x.used && x.ch === e.key.toLowerCase()); if (t) placeTile(t.id); }
+  }
+});
+function applyDyslexia() { let on = false; try { on = localStorage.getItem('dyslexiaMode') === 'true'; } catch (e) {} document.body.classList.toggle('dyslexia-mode', on); }
+
+boot();
+</script>
 </body>
 </html>
