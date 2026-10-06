@@ -1071,8 +1071,13 @@ const TABS = [
   { id: 'settings', label: 'Settings', icon: 'sliders' }
 ];
 let pushedDetail = false;
+// Текущий экран храним сами, а не только в адресе страницы. Вкладки
+// переключаются без изменения адреса: для браузера это не «переход», и Chrome
+// с включённой «Версией для ПК» не перерисовывает страницу заново.
+let NAV = null;
+function currentNav() { return NAV || location.hash || '#home'; }
 function parseHash() {
-  const h = decodeURIComponent((location.hash || '#home').slice(1));
+  const h = decodeURIComponent(currentNav().slice(1));
   const parts = h.split('/');
   const tab = TABS.some(t => t.id === parts[0]) ? parts[0] : 'home';
   return { tab, sub: parts[1] || null, arg: parts.slice(2).join('/') || null };
@@ -1082,11 +1087,16 @@ function go(hash, push, dictState) {
   // Сначала закрываем шторки и ждём, пока браузер отмотает их записи в истории,
   // иначе переход «съест» откат назад и откроется не тот экран.
   if (sheets.length) { afterPop = () => go(hash, push); closeAllSheets(); return; }
-  if (push) { pushedDetail = true; location.hash = hash; return; }   // hashchange вызовет route()
-  history.replaceState(history.state, '', hash);
+  if (push) {
+    // Экраны «вглубь» (категория, список) кладём в историю — чтобы работала
+    // кнопка «назад». Перед этим записываем в адрес вкладку, с которой ушли.
+    if (location.hash !== currentNav()) history.replaceState(history.state, '', currentNav());
+    pushedDetail = true; location.hash = hash; return;   // hashchange вызовет route()
+  }
+  NAV = hash;
   route();
 }
-window.addEventListener('hashchange', route);
+window.addEventListener('hashchange', () => { NAV = location.hash || '#home'; route(); });
 
 function route() {
   if (!S.ready) return;
@@ -1094,6 +1104,7 @@ function route() {
   const sameScreen = r.tab === S.route.tab && r.sub === S.route.sub && r.arg === S.route.arg;
   if (r.sub && !sameScreen) S.coll.filter = 'all';
   S.route = r;
+  try { sessionStorage.setItem('vocabNav', currentNav()); } catch (e) {}
   renderChrome();
   const view = $('#view');
   if (r.tab === 'home') view.innerHTML = renderHome();
@@ -1687,7 +1698,7 @@ function launch(kind, list, extra) {
     practiceScope: kind === 'learn' ? 'new' : kind === 'browse' ? 'all' : 'in_progress',
     lists: Object.keys(S.lists), wordLimit: 'all', dailyGoal: S.settings.dailyGoal,
     translation: S.prefs.translation, autoplay: S.prefs.autoplay,
-    returnTo: location.hash || '#home'
+    returnTo: currentNav()
   }, extra || {});
   try { localStorage.setItem('reviewSettings', JSON.stringify(cfg)); } catch (e) { toast('Не удалось начать: память браузера переполнена'); return; }
   location.href = 'review.html';
@@ -2092,7 +2103,7 @@ function checkDesktopSiteMode() {
     const touch = window.matchMedia('(pointer:coarse)').matches;
     const tooWide = screen.width && window.innerWidth > screen.width * 1.35;
     if (!touch || !tooWide || window.innerWidth >= 1024 || sessionStorage.getItem('dmHide')) return;
-    $('#dmBanner').innerHTML = `<div class="dm-banner">${ic('info', 18)}<span>Страница открыта в режиме «Версия для ПК», поэтому всё мелкое. Отключите его: меню ⋮ в браузере → снимите галочку «Версия для ПК».</span><button data-act="hideDm">OK</button></div>`;
+    $('#dmBanner').innerHTML = `<div class="dm-banner">${ic('info', 18)}<span>В браузере включена «Версия для ПК», поэтому всё мелкое. Галочка в меню ⋮ отключает её только на минуту — выключите насовсем: ⋮ → Настройки → Настройки сайтов → Версия для ПК.</span><button data-act="hideDm">OK</button></div>`;
   } catch (e) {}
 }
 function applyDyslexia() {
@@ -2122,7 +2133,12 @@ async function boot() {
   } catch (e) { console.error(e); fatal('Не удалось загрузить словарь'); return; }
   S.ready = true;
   checkDesktopSiteMode();
-  if (!location.hash) history.replaceState(null, '', '#home');
+  // Перезагрузка (в том числе когда Chrome сам перезагружает страницу при
+  // переключении «Версии для ПК») возвращает на тот же экран, а не на главную.
+  let navType = '';
+  try { navType = (performance.getEntriesByType('navigation')[0] || {}).type || ''; } catch (e) {}
+  let saved = null; try { saved = sessionStorage.getItem('vocabNav'); } catch (e) {}
+  NAV = (navType === 'reload' && saved) ? saved : (location.hash || '#home');
   route();
   if (cached) loadWords().then(rerender).catch(() => {});   // тихо обновляем копию словаря
 }
