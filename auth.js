@@ -100,204 +100,267 @@ const ACCESS_FIELD = {
     tests:     { field: 'access_tests',     label: 'Mock Tests' }
 };
 
-// Функция контроля доступа
-async function requireAuth() {
-    // Спрашиваем у Supabase, есть ли активная сессия в браузере
-    const { data: { session }, error } = await _supabase.auth.getSession();
-    
-    // Если сессии нет — принудительно отправляем на страницу входа
-    if (!session) {
-        window.location.href = 'login.html';
-        return null;
+// ==========================================
+// ПРОВЕРКА ДОСТУПА — «закрыто по умолчанию»
+// ==========================================
+// Почему переписано. Раньше доступ проверялся только когда страница сама
+// вызывала requireAuth(), а до ответа страница раздела была полностью
+// открыта. Проверка шла через _supabase.auth.getSession(), а клиент Supabase
+// ждёт общую для ВСЕХ вкладок «блокировку» сессии: если её держит другая
+// вкладка платформы (особенно свёрнутая — браузер её «замораживает») или
+// второй клиент на той же странице, ожидание длится секунды или бесконечно.
+// Ученица видела это так: после перезагрузки замки пропадали, разделы
+// открывались, а замок появлялся через несколько секунд или не появлялся вовсе.
+//
+// Теперь:
+//  1) страница раздела скрыта с первой миллисекунды, пока доступ не подтверждён;
+//  2) профиль читается напрямую одним запросом с токеном из браузера —
+//     без ожидания блокировки; клиент Supabase — только запасной путь;
+//  3) если проверка не ответила за 15 секунд — экран «Не удалось проверить
+//     доступ», а не открытая страница;
+//  4) клик по закрытому разделу перехватывается на всей странице, включая
+//     ссылки, которые страница дорисовала позже.
+
+const AUTH_TEACHER_ONLY = ['teacher-board.html', 'student-profile.html', 'content-lab.html', 'mock-lab.html'];
+const AUTH_PROFILE_COLS = 'role,is_approved,access_reading,access_listening,access_speaking,access_writing,access_tests';
+const AUTH_STORAGE_KEY = 'sb-' + new URL(AUTH_SB_URL).hostname.split('.')[0] + '-auth-token';
+const AUTH_TIMEOUT_MS = 8000;      // на один запрос
+const AUTH_GATE_LIMIT_MS = 15000;  // на всю проверку: дольше — экран ошибки
+
+function authFileName() {
+    return (window.location.pathname.split('/').pop() || '').toLowerCase();
+}
+
+function authWithTimeout(promise, ms, label) {
+    return new Promise((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error('Таймаут: ' + label)), ms);
+        Promise.resolve(promise).then(v => { clearTimeout(t); resolve(v); }, e => { clearTimeout(t); reject(e); });
+    });
+}
+
+// Сессия, сохранённая Supabase в браузере (читается мгновенно, без блокировки)
+function authReadStoredSession() {
+    try {
+        const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+        if (!raw) return null;
+        let s = JSON.parse(raw);
+        if (s && s.currentSession) s = s.currentSession;
+        if (!s || !s.access_token || !s.user || !s.user.id) return null;
+        return s;
+    } catch (e) { return null; }
+}
+
+// Быстрый путь: профиль одним запросом к базе с токеном из браузера
+async function authFetchProfileDirect(stored) {
+    const url = AUTH_SB_URL + '/rest/v1/profiles?select=' + AUTH_PROFILE_COLS + '&id=eq.' + encodeURIComponent(stored.user.id);
+    const res = await authWithTimeout(fetch(url, {
+        headers: { apikey: AUTH_SB_KEY, Authorization: 'Bearer ' + stored.access_token, Accept: 'application/json' }
+    }), AUTH_TIMEOUT_MS, 'profiles');
+    if (res.status === 401 || res.status === 403) return { retry: true };  // токен устарел — пусть клиент его обновит
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const rows = await res.json();
+    return { profile: Array.isArray(rows) ? (rows[0] || null) : null };
+}
+
+// Запасной путь: через клиент Supabase (он сам обновит устаревший токен)
+async function authFetchProfileViaClient() {
+    const { data: { session } } = await authWithTimeout(_supabase.auth.getSession(), AUTH_TIMEOUT_MS, 'getSession');
+    if (!session) return { user: null, profile: null };
+    const once = () => authWithTimeout(
+        _supabase.from('profiles').select(AUTH_PROFILE_COLS).eq('id', session.user.id).maybeSingle(),
+        AUTH_TIMEOUT_MS, 'profiles');
+    let { data, error } = await once();
+    if (error) {
+        await new Promise(r => setTimeout(r, 800)); // сетевые сбои обычно разовые
+        ({ data, error } = await once());
     }
-    
-    // Получаем профиль текущего пользователя.
-    // ВАЖНО: ошибку запроса нельзя считать «нет доступа». Раньше error
-    // игнорировался, и при сбое связи преподавателю показывался экран
-    // «Аккаунт на проверке», будто он посторонний.
-    const fetchProfile = async () => await _supabase
-        .from('profiles')
-        .select('role, is_approved, access_reading, access_listening, access_speaking, access_writing, access_tests')
-        .eq('id', session.user.id)
-        .maybeSingle();
+    if (error) throw error;
+    return { user: session.user, profile: data || null };
+}
 
-    let { data: profile, error: profileError } = await fetchProfile();
+// Одна проверка на страницу — её ждут и скрытие страницы, и requireAuth(), и замки ссылок
+let _authAccessPromise = null;
+function authLoadAccess() {
+    if (_authAccessPromise) return _authAccessPromise;
+    _authAccessPromise = (async () => {
+        const stored = authReadStoredSession();
+        if (stored && (!stored.expires_at || stored.expires_at * 1000 > Date.now() + 30000)) {
+            try {
+                const r = await authFetchProfileDirect(stored);
+                if (!r.retry) return { user: stored.user, profile: r.profile };
+            } catch (e) {
+                console.warn('[auth] прямая проверка не удалась, пробуем через клиент:', e.message || e);
+            }
+        }
+        return await authFetchProfileViaClient();
+    })();
+    _authAccessPromise.catch(() => { _authAccessPromise = null; }); // ошибку не запоминаем навсегда
+    return _authAccessPromise;
+}
 
-    if (profileError) {
-        // одна повторная попытка — сетевые сбои обычно разовые
-        await new Promise(r => setTimeout(r, 800));
-        ({ data: profile, error: profileError } = await fetchProfile());
-    }
-
-    if (profileError) {
-        console.error('Не удалось прочитать профиль:', profileError);
-        document.body.innerHTML = `
-            <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Plus Jakarta Sans',sans-serif;background:#f8f9fa;padding:24px;">
-                <div style="max-width:420px;text-align:center;background:#fff;padding:32px;border-radius:24px;border:1px solid #f0f0f0;">
-                    <h2 style="margin:0 0 12px;font-size:20px;font-weight:700;color:#1a1a1a;">Не удалось проверить доступ</h2>
-                    <p style="margin:0 0 20px;color:#666;font-size:14px;line-height:1.5;">
-                        Связь с базой прервалась. Это не значит, что с аккаунтом что-то не так — просто попробуйте ещё раз.
-                    </p>
-                    <button onclick="location.reload()" style="background:#0f172a;color:#fff;border:0;padding:12px 24px;border-radius:12px;font-weight:700;font-size:14px;cursor:pointer;">
-                        Обновить страницу
-                    </button>
-                </div>
-            </div>`;
-        return null;
-    }
-
+// Решение по текущей странице. Логика та же, что была в requireAuth().
+function authDecide(profile) {
+    const path = window.location.pathname;
     const isTeacher = profile && profile.role === 'teacher';
     const isGuest = profile && profile.role === 'guest';
 
-    // 0. Гость: пропускаем проверку is_approved (гость подтверждается сразу
-    // при регистрации на guest.html) и разрешаем ему только tests.html —
-    // с любой другой страницы сразу уводим обратно. (Демо-режим "гулять по
-    // всем разделам" пока отложен — когда будем его доделывать, здесь нужно
-    // будет заменить на блок-лист вместо allow-листа из одной страницы.)
-    if (isGuest) {
-        const currentPath = window.location.pathname;
-        if (!currentPath.includes('tests.html')) {
-            window.location.href = 'tests.html';
-            return null;
-        }
-        return {
-            ...session.user,
-            role: 'guest',
-            profile: profile
-        };
-    }
+    // Гость: только tests.html (демо-режим «гулять по разделам» отложен)
+    if (isGuest) return path.includes('tests.html') ? { kind: 'allow' } : { kind: 'redirect', to: 'tests.html' };
 
-    // 1. Проверка подтверждения аккаунта (ТОЛЬКО ДЛЯ УЧЕНИКОВ)
-    if (!isTeacher && (!profile || !profile.is_approved)) {
-        document.body.innerHTML = `
-            <div style="
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100vw;
-                height: 100vh;
-                z-index: 99999;
-                display: flex; 
-                flex-direction: column; 
-                align-items: center; 
-                justify-content: center; 
-                margin: 0; 
-                padding: 20px; 
-                box-sizing: border-box; 
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
-                text-align: center; 
-                background-color: #f9f9f9;
-            ">
-                <div style="font-size: 64px; margin-bottom: 16px;">⏳</div>
-                <h2 style="margin: 0 0 12px 0; color: #1a1a1a; font-size: 22px; font-weight: 700;">Аккаунт на проверке</h2>
-                <p style="margin: 0 0 32px 0; color: #666; font-size: 14px; max-width: 280px; line-height: 1.5;">
-                    Доступ к платформе TOEFL появится сразу после подтверждения преподавателем. Обычно это занимает совсем немного времени!
-                </p>
-                <button onclick="logoutUser()" style="
-                    padding: 14px 28px; 
-                    font-size: 14px; 
-                    font-weight: 600; 
-                    color: #fff; 
-                    background-color: #000; 
-                    border: none; 
-                    border-radius: 12px; 
-                    cursor: pointer;
-                    width: 100%;
-                    max-width: 200px;
-                    transition: background-color 0.2s;
-                ">Выйти из аккаунта</button>
-            </div>
-        `;
-        return null;
-    }
+    // Ученик без подтверждения преподавателем
+    if (!isTeacher && (!profile || !profile.is_approved)) return { kind: 'pending' };
 
-    const currentPath = window.location.pathname;
+    // Страницы преподавателя
+    if (AUTH_TEACHER_ONLY.some(p => path.includes(p)) && !isTeacher) return { kind: 'redirect', to: 'index.html' };
 
-    // 2. Ученикам запрещены страницы преподавателя
-    const TEACHER_ONLY = ['teacher-board.html', 'student-profile.html', 'content-lab.html', 'mock-lab.html'];
-    if (TEACHER_ONLY.some(p => currentPath.includes(p)) && !isTeacher) {
-        window.location.href = 'index.html';
-        return null;
-    }
-
-    // 3. Точечные проверки модулей (ТОЛЬКО ДЛЯ УЧЕНИКОВ)
+    // Закрытый раздел (проверяется каждая страница по имени файла)
     if (!isTeacher) {
-        let hasSectionAccess = true;
-        let sectionName = '';
-
-        // ВАЖНО: раньше проверялись только пять страниц-хабов
-        // (reading/listening/speaking/writing/tests.html), а весь реальный
-        // контент лежит на других файлах — и они были открыты любому
-        // ученику по прямой ссылке, даже с закрытым доступом к секции.
-        // Теперь проверяется каждая страница по имени файла.
-        //
-        // ЕСЛИ ДОБАВЛЯЕТЕ НОВУЮ СТРАНИЦУ С ЗАДАНИЯМИ — впишите её сюда,
-        // иначе она окажется доступна всем.
-        // Берём именно имя файла, а не подстроку всего пути —
-        // includes() ловил бы лишнее и пропускал нужное.
-        const fileName = (currentPath.split('/').pop() || '').toLowerCase();
-        const section = PAGE_SECTIONS[fileName];
-
+        const section = PAGE_SECTIONS[authFileName()];
         if (section) {
             const rule = ACCESS_FIELD[section];
-            hasSectionAccess = profile[rule.field];
-            sectionName = rule.label;
-        }
-
-        if (!hasSectionAccess) {
-            document.body.innerHTML = `
-                <div style="
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    width: 100vw;
-                    height: 100vh;
-                    z-index: 99999;
-                    display: flex; 
-                    flex-direction: column; 
-                    align-items: center; 
-                    justify-content: center; 
-                    margin: 0; 
-                    padding: 20px; 
-                    box-sizing: border-box; 
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
-                    text-align: center; 
-                    background-color: #f9f9f9;
-                ">
-                    <div style="font-size: 64px; margin-bottom: 16px;">🔒</div>
-                    <h2 style="margin: 0 0 12px 0; color: #1a1a1a; font-size: 22px; font-weight: 700;">Раздел закрыт</h2>
-                    <p style="margin: 0 0 32px 0; color: #666; font-size: 14px; max-width: 280px; line-height: 1.5;">
-                        Доступ к разделу <strong>${sectionName}</strong> пока не активирован преподавателем. Вы можете продолжить работу в других открытых вкладках.
-                    </p>
-                    <a href="index.html" style="
-                        display: inline-block;
-                        text-decoration: none;
-                        text-align: center;
-                        padding: 14px 28px; 
-                        font-size: 14px; 
-                        font-weight: 600; 
-                        color: #fff; 
-                        background-color: #000; 
-                        border: none; 
-                        border-radius: 12px; 
-                        cursor: pointer;
-                        width: 100%;
-                        max-width: 200px;
-                        box-sizing: border-box;
-                        transition: background-color 0.2s;
-                    ">На главную</a>
-                </div>
-            `;
-            return null;
+            if (!profile[rule.field]) return { kind: 'blocked', label: rule.label };
         }
     }
-    
+    return { kind: 'allow' };
+}
+
+// ---------- скрытие страницы до проверки ----------
+const AUTH_GATED = !!PAGE_SECTIONS[authFileName()] || AUTH_TEACHER_ONLY.some(p => window.location.pathname.includes(p));
+
+function authReveal() {
+    document.documentElement.classList.remove('auth-gate');
+    const w = document.getElementById('auth-gate-wait');
+    if (w) w.remove();
+}
+
+function authWhenBody(fn) {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn, { once: true });
+    else fn();
+}
+
+function authScreen(html) {
+    authWhenBody(() => {
+        document.body.innerHTML = html;
+        authReveal();
+    });
+}
+
+const AUTH_SCREEN_STYLE = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;margin:0;padding:20px;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;text-align:center;background-color:#f9f9f9;';
+const AUTH_BTN_STYLE = 'display:inline-block;text-decoration:none;text-align:center;padding:14px 28px;font-size:14px;font-weight:600;color:#fff;background-color:#000;border:none;border-radius:12px;cursor:pointer;width:100%;max-width:200px;box-sizing:border-box;';
+
+function authShowPending() {
+    authScreen(`
+        <div style="${AUTH_SCREEN_STYLE}">
+            <div style="font-size:64px;margin-bottom:16px;">⏳</div>
+            <h2 style="margin:0 0 12px 0;color:#1a1a1a;font-size:22px;font-weight:700;">Аккаунт на проверке</h2>
+            <p style="margin:0 0 32px 0;color:#666;font-size:14px;max-width:280px;line-height:1.5;">
+                Доступ к платформе TOEFL появится сразу после подтверждения преподавателем. Обычно это занимает совсем немного времени!
+            </p>
+            <button onclick="logoutUser()" style="${AUTH_BTN_STYLE}">Выйти из аккаунта</button>
+        </div>`);
+}
+
+function authShowBlocked(sectionName) {
+    authScreen(`
+        <div style="${AUTH_SCREEN_STYLE}">
+            <div style="font-size:64px;margin-bottom:16px;">🔒</div>
+            <h2 style="margin:0 0 12px 0;color:#1a1a1a;font-size:22px;font-weight:700;">Раздел закрыт</h2>
+            <p style="margin:0 0 32px 0;color:#666;font-size:14px;max-width:280px;line-height:1.5;">
+                Доступ к разделу <strong>${sectionName}</strong> пока не активирован преподавателем. Вы можете продолжить работу в других открытых вкладках.
+            </p>
+            <a href="index.html" style="${AUTH_BTN_STYLE}">На главную</a>
+        </div>`);
+}
+
+function authShowError() {
+    authScreen(`
+        <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Plus Jakarta Sans',sans-serif;background:#f8f9fa;padding:24px;">
+            <div style="max-width:420px;text-align:center;background:#fff;padding:32px;border-radius:24px;border:1px solid #f0f0f0;">
+                <h2 style="margin:0 0 12px;font-size:20px;font-weight:700;color:#1a1a1a;">Не удалось проверить доступ</h2>
+                <p style="margin:0 0 20px;color:#666;font-size:14px;line-height:1.5;">
+                    Связь с базой прервалась. Это не значит, что с аккаунтом что-то не так — просто попробуйте ещё раз.
+                </p>
+                <button onclick="location.reload()" style="background:#0f172a;color:#fff;border:0;padding:12px 24px;border-radius:12px;font-weight:700;font-size:14px;cursor:pointer;">
+                    Обновить страницу
+                </button>
+            </div>
+        </div>`);
+}
+
+// Применить решение. Возвращает true, если страницу можно показывать.
+function authApply(decision) {
+    if (decision.kind === 'redirect') { window.location.href = decision.to; return false; }
+    if (decision.kind === 'pending') { authShowPending(); return false; }
+    if (decision.kind === 'blocked') { authShowBlocked(decision.label); return false; }
+    authReveal();
+    return true;
+}
+
+if (AUTH_GATED) {
+    // Прячем страницу ещё до того, как браузер нарисует её содержимое
+    document.documentElement.classList.add('auth-gate');
+    const gateStyle = document.createElement('style');
+    gateStyle.textContent = 'html.auth-gate body{visibility:hidden!important}html.auth-gate #auth-gate-wait{visibility:visible!important}';
+    (document.head || document.documentElement).appendChild(gateStyle);
+
+    // Если проверка дольше 0.7 с — показываем «Проверяем доступ…», чтобы не было пустого экрана
+    const waitTimer = setTimeout(() => authWhenBody(() => {
+        if (!document.documentElement.classList.contains('auth-gate') || document.getElementById('auth-gate-wait')) return;
+        const w = document.createElement('div');
+        w.id = 'auth-gate-wait';
+        w.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;color:#64748b;font-size:14px;background:#f8f9fa;z-index:99998;';
+        w.textContent = 'Проверяем доступ…';
+        document.body.appendChild(w);
+    }), 700);
+
+    // Жёсткий предел: страница не может остаться открытой из-за зависшей проверки
+    const limitTimer = setTimeout(() => {
+        if (document.documentElement.classList.contains('auth-gate')) {
+            console.error('[auth] проверка доступа не ответила за ' + (AUTH_GATE_LIMIT_MS / 1000) + ' с');
+            authShowError();
+        }
+    }, AUTH_GATE_LIMIT_MS);
+
+    authLoadAccess().then(access => {
+        clearTimeout(waitTimer); clearTimeout(limitTimer);
+        if (!access.user) { window.location.href = 'login.html'; return; }
+        if (authApply(authDecide(access.profile))) applySectionLocks(access.profile);
+    }).catch(err => {
+        clearTimeout(waitTimer); clearTimeout(limitTimer);
+        console.error('Не удалось проверить доступ:', err);
+        authShowError();
+    });
+}
+
+// Функция контроля доступа — вызывают сами страницы. Возвращает пользователя
+// или null (тогда страница уже показала нужный экран или ушла на логин).
+async function requireAuth() {
+    let access;
+    try {
+        access = await authLoadAccess();
+    } catch (err) {
+        console.error('Не удалось прочитать профиль:', err);
+        authShowError();
+        return null;
+    }
+
+    if (!access.user) {
+        window.location.href = 'login.html';
+        return null;
+    }
+
+    const profile = access.profile;
+    if (!authApply(authDecide(profile))) return null;
+
+    if (profile && profile.role === 'guest') {
+        return { ...access.user, role: 'guest', profile: profile };
+    }
+
     // Гасим ссылки на закрытые секции на этой странице
     applySectionLocks(profile);
 
-    // Если всё хорошо — возвращаем объект юзера
     return {
-        ...session.user,
+        ...access.user,
         role: profile ? profile.role : 'student',
         profile: profile
     };
@@ -305,52 +368,65 @@ async function requireAuth() {
 
 // ==========================================
 // Блокировка ссылок на закрытые секции.
-// Вызывается автоматически из requireAuth() на КАЖДОЙ странице, поэтому
-// закрывает разом все входы: боковое меню, карточки на дашборде, нижнее
-// меню на телефоне и любые другие ссылки — без правок самих страниц.
+// Клик перехватывается на уровне всей страницы (до обработчиков самой
+// страницы), поэтому закрыты и ссылки, которые страница дорисует позже —
+// карточки, списки, меню. Замок и полупрозрачность навешиваются и на новые
+// ссылки (MutationObserver).
 // ==========================================
+let _authLockProfile = null;
+
+function authLockRule(href) {
+    if (!_authLockProfile || !href || href.startsWith('#') || href.startsWith('http') || href.startsWith('mailto:')) return null;
+    const file = (href.split('?')[0].split('#')[0].split('/').pop() || '').toLowerCase();
+    const section = PAGE_SECTIONS[file];
+    if (!section) return null;
+    const rule = ACCESS_FIELD[section];
+    return _authLockProfile[rule.field] ? null : rule;
+}
+
+function authDecorateLink(link) {
+    const rule = authLockRule(link.getAttribute('href') || '');
+    if (!rule || link.querySelector('.section-lock-badge')) return;
+    link.style.opacity = '0.4';
+    link.style.cursor = 'not-allowed';
+    link.setAttribute('aria-disabled', 'true');
+    link.setAttribute('title', 'Раздел ' + rule.label + ' пока не открыт преподавателем');
+    const badge = document.createElement('span');
+    badge.className = 'section-lock-badge';
+    badge.textContent = ' 🔒';
+    badge.style.fontSize = '11px';
+    link.appendChild(badge);
+}
+
+function authDecorateAll(root) {
+    if (!root || !root.querySelectorAll) return;
+    if (root.matches && root.matches('a[href]')) authDecorateLink(root);
+    root.querySelectorAll('a[href]').forEach(authDecorateLink);
+}
+
 function applySectionLocks(profile) {
-    if (!profile) return;
+    if (!profile || profile.role === 'teacher' || profile.role === 'guest') return;
+    _authLockProfile = profile;
 
-    const run = () => {
-        document.querySelectorAll('a[href]').forEach(link => {
-            const href = link.getAttribute('href') || '';
-            if (!href || href.startsWith('#') || href.startsWith('http')) return;
+    if (!applySectionLocks._installed) {
+        applySectionLocks._installed = true;
 
-            const file = (href.split('?')[0].split('/').pop() || '').toLowerCase();
-            const section = PAGE_SECTIONS[file];
-            if (!section) return;
+        document.addEventListener('click', e => {
+            const link = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+            if (!link) return;
+            const rule = authLockRule(link.getAttribute('href') || '');
+            if (!rule) return;
+            e.preventDefault();
+            e.stopPropagation();
+            alert('Раздел «' + rule.label + '» пока не открыт преподавателем.');
+        }, true);
 
-            const rule = ACCESS_FIELD[section];
-            if (profile[rule.field]) return; // доступ есть — не трогаем
-
-            // Доступа нет: гасим ссылку и вешаем замок
-            link.style.opacity = '0.4';
-            link.style.cursor = 'not-allowed';
-            link.setAttribute('aria-disabled', 'true');
-            link.setAttribute('title', 'Раздел ' + rule.label + ' пока не открыт преподавателем');
-
-            if (!link.querySelector('.section-lock-badge')) {
-                const badge = document.createElement('span');
-                badge.className = 'section-lock-badge';
-                badge.textContent = ' 🔒';
-                badge.style.fontSize = '11px';
-                link.appendChild(badge);
-            }
-
-            link.addEventListener('click', e => {
-                e.preventDefault();
-                e.stopPropagation();
-                alert('Раздел «' + rule.label + '» пока не открыт преподавателем.');
-            }, true);
-        });
-    };
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', run);
-    } else {
-        run();
+        new MutationObserver(mutations => {
+            mutations.forEach(m => m.addedNodes.forEach(n => { if (n.nodeType === 1) authDecorateAll(n); }));
+        }).observe(document.documentElement, { childList: true, subtree: true });
     }
+
+    authWhenBody(() => authDecorateAll(document));
 }
 
 // Функция выхода
@@ -416,20 +492,12 @@ function renderGuestLockedCard(lockedCount, sectionLabel) {
 // и гасит недоступные ссылки. Профиль кэшируется, чтобы не дублировать
 // запрос там, где requireAuth() уже отработал.
 // ==========================================
-let _cachedProfile = null;
-
+// getCachedProfile() оставлен для совместимости (его вызывает nav.js),
+// теперь он берёт профиль из той же единой проверки.
 async function getCachedProfile() {
-    if (_cachedProfile) return _cachedProfile;
     try {
-        const { data: { session } } = await _supabase.auth.getSession();
-        if (!session) return null;
-        const { data } = await _supabase
-            .from('profiles')
-            .select('role, is_approved, access_reading, access_listening, access_speaking, access_writing, access_tests')
-            .eq('id', session.user.id)
-            .maybeSingle();
-        _cachedProfile = data || null;
-        return _cachedProfile;
+        const access = await authLoadAccess();
+        return access.profile || null;
     } catch (err) {
         console.error('Не удалось получить профиль для блокировки ссылок:', err);
         return null;
@@ -438,8 +506,8 @@ async function getCachedProfile() {
 
 (async function autoLockSectionLinks() {
     // На странице логина блокировать нечего
-    const here = (window.location.pathname.split('/').pop() || '').toLowerCase();
-    if (here === 'login.html' || here === 'register.html') return;
+    const here = authFileName();
+    if (here === 'login.html' || here === 'register.html' || here === 'guest.html') return;
 
     const profile = await getCachedProfile();
     if (!profile) return;
