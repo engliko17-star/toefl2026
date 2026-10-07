@@ -111,8 +111,9 @@ a{color:inherit;text-decoration:none}
 .mask{font-size:20px;font-weight:800;letter-spacing:.32em;color:var(--primary-ink);text-align:center;margin-top:10px}
 .feedback{font-size:15px;font-weight:700;margin-top:12px;min-height:22px;text-align:center}
 .feedback.ok{color:var(--mint-ink)} .feedback.bad{color:var(--rose-ink)} .feedback.almost{color:var(--amber-ink)}
-.inline-actions{display:grid;grid-template-columns:auto 1fr;gap:10px;margin-top:12px}
-.inline-actions.one{grid-template-columns:1fr}
+.inline-actions{display:grid;grid-template-columns:auto 1fr 1.25fr;gap:8px;margin-top:12px}
+.inline-actions.one{grid-template-columns:1fr 1.25fr}
+.fb-hint{font-size:12.5px;font-weight:600;color:var(--muted);margin-top:4px;text-align:center}
 .reveal{width:100%;max-width:520px;margin:14px auto 0;background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:16px;display:grid;gap:10px;animation:pop .25s ease-out}
 .reveal .ex{border:0;padding:0;opacity:1;color:var(--ink-2)}
 .reveal .ex mark{color:var(--primary-ink)}
@@ -699,15 +700,14 @@ function renderChoice() {
   $('#stage').innerHTML = `<div class="prompt"><div class="prompt-top"><span class="pill">${esc(w.part || '')}</span></div><p class="def-text">${esc(w.definition || '')}</p>${trHtml(w)}</div>
     <div id="after"></div>
     <div class="bottom"><div class="options" id="opts" style="margin-top:0">${cur.options.map((o, i) => `<button class="opt" data-pick="${i}"><span class="opt-k">${i + 1}</span>${esc(o.word)}</button>`).join('')}</div>
-    <button class="skip" data-pick="-1">Не помню</button></div>`;
-  $('#actions').innerHTML = '';
+    </div>`;
+  $('#actions').innerHTML = `<button class="btn btn-soft" data-pick="-1">Не помню</button>`;
 }
 function pick(i) {
   if (cur.done) return;
   const right = cur.options.findIndex(o => norm(o.word) === norm(cur.w.word));
   const ok = i === right;
   document.querySelectorAll('.opt').forEach((b, j) => b.classList.add(j === right ? 'good' : j === i ? 'bad' : 'dim'));
-  const sk = document.querySelector('.skip'); if (sk) sk.hidden = true;
   answered(ok, 1);
 }
 
@@ -770,8 +770,8 @@ function renderTyping() {
   $('#stage').innerHTML = `<div class="prompt"><div class="prompt-top"><span class="pill">${esc(w.part || '')}</span></div><p class="def-text">${esc(w.definition || '')}</p>${trHtml(w)}${exMasked(w)}</div>
     <div class="answer-zone"><input id="inp" class="inp" ${INPUT_ATTRS} placeholder="Ваш ответ" aria-label="Ответ">
     <div class="mask" id="mask" hidden></div><div class="feedback" id="fb"></div>
-    <div class="inline-actions" id="ia"><button class="btn btn-soft" data-a="hint" aria-label="Подсказка">${ic('bulb', 20)}</button><button class="btn btn-dark" data-a="check">Проверить</button></div>
-    <button class="skip" id="dunno" data-a="dunno">Не помню</button><div id="after"></div></div>`;
+    <div class="inline-actions" id="ia"><button class="btn btn-soft" data-a="hint" aria-label="Подсказка">${ic('bulb', 20)}</button><button class="btn btn-soft" data-a="dunno">Не помню</button><button class="btn btn-dark" data-a="check">Проверить</button></div>
+    <div id="after"></div></div>`;
   $('#actions').innerHTML = '';
   focusInput();
 }
@@ -781,8 +781,8 @@ function renderDictation() {
       <div class="play-row"><button class="btn btn-soft btn-sm" data-a="slow">${ic('turtle', 18)}Медленнее</button></div></div>
     <div class="answer-zone"><input id="inp" class="inp center" ${INPUT_ATTRS} placeholder="Что вы услышали?" aria-label="Ответ">
     <div class="feedback" id="fb"></div>
-    <div class="inline-actions one" id="ia"><button class="btn btn-dark" data-a="check">Проверить</button></div>
-    <button class="skip" id="dunno" data-a="dunno">Не помню</button><div id="after"></div></div>`;
+    <div class="inline-actions one" id="ia"><button class="btn btn-soft" data-a="dunno">Не помню</button><button class="btn btn-dark" data-a="check">Проверить</button></div>
+    <div id="after"></div></div>`;
   $('#actions').innerHTML = '';
   focusInput();
   setTimeout(() => say(w.word), 350);
@@ -802,7 +802,7 @@ function hint() {
   $('#inp').focus();
 }
 function check() {
-  if (cur.done) { next(); return; }
+  if (cur.done) { finalize(cur.ok ? 'remember' : 'next'); return; }
   const inp = $('#inp'), ans = normAns(inp.value), target = normAns(cur.w.word);
   if (!ans) { inp.classList.add('shake'); setTimeout(() => inp.classList.remove('shake'), 420); inp.focus(); return; }
   if (ans === target) { answered(true, cur.mode === 'typing' ? (cur.hint ? 1 : 2) : 1); return; }
@@ -818,9 +818,12 @@ function check() {
 }
 
 /* ---------- ОТВЕТ ПРИНЯТ ---------- */
+// Ответ проверен — но ничего не засчитываем, пока ученик не нажмёт кнопку.
+// Верно → «Ещё раз» (подсмотрел / угадал — слово вернётся в этой серии) или «Помню».
+// Неверно → слово и так вернётся; в пролистывании можно выбрать «Ещё раз» или «Дальше».
 function answered(ok, inc) {
   if (cur.done) return;
-  cur.done = true;
+  cur.done = true; cur.ok = ok; cur.inc = inc;
   const w = cur.w;
   haptic(ok ? 15 : [20, 60, 20]);
   say(w.word);
@@ -832,19 +835,31 @@ function answered(ok, inc) {
   if (after) after.innerHTML = `<div class="reveal"><div class="reveal-word"><b>${esc(w.word)}</b>${sayBtn(false)}</div>
       ${cur.mode === 'dictation' ? `<p style="color:var(--ink-2);font-weight:600">${esc(w.definition || '')}</p>` : ''}${trHtml(w)}${famHtml(w).replace('class="fam"', 'class="fam" style="color:var(--muted)"')}${exHtml(w)}</div>`;
   const ia = $('#ia'); if (ia) ia.remove();
-  const dn = $('#dunno'); if (dn) dn.remove();
-  $('#actions').innerHTML = `<button class="btn ${ok ? 'btn-mint' : 'btn-dark'}" data-a="next">Дальше${ic('chevR', 20)}</button>`;
-
+  const again = `<button class="btn btn-amber" data-a="againLater">${ic('repeat', 19)}Ещё раз</button>`;
+  if (ok) {
+    $('#actions').innerHTML = again + `<button class="btn btn-mint" data-a="okNext">${ic('check', 19)}Помню</button>`;
+    if (after) after.insertAdjacentHTML('afterbegin', '<p class="fb-hint">Подсмотрели или угадали? Нажмите «Ещё раз» — слово вернётся позже</p>');
+  } else if (noRequeue) {
+    $('#actions').innerHTML = again + `<button class="btn btn-dark" data-a="wrongNext">Дальше${ic('chevR', 20)}</button>`;
+  } else {
+    $('#actions').innerHTML = `<button class="btn btn-dark" data-a="wrongNext">Дальше — слово вернётся позже${ic('chevR', 20)}</button>`;
+  }
+}
+// Ученик выбрал: 'remember' (засчитать), 'again' (повторить ещё раз), 'next' (после ошибки)
+function finalize(action) {
+  if (!cur || !cur.done || cur.finalized) return;
+  cur.finalized = true;
+  const w = cur.w, k = norm(w.word);
+  const ok = cur.ok && action === 'remember';
   if (isLearn) {
-    const k = norm(w.word);
     logAct({ reviews: 1 });
     trackResult(w, ok);
-    if (cur.mode === 'typing' && ok) learnLearned(cur.item);         // написал сам — слово выучено
-    else { learnSeen[k] = (learnSeen[k] || 0) + 1; learnStage[k] = 1; }   // не вспомнил — снова карточка, потом снова написать
+    if (cur.mode === 'typing' && ok) learnLearned(cur.item);      // сам написал и сам подтвердил — выучено
+    else { learnSeen[k] = (learnSeen[k] || 0) + 1; learnStage[k] = 1; }   // снова карточка, потом снова написать
   } else {
-    judge(ok, inc);
+    judge(ok, cur.inc, action === 'again');
   }
-  // Дальше — только по кнопке: правильный ответ и пример успевают прочитать
+  next();
 }
 function next() {
   clearTimeout(autoTimer);
@@ -861,7 +876,7 @@ function trackResult(w, ok) {
 }
 // Повторение: оценка пишется один раз за сессию — по первой попытке.
 // Забытое слово возвращается в конец и крутится, пока не вспомнится.
-function judge(ok, inc) {
+function judge(ok, inc, forceRequeue) {
   answeredAny = true;
   const w = cur.w, k = norm(w.word);
   trackResult(w, ok);
@@ -869,7 +884,7 @@ function judge(ok, inc) {
   if (first) { recorded.add(k); if (!isPractice) recordWordProgress(w, ok, inc); if (ok) correctFirst++; }
   // Тренировка трудных слов идёт в серию и календарь, но не в точность и не в расписание
   logAct(isPractice ? { reviews: 1 } : { reviews: 1, correct: first && ok ? 1 : 0, wrong: first && !ok ? 1 : 0 });
-  if (!ok && !noRequeue) { const copy = { w, isRetry: true }; items.push(copy); }
+  if (!ok && (!noRequeue || forceRequeue)) { const copy = { w, isRetry: true }; items.push(copy); }
 }
 function learnLearned(item) {
   answeredAny = true;
@@ -1126,6 +1141,7 @@ document.addEventListener('click', e => {
     erase: eraseLast,
     giveup: () => { if (cur.done) return; revealLetters(); answered(false, 1); },
     dunno: () => { if (cur.done) return; const i = $('#inp'); if (i) i.value = ''; answered(false, 1); },
+    okNext: () => finalize('remember'), againLater: () => finalize('again'), wrongNext: () => finalize('next'),
     play: () => say(cur.w.word), slow: () => say(cur.w.word, 0.55)
   })[a.dataset.a]?.();
 });
@@ -1143,7 +1159,7 @@ document.addEventListener('keydown', e => {
     if (cur.flipped && e.key === 'ArrowLeft') judgeCard(false);
     return;
   }
-  if (cur.done && e.key === 'Enter') { e.preventDefault(); next(); return; }
+  if (cur.done && e.key === 'Enter') { e.preventDefault(); finalize(cur.ok ? 'remember' : 'next'); return; }
   if (m === 'choice' && /^[1-4]$/.test(e.key)) pick(Number(e.key) - 1);
   if (m === 'letters') {
     if (e.key === 'Backspace') { e.preventDefault(); eraseLast(); return; }
