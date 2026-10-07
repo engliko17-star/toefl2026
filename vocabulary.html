@@ -7,10 +7,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Слова">
+<meta name="apple-mobile-web-app-title" content="T-Vocab">
 <link rel="manifest" href="vocab-manifest.json">
 <link rel="apple-touch-icon" href="vocab-icon-192.png">
-<title>Слова — TOEFL</title>
+<title>T-Vocab</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Serif+Display&family=Lexend:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -45,7 +45,7 @@ body.dyslexia-mode em, body.dyslexia-mode .ex, body.dyslexia-mode .wotd-pos, bod
 
 *,*::before,*::after{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%;height:100%;background:var(--bg)}
-body{margin:0;height:100vh;height:100dvh;overflow:hidden;display:flex;flex-direction:column;
+body{margin:0;height:100%;overflow:hidden;
   background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased;
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation;overscroll-behavior:none}
 input,textarea{-webkit-user-select:text;user-select:text}
@@ -59,6 +59,7 @@ h1,h2,h3,p{margin:0}
 #app-sidebar{display:none}
 
 /* ---------- Каркас ---------- */
+.shell{position:fixed;top:0;right:0;bottom:0;left:0;display:flex;flex-direction:column;background:var(--bg)}
 .app{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column}
 .topbar{flex:none;position:relative;z-index:5;display:flex;align-items:center;gap:6px;min-height:58px;
   padding:calc(var(--safe-t) + 8px) 10px 8px 16px;background:var(--bg);border-bottom:1px solid transparent;transition:border-color .2s}
@@ -382,7 +383,8 @@ body.has-sheet .toast{bottom:calc(var(--safe-b) + 92px)}
 
 /* ---------- Компьютер: боковое меню платформы + вкладки сверху ---------- */
 @media (min-width:1024px){
-  html.is-desktop body{flex-direction:row}
+  html.is-desktop body{display:flex;flex-direction:row;height:100vh}
+  html.is-desktop .shell{position:relative;flex:1;min-width:0;height:100vh}
   html.is-desktop #app-sidebar{display:block}
   .tabbar{display:none}
   .toptabs{display:flex;gap:4px;background:var(--surface-2);padding:4px;border-radius:14px}
@@ -429,6 +431,7 @@ body.has-sheet .toast{bottom:calc(var(--safe-b) + 92px)}
 })();
 </script>
 
+<div class="shell" id="shell">
 <div class="app" id="app">
   <header class="topbar" id="topbar">
     <span id="topLeft"></span>
@@ -442,6 +445,7 @@ body.has-sheet .toast{bottom:calc(var(--safe-b) + 92px)}
 </div>
 
 <nav class="tabbar" id="tabbar" aria-label="Разделы"></nav>
+</div>
 <div id="toast" class="toast" role="status"></div>
 
 <script>
@@ -1137,7 +1141,7 @@ function renderChrome() {
   let title = titles[r.tab];
   if (r.sub === 'cat' || r.sub === 'list') title = r.arg;
   if (r.sub === 'mock') title = 'Тест ' + r.arg;
-  $('#topTitle').textContent = isDesktop() && isRoot ? 'Слова' : title;
+  $('#topTitle').textContent = isDesktop() && isRoot ? 'T-Vocab' : title;
   const tb = $('#topbar');
   tb.classList.toggle('detail', !isRoot);
   tb.classList.remove('scrolled');
@@ -1649,8 +1653,12 @@ function renderSourcesSheet(entry) {
 }
 
 /* --- Пролистать --- */
+// Пролистывание — всегда вразброс и всегда без зачёта. Можно просто смотреть
+// карточки, а можно погонять себя упражнениями — на прогресс это не влияет.
+function browseModeList() { return [{ id: 'view', short: 'Просто смотреть' }].concat(MODES.map(m => ({ id: m.id, short: m.short || m.title }))); }
 function openBrowse(presetKey) {
-  const st = { source: presetKey || 'sources', scope: presetKey ? 'all' : 'learning', order: 'shuffle' };
+  const saved = Array.isArray(S.prefs.browseModes) && S.prefs.browseModes.length ? S.prefs.browseModes : ['view'];
+  const st = { source: presetKey || 'sources', scope: presetKey ? 'all' : 'learning', modes: saved.slice() };
   openSheet({ title: 'Пролистать слова', render: e => renderBrowseSheet(e, st), refresh: e => renderBrowseSheet(e, st), browseState: st });
 }
 function browseWords(st) {
@@ -1660,13 +1668,18 @@ function browseWords(st) {
     S.progress.forEach((p, k) => { const w = S.byKey.get(k); if (w && (p.box || 0) > 0) m.set(k, w); });
     base = Array.from(m.values());
   } else base = wordsOf(st.source);
-  const out = base.filter(w => {
+  return shuffle(base.filter(w => {
     const s = status(w.word);
     if (st.scope === 'learning') return s === 'learning';
     if (st.scope === 'learning_known') return s !== 'new';
     return true;
-  });
-  return st.order === 'alpha' ? out.sort(byAlpha) : shuffle(out);
+  }));
+}
+function toggleBrowseMode(list, id) {
+  if (id === 'view' || id === 'auto') return [id];
+  let sel = list.filter(x => x !== 'view' && x !== 'auto');
+  sel = sel.includes(id) ? sel.filter(x => x !== id) : sel.concat(id);
+  return sel.length ? sel : ['view'];
 }
 function renderBrowseSheet(entry, st) {
   const listNames = Object.keys(S.lists);
@@ -1674,16 +1687,17 @@ function renderBrowseSheet(entry, st) {
   const opt = (v, l) => `<option value="${esc(v)}" ${st.source === v ? 'selected' : ''}>${esc(l)}</option>`;
   const n = browseWords(st).length;
   const segBtn = (field, v, l) => `<button class="${st[field] === v ? 'on' : ''}" data-act="browseSet" data-arg="${field}|${v}">${l}</button>`;
-  entry.body.innerHTML = `<p class="small muted">Спокойно посмотреть слова, без оценок. Прогресс не меняется.</p>
+  const viewOnly = st.modes.includes('view');
+  entry.body.innerHTML = `<p class="small muted">Без зачёта: что бы вы ни выбрали, прогресс слов не меняется. Слова идут вразброс.</p>
     <div class="sheet-label">Откуда</div>
     <select class="native" id="browseSource">${opt('sources', 'Всё, что я учу')}<optgroup label="Мои списки">${listNames.map(nm => opt('list:' + nm, nm)).join('')}</optgroup><optgroup label="Категории">${cats.map(c => opt('cat:' + c, c)).join('')}</optgroup></select>
     <div class="sheet-label">Какие слова</div>
     <div class="seg">${segBtn('scope', 'learning', 'В изучении')}${segBtn('scope', 'learning_known', '+ знаю')}${segBtn('scope', 'all', 'Все')}</div>
-    <div class="sheet-label">Порядок</div>
-    <div class="seg">${segBtn('order', 'shuffle', 'Вразброс')}${segBtn('order', 'alpha', 'A–Z')}</div>`;
+    <div class="sheet-label">Как пролистывать <span class="faint" style="font-weight:600">· можно несколько</span></div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">${browseModeList().map(m => `<button class="chip ${st.modes.includes(m.id) ? 'on' : ''}" style="height:38px;padding:0 14px" data-act="browseMode" data-arg="${m.id}">${st.modes.includes(m.id) ? ic('check', 15) : ''}${esc(m.short)}</button>`).join('')}</div>`;
   entry.body.querySelector('#browseSource').onchange = e => { st.source = e.target.value; renderBrowseSheet(entry, st); };
   entry.foot.hidden = false;
-  entry.foot.innerHTML = `<div style="flex:1" class="small"><b>${words(n)}</b><div class="muted">${st.scope === 'learning' ? 'только в изучении' : st.scope === 'learning_known' ? 'в изучении и выученные' : 'включая новые'}</div></div><button class="btn btn-primary" style="flex:none" data-act="startBrowse" ${n ? '' : 'disabled'}>Пролистать</button>`;
+  entry.foot.innerHTML = `<div style="flex:1" class="small"><b>${words(n)}</b><div class="muted">${viewOnly ? 'карточки без проверки' : st.modes.includes('auto') ? 'упражнения вперемешку' : 'режимов: ' + st.modes.length}</div></div><button class="btn btn-primary" style="flex:none" data-act="startBrowse" ${n ? '' : 'disabled'}>Пролистать</button>`;
 }
 
 /* =====================================================================
@@ -1695,6 +1709,7 @@ function launch(kind, list, extra) {
     v: 2, kind,
     words: list.map(w => w.word),
     mode: kind === 'browse' ? 'browse' : S.settings.mode,
+    modes: kind === 'browse' || kind === 'learn' ? undefined : getReviewModes(),
     practiceScope: kind === 'learn' ? 'new' : kind === 'browse' ? 'all' : 'in_progress',
     lists: Object.keys(S.lists), wordLimit: 'all', dailyGoal: S.settings.dailyGoal,
     translation: S.prefs.translation, autoplay: S.prefs.autoplay,
@@ -1882,15 +1897,45 @@ function setGoalValue(n, redraw) {
   if (redraw) rerender();
 }
 const MODES = [
-  { id: 'auto', title: 'Авто', hint: 'Рекомендуется: от карточек к письму по мере запоминания', icon: 'sparkles' },
-  { id: 'flashcards', title: 'Карточки', hint: 'Перевернуть и оценить себя', icon: 'cards' },
+  { id: 'auto', title: 'Авто', hint: 'Рекомендуется: упражнения меняются и усложняются по мере запоминания', icon: 'sparkles' },
+  { id: 'flashcards', title: 'Карточка: слово → значение', short: 'Слово → значение', hint: 'Вспомнить, что значит слово, и перевернуть', icon: 'cards' },
+  { id: 'flashcards_rev', title: 'Карточка: значение → слово', short: 'Значение → слово', hint: 'Вспомнить слово по определению', icon: 'cards' },
   { id: 'choice', title: 'Выбор ответа', hint: 'Найти слово среди четырёх', icon: 'listCheck' },
   { id: 'letters', title: 'Собрать из букв', hint: 'Правописание без клавиатуры', icon: 'tiles' },
   { id: 'typing', title: 'Написать', hint: 'Ввести слово по определению', icon: 'keyboard' },
   { id: 'dictation', title: 'На слух', hint: 'Услышать и написать', icon: 'headphones' }
 ];
+const MODE_IDS = MODES.map(m => m.id);
+// Режимы повторения — список: «Авто» или любой набор из остальных
+function getReviewModes() {
+  const pm = S.prefs.reviewModes;
+  if (Array.isArray(pm) && pm.length) { const ok = pm.filter(m => MODE_IDS.includes(m)); if (ok.length) return ok; }
+  const m = S.settings.mode || 'auto';
+  if (m === 'flashcards') return ['flashcards', 'flashcards_rev'];   // старые «Карточки» = обе стороны
+  return MODE_IDS.includes(m) ? [m] : ['auto'];
+}
+function toggleModeIn(list, id) {
+  if (id === 'auto') return ['auto'];
+  let sel = list.filter(x => x !== 'auto');
+  sel = sel.includes(id) ? sel.filter(x => x !== id) : sel.concat(id);
+  return sel.length ? sel : ['auto'];
+}
+function setReviewModes(sel) {
+  S.prefs.reviewModes = sel;
+  // в колонку vocab_mode пишем одно значение — для совместимости со старой страницей
+  const col = sel.includes('auto') ? 'auto' : (sel[0] === 'flashcards_rev' ? 'flashcards' : sel[0]);
+  S.settings.mode = col;
+  savePrefs();
+  saveProfileField('vocab_mode', col);
+}
+function modeRows(sel, act) {
+  return MODES.map(m => {
+    const on = sel.includes(m.id), multi = m.id !== 'auto';
+    return `<button class="set-row" data-act="${act}" data-arg="${m.id}"><span class="row-ico" style="background:${on ? 'var(--primary)' : 'var(--surface-2)'};color:${on ? '#fff' : 'var(--ink-2)'}">${ic(m.icon, 19)}</span><span class="row-main"><span class="set-label">${m.title}</span><span class="set-hint">${m.hint}</span></span><span class="check-dot ${on ? 'on' : ''}" style="${multi ? 'border-radius:8px' : ''}">${on ? ic('check', 14) : ''}</span></button>`;
+  }).join('');
+}
 function renderSettings() {
-  const goal = S.settings.dailyGoal, mode = S.settings.mode, tr = S.prefs.translation;
+  const goal = S.settings.dailyGoal, modes = getReviewModes(), tr = S.prefs.translation;
   const dys = document.body.classList.contains('dyslexia-mode');
   const srcN = getSources().length;
   return `<div class="screen">
@@ -1901,9 +1946,9 @@ function renderSettings() {
         <div class="goal-chips">${[5, 10, 15, 20].map(n => `<button class="${goal === n ? 'on' : ''}" data-act="setGoal" data-arg="${n}">${n}</button>`).join('')}</div></div></div>
       <button class="set-row" data-act="sources"><span class="row-ico" style="background:var(--primary-soft);color:var(--primary)">${ic('layers', 19)}</span><span class="row-main"><span class="set-label">Что учу</span><span class="set-hint">${srcN ? 'Выбрано источников: ' + srcN : 'Ничего не выбрано'}</span></span>${ic('chevR', 20, 'chev')}</button>
     </div>
-    <div class="sec-title">Режим повторения</div>
-    <div class="set-group mode-list">${MODES.map(m => `<button class="set-row" data-act="setMode" data-arg="${m.id}"><span class="row-ico" style="background:${mode === m.id ? 'var(--primary)' : 'var(--surface-2)'};color:${mode === m.id ? '#fff' : 'var(--ink-2)'}">${ic(m.icon, 19)}</span><span class="row-main"><span class="set-label">${m.title}</span><span class="set-hint">${m.hint}</span></span><span class="check-dot ${mode === m.id ? 'on' : ''}">${mode === m.id ? ic('check', 14) : ''}</span></button>`).join('')}</div>
-    <p class="small faint" style="margin:8px 4px 0">Режим можно поменять и прямо во время повторения. Новые слова всегда учатся по шагам: карточка → проверка письмом.</p>
+    <div class="sec-title">Режим повторения<small>${modes.includes('auto') ? 'авто' : 'выбрано: ' + modes.length}</small></div>
+    <div class="set-group mode-list">${modeRows(modes, 'setMode')}</div>
+    <p class="small faint" style="margin:8px 4px 0">«Авто» — или отметьте несколько режимов: они будут чередоваться. Поменять можно и прямо во время повторения. Новые слова всегда учатся по шагам: карточка в обе стороны → написать самому.</p>
     <div class="sec-title">Перевод на русский</div>
     <div class="set-group"><div class="set-block">
       <div class="seg"><button class="${tr === 'tap' ? 'on' : ''}" data-act="setTr" data-arg="tap">По нажатию</button><button class="${tr === 'basic' ? 'on' : ''}" data-act="setTr" data-arg="basic">Для A1–A2</button><button class="${tr === 'always' ? 'on' : ''}" data-act="setTr" data-arg="always">Всегда</button></div>
@@ -2030,7 +2075,12 @@ const ACTIONS = {
   hard: () => startHard(),
   browse: () => openBrowse(),
   browseSet: (arg, el) => { const [f, v] = arg.split('|'); const e = sheetEntryOf(el); e.opts.browseState[f] = v; renderBrowseSheet(e, e.opts.browseState); },
-  startBrowse: (a, el) => { const e = sheetEntryOf(el); launch('browse', browseWords(e.opts.browseState)); },
+  startBrowse: (a, el) => {
+    const st = sheetEntryOf(el).opts.browseState;
+    S.prefs.browseModes = st.modes.slice(); savePrefs();
+    launch('browse', browseWords(st), { modes: st.modes.slice(), mode: st.modes.includes('view') ? 'browse' : 'auto' });
+  },
+  browseMode: (id, el) => { const e = sheetEntryOf(el); e.opts.browseState.modes = toggleBrowseMode(e.opts.browseState.modes, id); renderBrowseSheet(e, e.opts.browseState); },
   learnColl: key => startLearn(wordsOf(key)),
   browseColl: key => openBrowse(key),
   collSort: s => { S.coll.sort = s; if (s === 'shuffle') S.coll.seed = Math.random(); rerender(); },
@@ -2044,7 +2094,7 @@ const ACTIONS = {
   },
   setGoal: n => setGoalValue(n),
   goalStep: d => setGoalValue(S.settings.dailyGoal + Number(d)),
-  setMode: m => { S.settings.mode = m; rerender(); saveProfileField('vocab_mode', m); },
+  setMode: m => { setReviewModes(toggleModeIn(getReviewModes(), m)); rerender(); },
   setTr: t => { S.prefs.translation = t; savePrefs(); rerender(); },
   toggleAutoplay: () => { S.prefs.autoplay = !S.prefs.autoplay; savePrefs(); rerender(); },
   toggleDyslexia: () => { const on = !document.body.classList.contains('dyslexia-mode'); try { localStorage.setItem('dyslexiaMode', String(on)); } catch (e) {} applyDyslexia(); rerender(); },
@@ -2149,6 +2199,8 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pageshow', e => { if (e.persisted && S.ready) Promise.all([loadProgress(), loadActivity()]).then(rerender); });
 // Масштабирование пальцами отключено, как в обычном приложении (iOS Safari
 // игнорирует запрет в meta viewport, поэтому дублируем его здесь).
+try { history.scrollRestoration = 'manual'; } catch (e) {}
+window.addEventListener('pageshow', () => window.scrollTo(0, 0));
 ['gesturestart', 'gesturechange'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 boot();
 </script>
