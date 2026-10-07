@@ -53,6 +53,19 @@
         if (container) container.normalize();
     }
 
+    // Ищем фрагмент в исходном тексте узла регуляркой: пробелы и кавычки любые,
+    // а у слова должны быть границы. Раньше искали подстроку в нормализованном
+    // тексте, поэтому «them» находилось внутри «mathematics» и «themes», а второе
+    // «them» в одном абзаце подсвечивалось на месте первого.
+    const WORD_CHAR = /[A-Za-z0-9\u00C0-\u024F]/;
+    function highlightRegex(target) {
+        const esc = target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            .replace(/"/g, '["“”«»„]')
+            .replace(/'/g, "['‘’]")
+            .replace(/ /g, '[\\s\\u00A0\\u2009\\u202F]+');
+        return new RegExp(esc, 'g');
+    }
+
     function applyHighlight(container, question) {
         clearHighlight(container);
         const q = question || {};
@@ -61,29 +74,32 @@
 
         const cls = q.type === 'Reference' ? 'reference-highlight' : 'simplify-highlight';
         const want = Number(q.highlight_occurrence) > 0 ? Number(q.highlight_occurrence) : 1;
+        const needStart = WORD_CHAR.test(target[0]);
+        const needEnd = WORD_CHAR.test(target[target.length - 1]);
+        const re = highlightRegex(target);
         const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
         let node, seen = 0;
 
         while ((node = walker.nextNode())) {
             const raw = node.nodeValue;
-            const hay = norm(raw);
-            let from = 0, idx;
-            while ((idx = hay.indexOf(target, from)) !== -1) {
+            re.lastIndex = 0;
+            let m;
+            while ((m = re.exec(raw)) !== null) {
+                if (m[0].length === 0) { re.lastIndex++; continue; }
+                const before = raw[m.index - 1];
+                const after = raw[m.index + m[0].length];
+                // «them» внутри «mathematics» — не то слово
+                if ((needStart && before && WORD_CHAR.test(before)) || (needEnd && after && WORD_CHAR.test(after))) continue;
                 seen++;
                 if (seen === want) {
-                    const plain = String(q.highlight).trim();
-                    const rawIdx = raw.indexOf(plain);
-                    const start = rawIdx !== -1 ? rawIdx : idx;
-                    const len = rawIdx !== -1 ? plain.length : target.length;
-                    const after = node.splitText(start);
-                    after.splitText(Math.min(len, after.nodeValue.length));
+                    const mid = node.splitText(m.index);
+                    mid.splitText(m[0].length);
                     const mark = document.createElement('span');
                     mark.className = 'q-highlight ' + cls;
-                    mark.textContent = after.nodeValue;
-                    after.replaceWith(mark);
+                    mark.textContent = mid.nodeValue;
+                    mid.replaceWith(mark);
                     return true;
                 }
-                from = idx + target.length;
             }
         }
         // Молчать нельзя: опечатка в контенте иначе превратится
