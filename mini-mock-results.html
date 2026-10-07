@@ -7,6 +7,10 @@
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        // Если CDN иконок не ответил, страница не должна падать на lucide.createIcons()
+        if (!window.lucide || typeof window.lucide.createIcons !== 'function') window.lucide = { createIcons: function () {} };
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
     
@@ -73,8 +77,19 @@
 
         const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ'; 
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Один клиент на страницу — тот, что создал auth.js (второй спорил с ним за
+        // «блокировку» сессии и мог надолго задержать проверку доступа)
+        const supabaseClient = window.supabaseClient || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         let isTeacherView = false;
+
+        // Экранирование текста, который вводят ученики. Эту страницу открывает и
+        // преподаватель для проверки: без экранирования HTML-код из эссе ученицы
+        // выполнялся бы в браузере преподавателя — с его правами.
+        function mmEsc(s) {
+            return String(s === null || s === undefined ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
 
         async function initResults() {
             try {
@@ -190,8 +205,16 @@
         // пробелы и обрезает пробелы по краям (двойные пробелы могут появляться из-за
         // склейки частей предложения и визуально незаметны в браузере, но ломают точное
         // сравнение строк).
+        // Как в большом тесте и в профиле ученика: регистр, лишние пробелы и
+        // типографские кавычки/апострофы (’ ‘ ` “ ”) на результат не влияют.
         function normalizeForCompare(text) {
-            return (text || '').toLowerCase().replace(/\s+/g, ' ').trim();
+            return String(text || '')
+                .replace(/[\u2018\u2019\u201B`\u00B4]/g, "'")
+                .replace(/[\u201C\u201D]/g, '"')
+                .replace(/\s+([.?!,;:])/g, '$1')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .toLowerCase();
         }
 
         function calculateOverallScore(responses) {
@@ -312,11 +335,11 @@
                         </div>
                         <div class="mb-4">
                             <p class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">Your Answer</p>
-                            <p class="text-slate-800 font-medium ${!isCorrect ? 'text-rose-600' : ''}">${userAns || '-'}</p>
+                            <p class="text-slate-800 font-medium ${!isCorrect ? 'text-rose-600' : ''}">${mmEsc(userAns) || '-'}</p>
                         </div>
                         <div class="bg-gray-50 rounded-xl p-3 border border-gray-100">
                             <p class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">Correct Structure (Sample Answer)</p>
-                            <p class="text-slate-600 font-medium">${correctAns || 'Not specified in database'}</p>
+                            <p class="text-slate-600 font-medium">${correctAns ? mmEsc(correctAns) : 'Not specified in database'}</p>
                         </div>
                     </div>
                 `;
@@ -409,7 +432,7 @@
                 const formattedScore = Number(response.score).toFixed(1);
                 
                 if (response.raw_score !== undefined && response.raw_score !== null) {
-                    scoreBadge.innerHTML = `<span class="opacity-60 text-xs font-semibold mr-2 pr-2 border-r border-current">Raw: ${response.raw_score}</span><span>Score: ${formattedScore} / 6.0</span>`;
+                    scoreBadge.innerHTML = `<span class="opacity-60 text-xs font-semibold mr-2 pr-2 border-r border-current">Raw: ${mmEsc(response.raw_score)}</span><span>Score: ${formattedScore} / 6.0</span>`;
                 } else {
                     scoreBadge.textContent = `Score: ${formattedScore} / 6.0`;
                 }
@@ -428,7 +451,7 @@
                             <h3 class="text-xs font-black text-slate-400 uppercase tracking-wider mb-4 flex items-center">
                                 <i data-lucide="file-text" class="w-4 h-4 mr-1.5"></i> Your Response
                             </h3>
-                            <div class="bg-white border border-gray-200 rounded-xl p-5 text-sm text-slate-700 leading-relaxed shadow-sm min-h-[200px] whitespace-pre-wrap">${response.response_content || response.answer || 'No text submitted.'}</div>
+                            <div class="bg-white border border-gray-200 rounded-xl p-5 text-sm text-slate-700 leading-relaxed shadow-sm min-h-[200px] whitespace-pre-wrap">${mmEsc(response.response_content || response.answer || 'No text submitted.')}</div>
                         </div>
                         
                         <div class="p-6 bg-white flex flex-col">
@@ -460,7 +483,7 @@
                 <div class="flex flex-col flex-1 gap-3">
                     <div class="flex items-center gap-2">
                         <label class="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Балл</label>
-                        <input type="number" step="0.5" min="1.0" max="6.0" id="tscore-${response.id}" value="${score}"
+                        <input type="number" step="0.5" min="1.0" max="6.0" id="tscore-${response.id}" value="${mmEsc(score)}"
                                class="w-24 border border-gray-200 rounded-xl p-2 text-sm text-center font-bold focus:ring-2 focus:ring-indigo-200 outline-none"
                                placeholder="1.0-6.0">
                         <button onclick="saveTeacherReview('${response.id}')"
@@ -470,7 +493,7 @@
                     </div>
                     <textarea id="tcorr-${response.id}" rows="12"
                               class="flex-1 min-h-[240px] resize-y border border-gray-200 rounded-xl p-4 text-sm leading-relaxed focus:ring-2 focus:ring-indigo-200 outline-none"
-                              placeholder="Разбор и комментарий для ученика">${text}</textarea>
+                              placeholder="Разбор и комментарий для ученика">${mmEsc(text)}</textarea>
                     <p id="tstatus-${response.id}" class="text-[11px] text-gray-400 h-4"></p>
                 </div>`;
         }
