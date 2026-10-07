@@ -1240,6 +1240,16 @@
             return data || [];
         }
 
+
+        // Экранирование текста, который вводят ученики (эссе, имена, баллы). Без него
+        // ученица могла вписать в эссе или в имя HTML-код, и он выполнялся в браузере
+        // преподавателя — с правами преподавателя.
+        function spEsc(s) {
+            return String(s === null || s === undefined ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
         async function loadReadingStats() {
             let dataComplete = [];
             let dataDaily = [];
@@ -1492,7 +1502,7 @@
                 const isChecked = task.correction || task.teacher_correction || task.score;
                 
                 const statusBadge = isChecked 
-                    ? `<span class="bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-lg text-[10px] font-extrabold flex items-center space-x-1"><i data-lucide="check" class="w-3 h-3"></i><span>Проверено (${task.score || '✔'})</span></span>`
+                    ? `<span class="bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-lg text-[10px] font-extrabold flex items-center space-x-1"><i data-lucide="check" class="w-3 h-3"></i><span>Проверено (${spEsc(task.score || '✔')})</span></span>`
                     : `<span class="bg-amber-100 text-amber-700 px-2.5 py-1 rounded-lg text-[10px] font-extrabold flex items-center space-x-1"><i data-lucide="clock" class="w-3 h-3"></i><span>Ожидает проверки</span></span>`;
                 
                 const taskInfo = writingTasksMap[task.task_id];
@@ -1500,7 +1510,7 @@
                     ? (taskInfo.title || taskInfo.task_type) 
                     : (task.task_type ? `Task: ${task.task_type}` : `Task #${task.task_id || ''}`);
                     
-                const snippet = (task.response_content || 'Без текста').substring(0, 90) + '...';
+                const snippet = spEsc((task.response_content || 'Без текста').substring(0, 90)) + '...';
 
                 return `
                     <div class="border border-gray-100 bg-white rounded-2xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:shadow-md transition cursor-pointer" onclick="openWritingEditor('${task.id}')">
@@ -1773,7 +1783,16 @@
                         (tasksData || []).forEach(t => { tasksMap[t.id] = t; });
                     }
 
-                    const normalizeLocal = (text) => (text || '').toLowerCase().replace(/\s+/g, ' ').trim();
+                    // Та же проверка, что видит ученица в разборе: регистр, лишние пробелы
+                // и типографские кавычки/апострофы (’ ‘ ` “ ”) на результат не влияют.
+                // Раньше здесь было проще, и «don’t» против «don't» считалось ошибкой.
+                const normalizeLocal = (text) => String(text || '')
+                    .replace(/[\u2018\u2019\u201B`\u00B4]/g, "'")
+                    .replace(/[\u201C\u201D]/g, '"')
+                    .replace(/\s+([.?!,;:])/g, '$1')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                    .toLowerCase();
 
                     const bandByAttempt = {};
                     attemptIds.forEach(id => {
@@ -1907,7 +1926,16 @@
                     (tasksData || []).forEach(t => { tasksMap[t.id] = t; });
                 }
 
-                const normalizeLocal = (text) => (text || '').toLowerCase().replace(/\s+/g, ' ').trim();
+                // Та же проверка, что видит ученица в разборе: регистр, лишние пробелы
+                // и типографские кавычки/апострофы (’ ‘ ` “ ”) на результат не влияют.
+                // Раньше здесь было проще, и «don’t» против «don't» считалось ошибкой.
+                const normalizeLocal = (text) => String(text || '')
+                    .replace(/[\u2018\u2019\u201B`\u00B4]/g, "'")
+                    .replace(/[\u201C\u201D]/g, '"')
+                    .replace(/\s+([.?!,;:])/g, '$1')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                    .toLowerCase();
 
                 const sentences = (answers || []).filter(a => a.task_type === 'sentence');
                 const email = (answers || []).find(a => a.task_type === 'email');
@@ -1920,8 +1948,8 @@
                     if (isMatch) correctSentences++;
                     return `
                         <div class="p-3 bg-gray-50/60 rounded-xl border border-gray-100 mb-2">
-                            <p class="text-sm ${isMatch ? 'text-slate-700' : 'text-rose-600'}">${s.essay_text || '—'}</p>
-                            ${!isMatch && correct ? `<p class="text-xs text-gray-400 mt-1">Верно: ${correct}</p>` : ''}
+                            <p class="text-sm ${isMatch ? 'text-slate-700' : 'text-rose-600'}">${spEsc(s.essay_text) || '—'}</p>
+                            ${!isMatch && correct ? `<p class="text-xs text-gray-400 mt-1">Верно: ${spEsc(correct)}</p>` : ''}
                         </div>
                     `;
                 }).join('');
@@ -1934,7 +1962,7 @@
                                 <h4 class="text-sm font-bold text-slate-800">${label}</h4>
                                 <span class="text-[10px] text-gray-400">${response.word_count || 0} слов</span>
                             </div>
-                            <div class="p-4 bg-gray-50/60 rounded-xl border border-gray-100 text-sm text-slate-700 whitespace-pre-wrap mb-3">${response.essay_text || ''}</div>
+                            <div class="p-4 bg-gray-50/60 rounded-xl border border-gray-100 text-sm text-slate-700 whitespace-pre-wrap mb-3">${spEsc(response.essay_text)}</div>
                             <div class="grid grid-cols-1 gap-3">
                                 <div>
                                     <label class="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1 block">Балл</label>
@@ -1942,7 +1970,7 @@
                                 </div>
                                 <div>
                                     <label class="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1 block">Фидбэк</label>
-                                    <textarea id="wfeedback-${response.id}" rows="10" class="w-full min-h-[220px] resize-y border border-gray-200 rounded-xl p-3 text-sm leading-relaxed focus:ring-2 focus:ring-indigo-200 outline-none" placeholder="Комментарий для ученика">${response.feedback || ''}</textarea>
+                                    <textarea id="wfeedback-${response.id}" rows="10" class="w-full min-h-[220px] resize-y border border-gray-200 rounded-xl p-3 text-sm leading-relaxed focus:ring-2 focus:ring-indigo-200 outline-none" placeholder="Комментарий для ученика">${spEsc(response.feedback)}</textarea>
                                 </div>
                             </div>
                         </div>
@@ -2261,6 +2289,10 @@
                     .from('big_mock_speaking_attempts')
                     .select('id, test_id, total_score, status, completed_at')
                     .eq('user_id', studentId)
+                    // Попытка создаётся в начале Speaking, а дата завершения ставится в конце.
+                    // Незаконченную (ученица ещё пишет или вышла посередине) не показываем —
+                    // иначе её можно было открыть и оценить.
+                    .not('completed_at', 'is', null)
                     .order('completed_at', { ascending: false })
                     .limit(10);
 
@@ -2483,7 +2515,7 @@
                         </div>
                         ${item.transcript ? `<p class="text-xs text-slate-600 mb-3">${item.transcript}</p>` : ''}
                         ${signedUrls[i].url
-                            ? `<audio controls preload="metadata" class="w-full h-9" src="${signedUrls[i].url}"
+                            ? `<audio controls preload="metadata" class="w-full h-9" src="${spEsc(signedUrls[i].url)}"
                                       onerror="this.outerHTML='<p class=\'text-xs text-rose-500\'>Файл не открылся. Путь: ${signedUrls[i].path || '—'}</p>'"></audio>`
                             : `<p class="text-xs text-rose-500">Запись не открылась: ${signedUrls[i].err}<br><span class="text-gray-400">Путь: ${signedUrls[i].path || item.audio_url || '—'}</span></p>`}
                     </div>
@@ -2546,4 +2578,4 @@
         }
     </script>
 </body>
-                            </html>
+</html>
