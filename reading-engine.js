@@ -103,6 +103,16 @@ const TIME_BUDGET = {
 };
 const MIN_MODULE_MINUTES = 4;
 const MAX_MODULE_MINUTES = 45;
+
+// ГРАНИЦЫ ПО БЛУПРИНТУ — главное правило времени, поменять можно здесь.
+// Модуль 1 (роутер): от 18 до 21 минуты, модуль 2: 9 минут в обеих ветках.
+// Расчёт по составу выше работает только внутри этих границ. Без них роутер
+// по Гайду (35 вопросов: основные 20 + дополнительный блок 15) получал
+// 30 минут, а нижняя ветка модуля 2 — 8 вместо 9.
+const MODULE_LIMITS = {
+    module1: { min: 18, max: 21 },
+    module2: { min: 9,  max: 9 }
+};
 // Роутер по спеке щедрее второго модуля (~63 сек на айтем против ~36)
 const MODULE1_TIME_FACTOR = 1.35;
 
@@ -123,8 +133,10 @@ function moduleMinutes(stagePrefix) {
     const isModule1 = (stagePrefix === '1');
     if (timerMode === 'fixed') return isModule1 ? module1TimeMinutes : module2TimeMinutes;
     const slice = currentTasks.filter(t => isModule1 ? t.stage === '1' : String(t.stage).startsWith('2'));
-    const minutes = estimateMinutes(slice, isModule1 ? MODULE1_TIME_FACTOR : 1);
-    console.log(`[reading] Module ${isModule1 ? 1 : 2}: ${slice.reduce((n, t) => n + taskItemCount(t), 0)} айтемов -> ${minutes} мин`);
+    const estimated = estimateMinutes(slice, isModule1 ? MODULE1_TIME_FACTOR : 1);
+    const lim = isModule1 ? MODULE_LIMITS.module1 : MODULE_LIMITS.module2;
+    const minutes = Math.min(lim.max, Math.max(lim.min, estimated));
+    console.log(`[reading] Module ${isModule1 ? 1 : 2}: ${slice.reduce((n, t) => n + taskItemCount(t), 0)} айтемов -> по составу ${estimated} мин, по блупринту ${minutes} мин`);
     return minutes;
 }
 
