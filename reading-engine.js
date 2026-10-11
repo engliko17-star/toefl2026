@@ -978,7 +978,12 @@ function startReadingModuleTwo() {
     if (reviewBtn) reviewBtn.classList.remove('hidden');
     if (timerContainer) timerContainer.classList.remove('hidden');
 
-    currentIndex++;
+    // Модуль 2 начинается с его первого задания, а не с «текущего + 1»:
+    // если во время загрузки Модуля 2 ученица нажала Back, курсор стоял не на
+    // последнем вопросе Модуля 1, и Модуль 2 открывался с вопроса Модуля 1
+    // (а в Review и нумерацию Модуля 2 попадал чужой вопрос).
+    const firstModule2 = currentTasks.findIndex(t => String(t.stage).startsWith('2'));
+    currentIndex = firstModule2 >= 0 ? firstModule2 : currentIndex + 1;
     module2StartIndex = currentIndex; // с этого индекса начинается Module 2 — Review не пустит раньше
 
     // Отдельный, свежий таймер именно для Module 2
