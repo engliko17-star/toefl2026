@@ -115,6 +115,23 @@
         };
 
         // 4. Загрузка тестов и сопоставление с личными результатами
+        // Этикетка TOEFL в углу карточки — та же, что в Writing и Speaking:
+        // задание реально встречалось на настоящем экзамене (галочка is_real_toefl).
+        const REAL_TOEFL_RIBBON = `<div class="absolute top-[15px] right-[-38px] w-[150px] rotate-45 bg-violet-600 text-white text-[9px] font-extrabold tracking-[0.15em] text-center py-1 shadow-sm z-10 pointer-events-none">TOEFL</div>`;
+
+        // Колонку is_real_toefl добавляет reading_real_toefl_labels.sql. Пока её нет
+        // в базе, запрос с ней падает (42703) — тогда берём список без этикеток.
+        // Иначе страница ушла бы в запасной демо-список вместо настоящих заданий.
+        async function fetchPracticeTasks(table, columns) {
+            const run = cols => db.from(table).select(cols).eq('is_mock_only', false).order('id', { ascending: true });
+            let res = await run(columns + ', is_real_toefl');
+            if (res.error && (res.error.code === '42703' || /is_real_toefl/.test(res.error.message || ''))) {
+                console.warn(`[${table}] нет колонки is_real_toefl — этикетки TOEFL не показываются`);
+                res = await run(columns);
+            }
+            return res;
+        }
+
         async function loadTests() {
             try {
                 let tests = [];
@@ -122,11 +139,8 @@
 
                 if (db) {
                     // Шаг А: Тянем список всех доступных тестов daily, исключая мок-тесты
-                    const { data: tasksData, error: tasksError } = await db
-                        .from('daily_life_tasks')
-                        .select('id, title, category, questions_count, is_mock_only')
-                        .eq('is_mock_only', false)
-                        .order('id', { ascending: true });
+                    const { data: tasksData, error: tasksError } = await fetchPracticeTasks(
+                        'daily_life_tasks', 'id, title, category, questions_count, is_mock_only');
                     
                     if (!tasksError && tasksData && tasksData.length > 0) {
                         tests = tasksData;
@@ -210,9 +224,15 @@
                     // Экранирование кавычек для передачи параметров в onClick
                     const escapedTitle = test.title.replace(/'/g, "\\'").replace(/"/g, '\\"');
 
+                    // С этикеткой верхняя строка сдвигается левее, чтобы лента в углу
+                    // не наезжала на номер теста и круг с процентом
+                    const isRealToefl = test.is_real_toefl === true;
+                    const headerRightPadding = isRealToefl ? 'pr-12' : '';
+
                     testListContainer.innerHTML += `
                         <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col group hover:border-emerald-200 hover:shadow-md transition relative overflow-hidden">
-                            <div class="flex justify-between items-start mb-4">
+                            ${isRealToefl ? REAL_TOEFL_RIBBON : ''}
+                            <div class="flex justify-between items-start mb-4 ${headerRightPadding}">
                                 ${savedScore !== null ? `
                                     <div class="flex flex-col">
                                         <span class="text-[9px] font-bold text-emerald-600 uppercase tracking-widest bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100/40 self-start mb-1">${test.category || 'Daily Life'}</span>
@@ -231,7 +251,7 @@
                                 </div>
                             </div>
                             
-                            <h3 class="text-sm font-bold text-slate-900 mb-1 group-hover:text-emerald-600 transition tracking-tight">${test.title}</h3>
+                            <h3 class="text-sm font-bold text-slate-900 mb-1 group-hover:text-emerald-600 transition tracking-tight ${isRealToefl ? 'pr-6' : ''}">${test.title}</h3>
                             <p class="text-[11px] text-gray-500 mb-5">${test.questions_count || 4} Questions • 1 answer type</p>
                             
                             ${actionButton}
