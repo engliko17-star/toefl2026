@@ -106,6 +106,23 @@
             }
         }
 
+        // Этикетка TOEFL в углу карточки — та же, что в Writing и Speaking:
+        // задание реально встречалось на настоящем экзамене (галочка is_real_toefl).
+        const REAL_TOEFL_RIBBON = `<div class="absolute top-[15px] right-[-38px] w-[150px] rotate-45 bg-violet-600 text-white text-[9px] font-extrabold tracking-[0.15em] text-center py-1 shadow-sm z-10 pointer-events-none">TOEFL</div>`;
+
+        // Колонку is_real_toefl добавляет reading_real_toefl_labels.sql. Пока её нет
+        // в базе, запрос с ней падает (42703) — тогда берём список без этикеток,
+        // чтобы страница работала в любом порядке выкладки.
+        async function fetchPracticeTasks(table, columns) {
+            const run = cols => db.from(table).select(cols).eq('is_mock_only', false).order('id', { ascending: true });
+            let res = await run(columns + ', is_real_toefl');
+            if (res.error && (res.error.code === '42703' || /is_real_toefl/.test(res.error.message || ''))) {
+                console.warn(`[${table}] нет колонки is_real_toefl — этикетки TOEFL не показываются`);
+                res = await run(columns);
+            }
+            return res;
+        }
+
         async function loadTests() {
             try {
                 if (!db) {
@@ -113,11 +130,8 @@
                 }
 
                 // Загружаем сами тесты, исключая мок-тесты
-                const { data: tests, error: testsError } = await db
-                    .from('complete_words_tasks')
-                    .select('id, title, category, passage, is_mock_only')
-                    .eq('is_mock_only', false)
-                    .order('id', { ascending: true });
+                const { data: tests, error: testsError } = await fetchPracticeTasks(
+                    'complete_words_tasks', 'id, title, category, passage, is_mock_only');
 
                 if (testsError) throw new Error(testsError.message);
 
@@ -192,11 +206,17 @@
 
                     const escapedTitle = test.title.replace(/'/g, "\\'").replace(/"/g, '\\"');
 
+                    // С этикеткой верхняя строка сдвигается левее, чтобы лента в углу
+                    // не наезжала на номер теста и круг с процентом
+                    const isRealToefl = test.is_real_toefl === true;
+                    const headerRightPadding = isRealToefl ? 'pr-12' : '';
+
                     const html = `
                         <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col group hover:border-purple-200 hover:shadow-md transition relative overflow-hidden">
                             <div class="absolute left-0 top-0 bottom-0 w-1 bg-purple-500 opacity-0 group-hover:opacity-100 transition"></div>
-                            
-                            <div class="flex justify-between items-start mb-4">
+                            ${isRealToefl ? REAL_TOEFL_RIBBON : ''}
+
+                            <div class="flex justify-between items-start mb-4 ${headerRightPadding}">
                                 ${savedScore !== null ? `
                                     <div class="flex flex-col">
                                         <span class="text-[9px] font-bold text-purple-600 uppercase tracking-widest bg-purple-50 px-2 py-0.5 rounded-md border border-purple-100/40 self-start mb-1">${test.category || 'Practice'}</span>
@@ -215,7 +235,7 @@
                                 </div>
                             </div>
 
-                            <h3 class="text-sm font-bold text-slate-900 mb-1 group-hover:text-purple-600 transition tracking-tight">${test.title}</h3>
+                            <h3 class="text-sm font-bold text-slate-900 mb-1 group-hover:text-purple-600 transition tracking-tight ${isRealToefl ? 'pr-6' : ''}">${test.title}</h3>
                             <p class="text-[11px] text-gray-500 mb-5 flex-1">${wordCount} words • ${blanksCount} missing letters</p>
                             
                             ${actionButton}
