@@ -52,7 +52,10 @@
             visibleFor(rows) { return (rows || []).filter(r => r.is_hidden !== true); }
         };
         const urlParams = new URLSearchParams(window.location.search);
-        const taskType = urlParams.get('type') || 'sentence';
+        // Только известные типы: значение из адреса попадает в ссылки и разметку
+        const TASK_TYPES = ['sentence', 'email', 'academic'];
+        const rawType = String(urlParams.get('type') || 'sentence').toLowerCase();
+        const taskType = TASK_TYPES.includes(rawType) ? rawType : 'sentence';
         
         document.getElementById('pageTitle').innerText = taskType === 'sentence' ? 'Build a Sentence' : taskType === 'email' ? 'Write an Email' : 'Academic Discussion';
 
@@ -60,6 +63,45 @@
 
         // Хранилище сгруппированных ID для сброса прогресса
         let currentTestGroups = {};
+        let currentGroupResponses = {};
+        let currentUserId = null;
+
+        // Балл эссе в базе бывает в двух видах: «4.5» и «4.5/6.0» (так сохранялись
+        // оценки раньше). «0/6.0» — заглушка старой практики, а не оценка.
+        function essayScoreOf(r) {
+            if (!r || r.score === null || r.score === undefined) return null;
+            const s = String(r.score).trim();
+            if (!s || /^0\s*\/\s*6(\.0+)?$/.test(s)) return null;
+            const m = s.match(/^(\d+(?:\.\d+)?)(?:\s*\/\s*6(?:\.0+)?)?$/);
+            return m ? parseFloat(m[1]) : null;
+        }
+        // Эссе считается проверенным, когда есть балл преподавателя или его правки.
+        // Та же проверка стоит в базе: проверенное эссе ученица не может удалить.
+        function isEssayGraded(r) {
+            if (!r || taskType === 'sentence') return false;
+            const filled = v => String(v || '').trim() !== '';
+            return filled(r.correction) || filled(r.teacher_correction) || essayScoreOf(r) !== null;
+        }
+
+        function resetButtonHTML(groupId, groupResponses, completedStyle) {
+            // Работа проверена целиком — сбросить нельзя: замок с пояснением
+            if (groupResponses.length && groupResponses.every(isEssayGraded)) {
+                return `<button onclick="explainLockedReset()" class="w-12 flex items-center justify-center bg-gray-50 text-gray-400 hover:bg-gray-100 transition py-3 rounded-2xl shrink-0 border border-gray-200" title="Reviewed by your teacher — can't be reset">
+                    <i data-lucide="lock" class="w-4 h-4"></i>
+                </button>`;
+            }
+            return completedStyle
+                ? `<button onclick="resetGroup('${groupId}')" class="w-12 flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-100 transition py-3 rounded-2xl shrink-0 border border-rose-100" title="Reset Entire Test">
+                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                </button>`
+                : `<button onclick="resetGroup('${groupId}')" class="w-12 flex items-center justify-center bg-gray-50 text-gray-400 hover:bg-gray-100 transition py-3 rounded-2xl shrink-0 border border-gray-200" title="Reset Entire Test">
+                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                </button>`;
+        }
+
+        function explainLockedReset() {
+            alert("Your teacher has already reviewed this work, so it can't be reset.\n\nYour answer, the score and the teacher's feedback are kept — open Review Results to see them.");
+        }
 
         async function loadTasksAndProgress() {
             const container = document.getElementById('tasksContainer');
@@ -69,19 +111,24 @@
                 const user = await requireAuth();
                 if (!user) return;
                 const userId = user.id;
+                currentUserId = userId;
                 CV.init({ user, reload: loadTasksAndProgress });
 
                 // Получаем все вопросы (исключая задания, помеченные только для моков)
-                const { data: allTasks } = await db.from('writing_tasks')
+                const { data: allTasks, error: tasksErr } = await db.from('writing_tasks')
                     .select('*')
                     .ilike('type', taskType)
                     .or('is_mock_only.eq.false,is_mock_only.is.null')
                     .order('id', { ascending: true });
+                if (tasksErr) throw tasksErr;
 
                 // Скрытые глазиком задания видит только преподаватель
                 const tasks = CV.visibleFor(allTasks, user);
 
-                const { data: responsesData } = await db.from('student_responses').select('*').eq('user_id', userId).ilike('task_type', taskType);
+                // Сначала новые: если на задание несколько ответов, берётся последний
+                const { data: responsesData, error: respErr } = await db.from('student_responses').select('*')
+                    .eq('user_id', userId).ilike('task_type', taskType).order('created_at', { ascending: false });
+                if (respErr) throw respErr;
                 const responses = responsesData || [];
 
                 if (!tasks || tasks.length === 0) {
@@ -102,6 +149,7 @@
                 container.className = "grid grid-cols-1 md:grid-cols-2 gap-6";
                 container.innerHTML = '';
                 currentTestGroups = {};
+                currentGroupResponses = {};
 
                 let groupIndex = 1;
                 // Номер без test_id считаем только по видимым ученикам наборам,
@@ -125,6 +173,7 @@
 
                     // Ищем ответы студента для текущей группы вопросов
                     const groupResponses = groupTasks.map(t => responses.find(r => String(r.task_id) === String(t.id))).filter(r => r);
+                    currentGroupResponses[groupId] = groupResponses;
                     const completedCount = groupResponses.length;
                     
                     const isFullyCompleted = completedCount === totalQuestions;
@@ -143,22 +192,19 @@
                         let totalMax = 0;
                         let hasScore = false;
 
-                        // Суммируем баллы за все вопросы в тесте
+                        // Суммируем баллы за все вопросы в тесте.
+                        // Build a Sentence: «верно/всего»; эссе — балл преподавателя 1–6.
                         groupResponses.forEach(resp => {
-                            if (resp.score) {
-                                hasScore = true;
-                                const scoreStr = String(resp.score);
+                            const scoreStr = resp.score === null || resp.score === undefined ? '' : String(resp.score);
+                            if (taskType === 'sentence') {
                                 if (scoreStr.includes('/')) {
                                     const [earned, max] = scoreStr.split('/').map(Number);
-                                    totalEarned += (earned || 0);
-                                    totalMax += (max || 0);
-                                } else {
-                                    const earned = parseFloat(scoreStr);
-                                    if (!isNaN(earned)) {
-                                        totalEarned += earned;
-                                        totalMax += 6; // Стандартный макс балл для других типов
-                                    }
+                                    if (!isNaN(earned) && !isNaN(max)) { totalEarned += earned; totalMax += max; hasScore = true; }
                                 }
+                            } else if (essayScoreOf(resp) !== null) {
+                                totalEarned += essayScoreOf(resp);
+                                totalMax += 6;
+                                hasScore = true;
                             }
                         });
 
@@ -193,12 +239,10 @@
 
                         actionButton = `
                             <div class="flex gap-2">
-                                <a href="writing-practice.html?type=${taskType}&id=${firstTask.id}" class="flex-1 flex items-center justify-center space-x-2 bg-[#edfdf4] text-emerald-700 hover:bg-[#dcfce7] transition py-3 rounded-2xl font-bold text-sm">
+                                <a href="writing-practice.html?type=${taskType}&id=${encodeURIComponent(firstTask.id)}" class="flex-1 flex items-center justify-center space-x-2 bg-[#edfdf4] text-emerald-700 hover:bg-[#dcfce7] transition py-3 rounded-2xl font-bold text-sm">
                                     <span>Review Results</span> <i data-lucide="eye" class="w-4 h-4"></i>
                                 </a>
-                                <button onclick="resetGroup('${groupId}')" class="w-12 flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-100 transition py-3 rounded-2xl shrink-0 border border-rose-100" title="Reset Entire Test">
-                                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
-                                </button>
+                                ${resetButtonHTML(groupId, groupResponses, true)}
                             </div>
                         `;
                     } else if (isPartiallyCompleted) {
@@ -226,18 +270,16 @@
 
                         actionButton = `
                             <div class="flex gap-2">
-                                <a href="writing-practice.html?type=${taskType}&id=${firstUncompletedTask.id}" class="flex-1 flex items-center justify-center space-x-2 bg-blue-50 text-blue-700 hover:bg-blue-100 transition py-3 rounded-2xl font-bold text-sm">
+                                <a href="writing-practice.html?type=${taskType}&id=${encodeURIComponent(firstUncompletedTask.id)}" class="flex-1 flex items-center justify-center space-x-2 bg-blue-50 text-blue-700 hover:bg-blue-100 transition py-3 rounded-2xl font-bold text-sm">
                                     <span>Resume Test</span> <i data-lucide="play" class="w-4 h-4"></i>
                                 </a>
-                                <button onclick="resetGroup('${groupId}')" class="w-12 flex items-center justify-center bg-gray-50 text-gray-400 hover:bg-gray-100 transition py-3 rounded-2xl shrink-0 border border-gray-200" title="Reset Entire Test">
-                                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
-                                </button>
+                                ${resetButtonHTML(groupId, groupResponses, false)}
                             </div>
                         `;
                     } else {
                         progressCircleHTML = `<span class="text-xs font-bold text-gray-300 tracking-wide">${testNumberLabel}</span>`;
                         actionButton = `
-                            <a href="writing-practice.html?type=${taskType}&id=${firstTask.id}" class="w-full flex items-center justify-center space-x-2 bg-[#121629] text-white hover:bg-slate-800 transition py-3.5 rounded-2xl font-bold text-sm shadow-sm">
+                            <a href="writing-practice.html?type=${taskType}&id=${encodeURIComponent(firstTask.id)}" class="w-full flex items-center justify-center space-x-2 bg-[#121629] text-white hover:bg-slate-800 transition py-3.5 rounded-2xl font-bold text-sm shadow-sm">
                                 <span>Start Test</span> <i data-lucide="arrow-right" class="w-4 h-4"></i>
                             </a>
                         `;
@@ -274,30 +316,44 @@
                 lucide.createIcons();
             } catch (err) {
                 console.error(err);
+                container.className = "flex justify-center items-center py-20 w-full col-span-full";
+                container.innerHTML = `<div class="text-center text-rose-500 text-sm font-bold">Failed to load tasks. Check your connection and refresh the page.</div>`;
             }
         }
 
+        let resetBusy = false;
         async function resetGroup(groupId) {
             const taskIds = currentTestGroups[groupId];
-            if (!taskIds || taskIds.length === 0) return;
+            if (!taskIds || taskIds.length === 0 || !currentUserId || resetBusy) return;
 
-            if (!confirm("Are you sure you want to reset your progress for this entire test?")) return;
-            
+            // Проверенные преподавателем ответы не удаляются (это правило базы):
+            // сбрасываются только непроверенные
+            const responses = currentGroupResponses[groupId] || [];
+            const graded = responses.filter(isEssayGraded);
+            if (responses.length && graded.length === responses.length) { explainLockedReset(); return; }
+            const msg = graded.length
+                ? "Answers your teacher has already reviewed will be kept.\nOnly the answers that haven't been reviewed yet will be reset. Continue?"
+                : "Are you sure you want to reset your progress for this entire test?";
+            if (!confirm(msg)) return;
+
+            resetBusy = true;
             try {
                 document.body.style.cursor = 'wait';
-                const { data: { session } } = await db.auth.getSession();
-                if (!session) return;
-
-                const { error } = await db.from('student_responses')
+                // .select() обязателен: без него запрет на удаление выглядит как успех
+                const { data, error } = await db.from('student_responses')
                     .delete()
                     .in('task_id', taskIds)
-                    .eq('user_id', session.user.id);
-                    
+                    .eq('user_id', currentUserId)
+                    .select('id');
                 if (error) throw error;
-                await loadTasksAndProgress(); 
+                if (!data || data.length === 0) {
+                    alert('Nothing was reset: the database did not allow deleting these answers. Please tell your teacher.');
+                }
+                await loadTasksAndProgress();
             } catch (err) {
-                alert("Error resetting test: " + err.message);
+                alert("Error resetting test: " + (err.message || err));
             } finally {
+                resetBusy = false;
                 document.body.style.cursor = 'default';
             }
         }
