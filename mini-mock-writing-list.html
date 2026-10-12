@@ -90,6 +90,68 @@
 
         let currentUser = null;
 
+        function mmEsc(s) {
+            return String(s === null || s === undefined ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        // Та же проверка предложений, что на странице разбора (mini-mock-results.html)
+        function normalizeForCompare(text) {
+            return String(text || '')
+                .replace(/[\u2018\u2019\u201B`\u00B4]/g, "'")
+                .toLowerCase()
+                .replace(/[^\p{L}\p{N}'\s-]/gu, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        // Итог попытки считается от фактических оценок, как на странице разбора:
+        // 50% Build a Sentence (авто) + 50% среднее Email и Academic (учитель).
+        // «Проверено» — когда оценены оба эссе. Раньше список смотрел только на
+        // поля самой попытки, которые никто не заполнял, — и показывал
+        // «Pending Review» даже после проверки.
+        async function computeAttemptResults(attempts) {
+            const out = {};
+            const ids = attempts.map(a => a.id);
+            if (!ids.length) return out;
+            const { data: resps, error } = await supabaseClient
+                .from('mini_mock_writing_responses')
+                .select('attempt_id, task_id, task_type, response_content, score')
+                .in('attempt_id', ids);
+            if (error) throw error;
+            const sentenceIds = [...new Set((resps || []).filter(r => r.task_type === 'sentence').map(r => r.task_id))];
+            const samples = {};
+            if (sentenceIds.length) {
+                const { data: tasks, error: tErr } = await supabaseClient.from('writing_tasks').select('id, sample_answer').in('id', sentenceIds);
+                if (tErr) throw tErr;
+                (tasks || []).forEach(t => { samples[String(t.id)] = t.sample_answer || ''; });
+            }
+            const num = r => (r && r.score !== null && r.score !== undefined && r.score !== '' && !isNaN(parseFloat(r.score))) ? parseFloat(r.score) : null;
+            ids.forEach(id => {
+                const rs = (resps || []).filter(r => String(r.attempt_id) === String(id));
+                const sent = rs.filter(r => r.task_type === 'sentence');
+                const correct = sent.filter(r => {
+                    const c = samples[String(r.task_id)];
+                    return c && r.response_content && normalizeForCompare(c) === normalizeForCompare(r.response_content);
+                }).length;
+                const sentenceBand = sent.length ? Math.min(6, Math.max(1, Math.round((1 + (correct / sent.length) * 5) * 2) / 2)) : null;
+                const email = rs.find(r => r.task_type === 'email');
+                const academic = rs.find(r => r.task_type === 'academic');
+                const essays = [email, academic].filter(Boolean);
+                const essayScores = essays.map(num).filter(v => v !== null);
+                const fullyGraded = essays.length > 0 && essayScores.length === essays.length;
+                let overall = null;
+                if (fullyGraded) {
+                    const essayBand = essayScores.reduce((a, b) => a + b, 0) / essayScores.length;
+                    overall = sentenceBand !== null ? sentenceBand * 0.5 + essayBand * 0.5 : essayBand;
+                    overall = Math.min(6, Math.max(1, Math.round(overall * 2) / 2));
+                }
+                out[id] = { fullyGraded, overall };
+            });
+            return out;
+        }
+
         async function checkAuth() {
             try {
                 // requireAuth проверяет и вход, и доступ к Writing
@@ -141,6 +203,14 @@
                     });
                 }
 
+                // Итоги последних попыток — по фактическим оценкам
+                let attemptResults = {};
+                try {
+                    attemptResults = await computeAttemptResults(Object.values(latestAttempts));
+                } catch (e) {
+                    console.warn('Не удалось посчитать итоги попыток, показываю поля попыток:', e);
+                }
+
                 if (!mocks || mocks.length === 0) {
                     container.innerHTML = `
                         <div class="col-span-full flex flex-col items-center justify-center py-20 px-4 text-center bg-white rounded-3xl border border-dashed border-gray-200">
@@ -162,14 +232,23 @@
                     const isHiddenMock = mock.is_hidden === true;
                     const mockNumber = isHiddenMock ? null : ++shownNumber;
                     const attempt = latestAttempts[mock.id];
+                    // Незаконченная попытка на этом устройстве (черновик mini-mock-writing.html)
+                    let draftNote = '';
+                    try {
+                        const d = JSON.parse(localStorage.getItem(`mmw_draft_v1:${currentUser.id}:${mock.id}`) || 'null');
+                        if (d) draftNote = `<div class="mb-3 text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">${d.phase === 'submit' ? 'Answers not sent yet — open the test to send them' : 'Unfinished attempt saved on this device — open the test to continue'}</div>`;
+                    } catch (e) {}
                     
                     let actionAreaHTML = '';
 
                     if (attempt) {
                         // Если попытка есть, показываем результат и кнопки Review / Retake
-                        const isReviewed = attempt.status === 'reviewed';
-                        const scoreDisplay = isReviewed && attempt.overall_score !== null 
-                            ? `<span class="text-sm font-black text-emerald-600">Score: ${Number(attempt.overall_score).toFixed(1)}</span>`
+                        const computed = attemptResults[attempt.id];
+                        const manual = attempt.status === 'reviewed' && attempt.overall_score !== null && attempt.overall_score !== undefined;
+                        const finalScore = computed && computed.fullyGraded ? computed.overall
+                            : manual ? Number(attempt.overall_score) : null;
+                        const scoreDisplay = finalScore !== null && !isNaN(finalScore)
+                            ? `<span class="text-sm font-black text-emerald-600">Score: ${finalScore.toFixed(1)}</span>`
                             : `<span class="text-xs font-bold text-amber-500 flex items-center"><i data-lucide="clock" class="w-3 h-3 mr-1"></i> Pending Review</span>`;
 
                         actionAreaHTML = `
@@ -180,10 +259,10 @@
                                 </div>
                                 
                                 ${CV.withEye(`<div class="flex gap-2">
-                                    <a href="mini-mock-results.html?attempt_id=${attempt.id}" class="flex-1 flex items-center justify-center bg-indigo-50 hover:bg-indigo-100 text-indigo-700 py-3 rounded-xl text-sm font-bold transition-colors border border-indigo-200 shadow-sm">
+                                    <a href="mini-mock-results.html?attempt_id=${encodeURIComponent(attempt.id)}" class="flex-1 flex items-center justify-center bg-indigo-50 hover:bg-indigo-100 text-indigo-700 py-3 rounded-xl text-sm font-bold transition-colors border border-indigo-200 shadow-sm">
                                         <i data-lucide="eye" class="w-4 h-4 mr-1.5"></i> Review
                                     </a>
-                                    <a href="mini-mock-writing.html?id=${mock.id}" class="flex-1 flex items-center justify-center bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl text-sm font-bold transition-all shadow-sm active:scale-[0.98]">
+                                    <a href="mini-mock-writing.html?id=${encodeURIComponent(mock.id)}" class="flex-1 flex items-center justify-center bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl text-sm font-bold transition-all shadow-sm active:scale-[0.98]">
                                         <i data-lucide="rotate-cw" class="w-4 h-4 mr-1.5"></i> Retake
                                     </a>
                                 </div>`, 'mini_mock_writing', [mock.id], isHiddenMock)}
@@ -210,7 +289,7 @@
                                     </span>
                                 </div>
 
-                                ${CV.withEye(`<a href="mini-mock-writing.html?id=${mock.id}" class="w-full flex items-center justify-center space-x-2 bg-slate-900 hover:bg-indigo-600 text-white py-3.5 rounded-xl text-sm font-bold transition-all shadow-sm hover:shadow-md group-hover:-translate-y-0.5 active:scale-[0.98]">
+                                ${CV.withEye(`<a href="mini-mock-writing.html?id=${encodeURIComponent(mock.id)}" class="w-full flex items-center justify-center space-x-2 bg-slate-900 hover:bg-indigo-600 text-white py-3.5 rounded-xl text-sm font-bold transition-all shadow-sm hover:shadow-md group-hover:-translate-y-0.5 active:scale-[0.98]">
                                     <span>Start Simulation</span>
                                     <i data-lucide="arrow-right" class="w-4 h-4 group-hover:translate-x-1 transition-transform"></i>
                                 </a>`, 'mini_mock_writing', [mock.id], isHiddenMock)}
@@ -231,12 +310,13 @@
                                     ${mockNumber ? `Mock #${mockNumber}` : 'Draft'}
                                 </span>
                                 
-                                <h3 class="text-xl font-bold text-slate-900 mb-2 leading-tight">${mock.title}</h3>
+                                <h3 class="text-xl font-bold text-slate-900 mb-2 leading-tight">${mmEsc(mock.title)}</h3>
                                 <p class="text-xs text-slate-500 leading-relaxed mb-6">
-                                    ${mock.description || 'Complete a full writing simulation consisting of 3 consecutive tasks under exam time limits.'}
+                                    ${mmEsc(mock.description || 'Complete a full writing simulation consisting of 3 consecutive tasks under exam time limits.')}
                                 </p>
                             </div>
                             
+                            ${draftNote}
                             ${actionAreaHTML}
                         </div>
                     `;
