@@ -9,6 +9,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
+    <script src="content-visibility.js"></script>
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -76,7 +77,16 @@
         // Подключение к Supabase
         const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Один клиент на страницу (тот, что создал auth.js): второй клиент на том же
+        // хранилище сессии иногда «зависал» на входе.
+        const supabaseClient = window.supabaseClient || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // Глазик преподавателя (content-visibility.js). Если файл не загрузился,
+        // страница работает как раньше, а скрытое всё равно не попадает к ученикам.
+        const CV = window.ContentVisibility || {
+            init() {}, cardClass() { return ''; }, withEye(html) { return html; },
+            visibleFor(rows) { return (rows || []).filter(r => r.is_hidden !== true); }
+        };
 
         let currentUser = null;
 
@@ -87,6 +97,7 @@
                 if (!user) return;
 
                 currentUser = user;
+                CV.init({ user, reload: loadMockTests });
                 document.getElementById('mainBody').classList.remove('opacity-0');
                 
                 await loadMockTests();
@@ -101,12 +112,15 @@
 
             try {
                 // 1. Получаем список моков
-                const { data: mocks, error: mocksError } = await supabaseClient
+                const { data: allMocks, error: mocksError } = await supabaseClient
                     .from('mini_mock_writing')
                     .select('*')
                     .order('id', { ascending: true });
 
                 if (mocksError) throw mocksError;
+
+                // Скрытые глазиком моки видит только преподаватель
+                const mocks = CV.visibleFor(allMocks, currentUser);
 
                 // 2. Получаем попытки текущего пользователя
                 const { data: attempts, error: attemptsError } = await supabaseClient
@@ -141,8 +155,12 @@
                     return;
                 }
 
+                // Номер считаем только по видимым ученикам мокам: у вас и у учеников
+                // «Mock #2» — один и тот же тест. Скрытый — без номера.
+                let shownNumber = 0;
                 container.innerHTML = mocks.map((mock, index) => {
-                    const mockNumber = index + 1;
+                    const isHiddenMock = mock.is_hidden === true;
+                    const mockNumber = isHiddenMock ? null : ++shownNumber;
                     const attempt = latestAttempts[mock.id];
                     
                     let actionAreaHTML = '';
@@ -161,14 +179,14 @@
                                     ${scoreDisplay}
                                 </div>
                                 
-                                <div class="flex gap-2">
+                                ${CV.withEye(`<div class="flex gap-2">
                                     <a href="mini-mock-results.html?attempt_id=${attempt.id}" class="flex-1 flex items-center justify-center bg-indigo-50 hover:bg-indigo-100 text-indigo-700 py-3 rounded-xl text-sm font-bold transition-colors border border-indigo-200 shadow-sm">
                                         <i data-lucide="eye" class="w-4 h-4 mr-1.5"></i> Review
                                     </a>
                                     <a href="mini-mock-writing.html?id=${mock.id}" class="flex-1 flex items-center justify-center bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl text-sm font-bold transition-all shadow-sm active:scale-[0.98]">
                                         <i data-lucide="rotate-cw" class="w-4 h-4 mr-1.5"></i> Retake
                                     </a>
-                                </div>
+                                </div>`, 'mini_mock_writing', [mock.id], isHiddenMock)}
                             </div>
                         `;
                     } else {
@@ -192,16 +210,16 @@
                                     </span>
                                 </div>
 
-                                <a href="mini-mock-writing.html?id=${mock.id}" class="w-full flex items-center justify-center space-x-2 bg-slate-900 hover:bg-indigo-600 text-white py-3.5 rounded-xl text-sm font-bold transition-all shadow-sm hover:shadow-md group-hover:-translate-y-0.5 active:scale-[0.98]">
+                                ${CV.withEye(`<a href="mini-mock-writing.html?id=${mock.id}" class="w-full flex items-center justify-center space-x-2 bg-slate-900 hover:bg-indigo-600 text-white py-3.5 rounded-xl text-sm font-bold transition-all shadow-sm hover:shadow-md group-hover:-translate-y-0.5 active:scale-[0.98]">
                                     <span>Start Simulation</span>
                                     <i data-lucide="arrow-right" class="w-4 h-4 group-hover:translate-x-1 transition-transform"></i>
-                                </a>
+                                </a>`, 'mini_mock_writing', [mock.id], isHiddenMock)}
                             </div>
                         `;
                     }
 
                     return `
-                        <div class="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:border-indigo-200 transition-all duration-300 flex flex-col h-full relative overflow-hidden group">
+                        <div class="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:border-indigo-200 transition-all duration-300 flex flex-col h-full relative overflow-hidden group ${CV.cardClass(isHiddenMock)}">
                             
                             <!-- Декоративная иконка на фоне -->
                             <div class="absolute -top-4 -right-4 p-4 opacity-5 group-hover:opacity-10 transform group-hover:scale-110 group-hover:rotate-12 transition-all duration-500 pointer-events-none">
@@ -210,7 +228,7 @@
 
                             <div class="relative z-10 flex-1">
                                 <span class="inline-block px-3 py-1 bg-indigo-50 text-indigo-600 text-[10px] font-bold uppercase tracking-widest rounded-lg mb-4 border border-indigo-100">
-                                    Mock #${mockNumber}
+                                    ${mockNumber ? `Mock #${mockNumber}` : 'Draft'}
                                 </span>
                                 
                                 <h3 class="text-xl font-bold text-slate-900 mb-2 leading-tight">${mock.title}</h3>
