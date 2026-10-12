@@ -15,6 +15,8 @@ let speakingAttemptId = null;
 let speakingAudioCtx = null;
 let speakingRecordingMimeType = '';
 let speakingQuestionTimerInterval = null;
+let speakingRecordingStarting = false;   // запись уже запускается (ждём микрофон) — второй запуск не нужен
+let speakingSilenceWarned = false;       // предупреждение о пустой записи — один раз за секцию
 
 // Номер сессии Speaking. Abort посреди сохранения раньше не останавливал
 // цепочку: после загрузки файла движок открывал следующий вопрос уже на
@@ -93,6 +95,8 @@ async function startSpeakingEngine(testId, testTitle, resume) {
     speakingSessionId++;
     const mySession = speakingSessionId;
     speakingAttemptId = null;   // иначе при сбое создания новой попытки записи уходили в старую
+    speakingSilenceWarned = false;
+    speakingRecordingStarting = false;
     speakingItems = [];
     speakingIndex = 0;
     clearInterval(speakingQuestionTimerInterval);
@@ -481,10 +485,36 @@ function setSpeakingStatus(text, classes) {
 // ==========================================
 // 4. ЗАПИСЬ ОТВЕТА
 // ==========================================
-function startSpeakingRecording(limit) {
+// КРИТИЧНО ДЛЯ iPhone/iPad (так уже сделано в speaking_player.html):
+// проигрывание вопроса переводит звук в режим воспроизведения, и микрофонный
+// поток, взятый ДО этого, остаётся «живым», но отдаёт тишину. Поэтому перед
+// каждой записью берём микрофон заново. На Android и компьютере безвредно.
+async function speakingFreshStream() {
+    if (speakingMediaStream) speakingMediaStream.getTracks().forEach(t => t.stop());
+    speakingMediaStream = null;
+    speakingMediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    return speakingMediaStream;
+}
+
+async function startSpeakingRecording(limit) {
     if (window.engineType !== 'speaking' || !speakingMediaStream) return;
-    if (speakingMediaRecorder && speakingMediaRecorder.state === 'recording') return;
+    if (speakingRecordingStarting || (speakingMediaRecorder && speakingMediaRecorder.state === 'recording')) return;
+    speakingRecordingStarting = true;
     clearTimeout(speakingFailsafeTimer);
+    const mySession = speakingSessionId;
+    try {
+        await speakingFreshStream();
+    } catch (err) {
+        speakingRecordingStarting = false;
+        console.error('Не удалось заново включить микрофон:', err);
+        if (!speakingAlive(mySession)) return;
+        setSpeakingStatus('Mic error', 'bg-red-100 text-red-700 border-red-200');
+        alert('Не удалось получить доступ к микрофону для записи.\n\n' + (err.message || err.name)
+            + '\n\nВаши прошлые ответы сохранены. Закройте другие приложения с микрофоном, нажмите Exit и продолжите секцию с этого вопроса.');
+        return;
+    }
+    speakingRecordingStarting = false;
+    if (!speakingAlive(mySession)) { if (speakingMediaStream) speakingMediaStream.getTracks().forEach(t => t.stop()); return; }
     setSpeakingStatus('Recording...', 'bg-red-500 text-white border-red-500');
     const micIcon = document.getElementById('speakingMicIcon');
     if (micIcon) { micIcon.classList.remove('bg-gray-100', 'text-slate-400'); micIcon.classList.add('bg-transparent', 'text-white'); }
@@ -561,6 +591,14 @@ async function stopSpeakingRecording() {
         const blob = new Blob(speakingAudioChunks, { type: mimeType });
         let fileName = null;
         let uploaded = false;
+        let tries = 0;
+
+        // Пустая запись: микрофон не передал звук. Раньше такая тишина молча
+        // уходила в базу и обнаруживалась только при проверке.
+        if (blob.size < 1000 && !speakingSilenceWarned) {
+            speakingSilenceWarned = true;
+            alert('Запись получилась пустой — микрофон не передал звук.\n\nПроверьте: не подключены ли наушники с отдельным микрофоном, не идёт ли звонок в другом приложении, разрешён ли микрофон в настройках браузера.');
+        }
 
         // Повторяем, пока не получится (или пока ученица не выйдет из секции)
         for (;;) {
@@ -578,6 +616,15 @@ async function stopSpeakingRecording() {
                     uploaded = true;
                 }
                 if (attemptId) {
+                    // Повтор после сбоя: если ответ уже дошёл до базы (пропал только
+                    // ответ сервера), второй раз его не записываем
+                    if (tries > 0) {
+                        const { data: existing, error: exErr } = await client
+                            .from('big_mock_speaking_answers').select('id')
+                            .eq('attempt_id', attemptId).eq('task_id', currentItem.task_id).limit(1);
+                        if (exErr) throw exErr;
+                        if (existing && existing.length) break;
+                    }
                     const { error: dbError } = await client
                         .from('big_mock_speaking_answers')
                         .insert([{
@@ -590,6 +637,7 @@ async function stopSpeakingRecording() {
                 }
                 break;
             } catch (err) {
+                tries++;
                 console.error("Save process error:", err);
                 if (!speakingAlive(mySession)) return;
                 await speakingWaitForRetry(err);
@@ -749,7 +797,7 @@ function renderSpeakingReviewUI(attemptRow, items, answers, signedUrls) {
                         <div class="px-8 text-center">${statusHtml}</div>
                     </div>
                     <div class="flex justify-center space-x-3">
-                        <button onclick="unlockGlobalAudio(); startSpeakingEngine(currentActiveTestId, document.getElementById('dynamic-test-title').innerText)" class="px-6 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition shadow-md text-sm flex items-center cursor-pointer">
+                        <button onclick="speakingRetake()" class="px-6 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition shadow-md text-sm flex items-center cursor-pointer">
                             <i data-lucide="rotate-ccw" class="w-4 h-4 mr-2"></i> Retake Speaking
                         </button>
                         <button onclick="exitExamEngine()" class="px-6 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition shadow-sm text-sm cursor-pointer">
@@ -764,9 +812,19 @@ function renderSpeakingReviewUI(attemptRow, items, answers, signedUrls) {
     if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
+// Retake — через общий старт секции (как кнопка на карточке теста): он
+// спросит про незаконченную секцию другого теста, а не сотрёт её молча
+function speakingRetake() {
+    const title = (document.getElementById('dynamic-test-title') || {}).innerText || window.currentActiveTestTitle;
+    if (typeof mtStartSection === 'function') { mtStartSection('startSpeakingEngine', currentActiveTestId, title); return; }
+    if (typeof unlockGlobalAudio === 'function') unlockGlobalAudio();
+    startSpeakingEngine(currentActiveTestId, title);
+}
+
 // ==========================================
 // 7. ЭКСПОРТ В WINDOW
 // ==========================================
+window.speakingRetake = speakingRetake;
 window.startSpeakingEngine = startSpeakingEngine;
 window.loadSpeakingReviewMode = loadSpeakingReviewMode;
 window.fetchAndParseSpeakingTasks = fetchAndParseSpeakingTasks;
