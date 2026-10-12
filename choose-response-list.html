@@ -9,7 +9,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght=400;500;600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
         
         ::-webkit-scrollbar { width: 6px; }
@@ -60,9 +60,31 @@
 
 
     <script>
-        const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Один клиент на страницу — тот, что создал auth.js (второй клиент на том же
+        // хранилище сессии иногда «зависал» на входе)
+        const supabaseClient = window.supabaseClient;
+
+        // База отдаёт не больше 1000 строк за раз: когда вопросов станет больше,
+        // часть наборов просто пропала бы из списка. Читаем порциями.
+        async function fetchAllQuestionSets() {
+            const PAGE = 1000;
+            let all = [];
+            for (let from = 0; ; from += PAGE) {
+                const { data, error } = await supabaseClient
+                    .from('listening_questions')
+                    .select('set_number')
+                    .or('is_mock_only.eq.false,is_mock_only.is.null')
+                    .order('id', { ascending: true })
+                    .range(from, from + PAGE - 1);
+                if (error) throw error;
+                all = all.concat(data || []);
+                if (!data || data.length < PAGE) return all;
+            }
+        }
+
+        // Самая свежая попытка из нескольких строк по одному набору
+        function rowTime(r) { return Date.parse(r.completed_at || r.updated_at || r.created_at || '') || 0; }
+        function isNewer(a, b) { return rowTime(a) > rowTime(b) || (rowTime(a) === rowTime(b) && (Number(a.id) || 0) > (Number(b.id) || 0)); }
 
         let currentUser = null; 
 
@@ -86,12 +108,7 @@
         async function loadSetsList() {
             try {
                 // ИСКЛЮЧАЕМ вопросы для мок-тестов из подсчета практики
-                const { data: questionsData, error: qError } = await supabaseClient
-                    .from('listening_questions')
-                    .select('set_number')
-                    .or('is_mock_only.eq.false,is_mock_only.is.null');
-
-                if (qError) throw qError;
+                const questionsData = await fetchAllQuestionSets();
 
                 const setCounts = {};
                 if (questionsData && questionsData.length > 0) {
@@ -116,13 +133,19 @@
                 let totalEarned = 0;
                 let totalPossible = 0;
 
-                if (results && results.length > 0) {
-                    results.forEach(res => {
-                        resultMap[res.set_number] = res;
-                        totalEarned += res.score_earned;
-                        totalPossible += res.score_total;
-                    });
-                }
+                // По каждому набору — только последняя попытка, и только по наборам,
+                // которые сейчас есть в списке (раньше в среднюю точность попадали
+                // и повторы, и удалённые наборы)
+                (results || []).forEach(res => {
+                    const prev = resultMap[res.set_number];
+                    if (!prev || isNewer(res, prev)) resultMap[res.set_number] = res;
+                });
+                availableSets.forEach(sn => {
+                    const res = resultMap[sn];
+                    if (!res) return;
+                    totalEarned += Number(res.score_earned) || 0;
+                    totalPossible += Number(res.score_total) || 0;
+                });
 
                 const avgAccuracyText = document.getElementById('avgAccuracyText');
                 if (totalPossible > 0) {
@@ -145,7 +168,8 @@
                     let cardHtml = '';
 
                     if (userResult) {
-                        const pct = Math.round((userResult.score_earned / userResult.score_total) * 100);
+                        const pct = Number(userResult.score_total) > 0
+                            ? Math.round((userResult.score_earned / userResult.score_total) * 100) : 0;
                         
                         cardHtml = `
                             <div class="bg-white rounded-2xl p-5 border border-purple-100 shadow-xs flex flex-col justify-between relative overflow-hidden group border-t-4 border-t-purple-500">
@@ -208,13 +232,20 @@
             if (!confirm(`Are you sure you want to reset your score for Set #${setNumber}? This will erase your past answers.`)) return;
 
             try {
-                const { error } = await supabaseClient
+                const { data: deleted, error } = await supabaseClient
                     .from('response_results')
                     .delete()
                     .eq('set_number', setNumber)
-                    .eq('user_id', currentUser.id);
+                    .eq('user_id', currentUser.id)
+                    .select('id');
 
                 if (error) throw error;
+                // База может молча не удалить ни одной строки (нет права на удаление) —
+                // раньше это выглядело как успешный сброс
+                if (!deleted || deleted.length === 0) {
+                    alert("Не получилось сбросить результат — сообщите преподавателю.");
+                    return;
+                }
 
                 loadSetsList();
             } catch (err) {
