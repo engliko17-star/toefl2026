@@ -106,16 +106,19 @@ function countWords(text) {
     return trimmed.split(/\s+/).length;
 }
 
-// Сравнение собранного предложения с эталоном. Регистр, лишние пробелы и
-// типографские кавычки/апострофы (’ ‘ ` “ ”) на результат не влияют.
+// Сравнение собранного предложения с эталоном: сравниваются слова и их
+// порядок. Регистр, пробелы и знаки препинания на результат не влияют —
+// в том числе точка в конце, которую движок дописывает сам (раньше ответ
+// «I agree.» не совпадал с эталоном «I agree» без точки). Апостроф влияет:
+// its ≠ it's; типографский ’ считается обычным '.
+// Та же функция — в мини-моке, в практике и в профиле ученицы.
 function writingNormalizeSentence(s) {
     return String(s || '')
         .replace(/[\u2018\u2019\u201B`\u00B4]/g, "'")
-        .replace(/[\u201C\u201D]/g, '"')
-        .replace(/\s+([.?!,;:])/g, '$1')
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}'\s-]/gu, ' ')
         .replace(/\s+/g, ' ')
-        .trim()
-        .toLowerCase();
+        .trim();
 }
 
 function writingIsSentenceCorrect(task, answer) {
@@ -189,6 +192,17 @@ async function startWritingEngine(testId, testTitle, resume) {
     window.engineType = 'writing';
     writingSessionId++;
     const mySession = writingSessionId;
+
+    // Секция уже сдана — результат лежит в очереди отправки. Так бывает, если
+    // страницу перезагрузили, пока шло сохранение в Full Test. Раньше секция
+    // начиналась заново с восстановленными ответами, и в базу уходила вторая попытка.
+    if (resume && resume.phase === 'submitted') {
+        if (window.fullTestMode && typeof continueFullTestSequence === 'function') { continueFullTestSequence(); return; }
+        if (typeof mtClearProgress === 'function') mtClearProgress();
+        if (typeof exitExamEngine === 'function') exitExamEngine();
+        return;
+    }
+
     if (typeof resetEngineHeaderButtons === 'function') resetEngineHeaderButtons();
     clearInterval(writingTimerInterval);
 
@@ -332,6 +346,14 @@ function getWritingEndPunctuation(q) {
     return ['.', '?', '!'].includes(lastChar) ? lastChar : '.';
 }
 
+// Если последний текстовый кусок структуры уже заканчивается знаком,
+// второй знак в конце не рисуем (раньше выходило «?.»)
+function writingStructureEndsWithMark(q) {
+    const items = Array.isArray(q.structure) ? q.structure : [];
+    const last = items[items.length - 1];
+    return !!(last && last.type === 'text' && /[.?!]\s*$/.test(String(last.value || '')));
+}
+
 function initPhaseSentence(savedSlots, secondsLeft) {
     writingPhase = 'sentence';
     const content = document.getElementById('engine-content');
@@ -365,7 +387,7 @@ function initPhaseSentence(savedSlots, secondsLeft) {
                 </div>
                 <div class="flex items-start space-x-4 pt-4 border-t border-dashed border-gray-200">
                     <div class="w-10 h-10 bg-rose-50 border rounded-full flex items-center justify-center text-lg shrink-0">${writingEsc(q.avatar_right || '👩‍🏫')}</div>
-                    <div class="flex-1 flex flex-wrap items-end gap-y-3 pt-1 pb-2">${sentenceHTML}<span class="shrink-0 text-2xl font-bold text-slate-400 select-none ml-1 leading-none">${getWritingEndPunctuation(q)}</span></div>
+                    <div class="flex-1 flex flex-wrap items-end gap-y-3 pt-1 pb-2">${sentenceHTML}${writingStructureEndsWithMark(q) ? '' : `<span class="shrink-0 text-2xl font-bold text-slate-400 select-none ml-1 leading-none">${getWritingEndPunctuation(q)}</span>`}</div>
                 </div>
             </div>
             <div class="w-full max-w-4xl mx-auto shrink-0 pb-10">
@@ -789,6 +811,15 @@ async function saveWritingAttemptAndFinish() {
         status: 'pending_review',
         completed_at: new Date().toISOString()
     };
+    // Full Test: отмечаем, что секция сдана, ДО отправки. Перезагрузка во время
+    // сохранения вернёт к следующей секции, а не к повторной сдаче этой.
+    if (window.fullTestMode && typeof mtSaveProgress === 'function') {
+        mtSaveProgress('writing', {
+            phase: 'submitted',
+            ids: { s: sentencesData.map(q => q.id), e: emailData ? emailData.id : null, a: academicData ? academicData.id : null }
+        }, 'saving');
+    }
+
     const res = await mtSubmit({
         section: 'writing',
         attempt: { table: 'big_mock_writing_attempts', row: attemptRow },
@@ -796,8 +827,12 @@ async function saveWritingAttemptAndFinish() {
     });
     if (!res.ok) {
         console.error('Error saving Writing attempt:', res.error);
-        alert('Нет связи с сервером — ответы Writing сохранены на этом устройстве и отправятся автоматически, когда интернет вернётся.\n\n'
-            + (res.error && res.error.message ? res.error.message : res.error));
+        // У ошибки от базы есть код (нет права, неверные данные) — это не «нет связи»
+        const fromServer = res.error && res.error.code;
+        alert((fromServer
+            ? 'Сервер не принял ответы Writing. Они сохранены на этом устройстве — сообщите, пожалуйста, преподавателю.'
+            : 'Нет связи с сервером — ответы Writing сохранены на этом устройстве и отправятся автоматически, когда интернет вернётся.')
+            + '\n\n' + (res.error && res.error.message ? res.error.message : res.error));
     }
 
     if (!writingSessionAlive(mySession)) return; // ушли со страницы во время сохранения
@@ -987,7 +1022,7 @@ function renderWritingReviewUI({ attemptRow, sentences, email, academic, answers
                     <p class="text-xs text-slate-400 mb-6 font-medium">Build a Sentence is checked automatically. Email and Academic Discussion are graded by your teacher.</p>
                     <div class="flex justify-center items-center mb-8">${headerStats}</div>
                     <div class="flex justify-center space-x-3">
-                        <button onclick="startWritingEngine(currentActiveTestId, document.getElementById('dynamic-test-title').innerText)" class="px-6 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-purple-600 transition shadow-md text-sm flex items-center cursor-pointer">
+                        <button onclick="writingRetake()" class="px-6 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-purple-600 transition shadow-md text-sm flex items-center cursor-pointer">
                             <i data-lucide="rotate-ccw" class="w-4 h-4 mr-2"></i> Retake Writing
                         </button>
                         <button onclick="exitExamEngine()" class="px-6 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition shadow-sm text-sm cursor-pointer">
@@ -1005,6 +1040,14 @@ function renderWritingReviewUI({ attemptRow, sentences, email, academic, answers
     if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
+// Retake — через общий старт секции (mtStartSection), как кнопка на карточке:
+// он спросит про незаконченную секцию другого теста, а не сотрёт её молча
+function writingRetake() {
+    const title = (document.getElementById('dynamic-test-title') || {}).innerText || window.currentActiveTestTitle;
+    if (typeof mtStartSection === 'function') mtStartSection('startWritingEngine', currentActiveTestId, title);
+    else startWritingEngine(currentActiveTestId, title);
+}
+
 // ==========================================
 // 7. ЭКСПОРТ
 // ==========================================
@@ -1017,3 +1060,4 @@ window.prevWritingTask = handleWritingPrevStep;
 window.showSentenceReview = showSentenceReview;
 window.returnToSentence = returnToSentence;
 window.fetchAndParseWritingTasks = fetchAndParseWritingTasks;
+window.writingRetake = writingRetake;
