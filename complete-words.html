@@ -13,6 +13,7 @@
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
+    <script src="content-visibility.js"></script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -70,6 +71,13 @@
         const db = getDatabaseClient();
         let currentUser = null;
 
+        // Глазик преподавателя (content-visibility.js). Если файл не загрузился,
+        // страница работает как раньше, а скрытое всё равно не попадает к ученикам.
+        const CV = window.ContentVisibility || {
+            init() {}, cardClass() { return ''; }, withEye(html) { return html; },
+            visibleFor(rows) { return (rows || []).filter(r => r.is_hidden !== true); }
+        };
+
         // Инициализация страницы
         async function initPage() {
             try {
@@ -78,6 +86,7 @@
                 }
                 currentUser = await requireAuth();
                 if (currentUser) {
+                    CV.init({ user: currentUser, reload: loadTests });
                     await loadTests();
                 }
             } catch (err) {
@@ -110,17 +119,20 @@
         // задание реально встречалось на настоящем экзамене (галочка is_real_toefl).
         const REAL_TOEFL_RIBBON = `<div class="absolute top-[15px] right-[-38px] w-[150px] rotate-45 bg-violet-600 text-white text-[9px] font-extrabold tracking-[0.15em] text-center py-1 shadow-sm z-10 pointer-events-none">TOEFL</div>`;
 
-        // Колонку is_real_toefl добавляет reading_real_toefl_labels.sql. Пока её нет
-        // в базе, запрос с ней падает (42703) — тогда берём список без этикеток,
-        // чтобы страница работала в любом порядке выкладки.
+        // Необязательные колонки: is_real_toefl (этикетка TOEFL) и is_hidden (глазик).
+        // Пока SQL для них не запущен, запрос с ними падает (42703) — тогда убираем
+        // недостающую колонку и повторяем: страница работает в любом порядке выкладки.
+        const OPTIONAL_COLUMNS = ['is_real_toefl', 'is_hidden'];
         async function fetchPracticeTasks(table, columns) {
             const run = cols => db.from(table).select(cols).eq('is_mock_only', false).order('id', { ascending: true });
-            let res = await run(columns + ', is_real_toefl');
-            if (res.error && (res.error.code === '42703' || /is_real_toefl/.test(res.error.message || ''))) {
-                console.warn(`[${table}] нет колонки is_real_toefl — этикетки TOEFL не показываются`);
-                res = await run(columns);
+            let optional = OPTIONAL_COLUMNS.slice();
+            for (;;) {
+                const res = await run([columns, ...optional].join(', '));
+                const missing = res.error && optional.find(c => (res.error.message || '').includes(c));
+                if (!missing) return res;
+                console.warn(`[${table}] нет колонки ${missing} — работаем без неё`);
+                optional = optional.filter(c => c !== missing);
             }
-            return res;
         }
 
         async function loadTests() {
@@ -130,10 +142,13 @@
                 }
 
                 // Загружаем сами тесты, исключая мок-тесты
-                const { data: tests, error: testsError } = await fetchPracticeTasks(
+                const { data: allTests, error: testsError } = await fetchPracticeTasks(
                     'complete_words_tasks', 'id, title, category, passage, is_mock_only');
 
                 if (testsError) throw new Error(testsError.message);
+
+                // Скрытые глазиком задания видит только преподаватель
+                const tests = CV.visibleFor(allTests, currentUser);
 
                 // Загружаем прогресс пользователя из новой таблицы
                 const { data: progressData, error: progressError } = await db
@@ -210,9 +225,10 @@
                     // не наезжала на номер теста и круг с процентом
                     const isRealToefl = test.is_real_toefl === true;
                     const headerRightPadding = isRealToefl ? 'pr-12' : '';
+                    const isHiddenTask = test.is_hidden === true;
 
                     const html = `
-                        <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col group hover:border-purple-200 hover:shadow-md transition relative overflow-hidden">
+                        <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col group hover:border-purple-200 hover:shadow-md transition relative overflow-hidden ${CV.cardClass(isHiddenTask)}">
                             <div class="absolute left-0 top-0 bottom-0 w-1 bg-purple-500 opacity-0 group-hover:opacity-100 transition"></div>
                             ${isRealToefl ? REAL_TOEFL_RIBBON : ''}
 
@@ -238,7 +254,7 @@
                             <h3 class="text-sm font-bold text-slate-900 mb-1 group-hover:text-purple-600 transition tracking-tight ${isRealToefl ? 'pr-6' : ''}">${test.title}</h3>
                             <p class="text-[11px] text-gray-500 mb-5 flex-1">${wordCount} words • ${blanksCount} missing letters</p>
                             
-                            ${actionButton}
+                            ${CV.withEye(actionButton, 'complete_words_tasks', [test.id], isHiddenTask)}
                         </div>
                     `;
                     testListContainer.innerHTML += html;
