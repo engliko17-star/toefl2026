@@ -257,6 +257,14 @@
 
         function rowTime(r) { return Date.parse(r.completed_at || r.updated_at || r.created_at || '') || 0; }
 
+        // В заданиях тип вопроса записан вразнобой: «detail», «Detail», «Detail Question».
+        // Без приведения аналитика дробила одну категорию на три.
+        function normCategory(name) {
+            const s = String(name || '').replace(/[_-]+/g, ' ').replace(/\s+question$/i, '').replace(/\s+/g, ' ').trim();
+            if (!s || /^question$/i.test(s)) return 'Other';
+            return s.toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase());
+        }
+
         // Количество заданий раньше было вписано руками («20 Sets», «18 Tracks»)
         async function loadHubCounts() {
             const put = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
@@ -339,7 +347,8 @@
                         let statsObj = row.category_stats;
                         if (typeof statsObj === 'string') { try { statsObj = JSON.parse(statsObj); } catch (e) { statsObj = null; } }
                         if (!statsObj || typeof statsObj !== 'object') return;
-                        for (const [categoryName, values] of Object.entries(statsObj)) {
+                        for (const [rawName, values] of Object.entries(statsObj)) {
+                            const categoryName = normCategory(rawName);
                             if (!categoryData[categoryName]) {
                                 categoryData[categoryName] = { earned: 0, total: 0 };
                             }
@@ -368,8 +377,12 @@
                 document.getElementById('tracksPlayedText').innerText = totalTracks;
 
                 const colorMap = {
-                    "Gist-Content": "bg-teal-500",
-                    "Gist-Purpose": "bg-emerald-400",
+                    "Gist Content": "bg-teal-500",
+                    "Gist Purpose": "bg-emerald-400",
+                    "Main Idea": "bg-teal-500",
+                    "Main Purpose": "bg-emerald-400",
+                    "Rhetorical Purpose": "bg-indigo-400",
+                    "Negative Detail": "bg-sky-500",
                     "Detail": "bg-cyan-600",
                     "Function": "bg-blue-500",
                     "Attitude": "bg-orange-400",
