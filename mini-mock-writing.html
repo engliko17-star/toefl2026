@@ -7,8 +7,15 @@
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <script>
+        // Если CDN иконок не ответил, страница не должна падать на lucide.createIcons()
+        if (!window.lucide || typeof window.lucide.createIcons !== 'function') window.lucide = { createIcons: function () {} };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Проверка входа и доступа к Writing. Раньше её на этой странице не было:
+         мок открывался у гостя, у неподтверждённой ученицы и при закрытом Writing. -->
+    <script src="auth.js"></script>
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -29,6 +36,10 @@
         .exam-textarea { resize: none; outline: none; font-family: inherit; }
         .word-slot { min-width: 90px; min-height: 40px; transition: all 0.2s; }
         .sortable-ghost { opacity: 0.2; background-color: #f1f5f9; border: 2px dashed #94a3b8; color: transparent; }
+        /* Планшеты и телефоны: жест над словом — это перетаскивание, а не прокрутка */
+        .mm-word, .word-slot, [id^="bank-"] { touch-action: none; }
+        .sortable-fallback { opacity: 1 !important; transform: scale(1.05); box-shadow: 0 8px 20px rgba(0,0,0,.18); }
+        .word-slot:empty { background: rgba(99, 102, 241, 0.06); border-radius: 8px 8px 0 0; }
     </style>
 </head>
 <body class="bg-[#f3f4f6] text-slate-800 antialiased flex flex-col opacity-0 transition-opacity duration-200" id="mainBody">
@@ -78,22 +89,41 @@
     <script>
         lucide.createIcons();
 
-        const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ'; 
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // ==========================================
+        // MINI-MOCK WRITING: Build a Sentence (6 мин) -> Email (7 мин) -> Academic (10 мин)
+        // ==========================================
+        // Что изменено после ревизии:
+        //  • вход и доступ к Writing проверяет auth.js (раньше проверки не было);
+        //  • один клиент базы на страницу (тот, что создал auth.js);
+        //  • каждая кнопка срабатывает один раз: двойной клик больше не
+        //    перескакивает часть и не отправляет пустое эссе;
+        //  • ответы сохраняются на устройстве на каждом шаге — перезагрузка или
+        //    случайный выход не теряют работу, таймер стоит, пока ученицы нет;
+        //  • отправка без дублей: повтор после сбоя не создаёт вторую попытку
+        //    и не задваивает ответы;
+        //  • если отправка не удалась — ответы остаются на устройстве, кнопка
+        //    «Отправить ещё раз», при следующем открытии страница отправит сама.
+        const db = window.supabaseClient;
+        const PHASE_MINUTES = { sentence: 6, email: 7, academic: 10 };
 
         let currentUser = null;
         let mockData = null;
-        
         let sentencesData = [];
         let emailData = null;
         let academicData = null;
-        
-        let currentPhase = 'sentence'; 
+
+        // 'loading' | 'sentence' | 'sentence-review' | 'transition' | 'email' | 'academic' | 'submitting' | 'failed' | 'success' | 'error'
+        let currentPhase = 'loading';
         let currentSentenceIndex = 0;
-        let userResponses = [];
-        
-        let timerInterval;
+        let sentenceAnswers = null;     // массив ответов после части 1
+        let emailText = '';
+        let academicText = '';
+        let attemptId = null;           // id попытки, когда она уже создана в базе
+        let timerInterval = null;
+        let secondsLeft = 0;
+        let draftKey = null;
+        let navLockUntil = 0;           // защита от двойного клика на смене части
+        let dragJustEnded = false;
 
         const dynamicTaskArea = document.getElementById('dynamicTaskArea');
         const navReview = document.getElementById('navReview');
@@ -103,316 +133,415 @@
         const navNextIcon = document.getElementById('navNextIcon');
         const timerBadge = document.getElementById('timerBadge');
 
+        function mmEsc(s) {
+            return String(s === null || s === undefined ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        function parseJson(v, fallback) {
+            if (typeof v !== 'string') return v === null || v === undefined ? fallback : v;
+            try { return JSON.parse(v); } catch (e) { return fallback; }
+        }
+
+        // Подсчёт слов как на реальном TOEFL / в обычных редакторах:
+        // токены через пробел, don't = 1 слово.
+        function countWords(text) {
+            const trimmed = (text || '').trim();
+            return trimmed ? trimmed.split(/\s+/).length : 0;
+        }
+
+        function lockNav() { navLockUntil = Date.now() + 600; }
+        function navLocked() { return Date.now() < navLockUntil; }
+
+        // ==========================================
+        // ЧЕРНОВИК НА УСТРОЙСТВЕ
+        // ==========================================
+        function readDraft() {
+            try { return JSON.parse(localStorage.getItem(draftKey)) || null; } catch (e) { return null; }
+        }
+        function clearDraft() {
+            try { localStorage.removeItem(draftKey); } catch (e) {}
+        }
+        function slotsSnapshot() {
+            return sentencesData.map((q, i) =>
+                [...document.querySelectorAll(`[id^="slot-${i}-"]`)].map(sl => sl.children.length ? sl.children[0].textContent.trim() : null));
+        }
+        function saveDraft() {
+            if (!draftKey || !mockData) return;
+            if (['loading', 'success', 'error'].includes(currentPhase)) return;
+            const inSentences = currentPhase === 'sentence' || currentPhase === 'sentence-review';
+            const phase = inSentences ? 'sentence' : (currentPhase === 'submitting' || currentPhase === 'failed') ? 'submit' : currentPhase;
+            const draft = {
+                v: 1,
+                ids: { s: sentencesData.map(q => String(q.id)), e: String(emailData.id), a: String(academicData.id) },
+                phase,
+                idx: currentSentenceIndex,
+                slots: inSentences ? slotsSnapshot() : null,
+                sentenceAnswers, emailText, academicText,
+                secondsLeft, attemptId,
+                savedAt: new Date().toISOString()
+            };
+            try { localStorage.setItem(draftKey, JSON.stringify(draft)); } catch (e) { /* хранилище недоступно — работаем без черновика */ }
+        }
+        function draftMatches(d) {
+            return d && d.ids
+                && JSON.stringify(d.ids.s || []) === JSON.stringify(sentencesData.map(q => String(q.id)))
+                && d.ids.e === String(emailData.id) && d.ids.a === String(academicData.id);
+        }
+
+        // ==========================================
+        // ЗАГРУЗКА
+        // ==========================================
+        function showFatal(message) {
+            currentPhase = 'error';
+            clearInterval(timerInterval);
+            [navReview, navBack, navNext, timerBadge].forEach(el => el.classList.add('hidden'));
+            document.getElementById('taskCounterLabel').textContent = 'Mini-Mock';
+            dynamicTaskArea.innerHTML = `
+                <div class="flex-1 flex items-center justify-center p-6">
+                    <div class="max-w-md text-center">
+                        <h2 class="text-xl font-black text-slate-900 mb-2">Test unavailable</h2>
+                        <p class="text-sm text-slate-500 mb-6">${mmEsc(message)}</p>
+                        <a href="mini-mock-writing-list.html" class="inline-flex bg-slate-900 hover:bg-slate-800 text-white px-6 py-3 rounded-xl text-sm font-bold">Back to Mini-Mocks</a>
+                    </div>
+                </div>`;
+            document.getElementById('mainBody').classList.remove('opacity-0');
+        }
+
         async function checkAuthAndLoad() {
             try {
-                const { data: { session } } = await supabaseClient.auth.getSession();
-                if (!session) return window.location.replace('index.html');
-                
-                currentUser = session.user;
-                document.getElementById('mainBody').classList.remove('opacity-0');
-                
+                if (typeof requireAuth !== 'function' || !db) throw new Error('Page failed to load. Please refresh it.');
+                currentUser = await requireAuth();
+                if (!currentUser) return; // auth.js уже показал нужный экран
+
                 const mockId = new URLSearchParams(window.location.search).get('id');
                 if (!mockId) return window.location.replace('mini-mock-writing-list.html');
-                
+                draftKey = `mmw_draft_v1:${currentUser.id}:${mockId}`;
+
+                document.getElementById('mainBody').classList.remove('opacity-0');
                 await loadMockData(mockId);
             } catch (err) {
                 console.error(err);
+                showFatal('Could not load the test. Check your connection and refresh the page.');
             }
         }
 
         async function loadMockData(mockId) {
-            try {
-                const { data: mock } = await supabaseClient.from('mini_mock_writing').select('*').eq('id', mockId).single();
-                mockData = mock;
+            const { data: mock, error: mockErr } = await db.from('mini_mock_writing').select('*').eq('id', mockId).maybeSingle();
+            if (mockErr) throw mockErr;
+            // Нет строки = такого мока нет или он скрыт преподавателем (глазик)
+            if (!mock) return showFatal('This test is not available right now.');
+            mockData = mock;
 
-                const { data: firstSentence } = await supabaseClient.from('writing_tasks').select('test_id').eq('id', mock.sentence_task_id).single();
-                const targetTestId = (firstSentence && firstSentence.test_id) ? firstSentence.test_id : mock.sentence_task_id;
-
-                const [sentencesRes, emailRes, academicRes] = await Promise.all([
-                    supabaseClient.from('writing_tasks').select('*').eq('type', 'sentence').eq('test_id', targetTestId).order('id'),
-                    supabaseClient.from('writing_tasks').select('*').eq('id', mock.email_task_id).single(),
-                    supabaseClient.from('writing_tasks').select('*').eq('id', mock.academic_task_id).single()
-                ]);
-
-                sentencesData = sentencesRes.data || [];
-                emailData = emailRes.data;
-                academicData = academicRes.data;
-
-                // Парсим JSON
-                sentencesData.forEach(q => {
-                    if (typeof q.structure === 'string') q.structure = JSON.parse(q.structure);
-                    if (typeof q.bank === 'string') q.bank = JSON.parse(q.bank);
-                });
-                if (typeof emailData.instructions === 'string') emailData.instructions = JSON.parse(emailData.instructions);
-                if (typeof academicData.peers === 'string') academicData.peers = JSON.parse(academicData.peers);
-
-                initPhaseSentence();
-            } catch (err) {
-                console.error(err);
-                alert("Error loading test data.");
+            // Build a Sentence: весь набор с тем же test_id, что у задания мока
+            if (mock.sentence_task_id !== null && mock.sentence_task_id !== undefined) {
+                const { data: first, error: firstErr } = await db.from('writing_tasks').select('*').eq('id', mock.sentence_task_id).maybeSingle();
+                if (firstErr) throw firstErr;
+                if (first && first.test_id !== null && first.test_id !== undefined) {
+                    const { data: set, error: setErr } = await db.from('writing_tasks').select('*')
+                        .eq('type', 'sentence').eq('test_id', first.test_id).order('id', { ascending: true });
+                    if (setErr) throw setErr;
+                    sentencesData = set || [];
+                } else if (first) {
+                    sentencesData = [first];
+                }
             }
+
+            const [emailRes, academicRes] = await Promise.all([
+                db.from('writing_tasks').select('*').eq('id', mock.email_task_id).maybeSingle(),
+                db.from('writing_tasks').select('*').eq('id', mock.academic_task_id).maybeSingle()
+            ]);
+            if (emailRes.error) throw emailRes.error;
+            if (academicRes.error) throw academicRes.error;
+            emailData = emailRes.data;
+            academicData = academicRes.data;
+
+            if (!sentencesData.length || !emailData || !academicData) {
+                console.error('[mini-mock] неполный мок', { mock, sentences: sentencesData.length, email: !!emailData, academic: !!academicData });
+                return showFatal('This test is not set up completely yet. Please tell your teacher.');
+            }
+
+            sentencesData.forEach(q => {
+                q.structure = parseJson(q.structure, []);
+                q.bank = parseJson(q.bank, []);
+            });
+            emailData.instructions = parseJson(emailData.instructions, []);
+            academicData.peers = parseJson(academicData.peers, []);
+
+            // Незаконченная попытка этого мока на этом устройстве
+            const draft = readDraft();
+            if (draft && !draftMatches(draft)) { clearDraft(); }
+            else if (draft) {
+                restoreDraft(draft);
+                if (draft.phase === 'submit') {
+                    // Ответы уже готовы, не дошли до базы — отправляем сразу
+                    currentPhase = 'failed';
+                    return submitSimulation(true);
+                }
+                if (confirm('You have an unfinished attempt of this test on this device.\n\nOK — continue where you stopped.\nCancel — start the test over.')) {
+                    const left = draft.secondsLeft > 0 ? draft.secondsLeft : null;
+                    if (draft.phase === 'transition') return showPhaseTransition();
+                    if (draft.phase === 'email') return initPhaseEmail(left);
+                    if (draft.phase === 'academic') return initPhaseAcademic(left);
+                    return initPhaseSentence(draft.slots, left);
+                }
+                clearDraft();
+                sentenceAnswers = null; emailText = ''; academicText = ''; attemptId = null; currentSentenceIndex = 0;
+            }
+            initPhaseSentence();
         }
 
-        // Подсчёт слов как на реальном TOEFL / в стандартных текстовых редакторах:
-        // считаем токены, разделённые пробелами, без исключения артиклей и без разрыва
-        // слов с апострофом (don't = 1 слово, а не 2).
-        function countWords(text) {
-            const trimmed = (text || '').trim();
-            if (!trimmed) return 0;
-            return trimmed.split(/\s+/).length;
-        }
-
-        function setupWordCounter(textareaId, counterId) {
-            const textarea = document.getElementById(textareaId);
-            const counter = document.getElementById(counterId);
-            if (textarea && counter) {
-                textarea.addEventListener('input', () => { counter.textContent = countWords(textarea.value); });
-            }
+        function restoreDraft(d) {
+            currentSentenceIndex = Math.min(Math.max(0, d.idx || 0), sentencesData.length - 1);
+            sentenceAnswers = Array.isArray(d.sentenceAnswers) ? d.sentenceAnswers : null;
+            emailText = d.emailText || '';
+            academicText = d.academicText || '';
+            attemptId = d.attemptId || null;
         }
 
         // ==========================================
-        // TIMER LOGIC
+        // ТАЙМЕР (останавливается, когда ученица ушла: остаток хранится в черновике)
         // ==========================================
-        function startPhaseTimer(minutes, timeoutCallback) {
+        function startPhaseTimer(minutes, timeoutCallback, secondsOverride) {
             clearInterval(timerInterval);
-            timerBadge.classList.remove('hidden'); 
-            
-            let seconds = minutes * 60;
+            timerBadge.classList.remove('hidden');
+            secondsLeft = secondsOverride ? Math.round(secondsOverride) : minutes * 60;
             const display = document.getElementById('timeLeft');
-            display.classList.remove('text-red-400');
-
-            timerInterval = setInterval(() => {
-                seconds--;
-                const m = Math.floor(seconds / 60).toString().padStart(2, '0');
-                const s = (seconds % 60).toString().padStart(2, '0');
+            const paint = () => {
+                const m = Math.floor(secondsLeft / 60).toString().padStart(2, '0');
+                const s = (secondsLeft % 60).toString().padStart(2, '0');
                 display.textContent = `${m}:${s}`;
-                
-                if (seconds <= 60) display.classList.add('text-red-400');
-                if (seconds <= 0) {
+                display.classList.toggle('text-red-400', secondsLeft <= 60);
+            };
+            paint();
+            const phaseAtStart = currentPhase;
+            timerInterval = setInterval(() => {
+                secondsLeft--;
+                paint();
+                saveDraft();
+                if (secondsLeft <= 0) {
                     clearInterval(timerInterval);
-                    timeoutCallback(); 
+                    // таймер мог «догнать» уже закрытую часть — тогда ничего не делаем
+                    if (currentPhase === phaseAtStart || (phaseAtStart === 'sentence' && currentPhase === 'sentence-review')) timeoutCallback(true);
                 }
             }, 1000);
         }
 
         // ==========================================
-        // PHASE 1: SENTENCES
+        // ЧАСТЬ 1: BUILD A SENTENCE
         // ==========================================
-        function initPhaseSentence() {
+        function getEndPunctuation(q) {
+            const lastChar = (q.sample_answer || '').trim().slice(-1);
+            return ['.', '?', '!'].includes(lastChar) ? lastChar : '.';
+        }
+
+        // Если последний текстовый кусок структуры уже заканчивается знаком —
+        // второй знак в конце не рисуем (раньше выходило «?.»)
+        function structureEndsWithMark(q) {
+            const items = Array.isArray(q.structure) ? q.structure : [];
+            const last = items[items.length - 1];
+            return !!(last && last.type === 'text' && /[.?!]\s*$/.test(String(last.value || '')));
+        }
+
+        function initPhaseSentence(savedSlots, secondsOverride) {
             currentPhase = 'sentence';
-            
+            lockNav();
             navReview.classList.remove('hidden');
             navNext.classList.remove('hidden');
-            navNext.classList.replace('bg-emerald-500', 'bg-indigo-600');
-            navNext.classList.replace('hover:bg-emerald-600', 'hover:bg-indigo-700');
             navNextIcon.classList.remove('hidden');
-            
-            let wrapper = document.getElementById('sentencesWrapper');
-            
-            if (!wrapper) {
-                dynamicTaskArea.innerHTML = `<div id="sentencesWrapper" class="w-full h-full flex flex-col flex-1 overflow-y-auto"></div>`;
-                wrapper = document.getElementById('sentencesWrapper');
-                
-                sentencesData.forEach((q, index) => {
-                    let sentenceHTML = '';
-                    (q.structure || []).forEach((item, sIndex) => {
-                        if (item.type === 'text') {
-                            sentenceHTML += `<div class="inline-flex shrink-0 px-1.5 py-2 text-sm font-bold text-slate-800 whitespace-nowrap">${item.value}</div>`;
-                        } else if (item.type === 'slot') {
-                            sentenceHTML += `<div class="word-slot inline-flex shrink-0 items-center justify-center border-b-2 border-gray-300 mx-1 pb-1 align-bottom" id="slot-${index}-${sIndex}"></div>`;
-                        }
-                    });
 
-                    const div = document.createElement('div');
-                    div.id = `sentence-container-${index}`;
-                    div.className = `w-full flex-1 flex flex-col items-center justify-center p-4 md:p-8 overflow-y-auto`;
-                    div.style.display = index === 0 ? 'flex' : 'none';
-                    
-                    let bankWords = [...(q.bank || [])].sort(() => Math.random() - 0.5);
-                    let bankHTML = bankWords.map(word => `<div class="bg-white border border-gray-200 text-slate-700 text-sm font-bold px-4 py-2 rounded-xl shadow-sm cursor-grab select-none hover:border-indigo-300 transition">${word}</div>`).join('');
+            dynamicTaskArea.innerHTML = `<div id="sentencesWrapper" class="w-full h-full flex flex-col flex-1 overflow-y-auto"></div>`;
+            const wrapper = document.getElementById('sentencesWrapper');
 
-                    div.innerHTML = `
-                        <div class="w-full max-w-6xl space-y-8 mb-12 bg-gray-50 p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm mt-4 shrink-0">
-                            <div class="flex items-start space-x-4">
-                                <div class="w-10 h-10 bg-blue-50 border rounded-full flex items-center justify-center text-lg shrink-0">${q.avatar_left || '👨‍🏫'}</div>
-                                <div class="bg-white border rounded-2xl px-5 py-3 text-sm text-slate-700 mt-1 shadow-sm font-medium">${q.prompt_context}</div>
-                            </div>
-                            <div class="flex items-start space-x-4 pt-4 border-t border-dashed border-gray-200">
-                                <div class="w-10 h-10 bg-rose-50 border rounded-full flex items-center justify-center text-lg shrink-0">${q.avatar_right || '👩‍🏫'}</div>
-                                <div class="flex-1 flex flex-wrap items-end gap-y-3 pt-1 pb-2">${sentenceHTML}<span class="shrink-0 text-2xl font-bold text-slate-400 select-none ml-1 align-bottom leading-none">${getEndPunctuation(q)}</span></div>
-                            </div>
+            const sortableOpts = { animation: 150, ghostClass: 'sortable-ghost', forceFallback: true, fallbackOnBody: true, fallbackTolerance: 3 };
+
+            sentencesData.forEach((q, index) => {
+                let sentenceHTML = '';
+                (Array.isArray(q.structure) ? q.structure : []).forEach((item, sIndex) => {
+                    if (item.type === 'text') {
+                        sentenceHTML += `<div class="inline-flex shrink-0 px-1.5 py-2 text-sm font-bold text-slate-800 whitespace-nowrap">${mmEsc(item.value)}</div>`;
+                    } else if (item.type === 'slot') {
+                        sentenceHTML += `<div class="word-slot inline-flex shrink-0 items-center justify-center border-b-2 border-gray-300 mx-1 pb-1 align-bottom" id="slot-${index}-${sIndex}"></div>`;
+                    }
+                });
+                const endMark = structureEndsWithMark(q) ? '' :
+                    `<span class="shrink-0 text-2xl font-bold text-slate-400 select-none ml-1 align-bottom leading-none">${getEndPunctuation(q)}</span>`;
+
+                const bankWords = [...(Array.isArray(q.bank) ? q.bank : [])].sort(() => Math.random() - 0.5);
+                const bankHTML = bankWords.map(word => `<div class="mm-word bg-white border border-gray-200 text-slate-700 text-sm font-bold px-4 py-2 rounded-xl shadow-sm cursor-grab select-none hover:border-indigo-300 transition">${mmEsc(word)}</div>`).join('');
+
+                const div = document.createElement('div');
+                div.id = `sentence-container-${index}`;
+                div.className = 'w-full flex-1 flex flex-col items-center justify-center p-4 md:p-8 overflow-y-auto';
+                div.style.display = index === currentSentenceIndex ? 'flex' : 'none';
+                div.innerHTML = `
+                    <div class="w-full max-w-6xl space-y-8 mb-12 bg-gray-50 p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm mt-4 shrink-0">
+                        <div class="flex items-start space-x-4">
+                            <div class="w-10 h-10 bg-blue-50 border rounded-full flex items-center justify-center text-lg shrink-0">${mmEsc(q.avatar_left || '👨‍🏫')}</div>
+                            <div class="bg-white border rounded-2xl px-5 py-3 text-sm text-slate-700 mt-1 shadow-sm font-medium">${q.prompt_context || ''}</div>
                         </div>
-                        <div class="w-full max-w-3xl mx-auto shrink-0 pb-10">
-                            <div class="flex flex-wrap justify-center gap-2.5 bg-gray-50 border border-gray-200 p-5 rounded-3xl min-h-[80px]" id="bank-${index}">${bankHTML}</div>
+                        <div class="flex items-start space-x-4 pt-4 border-t border-dashed border-gray-200">
+                            <div class="w-10 h-10 bg-rose-50 border rounded-full flex items-center justify-center text-lg shrink-0">${mmEsc(q.avatar_right || '👩‍🏫')}</div>
+                            <div class="flex-1 flex flex-wrap items-end gap-y-3 pt-1 pb-2">${sentenceHTML}${endMark}</div>
                         </div>
-                    `;
-                    wrapper.appendChild(div);
+                    </div>
+                    <div class="w-full max-w-3xl mx-auto shrink-0 pb-10">
+                        <div class="flex flex-wrap justify-center gap-2.5 bg-gray-50 border border-gray-200 p-5 rounded-3xl min-h-[80px]" id="bank-${index}">${bankHTML}</div>
+                        <p class="text-[11px] text-slate-400 text-center mt-3">Drag the words into the blanks, or tap a word to place it. Tap a placed word to return it.</p>
+                    </div>
+                `;
+                wrapper.appendChild(div);
 
-                    new Sortable(div.querySelector(`#bank-${index}`), { group: `shared-${index}`, animation: 150 });
+                if (typeof Sortable !== 'undefined') {
+                    const onEnd = () => { dragJustEnded = true; setTimeout(() => { dragJustEnded = false; }, 80); saveDraft(); };
+                    new Sortable(div.querySelector(`#bank-${index}`), { group: `shared-${index}`, onEnd, ...sortableOpts });
                     div.querySelectorAll(`[id^="slot-${index}-"]`).forEach(slot => {
-                        new Sortable(slot, { 
-                            group: {
-                                name: `shared-${index}`,
-                                put: function (to) {
-                                    return to.el.children.length === 0;
-                                }
-                            }, 
-                            animation: 150 
+                        new Sortable(slot, {
+                            group: { name: `shared-${index}`, put: to => to.el.children.length === 0 },
+                            onEnd, ...sortableOpts
                         });
                     });
+                }
+
+                // Размещение нажатием — работает и на телефоне, и без SortableJS
+                div.addEventListener('click', e => {
+                    if (dragJustEnded) return;
+                    const word = e.target.closest('.mm-word');
+                    if (!word || !div.contains(word)) return;
+                    const bank = div.querySelector(`#bank-${index}`);
+                    if (word.parentElement === bank) {
+                        const empty = [...div.querySelectorAll(`[id^="slot-${index}-"]`)].find(s => s.children.length === 0);
+                        if (empty) empty.appendChild(word);
+                    } else {
+                        bank.appendChild(word);
+                    }
+                    saveDraft();
                 });
 
-                startPhaseTimer(6, finishSentencePhase);
-            }
+                // Продолжение: раскладываем сохранённые слова по ячейкам
+                const saved = Array.isArray(savedSlots) ? savedSlots[index] : null;
+                if (Array.isArray(saved)) {
+                    const bank = div.querySelector(`#bank-${index}`);
+                    const slots = [...div.querySelectorAll(`[id^="slot-${index}-"]`)];
+                    saved.forEach((w, k) => {
+                        if (!w || !slots[k]) return;
+                        const el = [...bank.querySelectorAll('.mm-word')].find(x => x.textContent.trim() === w);
+                        if (el) slots[k].appendChild(el);
+                    });
+                }
+            });
 
-            const reviewWrapper = document.getElementById('sentenceReviewWrapper');
-            if (reviewWrapper) reviewWrapper.style.display = 'none';
-            wrapper.style.display = 'flex';
-
+            startPhaseTimer(PHASE_MINUTES.sentence, finishSentencePhase, secondsOverride);
             updateSentenceUI();
         }
 
         function updateSentenceUI() {
+            currentPhase = 'sentence';
+            const reviewWrapper = document.getElementById('sentenceReviewWrapper');
+            if (reviewWrapper) reviewWrapper.remove();
+            const wrapper = document.getElementById('sentencesWrapper');
+            if (wrapper) wrapper.style.display = 'flex';
+            navReview.classList.remove('hidden');
+
             document.getElementById('taskCounterLabel').textContent = `Question ${currentSentenceIndex + 1} of ${sentencesData.length} (Sentence Build)`;
-            
             sentencesData.forEach((_, i) => {
                 const c = document.getElementById(`sentence-container-${i}`);
                 if (c) c.style.display = i === currentSentenceIndex ? 'flex' : 'none';
             });
 
-            if (currentSentenceIndex === 0) {
-                navBack.classList.add('hidden');
-            } else {
-                navBack.classList.remove('hidden');
-                navBack.onclick = () => { currentSentenceIndex--; updateSentenceUI(); };
-            }
-            
-            if (currentSentenceIndex === sentencesData.length - 1) {
-                navNextText.textContent = "Next Part";
-                navNext.onclick = finishSentencePhase; 
-            } else {
-                navNextText.textContent = "Next";
-                navNext.onclick = () => { currentSentenceIndex++; updateSentenceUI(); };
-            }
-            
-            navReview.onclick = showSentenceReview;
+            navBack.classList.toggle('hidden', currentSentenceIndex === 0);
+            navNextText.textContent = currentSentenceIndex === sentencesData.length - 1 ? 'Next Part' : 'Next';
+            saveDraft();
         }
 
         function isSentenceComplete(index) {
             const slots = document.querySelectorAll(`[id^="slot-${index}-"]`);
-            for (let slot of slots) {
-                if (slot.children.length === 0) return false;
-            }
+            if (!slots.length) return false;
+            for (const slot of slots) if (slot.children.length === 0) return false;
             return true;
-        }
-
-        // Определяет верный финальный знак препинания на основе sample_answer задания
-        // (может быть "." или "?" или "!"), вместо того чтобы всегда считать, что это точка.
-        function getEndPunctuation(q) {
-            const sample = (q.sample_answer || '').trim();
-            const lastChar = sample.slice(-1);
-            return ['.', '?', '!'].includes(lastChar) ? lastChar : '.';
         }
 
         function getSentenceAnswer(index) {
             const q = sentencesData[index];
-            let parts = [];
-            (q.structure || []).forEach((item, sIndex) => {
+            const parts = [];
+            let filled = 0;
+            (Array.isArray(q.structure) ? q.structure : []).forEach((item, sIndex) => {
                 if (item.type === 'text') parts.push(item.value);
                 else if (item.type === 'slot') {
                     const s = document.getElementById(`slot-${index}-${sIndex}`);
-                    parts.push(s && s.children.length > 0 ? s.children[0].textContent.trim() : "____");
+                    if (s && s.children.length > 0) { parts.push(s.children[0].textContent.trim()); filled++; }
+                    else parts.push('____');
                 }
             });
-            // Схлопываем случайные двойные пробелы (могут возникать, если у отдельных
-            // text-сегментов структуры уже были пробелы по краям — в браузере это незаметно,
-            // но ломает точное сравнение строк при проверке ответа) и убираем пробел перед
-            // конечной пунктуацией.
-            let sentence = parts.join(" ")
-                .replace(/\s+/g, " ")
-                .replace(/\s+([.?!])/g, "$1")
-                .trim();
-
-            if (!['.', '?', '!'].includes(sentence.slice(-1))) {
-                sentence += getEndPunctuation(q);
-            }
+            if (filled === 0) return ''; // ничего не собрано — пустой ответ, а не строка из подчёркиваний
+            let sentence = parts.join(' ').replace(/\s+/g, ' ').replace(/\s+([.?!,;:])/g, '$1').trim();
+            if (!['.', '?', '!'].includes(sentence.slice(-1))) sentence += getEndPunctuation(q);
             return sentence;
         }
 
         function showSentenceReview() {
+            if (currentPhase !== 'sentence') return;
             currentPhase = 'sentence-review';
-            document.getElementById('taskCounterLabel').textContent = "Review Sentences";
-
+            document.getElementById('taskCounterLabel').textContent = 'Review Sentences';
             navReview.classList.add('hidden');
             navBack.classList.remove('hidden');
-            navBack.onclick = initPhaseSentence; 
-            
-            navNextText.textContent = "Next Part";
-            navNext.onclick = finishSentencePhase;
-
+            navNextText.textContent = 'Next Part';
             document.getElementById('sentencesWrapper').style.display = 'none';
 
-            let reviewDiv = document.getElementById('sentenceReviewWrapper');
-            if (!reviewDiv) {
-                reviewDiv = document.createElement('div');
-                reviewDiv.id = 'sentenceReviewWrapper';
-                reviewDiv.className = 'p-4 md:p-8 max-w-3xl mx-auto w-full h-full flex flex-col flex-1 overflow-y-auto';
-                dynamicTaskArea.appendChild(reviewDiv);
-            }
-
-            let listHTML = sentencesData.map((s, i) => `
+            const listHTML = sentencesData.map((s, i) => `
                 <div class="flex justify-between items-center p-4 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0 transition" onclick="returnToSentence(${i})">
                     <div class="flex items-center gap-3">
-                        <span class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">${i+1}</span>
+                        <span class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">${i + 1}</span>
                         <span class="font-bold text-slate-700">Sentence ${i + 1}</span>
                     </div>
-                    ${isSentenceComplete(i) 
-                        ? `<span class="text-emerald-500 bg-emerald-50 px-3 py-1 rounded-lg font-bold text-xs flex items-center"><i data-lucide="check" class="w-3 h-3 mr-1"></i> Complete</span>` 
-                        : `<span class="text-rose-500 bg-rose-50 px-3 py-1 rounded-lg font-bold text-xs flex items-center"><i data-lucide="alert-circle" class="w-3 h-3 mr-1"></i> Incomplete</span>`}
+                    ${isSentenceComplete(i)
+                        ? '<span class="text-emerald-500 bg-emerald-50 px-3 py-1 rounded-lg font-bold text-xs flex items-center"><i data-lucide="check" class="w-3 h-3 mr-1"></i> Complete</span>'
+                        : '<span class="text-rose-500 bg-rose-50 px-3 py-1 rounded-lg font-bold text-xs flex items-center"><i data-lucide="alert-circle" class="w-3 h-3 mr-1"></i> Incomplete</span>'}
                 </div>
             `).join('');
 
+            const reviewDiv = document.createElement('div');
+            reviewDiv.id = 'sentenceReviewWrapper';
+            reviewDiv.className = 'p-4 md:p-8 max-w-3xl mx-auto w-full h-full flex flex-col flex-1 overflow-y-auto';
             reviewDiv.innerHTML = `
                 <h2 class="text-2xl font-black text-slate-900 mb-6 text-center">Section 1 Review</h2>
-                <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex-1 shrink-0">
-                    ${listHTML}
-                </div>
+                <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden shrink-0">${listHTML}</div>
             `;
-            reviewDiv.style.display = 'flex';
+            dynamicTaskArea.appendChild(reviewDiv);
             lucide.createIcons();
         }
 
-        window.returnToSentence = function(i) {
-            currentSentenceIndex = i;
-            initPhaseSentence(); 
+        window.returnToSentence = function (i) {
+            if (currentPhase !== 'sentence' && currentPhase !== 'sentence-review') return;
+            currentSentenceIndex = Math.max(0, Math.min(sentencesData.length - 1, i));
+            updateSentenceUI();
         };
 
-        async function finishSentencePhase() {
-            sentencesData.forEach((q, i) => {
-                userResponses.push({
-                    task_id: q.id,
-                    task_type: 'sentence',
-                    response_content: getSentenceAnswer(i),
-                    user_id: currentUser.id
-                });
-            });
-            
+        function finishSentencePhase(byTimer) {
+            if (currentPhase !== 'sentence' && currentPhase !== 'sentence-review') return;
+            if (byTimer !== true) {
+                const unanswered = sentencesData.filter((_, i) => !isSentenceComplete(i)).length;
+                const msg = unanswered > 0
+                    ? `You have ${unanswered} unfinished sentence(s). You cannot return to this part. Continue?`
+                    : 'You cannot return to this part after moving on. Continue?';
+                if (!confirm(msg)) return;
+                if (currentPhase !== 'sentence' && currentPhase !== 'sentence-review') return;
+            }
+            clearInterval(timerInterval);
+            sentenceAnswers = sentencesData.map((_, i) => getSentenceAnswer(i));
             showPhaseTransition();
         }
 
         // ==========================================
-        // TRANSITION SCREEN
+        // ЭКРАН-ПЕРЕХОД
         // ==========================================
         function showPhaseTransition() {
             currentPhase = 'transition';
-            
-            navReview.classList.add('hidden');
-            navBack.classList.add('hidden');
-            navNext.classList.add('hidden');
-            timerBadge.classList.add('hidden');
+            lockNav();
             clearInterval(timerInterval);
-
-            document.getElementById('taskCounterLabel').textContent = "Section Transition";
+            [navReview, navBack, navNext, timerBadge].forEach(el => el.classList.add('hidden'));
+            document.getElementById('taskCounterLabel').textContent = 'Section Transition';
 
             dynamicTaskArea.innerHTML = `
                 <div class="flex-1 flex items-center justify-center p-6 bg-slate-50 w-full h-full">
@@ -422,36 +551,39 @@
                         </div>
                         <h2 class="text-3xl font-black text-slate-900 mb-3">Writing Section</h2>
                         <p class="text-slate-500 mb-8 max-w-md mx-auto text-[15px] leading-relaxed">
-                            You have successfully completed the <b>Sentence Building</b> tasks. <br><br>
-                            Next, you will write an <b>Email</b> and participate in an <b>Academic Discussion</b>. Each of these tasks will have its own time limit.
+                            You have completed the <b>Sentence Building</b> tasks. <br><br>
+                            Next, you will write an <b>Email</b> (7 minutes) and participate in an <b>Academic Discussion</b> (10 minutes).
                         </p>
-                        <button onclick="initPhaseEmail()" class="inline-flex bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3.5 rounded-xl text-sm font-bold transition shadow-sm items-center">
+                        <button id="startWritingBtn" class="inline-flex bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3.5 rounded-xl text-sm font-bold transition shadow-sm items-center">
                             Start Writing Tasks <i data-lucide="arrow-right" class="w-4 h-4 ml-2"></i>
                         </button>
                     </div>
                 </div>
             `;
+            document.getElementById('startWritingBtn').onclick = () => { if (currentPhase === 'transition') initPhaseEmail(); };
             lucide.createIcons();
+            saveDraft();
         }
 
         // ==========================================
-        // PHASE 2: EMAIL
+        // ЧАСТЬ 2: EMAIL
         // ==========================================
-        function initPhaseEmail() {
+        function initPhaseEmail(secondsOverride) {
             currentPhase = 'email';
-            
-            navNext.classList.remove('hidden'); 
-            navNextText.textContent = "Next Task";
-            navNext.onclick = finishEmailPhase;
-            
-            document.getElementById('taskCounterLabel').textContent = "Task 1 of 2 (Email)";
-            
-            let instr = (emailData.instructions || []).map(li => `<li>${li}</li>`).join('');
+            lockNav();
+            navReview.classList.add('hidden');
+            navBack.classList.add('hidden');
+            navNext.classList.remove('hidden');
+            navNextIcon.classList.remove('hidden');
+            navNextText.textContent = 'Next Task';
+            document.getElementById('taskCounterLabel').textContent = 'Task 1 of 2 (Email)';
+
+            const instr = (Array.isArray(emailData.instructions) ? emailData.instructions : []).map(li => `<li>${li}</li>`).join('');
             dynamicTaskArea.innerHTML = `
-                <div class="flex flex-col md:flex-row h-full divide-y md:divide-y-0 md:divide-x divide-gray-200 w-full">
+                <div class="flex flex-col md:flex-row h-full divide-y md:divide-y-0 md:divide-x divide-gray-200 w-full overflow-y-auto md:overflow-hidden">
                     <div class="w-full md:w-1/2 p-6 overflow-y-auto bg-white">
                         <h2 class="text-xl font-bold mb-4 text-slate-900">${emailData.title || 'Email Writing'}</h2>
-                        <p class="text-sm text-slate-700 leading-relaxed">${emailData.prompt_context}</p>
+                        <p class="text-sm text-slate-700 leading-relaxed whitespace-pre-line">${emailData.prompt_context || ''}</p>
                         <hr class="my-6 border-gray-100">
                         <div class="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
                             <h3 class="text-sm font-bold uppercase tracking-wide text-indigo-900">Write an email to ${emailData.meta_to || 'Recipient'}. In the email:</h3>
@@ -467,160 +599,231 @@
                                 </div>
                                 <span class="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">Words: <span id="emailWordCount">0</span></span>
                             </div>
-                            <textarea id="emailResponse" placeholder="Write your email here..." class="exam-textarea flex-1 p-5 text-sm text-slate-700 w-full h-full"></textarea>
+                            <textarea id="emailResponse" spellcheck="false" autocomplete="off" placeholder="Write your email here..." class="exam-textarea flex-1 p-5 text-sm text-slate-700 w-full h-full"></textarea>
                         </div>
                     </div>
                 </div>
             `;
-            setupWordCounter('emailResponse', 'emailWordCount');
-            startPhaseTimer(7, finishEmailPhase); 
+            const ta = document.getElementById('emailResponse');
+            const counter = document.getElementById('emailWordCount');
+            ta.value = emailText;
+            counter.textContent = countWords(ta.value);
+            ta.addEventListener('input', () => { emailText = ta.value; counter.textContent = countWords(ta.value); saveDraft(); });
+            lucide.createIcons();
+            startPhaseTimer(PHASE_MINUTES.email, finishEmailPhase, secondsOverride);
+            saveDraft();
         }
 
-        async function finishEmailPhase() {
-            const ans = document.getElementById('emailResponse') ? document.getElementById('emailResponse').value.trim() : "";
-            userResponses.push({
-                task_id: emailData.id,
-                task_type: 'email',
-                response_content: ans,
-                user_id: currentUser.id
-            });
+        function finishEmailPhase(byTimer) {
+            if (currentPhase !== 'email') return;
+            if (byTimer !== true) {
+                if (!confirm('Finish the email and move on? You cannot return to it.')) return;
+                if (currentPhase !== 'email') return;
+            }
+            clearInterval(timerInterval);
+            const ta = document.getElementById('emailResponse');
+            if (ta) emailText = ta.value;
             initPhaseAcademic();
         }
 
         // ==========================================
-        // PHASE 3: ACADEMIC
+        // ЧАСТЬ 3: ACADEMIC DISCUSSION
         // ==========================================
-        function initPhaseAcademic() {
+        function initPhaseAcademic(secondsOverride) {
             currentPhase = 'academic';
-            
+            lockNav();
             navReview.classList.add('hidden');
             navBack.classList.add('hidden');
-            
-            navNextText.textContent = "Submit Simulation";
+            navNext.classList.remove('hidden');
+            navNextText.textContent = 'Submit Simulation';
             navNextIcon.classList.add('hidden');
             navNext.classList.replace('bg-indigo-600', 'bg-emerald-500');
             navNext.classList.replace('hover:bg-indigo-700', 'hover:bg-emerald-600');
-            navNext.onclick = submitSimulation;
-            
-            document.getElementById('taskCounterLabel').textContent = "Task 2 of 2 (Academic Discussion)";
+            document.getElementById('taskCounterLabel').textContent = 'Task 2 of 2 (Academic Discussion)';
 
-            let peersHTML = (academicData.peers || []).map(p => `
+            const peersHTML = (Array.isArray(academicData.peers) ? academicData.peers : []).map(p => `
                 <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex gap-4 shrink-0">
                     <div class="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-lg shrink-0 border border-indigo-100">${p.avatar || '👤'}</div>
                     <div>
-                        <p class="text-xs font-bold text-slate-400 uppercase mb-1">${p.name}</p>
-                        <p class="text-sm text-slate-700 leading-relaxed">${p.text}</p>
+                        <p class="text-xs font-bold text-slate-400 uppercase mb-1">${p.name || ''}</p>
+                        <p class="text-sm text-slate-700 leading-relaxed">${p.text || ''}</p>
                     </div>
                 </div>
             `).join('');
 
             dynamicTaskArea.innerHTML = `
-                <div class="flex flex-col md:flex-row h-full divide-y md:divide-y-0 md:divide-x divide-gray-200 w-full">
+                <div class="flex flex-col md:flex-row h-full divide-y md:divide-y-0 md:divide-x divide-gray-200 w-full overflow-y-auto md:overflow-hidden">
                     <div class="w-full md:w-1/2 p-6 overflow-y-auto bg-white">
                         <h2 class="text-xl font-bold mb-4 text-slate-900">${academicData.title || 'Academic Discussion'}</h2>
-                        <div class="bg-teal-50 text-teal-900 p-4 rounded-xl text-sm font-medium mb-6 border border-teal-100 leading-relaxed">
-                            ${academicData.instruction_box || ''}
-                        </div>
+                        ${academicData.instruction_box ? `<div class="bg-teal-50 text-teal-900 p-4 rounded-xl text-sm font-medium mb-6 border border-teal-100 leading-relaxed">${academicData.instruction_box}</div>` : ''}
                         <div class="bg-gray-50 p-5 rounded-2xl border border-gray-200 flex gap-4 shrink-0">
                             <div class="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-2xl shrink-0 border border-gray-200 shadow-sm">${academicData.professor_avatar || '👨‍🏫'}</div>
                             <div>
                                 <p class="text-xs font-black text-slate-500 uppercase tracking-wide mb-1.5">${academicData.professor_name || 'Professor'}</p>
-                                <div class="text-sm text-slate-800 leading-relaxed font-medium">${academicData.professor_prompt || ''}</div>
+                                <div class="text-sm text-slate-800 leading-relaxed font-medium whitespace-pre-line">${academicData.professor_prompt || ''}</div>
                             </div>
                         </div>
                     </div>
                     <div class="w-full md:w-1/2 p-6 bg-slate-50 flex flex-col gap-4 overflow-y-auto">
-                        <div class="flex flex-col gap-4 shrink-0">
-                            ${peersHTML}
-                        </div>
+                        <div class="flex flex-col gap-4 shrink-0">${peersHTML}</div>
                         <div class="bg-white border border-gray-200 rounded-2xl flex flex-col mt-4 flex-1 min-h-[300px] shadow-sm overflow-hidden">
                             <div class="flex justify-between items-center bg-gray-50 px-4 py-3 border-b border-gray-200 shrink-0">
                                 <span class="text-xs font-black text-slate-400 uppercase tracking-wide">TOEFL Editor</span>
                                 <span class="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">Words: <span id="academicWordCount">0</span></span>
                             </div>
-                            <textarea id="academicResponse" placeholder="Write your contribution here..." class="exam-textarea flex-1 p-5 text-sm text-slate-700 w-full h-full"></textarea>
+                            <textarea id="academicResponse" spellcheck="false" autocomplete="off" placeholder="Write your contribution here..." class="exam-textarea flex-1 p-5 text-sm text-slate-700 w-full h-full"></textarea>
                         </div>
                     </div>
                 </div>
             `;
+            const ta = document.getElementById('academicResponse');
+            const counter = document.getElementById('academicWordCount');
+            ta.value = academicText;
+            counter.textContent = countWords(ta.value);
+            ta.addEventListener('input', () => { academicText = ta.value; counter.textContent = countWords(ta.value); saveDraft(); });
             lucide.createIcons();
-            setupWordCounter('academicResponse', 'academicWordCount');
-            startPhaseTimer(10, submitSimulation); 
+            startPhaseTimer(PHASE_MINUTES.academic, submitSimulation, secondsOverride);
+            saveDraft();
         }
 
         // ==========================================
-        // SUBMIT AND SHOW SUCCESS SCREEN
+        // КНОПКИ ХЕДЕРА — по одному обработчику на кнопку
         // ==========================================
-        async function submitSimulation() {
-            navNext.disabled = true;
-            navNextText.innerHTML = `<span class="animate-pulse">Submitting...</span>`;
-            
-            const ans = document.getElementById('academicResponse') ? document.getElementById('academicResponse').value.trim() : "";
-            userResponses.push({
-                task_id: academicData.id,
-                task_type: 'academic',
-                response_content: ans,
+        navNext.onclick = () => {
+            if (navLocked()) return;
+            if (currentPhase === 'sentence') {
+                if (currentSentenceIndex < sentencesData.length - 1) { currentSentenceIndex++; updateSentenceUI(); }
+                else finishSentencePhase(false);
+            } else if (currentPhase === 'sentence-review') {
+                finishSentencePhase(false);
+            } else if (currentPhase === 'email') {
+                finishEmailPhase(false);
+            } else if (currentPhase === 'academic') {
+                submitSimulation(false);
+            }
+        };
+        navBack.onclick = () => {
+            if (currentPhase === 'sentence-review') { updateSentenceUI(); return; }
+            if (currentPhase === 'sentence' && currentSentenceIndex > 0) { currentSentenceIndex--; updateSentenceUI(); }
+        };
+        navReview.onclick = showSentenceReview;
+
+        // ==========================================
+        // ОТПРАВКА
+        // ==========================================
+        function buildRows() {
+            const rows = sentencesData.map((q, i) => ({
+                task_id: q.id, task_type: 'sentence',
+                response_content: (sentenceAnswers && sentenceAnswers[i]) || '',
                 user_id: currentUser.id
-            });
-            
+            }));
+            rows.push({ task_id: emailData.id, task_type: 'email', response_content: (emailText || '').trim(), user_id: currentUser.id });
+            rows.push({ task_id: academicData.id, task_type: 'academic', response_content: (academicText || '').trim(), user_id: currentUser.id });
+            return rows;
+        }
+
+        function showSavingScreen(html) {
+            [navReview, navBack, navNext, timerBadge].forEach(el => el.classList.add('hidden'));
+            document.getElementById('taskCounterLabel').textContent = 'Submitting';
+            dynamicTaskArea.innerHTML = `<div class="flex-1 flex items-center justify-center p-6 w-full h-full">${html}</div>`;
+            lucide.createIcons();
+        }
+
+        async function submitSimulation(byTimer) {
+            if (currentPhase === 'academic') {
+                if (byTimer !== true) {
+                    if (!confirm('Submit the test now? You cannot change your answers after this.')) return;
+                    if (currentPhase !== 'academic') return;
+                }
+                const ta = document.getElementById('academicResponse');
+                if (ta) academicText = ta.value;
+            } else if (currentPhase !== 'failed') {
+                return; // уже отправляется / отправлено / не та часть
+            }
+
+            clearInterval(timerInterval);
+            currentPhase = 'submitting';
+            saveDraft(); // ответы готовы — до отправки они лежат на устройстве
+            showSavingScreen(`<div class="text-center text-slate-500"><div class="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div><p class="font-bold text-slate-700">Submitting your answers...</p></div>`);
+
             try {
-                // 1. Создаем попытку
-                const { data: attempt, error: attemptError } = await supabaseClient
-                    .from('mini_mock_writing_attempts')
-                    .insert([{ user_id: currentUser.id, mock_id: mockData.id }])
-                    .select()
-                    .single();
+                // 1. Попытка. Если она уже создана при прошлой отправке — вторую не создаём.
+                if (!attemptId) {
+                    const { data: attempt, error: attemptError } = await db
+                        .from('mini_mock_writing_attempts')
+                        .insert([{ user_id: currentUser.id, mock_id: mockData.id }])
+                        .select('id')
+                        .single();
+                    if (attemptError) throw attemptError;
+                    if (!attempt || attempt.id === null || attempt.id === undefined) throw new Error('The attempt was not created.');
+                    attemptId = attempt.id;
+                    saveDraft();
+                }
 
-                if (attemptError) throw attemptError;
-
-                // 2. Привязываем attempt_id
-                const responsesWithAttempt = userResponses.map(resp => ({
-                    ...resp,
-                    attempt_id: attempt.id
-                }));
-
-                // 3. Отправляем ответы
-                const { error: responsesError } = await supabaseClient
+                // 2. Ответы. Если они уже дошли при прошлой отправке — не задваиваем.
+                const { count, error: countError } = await db
                     .from('mini_mock_writing_responses')
-                    .insert(responsesWithAttempt);
-                    
-                if (responsesError) throw responsesError;
-                
-                // 4. Показываем обновленный экран с двумя кнопками
-                document.getElementById('examContainer').classList.add('hidden');
-                document.querySelector('header').classList.add('hidden');
-                
-                const successScreen = document.getElementById('successScreen');
-                successScreen.classList.replace('hidden', 'flex');
-                
-                successScreen.innerHTML = `
-                    <div class="w-full max-w-2xl bg-white rounded-3xl p-10 text-center border border-gray-100 shadow-lg">
-                        <div class="w-20 h-20 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                            <i data-lucide="check-circle-2" class="w-10 h-10"></i>
-                        </div>
-                        <h2 class="text-2xl font-black text-slate-900 mb-2">Simulation Complete!</h2>
-                        <p class="text-gray-500 mb-8 max-w-md mx-auto">All responses have been successfully saved to the database.</p>
-                        <div class="flex flex-col sm:flex-row justify-center gap-4">
-                            <a href="mini-mock-writing-list.html" class="inline-flex justify-center bg-gray-100 hover:bg-gray-200 text-slate-700 px-6 py-3.5 rounded-xl text-sm font-bold transition shadow-sm items-center">
-                                Dashboard
-                            </a>
-                            <a href="mini-mock-results.html?attempt_id=${attempt.id}" class="inline-flex justify-center bg-slate-900 hover:bg-slate-800 text-white px-8 py-3.5 rounded-xl text-sm font-bold transition shadow-sm items-center">
-                                View Full Review <i data-lucide="arrow-right" class="w-4 h-4 ml-2"></i>
-                            </a>
-                        </div>
-                    </div>
-                `;
-                lucide.createIcons();
-                
+                    .select('id', { count: 'exact', head: true })
+                    .eq('attempt_id', attemptId);
+                if (countError) throw countError;
+                if (!count) {
+                    const rows = buildRows().map(r => ({ ...r, attempt_id: attemptId }));
+                    const { error: responsesError } = await db.from('mini_mock_writing_responses').insert(rows);
+                    if (responsesError) throw responsesError;
+                }
+
+                clearDraft();
+                currentPhase = 'success';
+                showSuccess();
             } catch (err) {
-                console.error("Full error object:", err);
-                alert("Error submitting. Please try again.\n" + (err.message || JSON.stringify(err)));
-                navNext.disabled = false;
-                navNextText.textContent = "Submit Simulation";
+                console.error('Не удалось отправить мини-мок:', err);
+                currentPhase = 'failed';
+                saveDraft();
+                const network = !err || !err.code || /fetch|network|failed to/i.test(err.message || '');
+                showSavingScreen(`
+                    <div class="w-full max-w-lg bg-white rounded-3xl p-8 text-center border border-amber-200 shadow-sm">
+                        <h2 class="text-xl font-black text-slate-900 mb-2">Your answers were not sent yet</h2>
+                        <p class="text-sm text-slate-500 mb-2">They are saved on this device. ${network
+                            ? 'Check your internet connection and try again.'
+                            : 'The server did not accept them — please tell your teacher.'}</p>
+                        <p class="text-xs text-slate-400 mb-6">${mmEsc(err && (err.message || err.code) || '')}</p>
+                        <button id="retrySubmitBtn" class="inline-flex bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl text-sm font-bold">Try again</button>
+                    </div>`);
+                document.getElementById('retrySubmitBtn').onclick = () => submitSimulation(true);
             }
         }
 
-        window.onbeforeunload = () => (currentPhase !== 'success' && !document.getElementById('examContainer').classList.contains('hidden')) ? "Warning" : null;
+        function showSuccess() {
+            document.getElementById('examContainer').classList.add('hidden');
+            document.getElementById('topHeader').classList.add('hidden');
+            const successScreen = document.getElementById('successScreen');
+            successScreen.classList.replace('hidden', 'flex');
+            successScreen.innerHTML = `
+                <div class="w-full max-w-2xl bg-white rounded-3xl p-10 text-center border border-gray-100 shadow-lg">
+                    <div class="w-20 h-20 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                        <i data-lucide="check-circle-2" class="w-10 h-10"></i>
+                    </div>
+                    <h2 class="text-2xl font-black text-slate-900 mb-2">Simulation Complete!</h2>
+                    <p class="text-gray-500 mb-8 max-w-md mx-auto">All responses have been saved. Your teacher will review the Email and the Academic Discussion.</p>
+                    <div class="flex flex-col sm:flex-row justify-center gap-4">
+                        <a href="mini-mock-writing-list.html" class="inline-flex justify-center bg-gray-100 hover:bg-gray-200 text-slate-700 px-6 py-3.5 rounded-xl text-sm font-bold transition shadow-sm items-center">Dashboard</a>
+                        <a href="mini-mock-results.html?attempt_id=${encodeURIComponent(attemptId)}" class="inline-flex justify-center bg-slate-900 hover:bg-slate-800 text-white px-8 py-3.5 rounded-xl text-sm font-bold transition shadow-sm items-center">
+                            View Full Review <i data-lucide="arrow-right" class="w-4 h-4 ml-2"></i>
+                        </a>
+                    </div>
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        // Предупреждение при уходе со страницы во время теста (ответы при этом
+        // всё равно остаются на устройстве)
+        window.addEventListener('beforeunload', e => {
+            if (['sentence', 'sentence-review', 'transition', 'email', 'academic', 'submitting'].includes(currentPhase)) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
         document.addEventListener('DOMContentLoaded', checkAuthAndLoad);
     </script>
 </body>
