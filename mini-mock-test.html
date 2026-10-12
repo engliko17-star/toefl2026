@@ -12,6 +12,7 @@
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
+    <script src="content-visibility.js"></script>
 
     <style>
         /* Скрываем скроллбар для мобильного меню, чтобы было аккуратно */
@@ -39,6 +40,13 @@
 
 
     <script>
+        // Глазик преподавателя (content-visibility.js). Если файл не загрузился,
+        // страница работает как раньше, а скрытое всё равно не попадает к ученикам.
+        const CV = window.ContentVisibility || {
+            init() {}, cardClass() { return ''; }, eye() { return ''; },
+            visibleFor(rows) { return (rows || []).filter(r => r.is_hidden !== true); }
+        };
+
         function getAnimalInitial(title) {
             if (!title) return 'T';
             const parts = title.toUpperCase().trim().split(' ');
@@ -50,13 +58,17 @@
             try {
                 const user = await requireAuth();
                 if (!user) return; 
+                CV.init({ user, reload: loadTests });
 
-                const { data: tests, error: testsError } = await _supabase
+                const { data: allTests, error: testsError } = await _supabase
                     .from('mock_tests')
                     .select('*')
                     .order('created_at', { ascending: true }); 
                 
                 if (testsError) throw testsError;
+
+                // Скрытые глазиком тесты видит только преподаватель
+                const tests = CV.visibleFor(allTests, user);
 
                 const { data: results, error: resultsError } = await _supabase
                     .from('mock_test_results')
@@ -86,9 +98,10 @@
                     const isCompleted = !!result; 
                     const bandScore = isCompleted ? parseFloat(result.band_score).toFixed(1) : null;
                     const initial = getAnimalInitial(test.title);
+                    const isHiddenTest = test.is_hidden === true;
                     
                     grid.innerHTML += `
-                        <div class="relative bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex flex-col transition hover:shadow-md">
+                        <div class="relative bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex flex-col transition hover:shadow-md ${CV.cardClass(isHiddenTest)}">
                             ${isCompleted ? '<div class="absolute top-5 right-5 bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wider">Completed</div>' : ''}
                             <div class="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-black text-2xl mb-5 shadow-sm border border-indigo-100">
                                 ${initial}
@@ -97,6 +110,7 @@
                             <div class="flex items-center text-xs text-slate-500 font-medium space-x-4 mb-8">
                                 <span class="flex items-center"><i data-lucide="paw-print" class="w-4 h-4 mr-1.5 opacity-70"></i> ${test.passages || 3} Passages</span>
                                 <span class="flex items-center"><i data-lucide="clock" class="w-4 h-4 mr-1.5 opacity-70"></i> ${test.minutes || 36} mins</span>
+                                <span class="ml-auto">${CV.eye('mock_tests', [test.id], isHiddenTest, { compact: true })}</span>
                             </div>
                             <div class="mt-auto flex items-end justify-between pt-4 border-t border-gray-50">
                                 ${isCompleted 
