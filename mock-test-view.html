@@ -68,16 +68,36 @@
     </main>
 
     <script>
-        // Безопасная инициализация клиента Supabase
-        let db;
-        if (typeof supabaseClient !== 'undefined') {
-            db = supabaseClient;
-        } else if (window.supabaseClient) {
-            db = window.supabaseClient;
-        } else {
-            const fallbackUrl = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
-            const fallbackKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
-            db = window.supabase.createClient(fallbackUrl, fallbackKey);
+        // Один клиент на страницу — тот, что создал auth.js. Запасной второй клиент
+        // убран: он «зависал» на входе, а без auth.js тест вообще шёл без проверки.
+        const db = window.supabaseClient;
+
+        function esc(s) {
+            return String(s === null || s === undefined ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+        function rowTime(r) { return Date.parse(r.completed_at || r.updated_at || r.created_at || '') || 0; }
+        function isNewer(a, b) { return rowTime(a) > rowTime(b) || (rowTime(a) === rowTime(b) && (Number(a.id) || 0) > (Number(b.id) || 0)); }
+        // Ключ может прийти и числом, и строкой — сравниваем как числа
+        function keyOf(q) {
+            const v = (q.correct_index !== undefined && q.correct_index !== null) ? q.correct_index : q.correct_answer;
+            return (v === undefined || v === null || v === '') ? null : Number(v);
+        }
+
+        // Неотправленные результаты ждут на устройстве и уходят при следующем открытии
+        let currentUser = null;
+        function pendingKey() { return `listening_mm_pending_v1:${currentUser ? currentUser.id : 'anon'}`; }
+        function readPending() { try { return JSON.parse(localStorage.getItem(pendingKey())) || []; } catch (e) { return []; } }
+        function writePending(list) { try { list.length ? localStorage.setItem(pendingKey(), JSON.stringify(list)) : localStorage.removeItem(pendingKey()); } catch (e) {} }
+        async function flushPending() {
+            const left = []; let lastError = null;
+            for (const row of readPending()) {
+                const { error } = await db.from('listening_mini_mock_results').insert([row]);
+                if (error) { left.push(row); lastError = error; }
+            }
+            writePending(left);
+            return lastError;
         }
 
         lucide.createIcons();
@@ -98,33 +118,35 @@
         const isReviewMode = urlParams.get('review') === 'true';
 
         document.addEventListener('DOMContentLoaded', async () => {
-            // Раньше плеер запускал тест без проверки: auth.js был подключён,
-            // но requireAuth не вызывался, и доступ к Listening не проверялся.
-            if (typeof requireAuth === 'function') {
-                const user = await requireAuth();
-                if (!user) return;
+            // Без auth.js — не запускаем вовсе (раньше в этом случае тест шёл без проверки)
+            if (typeof requireAuth !== 'function' || !db) {
+                document.getElementById('taskContainer').innerHTML = '<p class="m-auto text-sm text-rose-600 font-medium">Page failed to load. Please refresh it.</p>';
+                return;
             }
-            const testId = urlParams.get('id') || '1'; 
+            const user = await requireAuth();
+            if (!user) return;
+            currentUser = user;
+            await flushPending();
+            // Без id раньше молча открывался тест №1
+            const testId = urlParams.get('id');
+            if (!testId) { window.location.replace('listening-mini-mock.html'); return; }
             await buildTestQueue(testId);
         });
 
         // 1. Сборка очереди заданий
         async function buildTestQueue(testId) {
             try {
-                let response = await db.from('listening_mock_tests').select('*').eq('id', testId).single();
-                
-                if (response.error && response.error.message.includes("Could not find the table")) {
-                    console.warn("Table listening_mock_tests not found, trying mock_tests_listening...");
-                    response = await db.from('mock_tests_listening').select('*').eq('id', testId).single();
-                }
-
-                if (response.error || !response.data) throw new Error("Mock test not found in database.");
+                const response = await db.from('listening_mock_tests').select('*').eq('id', testId).maybeSingle();
+                if (response.error) throw response.error;
+                if (!response.data) throw new Error("Mock test not found.");
                 
                 const mockData = response.data;
                 testMetadata = mockData;
                 document.getElementById('testTitle').innerText = mockData.title || mockData.name || "Listening Mock Test";
 
-                for (let block of mockData.structure) {
+                const structure = Array.isArray(mockData.structure) ? mockData.structure : [];
+                const brokenBlocks = [];
+                for (let [bIdx, block] of structure.entries()) {
                     if (block.block_type === 'response') {
                         const { data: qData, error: qErr } = await db
                             .from('listening_questions')
@@ -133,6 +155,7 @@
                             .order('id', { ascending: true });
 
                         if (qErr) console.error("Error fetching response questions:", qErr);
+                        if (!qData || qData.length === 0) brokenBlocks.push(bIdx + 1);
 
                         if (qData && qData.length > 0) {
                             // Уникализируем ID, чтобы ответы не перезаписывали друг друга
@@ -154,8 +177,9 @@
                             .single();
 
                         if (taskErr) console.error("Error fetching listening test:", taskErr);
+                        if (!taskData || !Array.isArray(taskData.questions) || taskData.questions.length === 0) brokenBlocks.push(bIdx + 1);
 
-                        if (taskData) {
+                        if (taskData && Array.isArray(taskData.questions) && taskData.questions.length > 0) {
                             // Уникализируем ID для стандартных блоков
                             if (taskData.questions && Array.isArray(taskData.questions)) {
                                 taskData.questions.forEach((q, idx) => {
@@ -175,8 +199,10 @@
                     }
                 }
 
-                if (testQueue.length === 0) {
-                    throw new Error("No valid test blocks found for this mock configuration.");
+                // Раньше недостающий блок молча пропускался: тест шёл короче, и балл
+                // считался от другого числа вопросов, чем у остальных учениц.
+                if (brokenBlocks.length || testQueue.length === 0) {
+                    throw new Error(`This test is not set up correctly (section ${brokenBlocks.join(', ') || '—'} could not be loaded). Please tell your teacher.`);
                 }
 
                 // ЕСЛИ РЕЖИМ РЕВЬЮ - жестко блокируем старт и показываем результаты
@@ -191,22 +217,18 @@
                     lucide.createIcons();
 
                     try {
-                        const { data: { session }, error: authErr } = await db.auth.getSession();
-                        if (authErr) throw authErr;
-                        if (!session?.user) throw new Error("Authentication required. Please wait a second and refresh, or log in again.");
-
                         const { data: oldRes, error: fetchErr } = await db
                             .from('listening_mini_mock_results')
                             .select('*')
-                            .eq('user_id', session.user.id)
+                            .eq('user_id', currentUser.id)
                             .eq('mock_test_id', testId);
 
                         if (fetchErr) throw fetchErr;
 
-                        if (oldRes && oldRes.length > 0) {
-                            const latestResult = oldRes.reduce((latest, current) => {
-                                return new Date(current.created_at) > new Date(latest.created_at) ? current : latest;
-                            }, oldRes[0]);
+                        // Ещё не отправленная попытка тоже считается
+                        const all = (oldRes || []).concat(readPending().filter(r => String(r.mock_test_id) === String(testId)));
+                        if (all.length > 0) {
+                            const latestResult = all.reduce((latest, current) => isNewer(current, latest) ? current : latest, all[0]);
 
                             userAnswers = latestResult.detailed_answers || {};
                             renderFinalReview(latestResult.score_earned, latestResult.score_total, latestResult.final_calculated_score);
@@ -221,7 +243,7 @@
                                     <i data-lucide="alert-triangle" class="w-8 h-8"></i>
                                 </div>
                                 <p class="text-rose-600 font-bold text-lg mb-2">Could not load review</p>
-                                <p class="text-slate-600 text-sm mb-6">${err.message}</p>
+                                <p class="text-slate-600 text-sm mb-6">${esc(err.message)}</p>
                                 <a href="listening-mini-mock.html" class="bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold px-6 py-3 rounded-xl transition inline-block">Return to Dashboard</a>
                             </div>
                         `;
@@ -242,7 +264,8 @@
                 document.getElementById('taskContainer').innerHTML = `
                     <div class="bg-white rounded-2xl border border-rose-200 p-8 text-center max-w-md mx-auto mt-10">
                         <p class="text-rose-600 font-bold mb-2">Error loading test data</p>
-                        <p class="text-slate-500 text-xs">${err.message}</p>
+                        <p class="text-slate-500 text-xs mb-4">${esc(err.message)}</p>
+                        <a href="listening-mini-mock.html" class="inline-block bg-slate-900 text-white text-xs font-bold px-5 py-2.5 rounded-lg">Back to tests</a>
                     </div>
                 `;
             }
@@ -410,18 +433,38 @@
                 }
             };
 
-            audioEl.onended = () => {
-                setPlayIcon('play');
+            let unlocked = false;
+            const unlockOptions = () => {
+                if (unlocked) return;
+                unlocked = true;
                 optionsList.classList.remove('opacity-25', 'pointer-events-none');
                 optionsList.classList.add('opacity-100');
+                startQuestionTimer(20);
+            };
+            audioEl.onended = () => {
+                setPlayIcon('play');
                 lucide.createIcons();
-                startQuestionTimer(20); 
+                unlockOptions();
+            };
+            // Аудио не загрузилось: раньше варианты оставались закрытыми навсегда,
+            // выйти можно было только крестиком (с потерей всего теста)
+            audioEl.onerror = () => {
+                if (!audioEl.getAttribute('src')) return;
+                setPlayIcon('play'); lucide.createIcons();
+                const h = document.querySelector('#optionsList')?.previousElementSibling;
+                if (h) h.textContent = 'The audio failed to load — choose the best response:';
+                unlockOptions();
             };
             
             setTimeout(() => { 
                 audioEl.play()
                     .then(() => { setPlayIcon('pause'); lucide.createIcons(); })
-                    .catch(e => console.log(e)); 
+                    .catch(e => {
+                        // iOS не даёт запустить звук без нажатия — подсказываем
+                        console.log(e);
+                        const h = document.querySelector('#optionsList')?.previousElementSibling;
+                        if (h && !unlocked) h.textContent = 'Tap the play button to listen, then choose the best response:';
+                    }); 
             }, 500);
         }
 
@@ -431,8 +474,12 @@
                     <img src="${block.image_url}" class="w-full max-w-md rounded-xl shadow-sm mb-6 border border-slate-200/60 object-cover aspect-video">
                     <div class="bg-white p-6 rounded-2xl border border-slate-200/60 w-full max-w-md text-center shadow-sm">
                         <span class="bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider mb-3 inline-block">Active Listening</span>
-                        <p class="text-sm font-bold text-slate-800 mb-4">Listen to the audio track. You cannot pause or skip.</p>
+                        <p id="audioHint" class="text-sm font-bold text-slate-800 mb-4">Listen to the audio track. The questions appear when it ends.</p>
                         <audio id="activeAudioPlayer" class="w-full" controls controlsList="nodownload noplaybackrate"></audio>
+                        <div id="audioErrorBox" class="hidden mt-3 text-xs text-rose-600 bg-rose-50 border border-rose-100 rounded-lg p-3">
+                            The audio failed to load. Press play to try again, or
+                            <button onclick="currentPhase = 'questions'; renderCurrentState();" class="font-bold underline">continue to the questions</button>.
+                        </div>
                     </div>
                 </div>
             `;
@@ -441,7 +488,14 @@
         function initStandardAudioLogic(block) {
             const player = document.getElementById('activeAudioPlayer');
             player.src = block.audio_url;
-            player.play().catch(e => console.log("Autoplay blocked"));
+            player.onerror = () => { if (player.getAttribute('src')) document.getElementById('audioErrorBox')?.classList.remove('hidden'); };
+            player.onplaying = () => document.getElementById('audioErrorBox')?.classList.add('hidden');
+            player.play().catch(e => {
+                // iOS: без нажатия звук не запускается — подсказываем, что нажать
+                console.log("Autoplay blocked");
+                const hint = document.getElementById('audioHint');
+                if (hint) hint.textContent = 'Tap play to start the audio. The questions appear when it ends.';
+            });
             
             player.onended = () => {
                 currentPhase = 'questions';
@@ -534,7 +588,10 @@
         }
 
         // 4. ПОДСЧЕТ И РЕВЬЮ
+        let submitted = false;
         async function submitTest() {
+            if (submitted) return;   // защита от двойной записи попытки
+            submitted = true;
             clearInterval(timerInterval);
             document.querySelector('header').style.display = 'none';
             document.getElementById('taskContainer').innerHTML = `
@@ -550,8 +607,8 @@
             testQueue.forEach(block => {
                 block.questions.forEach(q => {
                     totalQuestions++;
-                    const correctIdx = q.correct_index !== undefined ? q.correct_index : q.correct_answer;
-                    if (userAnswers[q.id] === correctIdx) correctAnswers++;
+                    const given = userAnswers[q.id];
+                    if (given !== null && given !== undefined && Number(given) === keyOf(q)) correctAnswers++;
                 });
             });
 
@@ -561,27 +618,46 @@
             let proportionalScore = totalQuestions > 0 ? (1.0 + (correctAnswers / totalQuestions) * 5.0) : 1.0;
             let finalCalculatedScore = Math.min(Math.round(proportionalScore * 2) / 2, 6.0);
 
+            // Раньше ошибка записи не проверялась вовсе: ученица видела «сохранено»,
+            // а попытка терялась. Пользователь — из requireAuth(), не из getSession()
+            // (тот мог зависнуть, и экран «Saving results...» висел без конца).
+            const row = {
+                user_id: currentUser.id,
+                mock_test_id: testMetadata.id,
+                score_earned: correctAnswers,
+                score_total: totalQuestions,
+                final_calculated_score: finalCalculatedScore,
+                detailed_answers: userAnswers
+            };
+            let saveError = null;
             try {
-                const { data: { session } } = await db.auth.getSession();
-                if (session?.user) {
-                    await db.from('listening_mini_mock_results').insert([{
-                        user_id: session.user.id,
-                        mock_test_id: testMetadata.id,
-                        score_earned: correctAnswers,
-                        score_total: totalQuestions,
-                        final_calculated_score: finalCalculatedScore,
-                        detailed_answers: userAnswers
-                    }]);
-                }
+                const { error } = await db.from('listening_mini_mock_results').insert([row]);
+                if (error) throw error;
             } catch (err) {
                 console.error("Database save failed:", err);
+                saveError = err;
+                writePending(readPending().concat([row]));
             }
 
-            renderFinalReview(correctAnswers, totalQuestions, finalCalculatedScore);
+            renderFinalReview(correctAnswers, totalQuestions, finalCalculatedScore, saveError);
+        }
+
+        async function retryMiniMockSave() {
+            const btn = document.getElementById('mmRetryBtn');
+            if (btn) { btn.disabled = true; btn.textContent = 'Сохраняю...'; }
+            const err = await flushPending();
+            const box = document.getElementById('mmSaveError');
+            if (!err) {
+                if (box) box.outerHTML = '<p class="text-sm font-bold text-emerald-600 mb-6">Результат сохранён.</p>';
+            } else if (btn) {
+                btn.disabled = false; btn.textContent = 'Сохранить ещё раз';
+                const t = document.getElementById('mmSaveErrorText');
+                if (t) t.textContent = 'Не получилось: ' + (err.message || err) + '. Результат сохранён на этом устройстве и отправится сам при следующем открытии.';
+            }
         }
 
         // Функция отрисовки финала
-        function renderFinalReview(correctAnswers, totalQuestions, finalCalculatedScore) {
+        function renderFinalReview(correctAnswers, totalQuestions, finalCalculatedScore, saveError) {
             document.querySelector('header').style.display = 'none';
 
             let reviewHTML = '';
@@ -614,7 +690,13 @@
                             <i data-lucide="check-check" class="w-8 h-8"></i>
                         </div>
                         <h2 class="text-2xl font-bold text-slate-900 mb-2">${isReviewMode ? 'Past Results' : 'Simulation Completed!'}</h2>
-                        <p class="text-slate-500 text-sm mb-8">${isReviewMode ? 'Here is a breakdown of your performance on this test.' : 'Your answers have been processed and saved.'}</p>
+                        <p class="text-slate-500 text-sm mb-8">${isReviewMode ? 'Here is a breakdown of your performance on this test.' : (saveError ? 'Your answers have been processed.' : 'Your answers have been processed and saved.')}</p>
+                        ${saveError ? `
+                        <div id="mmSaveError" class="mb-8 text-left bg-rose-50 border border-rose-200 rounded-xl p-4 max-w-lg mx-auto">
+                            <p class="text-sm font-bold text-rose-700 mb-1">Результат пока не сохранён в базе</p>
+                            <p id="mmSaveErrorText" class="text-xs text-rose-600 mb-3">Он сохранён на этом устройстве и отправится сам при следующем открытии. (${esc(saveError.message || saveError)})</p>
+                            <button id="mmRetryBtn" onclick="retryMiniMockSave()" class="px-4 py-2 rounded-lg bg-rose-600 text-white text-xs font-bold hover:bg-rose-700 transition">Сохранить ещё раз</button>
+                        </div>` : ''}
                         
                         <div class="flex gap-4 mb-8 max-w-lg mx-auto">
                             <div class="flex-1 bg-emerald-50 border border-emerald-100 rounded-xl p-4">
@@ -648,9 +730,10 @@
             let qsHTML = '';
             
             questions.forEach((q) => {
-                const userAns = userAnswers[q.id];
-                const correctIdx = q.correct_index !== undefined ? q.correct_index : q.correct_answer;
-                const isCorrect = userAns === correctIdx;
+                const rawAns = userAnswers[q.id];
+                const userAns = (rawAns === null || rawAns === undefined) ? rawAns : Number(rawAns);
+                const correctIdx = keyOf(q);
+                const isCorrect = userAns !== null && userAns !== undefined && userAns === correctIdx;
 
                 let optionsHTML = '<div class="space-y-2 mt-4">';
                 q.options.forEach((opt, oIdx) => {
