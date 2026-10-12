@@ -360,15 +360,19 @@ function loadSpeakingQuestion(i) {
     document.getElementById('engine-progress').innerText = `Question ${num} of ${scored.length}`;
 
     document.getElementById('engine-content').innerHTML = `
-        <div class="m-auto flex flex-col items-center p-6 w-full max-w-md">
+        <div class="m-auto flex flex-col items-center p-4 sm:p-6 w-full max-w-2xl max-h-full overflow-y-auto">
             <span class="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-4">${isInterview ? 'Spontaneous Response' : 'Repeat Exactly'}</span>
 
-            <div class="w-full aspect-square bg-black border border-gray-200 rounded-[2rem] overflow-hidden shadow-lg flex items-center justify-center relative mb-6" id="speakingMediaContainer">
-                <video id="speakingVideo" class="w-full h-full object-cover hidden" playsinline preload="auto"></video>
-                <img id="speakingImage" class="w-full h-full object-cover hidden" src="" alt="Task Image">
+            <!-- Картинка и видео показываются целиком (object-contain), без обрезки:
+                 рамка подстраивается под пропорции файла, а высота ограничена,
+                 чтобы на телефоне блок записи оставался на экране.
+                 Если у задания нет картинки, рамка не показывается вовсе. -->
+            <div class="w-full bg-slate-100 border border-gray-200 rounded-xl overflow-hidden shadow-lg flex items-center justify-center relative mb-6 hidden" id="speakingMediaContainer">
+                <video id="speakingVideo" class="block w-full max-h-[38vh] sm:max-h-[48vh] object-contain bg-black hidden" playsinline preload="auto"></video>
+                <img id="speakingImage" class="block max-w-full max-h-[38vh] sm:max-h-[48vh] w-auto h-auto object-contain hidden" src="" alt="Task Image">
             </div>
 
-            <div class="w-full bg-white border border-gray-200 rounded-[2rem] shadow-md flex flex-col items-center p-6">
+            <div class="w-full max-w-md bg-white border border-gray-200 rounded-[2rem] shadow-md flex flex-col items-center p-6">
                 <div id="speakingStatusBanner" class="text-[10px] font-bold uppercase mb-4 tracking-widest text-slate-400 px-4 py-1.5 rounded-full bg-slate-50 border border-slate-100">Ready</div>
                 <div class="flex items-center justify-center space-x-6 w-full">
                     <div id="speakingMicIcon" class="w-14 h-14 rounded-full bg-gray-100 text-slate-400 flex items-center justify-center shadow-inner shrink-0">
@@ -389,12 +393,14 @@ function loadSpeakingQuestion(i) {
 
     const video = document.getElementById('speakingVideo');
     const img = document.getElementById('speakingImage');
+    const mediaBox = document.getElementById('speakingMediaContainer');
     const audio = document.getElementById('globalAudio'); // общий audio-элемент из tests.html (тот же, что у Listening)
 
     if (isInterview && isSpeakingVideoUrl(q.media_url)) {
         video.src = q.media_url;
         video.load();
         video.classList.remove('hidden');
+        if (mediaBox) mediaBox.classList.remove('hidden');
 
         setSpeakingStatus('Listening to Question...', 'bg-sky-100 text-sky-700 border-sky-200');
         video.onerror = () => alert("Ошибка загрузки видео:\n" + q.media_url);
@@ -415,8 +421,11 @@ function loadSpeakingQuestion(i) {
         // Сюда попадают и Listen & Repeat, и интервью, записанное аудио, а не видео.
         // media_url тогда — необязательная картинка (фото говорящего или сцены).
         if (q.media_url && !isSpeakingVideoUrl(q.media_url)) {
+            // Битая ссылка не должна оставлять пустую серую рамку
+            img.onerror = () => { if (mediaBox) mediaBox.classList.add('hidden'); };
             img.src = q.media_url;
             img.classList.remove('hidden');
+            if (mediaBox) mediaBox.classList.remove('hidden');
         }
         if (!q.audio_prompt_url) {
             alert("Ошибка: отсутствует ссылка на аудио (audio_prompt_url) для этого задания.");
