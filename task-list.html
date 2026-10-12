@@ -8,6 +8,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
+    <script src="content-visibility.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
@@ -41,7 +42,15 @@
     </main>
 
     <script>
-        const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Один клиент на страницу (тот, что создал auth.js): второй клиент на том же
+        // хранилище сессии иногда «зависал» на входе.
+        const db = window.supabaseClient || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Глазик преподавателя (content-visibility.js). Если файл не загрузился,
+        // страница работает как раньше, а скрытое всё равно не попадает к ученикам.
+        const CV = window.ContentVisibility || {
+            init() {}, cardClass() { return ''; }, withEye(html) { return html; },
+            visibleFor(rows) { return (rows || []).filter(r => r.is_hidden !== true); }
+        };
         const urlParams = new URLSearchParams(window.location.search);
         const taskType = urlParams.get('type') || 'sentence';
         
@@ -60,15 +69,20 @@
                 const user = await requireAuth();
                 if (!user) return;
                 const userId = user.id;
+                CV.init({ user, reload: loadTasksAndProgress });
 
                 // Получаем все вопросы (исключая задания, помеченные только для моков)
-                const { data: tasks } = await db.from('writing_tasks')
+                const { data: allTasks } = await db.from('writing_tasks')
                     .select('*')
                     .ilike('type', taskType)
                     .or('is_mock_only.eq.false,is_mock_only.is.null')
                     .order('id', { ascending: true });
 
-                const { data: responses } = await db.from('student_responses').select('*').eq('user_id', userId).ilike('task_type', taskType);
+                // Скрытые глазиком задания видит только преподаватель
+                const tasks = CV.visibleFor(allTasks, user);
+
+                const { data: responsesData } = await db.from('student_responses').select('*').eq('user_id', userId).ilike('task_type', taskType);
+                const responses = responsesData || [];
 
                 if (!tasks || tasks.length === 0) {
                     container.className = "flex justify-center items-center py-20 w-full col-span-full";
@@ -90,11 +104,21 @@
                 currentTestGroups = {};
 
                 let groupIndex = 1;
+                // Номер без test_id считаем только по видимым ученикам наборам,
+                // чтобы у вас и у учеников один и тот же набор был под одним номером
+                let visibleIndex = 0;
 
                 Object.keys(testGroups).forEach((groupId) => {
                     const groupTasks = testGroups[groupId];
                     const firstTask = groupTasks[0];
                     const totalQuestions = groupTasks.length;
+                    // Набор скрыт, если скрыт хоть один его вопрос: глазик скрывает
+                    // и открывает набор целиком
+                    const isHiddenGroup = groupTasks.some(t => t.is_hidden === true);
+                    if (!isHiddenGroup) visibleIndex++;
+                    const testNumberLabel = firstTask.test_id
+                        ? `Test #${firstTask.test_id}`
+                        : (isHiddenGroup ? 'Draft' : `Test #${visibleIndex}`);
                     
                     // Сохраняем все ID этой группы, чтобы кнопка Reset могла удалить их все разом
                     currentTestGroups[groupId] = groupTasks.map(t => t.id);
@@ -211,7 +235,7 @@
                             </div>
                         `;
                     } else {
-                        progressCircleHTML = `<span class="text-xs font-bold text-gray-300 tracking-wide">Test #${firstTask.test_id || groupIndex}</span>`;
+                        progressCircleHTML = `<span class="text-xs font-bold text-gray-300 tracking-wide">${testNumberLabel}</span>`;
                         actionButton = `
                             <a href="writing-practice.html?type=${taskType}&id=${firstTask.id}" class="w-full flex items-center justify-center space-x-2 bg-[#121629] text-white hover:bg-slate-800 transition py-3.5 rounded-2xl font-bold text-sm shadow-sm">
                                 <span>Start Test</span> <i data-lucide="arrow-right" class="w-4 h-4"></i>
@@ -227,7 +251,7 @@
                     const headerRightPadding = firstTask.is_real_toefl ? 'pr-12' : '';
 
                     container.innerHTML += `
-                        <div class="relative overflow-hidden bg-white p-6 rounded-[1.5rem] border border-gray-100 shadow-sm hover:shadow-md transition-all flex flex-col justify-between min-h-[190px]">
+                        <div class="relative overflow-hidden bg-white p-6 rounded-[1.5rem] border border-gray-100 shadow-sm hover:shadow-md transition-all flex flex-col justify-between min-h-[190px] ${CV.cardClass(isHiddenGroup)}">
                             ${realToeflRibbon}
                             <div>
                                 <div class="flex justify-between items-center mb-4 ${headerRightPadding}">
@@ -242,7 +266,7 @@
                                 <h2 class="text-base font-extrabold text-slate-900 mb-1 leading-tight line-clamp-1">${cardTitle}</h2>
                                 <p class="text-xs text-gray-400 font-medium mb-5">${totalQuestions} Question${totalQuestions > 1 ? 's' : ''}</p>
                             </div>
-                            ${actionButton}
+                            ${CV.withEye(actionButton, 'writing_tasks', groupTasks.map(t => t.id), isHiddenGroup)}
                         </div>
                     `;
                     groupIndex++;
