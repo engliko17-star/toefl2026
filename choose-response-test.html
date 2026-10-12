@@ -7,6 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="auth.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
@@ -99,6 +100,11 @@
                         <i data-lucide="trophy" class="w-6 h-6"></i>
                     </div>
                     <h2 class="text-lg font-extrabold text-slate-800 mb-6">Test Completed!</h2>
+                    <div id="saveErrorBox" class="hidden mb-6 text-left bg-rose-50 border border-rose-200 rounded-xl p-4">
+                        <p class="text-sm font-bold text-rose-700 mb-1">Результат не сохранился</p>
+                        <p id="saveErrorText" class="text-xs text-rose-600 mb-3"></p>
+                        <button id="saveRetryBtn" onclick="retrySave()" class="px-4 py-2 rounded-lg bg-rose-600 text-white text-xs font-bold hover:bg-rose-700 transition">Сохранить ещё раз</button>
+                    </div>
                     
                     <div class="flex justify-center items-center gap-10 mb-8">
                         <div>
@@ -113,7 +119,7 @@
                     </div>
                     
                     <div class="flex gap-4">
-                        <button onclick="location.reload()" class="flex-1 py-3.5 rounded-xl bg-slate-900 text-white text-sm font-bold hover:bg-slate-800 transition shadow-md">Try Again</button>
+                        <button onclick="retakeTest()" class="flex-1 py-3.5 rounded-xl bg-slate-900 text-white text-sm font-bold hover:bg-slate-800 transition shadow-md">Try Again</button>
                         <a href="choose-response-list.html" class="flex-1 py-3.5 rounded-xl bg-gray-100 text-slate-700 text-sm font-bold hover:bg-gray-200 transition border border-gray-200 flex items-center justify-center">Dashboard</a>
                     </div>
                 </div>
@@ -143,13 +149,17 @@
     </div>
 
     <script>
-        const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Один клиент на страницу — тот, что создал auth.js. Раньше страница
+        // создавала свой и проверяла только «вошла ли», без доступа к разделу:
+        // тест открывался гостю, неподтверждённой ученице и без доступа к Listening.
+        const supabaseClient = window.supabaseClient;
 
         const urlParams = new URLSearchParams(window.location.search);
-        const currentSet = urlParams.get('set') || 1;
-        const isReviewMode = urlParams.get('review') === 'true'; 
+        const currentSet = parseInt(urlParams.get('set'), 10);
+        let isReviewMode = urlParams.get('review') === 'true'; 
+        // Без номера или с мусором в адресе раньше молча открывался набор 1
+        // или вечная ошибка — теперь возвращаем к списку.
+        if (!Number.isInteger(currentSet) || currentSet < 1) window.location.replace('choose-response-list.html');
         
         document.getElementById('setNumberDisplay').innerText = `#${currentSet}`;
 
@@ -158,6 +168,7 @@
         let selectedOptionIndex = null;
         let userAnswers = [];
         let currentUser = null; 
+        let testFinished = false;   // после финиша аудио в разборе не должно заново запускать таймер
 
         const audioEl = document.getElementById('audioElement');
         const playBtn = document.getElementById('playBtn');
@@ -274,6 +285,7 @@
                         }).catch(error => {
                             console.log("Autoplay blocked by browser:", error);
                             setPlayIcon('play');
+                            document.getElementById('playerInstruction').innerText = "Tap the play button to start the audio.";
                         });
                     }
                 }, 300);
@@ -372,7 +384,7 @@
             optionsList.classList.remove('opacity-25', 'pointer-events-none');
             optionsList.classList.add('opacity-100');
             
-            if (!isReviewMode) {
+            if (!isReviewMode && !testFinished) {
                 document.getElementById('timerContainer').classList.remove('hidden');
                 document.getElementById('timerContainer').classList.add('flex');
                 startTimer();
@@ -402,10 +414,14 @@
         });
 
         audioEl.addEventListener('error', (e) => {
+            if (!audioEl.getAttribute('src')) return;
             console.error("Audio playback error:", e);
-            document.getElementById('playerInstruction').innerText = "Network error loading audio. Click Play or reload page.";
+            document.getElementById('playerInstruction').innerText = "The audio failed to load. Tap Play to try again, or choose an answer to continue.";
             document.getElementById('playerInstruction').classList.add('text-red-500');
             setPlayIcon('play');
+            // Раньше варианты оставались заблокированными навсегда — выйти можно было только крестиком
+            optionsList.classList.remove('opacity-25', 'pointer-events-none');
+            optionsList.classList.add('opacity-100');
         });
 
         audioEl.addEventListener('stalled', () => {
@@ -421,7 +437,7 @@
             userAnswers.push({
                 question_id: q.id,
                 selected_index: selectedOptionIndex,
-                is_correct: (selectedOptionIndex === q.correct_answer)
+                is_correct: (selectedOptionIndex === Number(q.correct_answer))
             });
 
             if (currentIndex < currentQuestions.length - 1) {
@@ -440,7 +456,7 @@
                 const { data, error } = await supabaseClient
                     .from('listening_questions')
                     .select('*')
-                    .eq('set_number', parseInt(currentSet))
+                    .eq('set_number', currentSet)
                     .or('is_mock_only.eq.false,is_mock_only.is.null')
                     .order('id', { ascending: true });
 
@@ -462,79 +478,129 @@
             }
         }
 
-        async function initReviewMode() {
+        // Последняя попытка ученицы по этому набору. Строк может оказаться несколько
+        // (две вкладки, старые сохранения) — раньше .maybeSingle() на этом падал,
+        // и «Review» молча превращался в новый тест. Берём самую свежую.
+        function latestRow(rows) {
+            const ts = r => Date.parse(r.completed_at || r.updated_at || r.created_at || '') || 0;
+            const num = r => Number(r.id) || 0;
+            return (rows || []).slice().sort((a, b) => (ts(b) - ts(a)) || (num(b) - num(a)))[0] || null;
+        }
+
+        async function loadMyRows() {
             const { data, error } = await supabaseClient
                 .from('response_results')
                 .select('*')
-                .eq('user_id', currentUser.id) 
-                .eq('set_number', parseInt(currentSet))
-                .maybeSingle();
+                .eq('user_id', currentUser.id)
+                .eq('set_number', currentSet);
+            if (error) throw error;
+            return data || [];
+        }
 
-            if (error) {
+        function parseAnswers(raw) {
+            if (Array.isArray(raw)) return raw;
+            if (typeof raw === 'string') { try { const v = JSON.parse(raw); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
+            return [];
+        }
+
+        async function initReviewMode() {
+            let last = null;
+            try {
+                last = latestRow(await loadMyRows());
+            } catch (error) {
                 console.error("Error loading review:", error);
-                loadQuestion(0);
-                return;
             }
 
-            if (data) {
-                userAnswers = data.user_answers;
-                showResultsUI(data.score_earned, data.score_total, Math.round((data.score_earned / data.score_total) * 100));
+            const answers = last ? parseAnswers(last.user_answers) : [];
+            if (last && answers.length) {
+                testFinished = true;
+                userAnswers = answers;
+                const total = Number(last.score_total) || answers.length;
+                const earned = Number(last.score_earned) || 0;
+                showResultsUI(earned, total, total ? Math.round((earned / total) * 100) : 0);
             } else {
+                // Сохранённого разбора нет — это обычный тест, с таймером
+                isReviewMode = false;
+                history.replaceState(null, '', 'choose-response-test.html?set=' + currentSet);
                 loadQuestion(0);
             }
         }
 
+        let saving = false;
+        let lastResult = null;
+
         async function finishTest() {
+            if (saving || testFinished) return;   // двойной клик не сохраняет дважды
+            saving = true;
+            testFinished = true;
             nextBtn.disabled = true;
             nextBtn.innerHTML = `<div class="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin mr-2"></div> Saving...`;
 
             const scoreEarned = userAnswers.filter(a => a.is_correct).length;
             const scoreTotal = currentQuestions.length;
-            const accuracy = Math.round((scoreEarned / scoreTotal) * 100);
+            const accuracy = scoreTotal ? Math.round((scoreEarned / scoreTotal) * 100) : 0;
+            lastResult = { scoreEarned, scoreTotal };
 
-            try {
-                const { data: existingRow, error: checkError } = await supabaseClient
-                    .from('response_results')
-                    .select('id')
-                    .eq('user_id', currentUser.id)
-                    .eq('set_number', parseInt(currentSet))
-                    .maybeSingle();
-
-                if (checkError) throw checkError;
-
-                let saveResult;
-
-                if (existingRow) {
-                    saveResult = await supabaseClient
-                        .from('response_results')
-                        .update({
-                            score_earned: scoreEarned,
-                            score_total: scoreTotal,
-                            user_answers: userAnswers
-                        })
-                        .eq('id', existingRow.id);
-                } else {
-                    saveResult = await supabaseClient
-                        .from('response_results')
-                        .insert([{
-                            user_id: currentUser.id,
-                            set_number: parseInt(currentSet),
-                            score_earned: scoreEarned,
-                            score_total: scoreTotal,
-                            user_answers: userAnswers
-                        }]);
-                }
-
-                if (saveResult.error) throw saveResult.error;
-                
-                console.log("Database updated successfully!");
-
-            } catch (dbError) {
-                console.error("CRITICAL DATABASE ERROR:", dbError);
-                alert("Supabase Error: " + dbError.message + "\n\nCheck RLS policies or Table schema.");
-            }
+            const saveError = await saveResult(scoreEarned, scoreTotal);
+            saving = false;
 
             showResultsUI(scoreEarned, scoreTotal, accuracy);
+            showSaveError(saveError);
+        }
+
+        // Сохраняет попытку. Возвращает null при успехе или текст ошибки.
+        async function saveResult(scoreEarned, scoreTotal) {
+            const payload = { score_earned: scoreEarned, score_total: scoreTotal, user_answers: userAnswers };
+            try {
+                const last = latestRow(await loadMyRows());
+                if (last) {
+                    const { data, error } = await supabaseClient
+                        .from('response_results')
+                        .update(payload)
+                        .eq('id', last.id)
+                        .eq('user_id', currentUser.id)
+                        .select('id');
+                    if (error) throw error;
+                    if (data && data.length) return null;
+                    // Изменить старую строку база не дала (0 строк) — раньше это
+                    // выглядело как успех, а в списке оставался старый результат.
+                    // Сохраняем попытку новой строкой.
+                }
+                const { error } = await supabaseClient
+                    .from('response_results')
+                    .insert([{ user_id: currentUser.id, set_number: currentSet, ...payload }]);
+                if (error) throw error;
+                return null;
+            } catch (dbError) {
+                console.error("Не удалось сохранить результат:", dbError);
+                return (dbError && dbError.message) || String(dbError);
+            }
+        }
+
+        function showSaveError(message) {
+            const box = document.getElementById('saveErrorBox');
+            if (!box) return;
+            if (!message) { box.classList.add('hidden'); return; }
+            document.getElementById('saveErrorText').innerText =
+                'Проверьте интернет и нажмите «Сохранить ещё раз». Не закрывайте страницу, иначе попытка потеряется. (' + message + ')';
+            box.classList.remove('hidden');
+        }
+
+        async function retrySave() {
+            if (!lastResult || saving) return;
+            const btn = document.getElementById('saveRetryBtn');
+            saving = true;
+            btn.disabled = true;
+            btn.innerText = 'Сохраняю...';
+            const err = await saveResult(lastResult.scoreEarned, lastResult.scoreTotal);
+            saving = false;
+            btn.disabled = false;
+            btn.innerText = 'Сохранить ещё раз';
+            showSaveError(err);
+        }
+
+        function retakeTest() {
+            window.location.href = 'choose-response-test.html?set=' + currentSet;
         }
 
         function showResultsUI(score, total, accuracy) {
@@ -562,7 +628,10 @@
             reviewList.innerHTML = '';
 
             userAnswers.forEach((ans, index) => {
-                const q = currentQuestions.find(mq => mq.id === ans.question_id);
+                const q = currentQuestions.find(mq => String(mq.id) === String(ans.question_id));
+                // Вопрос из старой попытки могли удалить из набора — раньше на нём
+                // разбор падал целиком
+                if (!q) return;
                 const isCorrect = ans.is_correct;
                 
                 const card = document.createElement('div');
@@ -601,7 +670,7 @@
                 let optionsHTML = '<div class="space-y-2 mt-4">';
                 
                 q.options.forEach((optText, optIndex) => {
-                    if (optIndex === q.correct_answer) {
+                    if (optIndex === Number(q.correct_answer)) {
                         optionsHTML += `
                             <div class="flex items-start bg-green-50 p-2.5 rounded-lg border border-green-200">
                                 <i data-lucide="check" class="w-4 h-4 text-green-600 mt-0.5 mr-2 shrink-0"></i>
@@ -668,15 +737,19 @@
         }
 
         async function checkAuthAndInit() {
+            if (!Number.isInteger(currentSet) || currentSet < 1) return;   // уже уходим к списку
+            if (typeof requireAuth !== 'function' || !supabaseClient) {
+                document.getElementById('mainBody').classList.remove('opacity-0');
+                document.getElementById('playerInstruction').innerText = "Page failed to load. Please refresh it.";
+                return;
+            }
             try {
-                const { data: { session }, error } = await supabaseClient.auth.getSession();
-                
-                if (error || !session) {
-                    window.location.replace('index.html');
-                    return;
-                }
+                // requireAuth проверяет вход, подтверждение и доступ к Listening;
+                // если что-то не так — сам показывает экран входа или «Раздел закрыт»
+                const user = await requireAuth();
+                if (!user) return;
 
-                currentUser = session.user;
+                currentUser = user;
                 document.getElementById('mainBody').classList.remove('opacity-0');
 
                 const isLoaded = await fetchQuestionsFromDB();
