@@ -303,8 +303,16 @@ async function loadManual(byKey) {
     // Build a Sentence проверяется автоматически, и его результат
     // хранится строкой вида «4/6». Раньше она превращалась в NaN,
     // а задание висело в «ожидают проверки», хотя проверять нечего.
-    const parseScore = raw => {
+    const parseScore = (raw, isEssay) => {
         if (raw === null || raw === undefined || raw === '') return { value: null, auto: false };
+        // Эссе: балл преподавателя «4.5» или «4.5/6.0» (так сохранялось раньше);
+        // «0/6.0» — заглушка старой версии практики, а не оценка
+        if (isEssay) {
+            const s = String(raw).trim();
+            if (/^0\s*\/\s*6(\.0+)?$/.test(s)) return { value: null, auto: false };
+            const m = s.match(/^(\d+(?:\.\d+)?)(?:\s*\/\s*6(?:\.0+)?)?$/);
+            return { value: m ? parseFloat(m[1]) : null, auto: false };
+        }
         if (typeof raw === 'string' && raw.includes('/')) {
             const [a, b] = raw.split('/').map(Number);
             if (isFinite(a) && isFinite(b) && b > 0) return { value: (a / b) * 6, auto: true, share: a / b };
@@ -314,10 +322,10 @@ async function loadManual(byKey) {
         return isFinite(n) ? { value: n, auto: false } : { value: null, auto: false };
     };
 
-    const put = (key, source, raw, created_at) => {
+    const put = (key, source, raw, created_at, isEssay) => {
         const t = byKey[key];
         if (!t) return;
-        const p = parseScore(raw);
+        const p = parseScore(raw, isEssay);
         if (p.auto) t.autoGraded = true;
         t.responses.push({ source, graded: p.value !== null, score: p.value, share: p.share, auto: p.auto, created_at });
         t.attempts.push({ source, answers: null, created_at });
@@ -327,19 +335,29 @@ async function loadManual(byKey) {
     try {
         (await fetchAll('student_responses', 'task_id, task_type, score, teacher_correction, created_at'))
             .forEach(r => put('writing:task:' + r.task_id, 'practice',
-                r.score ?? (r.teacher_correction ? null : undefined), r.created_at));
+                r.score ?? (r.teacher_correction ? null : undefined), r.created_at,
+                ['email', 'academic'].includes(String(r.task_type || '').toLowerCase())));
     } catch (e) { console.warn('student_responses:', e.message); }
 
     // мини-пробники Writing
     try {
-        (await fetchAll('mini_mock_writing_responses', 'task_id, score, teacher_correction, created_at'))
-            .forEach(r => put('writing:task:' + r.task_id, 'minimock', r.score, r.created_at));
+        (await fetchAll('mini_mock_writing_responses', 'task_id, task_type, score, teacher_correction, created_at'))
+            .forEach(r => {
+                put('writing:task:' + r.task_id, 'minimock', r.score, r.created_at);
+                // Build a Sentence в мини-моке проверяется сам — «ждут проверки» не бывает
+                const t = byKey['writing:task:' + r.task_id];
+                if (t && r.task_type === 'sentence') t.autoGraded = true;
+            });
     } catch (e) { console.warn('mini_mock_writing_responses:', e.message); }
 
     // полные пробники Writing
     try {
-        (await fetchAll('big_mock_writing_answers', 'task_id, score, feedback, created_at'))
-            .forEach(r => put('writing:task:' + r.task_id, 'mock', r.score, r.created_at));
+        (await fetchAll('big_mock_writing_answers', 'task_id, task_type, score, feedback, created_at'))
+            .forEach(r => {
+                put('writing:task:' + r.task_id, 'mock', r.score, r.created_at);
+                const t = byKey['writing:task:' + r.task_id];
+                if (t && r.task_type === 'sentence') t.autoGraded = true;
+            });
     } catch (e) { console.warn('big_mock_writing_answers:', e.message); }
 
     // Speaking: практика по попыткам, мини-пробники и полные — по ответам
@@ -469,11 +487,13 @@ function analyseManual(task) {
 
 let testData = { mini: [], full: [] };
 async function collectTests() {
-    // [подпись секции, таблица попыток, поле балла, таблица тестов, поле названия]
+    // [подпись секции, таблица попыток, поле балла, таблица тестов, поле названия, поле «какой тест»]
     const MINI = [
         ['Reading',   'mock_test_results',          'band_score',             'mock_tests',           'title'],
         ['Listening', 'listening_mini_mock_results', 'final_calculated_score', 'listening_mock_tests', 'title'],
-        ['Writing',   'mini_mock_writing_attempts',  'total_score',            'mini_mock_writing_tests',  'title'],
+        // Было: mini_mock_writing_tests / test_id / total_score — таких таблицы и полей нет,
+        // и Writing в статистике всегда был пустым
+        ['Writing',   'mini_mock_writing_attempts',  'overall_score',          'mini_mock_writing',    'title', 'mock_id'],
         ['Speaking',  'mini_mock_speaking_attempts', 'overall_score',          'mini_mock_speaking_tests', 'title']
     ];
     const FULL = [
@@ -484,9 +504,9 @@ async function collectTests() {
     ];
 
     // Тоже по очереди: четыре секции разом давали восемь параллельных запросов
-    const build = async defs => series(defs.map(([name, attTable, scoreField, testTable, titleField]) => async () => {
+    const build = async defs => series(defs.map(([name, attTable, scoreField, testTable, titleField, idFieldOverride]) => async () => {
         try {
-            const idField = attTable === 'listening_mini_mock_results' ? 'mock_test_id' : 'test_id';
+            const idField = idFieldOverride || (attTable === 'listening_mini_mock_results' ? 'mock_test_id' : 'test_id');
             const rows = await fetchAll(attTable, `user_id, ${idField}, ${scoreField}`);
             let titles = {};
             try {
@@ -499,7 +519,9 @@ async function collectTests() {
                 const g = (byTest[id] ||= { id, attempts: 0, students: new Set(), scores: [] });
                 g.attempts++;
                 if (r.user_id) g.students.add(r.user_id);
-                const v = Number(r[scoreField]);
+                // Непроверенная попытка (балл пустой) — не ноль: в среднее не идёт
+                const raw = r[scoreField];
+                const v = raw === null || raw === undefined || raw === '' ? NaN : Number(raw);
                 if (isFinite(v)) g.scores.push(v);
             });
             const tests = Object.values(byTest).map(g => ({
@@ -510,7 +532,7 @@ async function collectTests() {
                 avg: g.scores.length ? g.scores.reduce((a, b) => a + b, 0) / g.scores.length : null
             })).sort((a, b) => b.attempts - a.attempts);
 
-            const all = rows.map(r => Number(r[scoreField])).filter(isFinite);
+            const all = rows.map(r => r[scoreField]).filter(v => v !== null && v !== undefined && v !== '').map(Number).filter(isFinite);
             return {
                 name, tests,
                 attempts: rows.length,
