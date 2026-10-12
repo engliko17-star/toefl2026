@@ -44,7 +44,7 @@
 
     <div id="playerUI" class="w-full flex-col items-center hidden h-screen max-h-[800px]">
         <div class="w-full bg-[#f8f9fa] p-4 flex justify-between items-center max-w-4xl mx-auto shrink-0">
-            <button onclick="window.history.back()" class="text-slate-400 hover:text-slate-900 transition p-2 cursor-pointer bg-white rounded-full shadow-sm">
+            <button onclick="exitPractice()" class="text-slate-400 hover:text-slate-900 transition p-2 cursor-pointer bg-white rounded-full shadow-sm">
                 <i data-lucide="x" class="w-5 h-5"></i>
             </button>
             <h1 class="font-bold text-slate-800 flex-1 text-center" id="taskInstruction">Practice Task</h1>
@@ -109,6 +109,44 @@
         let audioCtx = null;
         let recordingMimeType = '';
         let testScenario = ''; // описание/сценарий сета Listen & Repeat, из speaking_tests.description
+        let testId = null;
+        let recordingStarting = false;   // запись уже запускается (ждём микрофон)
+        let practiceRunning = false;     // идёт запись набора — предупреждаем при уходе
+
+        function spEsc(s) {
+            return String(s === null || s === undefined ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        // Пауза при сбое сохранения: запись не теряется, ждём связь и пробуем снова
+        // (так же сделано в полном тесте, speaking-engine.js)
+        function waitForRetry(err) {
+            return new Promise(resolve => {
+                setStatus('Connection problem', 'bg-rose-100 text-rose-700 border-rose-200');
+                const fromServer = err && err.code;
+                const box = document.createElement('div');
+                box.className = 'fixed inset-x-0 bottom-6 mx-auto w-[92%] max-w-md bg-white border border-rose-200 rounded-2xl shadow-lg p-5 text-center z-[60]';
+                box.innerHTML = `
+                    <p class="font-bold text-slate-900 mb-1">Не удалось сохранить ответ</p>
+                    <p class="text-sm text-slate-500 mb-3">${fromServer
+                        ? 'Сервер не принял запись. Она не потеряна — нажмите «Повторить»; если не поможет, сообщите преподавателю.'
+                        : 'Похоже, пропал интернет. Запись не потеряна — нажмите «Повторить», когда связь вернётся.'}</p>
+                    <p class="text-[11px] text-rose-500 mb-4">${spEsc(err && (err.message || err.code) || err)}</p>
+                    <button class="px-6 py-2.5 bg-slate-900 text-white rounded-xl font-bold text-sm cursor-pointer">Повторить</button>`;
+                document.body.appendChild(box);
+                const done = () => { window.removeEventListener('online', done); box.remove(); resolve(); };
+                box.querySelector('button').onclick = done;
+                window.addEventListener('online', done);
+            });
+        }
+
+        function exitPractice() {
+            if (practiceRunning && !confirm('Выйти из практики?\n\nУже записанные ответы сохранены, но набор останется незаконченным.')) return;
+            practiceRunning = false;
+            window.location.href = taskType === 'interview' ? 'interview.html' : 'listen_repeat.html';
+        }
+        window.addEventListener('beforeunload', e => { if (practiceRunning) { e.preventDefault(); e.returnValue = ''; } });
 
         // Подбирает mimeType, который реально поддерживается текущим браузером.
         // Safari (iOS/macOS) не понимает audio/webm, но понимает audio/mp4 — поэтому
@@ -140,37 +178,32 @@
                 if (!currentUser) return;
 
                 const urlParams = new URLSearchParams(window.location.search);
-                const testId = urlParams.get('id');
-                taskType = urlParams.get('type') || 'listen_repeat';
+                testId = urlParams.get('id');
+                const urlType = urlParams.get('type');
+                taskType = urlType === 'interview' ? 'interview' : 'listen_repeat';
                 // Возврат в список СВОЕГО типа заданий, а не на общую страницу Speaking
                 const doneLink = document.getElementById('doneLink');
                 if (doneLink) doneLink.href = (taskType === 'interview') ? 'interview.html' : 'listen_repeat.html';
 
                 if (!testId) throw new Error("No test ID provided in the URL.");
 
-                // Подтягиваем сценарий/description набора (для Directions-экрана)
-                const { data: testMeta } = await _supabase
+                // Набор: сценарий для Directions-экрана и ТИП. Тип берём из самого
+                // набора — раньше он брался из адреса, и interview-набор мог открыться
+                // как Listen & Repeat (и наоборот).
+                const { data: testMeta, error: metaError } = await _supabase
                     .from('speaking_tests')
-                    .select('description')
+                    .select('*')
                     .eq('id', testId)
-                    .single();
-                testScenario = (testMeta && testMeta.description) ? testMeta.description.trim() : '';
-
-                const { data: attemptData, error: attemptError } = await _supabase
-                    .from('speaking_attempts')
-                    .insert([{ user_id: currentUser.id, test_id: testId }])
-                    .select()
-                    .single();
-                
-                if (attemptError) {
-                    console.error("Ошибка создания попытки:", attemptError);
-                    alert("Ошибка базы данных (speaking_attempts): " + attemptError.message);
-                } else if (!attemptData) {
-                    alert("Предупреждение: Попытка создалась, но база не вернула её данные.");
-                } else {
-                    currentAttemptId = attemptData.id;
-                    console.log("Текущий ID попытки успешно получен:", currentAttemptId);
-                }
+                    .maybeSingle();
+                if (metaError) throw metaError;
+                if (!testMeta) throw new Error("This practice set is not available.");
+                if (testMeta.type === 'interview' || testMeta.type === 'listen_repeat') taskType = testMeta.type;
+                testScenario = testMeta.description ? String(testMeta.description).trim() : '';
+                const doneLink2 = document.getElementById('doneLink');
+                if (doneLink2) doneLink2.href = (taskType === 'interview') ? 'interview.html' : 'listen_repeat.html';
+                // Попытка теперь создаётся по кнопке Start, а не при открытии
+                // страницы: раньше каждое открытие плеера оставляло пустую попытку,
+                // и в списке набор числился пройденным.
 
                 const { data, error } = await _supabase
                     .from('speaking_questions')
@@ -215,13 +248,32 @@
                 return;
             }
 
+            const startBtn = document.getElementById('startBtn');
+            if (startBtn.disabled) return; // двойной клик создавал две попытки
             recordingMimeType = getSupportedMimeType();
+            startBtn.disabled = true;
 
             // Инициализируем Web Audio API при клике пользователя
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
             try {
                 mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+                const { data: attemptData, error: attemptError } = await _supabase
+                    .from('speaking_attempts')
+                    .insert([{ user_id: currentUser.id, test_id: testId }])
+                    .select()
+                    .single();
+                if (attemptError || !attemptData) {
+                    console.error("Ошибка создания попытки:", attemptError);
+                    if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+                    startBtn.disabled = false;
+                    alert("Не удалось начать практику — попытка не создана в базе.\n\n"
+                        + (attemptError ? attemptError.message : '') + "\n\nПроверьте интернет и нажмите Start ещё раз.");
+                    return;
+                }
+                currentAttemptId = attemptData.id;
+                practiceRunning = true;
                 
                 document.getElementById('startOverlay').classList.add('hidden');
 
@@ -234,6 +286,7 @@
                 }
             } catch (err) {
                 console.error("Media access error:", err);
+                startBtn.disabled = false;
                 
                 let details = "";
                 if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
@@ -425,11 +478,15 @@
         }
 
         async function startRecording(limit) {
+            if (recordingStarting || (mediaRecorder && mediaRecorder.state === 'recording')) return;
+            recordingStarting = true;
             setStatus('Recording...', 'recording-active');
 
             try {
                 await acquireFreshStream();
+                recordingStarting = false;
             } catch (err) {
+                recordingStarting = false;
                 console.error('Не удалось перезахватить микрофон:', err);
                 setStatus('Mic error', 'bg-red-100 text-red-700 border-red-200');
                 alert('Не удалось получить доступ к микрофону для записи.\n\n' + (err.message || err.name));
@@ -499,61 +556,62 @@
                 document.getElementById('micIcon').classList.remove('bg-transparent', 'text-white');
                 document.getElementById('micIcon').classList.add('bg-amber-100', 'text-amber-500');
 
+                const itemIndex = currentIndex;
                 mediaRecorder.onstop = async () => {
-                    try {
-                        const mimeType = mediaRecorder.mimeType || recordingMimeType || 'audio/webm';
-                        let fileExt = 'webm';
-                        if (mimeType.includes('mp4')) fileExt = 'm4a';
-                        else if (mimeType.includes('aac')) fileExt = 'aac';
-                        else if (mimeType.includes('ogg')) fileExt = 'ogg';
+                    const mimeType = mediaRecorder.mimeType || recordingMimeType || 'audio/webm';
+                    let fileExt = 'webm';
+                    if (mimeType.includes('mp4')) fileExt = 'm4a';
+                    else if (mimeType.includes('aac')) fileExt = 'aac';
+                    else if (mimeType.includes('ogg')) fileExt = 'ogg';
 
-                        const blob = new Blob(audioChunks, { type: mimeType });
+                    const blob = new Blob(audioChunks, { type: mimeType });
 
-                        // Диагностика пустой записи: на iOS при проблеме с
-                        // аудиосессией запись «проходит», но файл получается
-                        // пустой. Раньше такая тишина молча уезжала в базу и
-                        // обнаруживалась только учителем при проверке.
-                        if (blob.size < 1000) {
-                            console.warn('Пустая запись, размер:', blob.size);
-                            alert('Запись получилась пустой — микрофон не передал звук.\n\nПроверьте, что: не подключены наушники с отдельным микрофоном, не идёт звонок в другом приложении, и в настройках Safari разрешён доступ к микрофону.\n\nПопробуйте пройти это задание ещё раз.');
-                        }
-
-                        const fileName = `${currentUser.id}/${taskType}_q${questions[currentIndex].id}_${Date.now()}.${fileExt}`;
-
-                        const { error: uploadError } = await _supabase.storage
-                            .from('student_recordings')
-                            .upload(fileName, blob, {
-                                contentType: mimeType,
-                                upsert: true
-                            });
-                        
-                        if (uploadError) {
-                            console.error("Upload error:", uploadError);
-                            alert("Ошибка загрузки файла в Storage: " + uploadError.message);
-                        } else {
-                            if (!currentAttemptId) {
-                                alert("Ошибка: Невозможно сохранить ответ, так как ID попытки пустой.");
-                            } else {
-                                const { error: dbError } = await _supabase
-                                    .from('speaking_responses')
-                                    .insert([{
-                                        attempt_id: currentAttemptId,
-                                        question_id: questions[currentIndex].id,
-                                        user_audio_url: fileName
-                                    }]);
-                                
-                                if (dbError) {
-                                    console.error("Database save error:", dbError);
-                                    alert("Ошибка записи в speaking_responses: " + dbError.message);
-                                }
-                            }
-                        }
-                    } catch (err) {
-                        console.error("Save process error:", err);
-                        alert("Критическая ошибка сохранения: " + err.message);
+                    // Диагностика пустой записи: на iOS при проблеме с
+                    // аудиосессией запись «проходит», но файл получается
+                    // пустой. Раньше такая тишина молча уезжала в базу и
+                    // обнаруживалась только учителем при проверке.
+                    if (blob.size < 1000) {
+                        console.warn('Пустая запись, размер:', blob.size);
+                        alert('Запись получилась пустой — микрофон не передал звук.\n\nПроверьте, что: не подключены наушники с отдельным микрофоном, не идёт звонок в другом приложении, и в настройках Safari разрешён доступ к микрофону.\n\nПопробуйте пройти это задание ещё раз.');
                     }
 
-                    currentIndex++;
+                    const question = questions[itemIndex];
+                    const fileName = `${currentUser.id}/${taskType}_q${question.id}_${Date.now()}.${fileExt}`;
+
+                    // Сохраняем, пока не получится: раньше при сбое показывалось
+                    // сообщение, и набор шёл дальше — запись терялась
+                    let uploaded = false, tries = 0;
+                    for (;;) {
+                        try {
+                            if (!uploaded) {
+                                const { error: uploadError } = await _supabase.storage
+                                    .from('student_recordings')
+                                    .upload(fileName, blob, { contentType: mimeType, upsert: true });
+                                if (uploadError) throw uploadError;
+                                uploaded = true;
+                            }
+                            // Повтор: если ответ уже дошёл до базы, второй раз не пишем
+                            if (tries > 0) {
+                                const { data: existing, error: exErr } = await _supabase
+                                    .from('speaking_responses').select('id')
+                                    .eq('attempt_id', currentAttemptId).eq('question_id', question.id).limit(1);
+                                if (exErr) throw exErr;
+                                if (existing && existing.length) break;
+                            }
+                            const { error: dbError } = await _supabase
+                                .from('speaking_responses')
+                                .insert([{ attempt_id: currentAttemptId, question_id: question.id, user_audio_url: fileName }]);
+                            if (dbError) throw dbError;
+                            break;
+                        } catch (err) {
+                            tries++;
+                            console.error("Save process error:", err);
+                            await waitForRetry(err);
+                            setStatus('Saving to Cloud...', 'bg-amber-100 text-amber-700 border-amber-200');
+                        }
+                    }
+
+                    currentIndex = itemIndex + 1;
                     if (currentIndex < questions.length) {
                         loadQuestion(currentIndex);
                     } else {
@@ -565,12 +623,14 @@
 
         function finish() {
             if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
+            practiceRunning = false;
             
             if (currentAttemptId) {
+                const id = encodeURIComponent(currentAttemptId);
                 if (taskType === 'interview') {
-                    window.location.href = `interview_results.html?attempt_id=${currentAttemptId}&type=${taskType}`;
+                    window.location.href = `interview_results.html?attempt_id=${id}&type=${taskType}`;
                 } else {
-                    window.location.href = `speaking_results.html?attempt_id=${currentAttemptId}&type=${taskType}`;
+                    window.location.href = `speaking_results.html?attempt_id=${id}&type=${taskType}`;
                 }
             } else {
                 document.getElementById('playerUI').classList.add('hidden');
