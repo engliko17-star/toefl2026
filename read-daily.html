@@ -13,6 +13,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <script src="auth.js"></script>
+    <script src="content-visibility.js"></script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -53,12 +54,6 @@
         const testListContainer = document.getElementById('testList');
         const loadingMsg = document.getElementById('loadingMsg');
 
-        const mockDailyTests = [
-            { id: 1, title: "Library Notice & Room Booking", category: "Daily Life", questions_count: 4 },
-            { id: 2, title: "Online Shopping Habits", category: "Daily Life", questions_count: 3 },
-            { id: 3, title: "Campus Cafeteria Changes", category: "Daily Life", questions_count: 3 }
-        ];
-
         // 1. Функция получения безопасного клиента базы данных
         function getDatabaseClient() {
             if (typeof supabaseClient !== 'undefined') return supabaseClient;
@@ -72,6 +67,13 @@
         const db = getDatabaseClient();
         let currentUser = null;
 
+        // Глазик преподавателя (content-visibility.js). Если файл не загрузился,
+        // страница работает как раньше, а скрытое всё равно не попадает к ученикам.
+        const CV = window.ContentVisibility || {
+            init() {}, cardClass() { return ''; }, withEye(html) { return html; },
+            visibleFor(rows) { return (rows || []).filter(r => r.is_hidden !== true); }
+        };
+
         // 2. Инициализация страницы и проверка авторизации
         async function initPage() {
             try {
@@ -80,6 +82,7 @@
                 }
                 currentUser = await requireAuth();
                 if (currentUser) {
+                    CV.init({ user: currentUser, reload: loadTests });
                     await loadTests();
                 }
             } catch (err) {
@@ -119,17 +122,20 @@
         // задание реально встречалось на настоящем экзамене (галочка is_real_toefl).
         const REAL_TOEFL_RIBBON = `<div class="absolute top-[15px] right-[-38px] w-[150px] rotate-45 bg-violet-600 text-white text-[9px] font-extrabold tracking-[0.15em] text-center py-1 shadow-sm z-10 pointer-events-none">TOEFL</div>`;
 
-        // Колонку is_real_toefl добавляет reading_real_toefl_labels.sql. Пока её нет
-        // в базе, запрос с ней падает (42703) — тогда берём список без этикеток.
-        // Иначе страница ушла бы в запасной демо-список вместо настоящих заданий.
+        // Необязательные колонки: is_real_toefl (этикетка TOEFL) и is_hidden (глазик).
+        // Пока SQL для них не запущен, запрос с ними падает (42703) — тогда убираем
+        // недостающую колонку и повторяем: страница работает в любом порядке выкладки.
+        const OPTIONAL_COLUMNS = ['is_real_toefl', 'is_hidden'];
         async function fetchPracticeTasks(table, columns) {
             const run = cols => db.from(table).select(cols).eq('is_mock_only', false).order('id', { ascending: true });
-            let res = await run(columns + ', is_real_toefl');
-            if (res.error && (res.error.code === '42703' || /is_real_toefl/.test(res.error.message || ''))) {
-                console.warn(`[${table}] нет колонки is_real_toefl — этикетки TOEFL не показываются`);
-                res = await run(columns);
+            let optional = OPTIONAL_COLUMNS.slice();
+            for (;;) {
+                const res = await run([columns, ...optional].join(', '));
+                const missing = res.error && optional.find(c => (res.error.message || '').includes(c));
+                if (!missing) return res;
+                console.warn(`[${table}] нет колонки ${missing} — работаем без неё`);
+                optional = optional.filter(c => c !== missing);
             }
-            return res;
         }
 
         async function loadTests() {
@@ -142,11 +148,12 @@
                     const { data: tasksData, error: tasksError } = await fetchPracticeTasks(
                         'daily_life_tasks', 'id, title, category, questions_count, is_mock_only');
                     
-                    if (!tasksError && tasksData && tasksData.length > 0) {
-                        tests = tasksData;
-                    } else {
-                        tests = mockDailyTests;
-                    }
+                    // Раньше при ошибке или пустом списке тут подставлялся демо-список
+                    // с выдуманными заданиями (ссылки вели на чужие id). Теперь честно:
+                    // ошибка — сообщение, пусто — «пока нет заданий».
+                    if (tasksError) throw tasksError;
+                    // Скрытые глазиком задания видит только преподаватель
+                    tests = CV.visibleFor(tasksData, currentUser);
 
                     // Шаг Б: Тянем результаты только текущего авторизованного пользователя
                     if (currentUser) {
@@ -167,10 +174,14 @@
                         }
                     }
                 } else {
-                    tests = mockDailyTests;
+                    throw new Error('Нет подключения к базе.');
                 }
 
                 testListContainer.innerHTML = '';
+                if (!tests.length) {
+                    testListContainer.innerHTML = '<p class="text-sm font-medium text-gray-500">No practice tests available yet.</p>';
+                    return;
+                }
 
                 // Шаг В: Отрисовка карточек
                 tests.forEach(test => {
@@ -228,9 +239,10 @@
                     // не наезжала на номер теста и круг с процентом
                     const isRealToefl = test.is_real_toefl === true;
                     const headerRightPadding = isRealToefl ? 'pr-12' : '';
+                    const isHiddenTask = test.is_hidden === true;
 
                     testListContainer.innerHTML += `
-                        <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col group hover:border-emerald-200 hover:shadow-md transition relative overflow-hidden">
+                        <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col group hover:border-emerald-200 hover:shadow-md transition relative overflow-hidden ${CV.cardClass(isHiddenTask)}">
                             ${isRealToefl ? REAL_TOEFL_RIBBON : ''}
                             <div class="flex justify-between items-start mb-4 ${headerRightPadding}">
                                 ${savedScore !== null ? `
@@ -254,7 +266,7 @@
                             <h3 class="text-sm font-bold text-slate-900 mb-1 group-hover:text-emerald-600 transition tracking-tight ${isRealToefl ? 'pr-6' : ''}">${test.title}</h3>
                             <p class="text-[11px] text-gray-500 mb-5">${test.questions_count || 4} Questions • 1 answer type</p>
                             
-                            ${actionButton}
+                            ${CV.withEye(actionButton, 'daily_life_tasks', [test.id], isHiddenTask)}
                         </div>
                     `;
                 });
