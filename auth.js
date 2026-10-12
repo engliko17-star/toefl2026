@@ -127,8 +127,21 @@ const AUTH_STORAGE_KEY = 'sb-' + new URL(AUTH_SB_URL).hostname.split('.')[0] + '
 const AUTH_TIMEOUT_MS = 8000;      // на один запрос
 const AUTH_GATE_LIMIT_MS = 15000;  // на всю проверку: дольше — экран ошибки
 
+// Имя файла страницы в одном виде: «choose-response-list», «choose-response-list.html»
+// и «/toefl2026/» → «choose-response-list.html» / «index.html».
+// GitHub Pages отдаёт страницу и по адресу без .html — раньше такое имя не находилось
+// в PAGE_SECTIONS, и проверка доступа к разделу (и к страницам преподавателя)
+// просто пропускалась: достаточно было стереть «.html» в адресе.
+function authNormalizeFile(name) {
+    let file = String(name || '').toLowerCase();
+    try { file = decodeURIComponent(file); } catch (e) { /* оставляем как есть */ }
+    if (!file) return 'index.html';
+    if (!/\.[a-z0-9]+$/.test(file)) file += '.html';
+    return file;
+}
+
 function authFileName() {
-    return (window.location.pathname.split('/').pop() || '').toLowerCase();
+    return authNormalizeFile(window.location.pathname.split('/').pop());
 }
 
 function authWithTimeout(promise, ms, label) {
@@ -200,18 +213,17 @@ function authLoadAccess() {
 
 // Решение по текущей странице. Логика та же, что была в requireAuth().
 function authDecide(profile) {
-    const path = window.location.pathname;
     const isTeacher = profile && profile.role === 'teacher';
     const isGuest = profile && profile.role === 'guest';
 
     // Гость: только tests.html (демо-режим «гулять по разделам» отложен)
-    if (isGuest) return path.includes('tests.html') ? { kind: 'allow' } : { kind: 'redirect', to: 'tests.html' };
+    if (isGuest) return authFileName() === 'tests.html' ? { kind: 'allow' } : { kind: 'redirect', to: 'tests.html' };
 
     // Ученик без подтверждения преподавателем
     if (!isTeacher && (!profile || !profile.is_approved)) return { kind: 'pending' };
 
     // Страницы преподавателя
-    if (AUTH_TEACHER_ONLY.some(p => path.includes(p)) && !isTeacher) return { kind: 'redirect', to: 'index.html' };
+    if (AUTH_TEACHER_ONLY.includes(authFileName()) && !isTeacher) return { kind: 'redirect', to: 'index.html' };
 
     // Закрытый раздел (проверяется каждая страница по имени файла)
     if (!isTeacher) {
@@ -225,7 +237,7 @@ function authDecide(profile) {
 }
 
 // ---------- скрытие страницы до проверки ----------
-const AUTH_GATED = !!PAGE_SECTIONS[authFileName()] || AUTH_TEACHER_ONLY.some(p => window.location.pathname.includes(p));
+const AUTH_GATED = !!PAGE_SECTIONS[authFileName()] || AUTH_TEACHER_ONLY.includes(authFileName());
 
 function authReveal() {
     document.documentElement.classList.remove('auth-gate');
@@ -241,6 +253,11 @@ function authWhenBody(fn) {
 function authScreen(html) {
     authWhenBody(() => {
         document.body.innerHTML = html;
+        // Часть страниц держит <body class="opacity-0"> и проявляет его сама после
+        // проверки. Экран «Раздел закрыт / на проверке» оставался невидимым —
+        // ученица видела пустую серую страницу.
+        document.body.classList.remove('opacity-0');
+        document.body.style.opacity = '1';
         authReveal();
     });
 }
@@ -377,7 +394,7 @@ let _authLockProfile = null;
 
 function authLockRule(href) {
     if (!_authLockProfile || !href || href.startsWith('#') || href.startsWith('http') || href.startsWith('mailto:')) return null;
-    const file = (href.split('?')[0].split('#')[0].split('/').pop() || '').toLowerCase();
+    const file = authNormalizeFile(href.split('?')[0].split('#')[0].split('/').pop());
     const section = PAGE_SECTIONS[file];
     if (!section) return null;
     const rule = ACCESS_FIELD[section];
