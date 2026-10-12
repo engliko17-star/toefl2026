@@ -3,573 +3,420 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sentence Builder Trainer — TOEFL Practice</title>
-
+    <title>Writing Skills — TOEFL</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
-
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        .word-slot { min-width: 90px; min-height: 42px; transition: all 0.2s; }
-        .sortable-ghost { opacity: 0.2; background-color: #f1f5f9; border: 2px dashed #94a3b8; color: transparent; }
-        /* Планшеты и телефоны: жест над словом — перетаскивание, а не прокрутка */
-        .draggable-word, .word-slot, #wordBankContainer { touch-action: none; }
-        .sortable-fallback { opacity: 1 !important; transform: scale(1.05); box-shadow: 0 8px 20px rgba(0,0,0,.18); }
+        ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
     </style>
 </head>
-<body class="bg-[#f8f9fa] text-slate-900 min-h-screen flex flex-col antialiased">
+<body class="bg-[#f8f9fa] text-slate-800 min-h-screen antialiased flex flex-col md:flex-row opacity-0 transition-opacity duration-200" id="mainBody">
 
-    <!-- Header -->
-    <header class="bg-white px-6 py-4 flex items-center justify-between border-b border-gray-100 shrink-0 sticky top-0 z-50 shadow-sm">
-        <div class="flex items-center space-x-4">
-            <button id="navBackBtn" onclick="handleBackAction()" class="flex items-center justify-center w-10 h-10 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 transition">
-                <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Symbols/Left%20Arrow.png" class="w-5 h-5" alt="Back" />
-            </button>
-            <div>
-                <h1 class="text-sm font-bold text-slate-900" id="headerTitle">Build a Sentence Trainer</h1>
-                <p class="text-[11px] font-bold text-gray-400 mt-0.5 uppercase tracking-wider" id="headerSubtitle">Grammar Mastery</p>
-            </div>
-        </div>
+    <div id="app-sidebar"></div>
+    <script src="nav.js"></script>
 
-        <div id="exerciseProgressHeader" class="hidden flex items-center space-x-4">
-            <div class="text-xs font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-xl">
-                Question <span id="currentQNum">1</span> / <span id="totalQNum">5</span>
-            </div>
-        </div>
-    </header>
-
-    <!-- Main Content Area -->
-    <main class="flex-1 flex flex-col overflow-y-auto p-6 md:p-10 max-w-5xl mx-auto w-full">
-
-        <!-- VIEW 1: LEVEL SELECTION -->
-        <div id="levelsView" class="space-y-6 w-full">
-            <div class="mb-6">
-                <span class="text-[10px] font-bold text-rose-500 bg-rose-50 px-2.5 py-1 rounded-md uppercase tracking-wider border border-rose-100">Interactive Trainer</span>
-                <h2 class="text-2xl font-black text-slate-900 tracking-tight mt-2">Choose Your Practice Level</h2>
-                <p class="text-xs text-gray-500 mt-1">Select a grammar level to complete step-by-step sentence assembly drills.</p>
+    <main class="flex-1 p-6 lg:p-10 overflow-y-auto bg-[#f8f9fa] pb-24 md:pb-10">
+        <div class="max-w-6xl mx-auto">
+            
+            <div class="mb-8">
+                <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Writing</h1>
+                <p class="text-xs text-gray-500 mt-1">Train your analytical thinking, structure, and academic vocabulary expression.</p>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" id="levelsGrid">
-                <!-- Level Cards dynamically injected via JavaScript -->
-            </div>
-        </div>
-
-        <!-- VIEW 2: EXERCISE WORKSPACE -->
-        <div id="exerciseView" class="hidden flex-1 flex-col items-center justify-center w-full">
-            <div class="max-w-3xl w-full">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
                 
-                <!-- Prompt Card -->
-                <div class="w-full space-y-6 mb-8 bg-white p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm relative">
-                    <div class="flex items-start space-x-4">
-                        <div class="flex items-center justify-center w-12 h-12 bg-blue-50 border border-blue-100 rounded-full shrink-0 shadow-sm" id="avatarBox">
-                            <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/People%20with%20professions/Man%20Teacher%20Light%20Skin%20Tone.png" class="w-8 h-8" alt="Teacher" />
-                        </div>
-                        <div class="flex-1">
-                            <span class="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Context Prompt</span>
-                            <div class="text-sm font-medium text-slate-700 mt-0.5" id="contextPromptText">Loading prompt...</div>
-                        </div>
-                    </div>
-
-                    <!-- Sentence Construction Dropzone -->
-                    <div class="pt-6 border-t border-dashed border-gray-200">
-                        <div class="text-[10px] font-bold text-rose-500 uppercase tracking-wider mb-3">Assemble your response:</div>
-                        <div class="flex flex-wrap items-end gap-y-3 p-4 bg-gray-50/80 rounded-2xl border border-gray-200/60 min-h-[70px]" id="dropzoneContainer">
-                            <!-- Slots and fixed text dynamically rendered -->
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Word Bank Container -->
-                <div class="w-full max-w-2xl mx-auto mb-8">
-                    <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center mb-3">Drag words into the slots above</p>
-                    <div class="flex flex-wrap justify-center gap-2.5 bg-white border border-gray-200 p-5 rounded-3xl min-h-[90px] shadow-sm" id="wordBankContainer">
-                        <!-- Draggable word chips dynamically injected -->
-                    </div>
-                </div>
-
-                <!-- Feedback Banner -->
-                <div id="feedbackBanner" class="hidden mb-6 p-4 rounded-2xl border transition-all">
-                    <div class="flex items-start space-x-3">
-                        <div id="feedbackIcon" class="w-6 h-6 shrink-0 mt-0.5"></div>
-                        <div class="flex-1">
-                            <h4 id="feedbackTitle" class="text-xs font-bold uppercase tracking-wider"></h4>
-                            <p id="feedbackText" class="text-xs font-medium mt-1 leading-relaxed"></p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Action Controls -->
-                <div class="flex items-center justify-end space-x-3">
-                    <button id="checkBtn" onclick="checkAnswer()" class="px-6 py-3 bg-rose-500 text-white font-bold text-xs rounded-xl shadow-md shadow-rose-500/20 hover:bg-rose-600 transition flex items-center">
-                        <i data-lucide="check-circle" class="w-4 h-4 mr-1.5"></i> Check Answer
-                    </button>
+                <div class="lg:col-span-2 space-y-10">
                     
-                    <button id="nextBtn" onclick="nextQuestion()" class="hidden px-6 py-3 bg-slate-900 text-white font-bold text-xs rounded-xl shadow-md hover:bg-slate-800 transition flex items-center">
-                        Next Question <i data-lucide="arrow-right" class="w-4 h-4 ml-1.5"></i>
-                    </button>
+                    <div>
+                        <div class="flex items-center justify-between mb-4">
+                            <div>
+                                <h2 class="text-base font-bold text-slate-900">Guides & Templates</h2>
+                                <p class="text-[11px] text-gray-400 mt-0.5">Master structural layout and response coherence.</p>
+                            </div>
+                            <a href="writing-articles.html" class="text-xs font-bold text-teal-600 hover:underline flex items-center">
+                                Browse All <i data-lucide="arrow-right" class="w-3.5 h-3.5 ml-1"></i>
+                            </a>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <a href="article-write-an-academic.html" class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm relative flex flex-col justify-between hover:border-teal-500/40 hover:shadow-md transition-all group">
+                                <div>
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-[9px] font-bold text-teal-600 bg-teal-50 px-2 py-0.5 rounded uppercase tracking-wider">Template</span>
+                                        <i data-lucide="file-text" class="w-4 h-4 text-gray-300 group-hover:text-teal-500 transition-colors"></i>
+                                    </div>
+                                    <h4 class="font-bold text-slate-800 text-sm mt-3 group-hover:text-slate-900">The Perfect Academic Template</h4>
+                                    <p class="text-xs text-gray-400 mt-1 leading-relaxed">A proven tactical structure for the new 10-minute forum task formats.</p>
+                                </div>
+                                <div class="flex items-center text-[10px] text-gray-400 mt-4 font-medium">
+                                    <i data-lucide="clock" class="w-3.5 h-3.5 mr-1"></i> 3 min read
+                                </div>
+                            </a>
+
+                            <!-- Раньше вела на writing-article-view.html?id=transitions — такой статьи нет,
+                                 открывалась общая страница-заглушка. Теперь — на гайд по Email. -->
+                            <a href="article-write-an-email.html" class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm relative flex flex-col justify-between hover:border-indigo-500/40 hover:shadow-md transition-all group">
+                                <div>
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-[9px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded uppercase tracking-wider">Task</span>
+                                        <i data-lucide="mail" class="w-4 h-4 text-gray-300 group-hover:text-indigo-500 transition-colors"></i>
+                                    </div>
+                                    <h4 class="font-bold text-slate-800 text-sm mt-3 group-hover:text-slate-900">Write an Email Task</h4>
+                                    <p class="text-xs text-gray-400 mt-1 leading-relaxed">Everyday written communication, formal rubrics and campus-related email formatting.</p>
+                                </div>
+                                <div class="flex items-center text-[10px] text-gray-400 mt-4 font-medium">
+                                    <i data-lucide="clock" class="w-3.5 h-3.5 mr-1"></i> Guide
+                                </div>
+                            </a>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="flex items-center justify-between mb-4">
+                            <div>
+                                <h2 class="text-base font-bold text-slate-900">Practice Tasks</h2>
+                                <p class="text-[11px] text-gray-400 mt-0.5">Focus on specific exam writing formats.</p>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                            <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between relative">
+                                <div>
+                                    <div class="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center text-rose-500 mb-4">
+                                        <i data-lucide="puzzle" class="w-5 h-5"></i>
+                                    </div>
+                                    <h3 class="font-bold text-slate-900 text-sm mb-1">Build a Sentence</h3>
+                                    <p class="text-[11px] text-gray-400 leading-relaxed mb-4">Master syntax, clause arrangements and punctuation.</p>
+                                </div>
+                                <div class="flex items-center justify-between pt-2 mt-auto border-t border-gray-50">
+                                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Practice Sets</span>
+                                    <a href="task-list.html?type=sentence" class="text-xs font-bold text-rose-500 hover:text-rose-600 flex items-center group">
+                                        Start <i data-lucide="arrow-right" class="w-3.5 h-3.5 ml-1 group-hover:translate-x-0.5 transition-transform"></i>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between relative">
+                                <div>
+                                    <div class="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-500 mb-4">
+                                        <i data-lucide="mail" class="w-5 h-5"></i>
+                                    </div>
+                                    <h3 class="font-bold text-slate-900 text-sm mb-1">Write an Email</h3>
+                                    <p class="text-[11px] text-gray-400 leading-relaxed mb-4">Practice semi-formal tones and functional everyday structures.</p>
+                                </div>
+                                <div class="flex items-center justify-between pt-2 mt-auto border-t border-gray-50">
+                                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Practice Sets</span>
+                                    <a href="task-list.html?type=email" class="text-xs font-bold text-blue-500 hover:text-blue-600 flex items-center group">
+                                        Start <i data-lucide="arrow-right" class="w-3.5 h-3.5 ml-1 group-hover:translate-x-0.5 transition-transform"></i>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="bg-white p-5 rounded-2xl border-2 border-teal-600/20 shadow-sm flex flex-col justify-between relative overflow-hidden">
+                                <div class="absolute top-0 right-0 bg-teal-600 text-white text-[8px] font-extrabold px-2 py-0.5 rounded-bl-lg uppercase tracking-widest">Exam Level</div>
+                                <div>
+                                    <div class="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center text-teal-600 mb-4 mt-1">
+                                        <i data-lucide="message-square" class="w-5 h-5"></i>
+                                    </div>
+                                    <h3 class="font-bold text-slate-900 text-sm mb-1">Academic Discussion</h3>
+                                    <p class="text-[11px] text-gray-400 leading-relaxed mb-4">State and defend your stance in a rapid live university discussion board.</p>
+                                </div>
+                                <div class="flex items-center justify-between pt-2 mt-auto border-t border-gray-50">
+                                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Practice Sets</span>
+                                    <a href="task-list.html?type=academic" class="text-xs font-bold text-white bg-teal-600 px-3 py-1 rounded-lg flex items-center hover:bg-teal-700 shadow-sm shadow-teal-600/20 transition-all">
+                                        Start
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Mini-Mock Card -->
+                        <a href="mini-mock-writing-list.html" class="group bg-gradient-to-br from-indigo-600 to-violet-800 rounded-[2rem] p-8 text-white relative overflow-hidden shadow-[0_8px_30px_rgb(79,70,229,0.2)] hover:shadow-[0_8px_40px_rgb(79,70,229,0.3)] transition-all duration-300 transform hover:-translate-y-1 border border-indigo-500 block">
+                            <!-- Декоративная иконка на фоне -->
+                            <div class="absolute -top-6 -right-6 p-6 opacity-20 transform group-hover:scale-110 group-hover:rotate-12 transition duration-500">
+                                <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Test%20Tube.png" class="w-40 h-40" alt="Mock" />
+                            </div>
+                            
+                            <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                                <div>
+                                    <span class="inline-flex items-center justify-center px-3 py-1 bg-white/20 backdrop-blur-md rounded-lg text-[10px] font-bold tracking-wider uppercase mb-4 border border-white/10 shadow-sm">
+                                        Full Simulation
+                                    </span>
+                                    <h2 class="text-2xl font-black mb-2 tracking-tight">Mini-Mock Test</h2>
+                                    <p class="text-indigo-100 text-sm font-medium leading-relaxed max-w-md">
+                                        Окунитесь в реальные условия экзамена. 3 задания подряд со строгими таймерами и общим результатом.
+                                    </p>
+                                </div>
+                                
+                                <div class="flex items-center space-x-2 text-sm font-bold bg-white text-indigo-900 px-5 py-3.5 rounded-xl w-max group-hover:bg-indigo-50 transition shadow-md shrink-0">
+                                    <span>Choose Test</span>
+                                    <i data-lucide="arrow-right" class="w-4 h-4 ml-1 text-indigo-600"></i>
+                                </div>
+                            </div>
+                        </a>
+                    </div>
+
+                    <!-- ================= НОВЫЙ РАЗДЕЛ: ТРЕНАЖЁРЫ ================= -->
+                    <div>
+                        <div class="flex items-center justify-between mb-4">
+                            <div>
+                                <h2 class="text-base font-bold text-slate-900">Тренажёры</h2>
+                                <p class="text-[11px] text-gray-400 mt-0.5">Interactive skill builders and step-by-step drills.</p>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                            
+                            <!-- Карточка Sentence Preparation -->
+                            <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:border-rose-500/40 hover:shadow-md transition-all">
+                                <div class="absolute top-0 right-0 bg-rose-500 text-white text-[8px] font-extrabold px-2 py-0.5 rounded-bl-lg uppercase tracking-widest">Levels Mode</div>
+                                <div>
+                                    <div class="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center text-rose-500 mb-4 mt-1">
+                                        <i data-lucide="layers" class="w-5 h-5"></i>
+                                    </div>
+                                    <h3 class="font-bold text-slate-900 text-sm mb-1">Sentence Preparation</h3>
+                                    <p class="text-[11px] text-gray-400 leading-relaxed mb-4">Пошаговая тренировка грамматики и структуры предложений по уровням.</p>
+                                </div>
+                                <div class="flex items-center justify-between pt-2 mt-auto border-t border-gray-50">
+                                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">5 Levels</span>
+                                    <a href="sentence-practice.html" class="text-xs font-bold text-white bg-rose-500 px-3 py-1.5 rounded-lg flex items-center hover:bg-rose-600 shadow-sm shadow-rose-500/20 transition-all">
+                                        Start <i data-lucide="arrow-right" class="w-3.5 h-3.5 ml-1"></i>
+                                    </a>
+                                </div>
+                            </div>
+                            
+                        </div>
+                    </div>
+                    <!-- ================= КОНЕЦ РАЗДЕЛА ТРЕНАЖЁРЫ ================= -->
+
+                    <div class="pt-4">
+                        <div class="flex items-center justify-between mb-4">
+                            <div>
+                                <h2 class="text-base font-bold text-slate-900">Your Writing Stats</h2>
+                                <p class="text-[11px] text-gray-400 mt-0.5">Track your production over time.</p>
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div class="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center justify-center text-center">
+                                <span id="stat-tasks" class="text-2xl font-extrabold text-slate-900">0</span>
+                                <span class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mt-1">Tasks Done</span>
+                            </div>
+                            <div class="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center justify-center text-center">
+                                <span id="stat-words" class="text-2xl font-extrabold text-emerald-600">0</span>
+                                <span class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mt-1">Words Written</span>
+                            </div>
+                            <div class="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center justify-center text-center">
+                                <span id="stat-score" class="text-2xl font-extrabold text-slate-900">-</span>
+                                <span class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mt-1">Avg. Essay Score</span>
+                            </div>
+                            <div class="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center justify-center text-center">
+                                <span id="stat-emails" class="text-2xl font-extrabold text-blue-600">0</span>
+                                <span class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mt-1">Emails Sent</span>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="space-y-6">
+                    
+                    <div class="bg-gradient-to-br from-[#026a6a] to-[#044e4e] p-5 rounded-2xl text-white relative overflow-hidden shadow-sm">
+                        <div class="absolute right-[-20px] top-[-10px] opacity-10">
+                            <i data-lucide="pen-tool" class="w-32 h-32"></i>
+                        </div>
+                        <span class="bg-white/10 text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">Weekly Goal</span>
+                        <h3 class="text-lg font-bold mt-2">Writing Practice</h3>
+                        <p class="text-xs text-teal-100/80 mt-1 leading-relaxed">Complete 5 writing assignments this week (a sentence set, an email, a discussion or a mini-mock).</p>
+                        
+                        <div class="mt-5">
+                            <div class="w-full h-1.5 bg-white/20 rounded-full overflow-hidden">
+                                <div id="goal-bar" class="bg-white h-full rounded-full transition-all duration-700 ease-out" style="width: 0%;"></div>
+                            </div>
+                            <div class="flex justify-between text-[10px] font-bold text-teal-100 mt-2">
+                                <span>Progress</span>
+                                <span id="goal-text">0 / 5</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Раньше здесь были вписанные вручную 88% / 82% / 85% / 90% — одинаковые
+                         у всех учениц. Теперь — реальные результаты из базы. -->
+                    <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
+                        <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider mb-1">Your Results</h3>
+                        <p class="text-[10px] text-gray-400 mb-4">Based on your practice answers</p>
+
+                        <div class="space-y-3.5">
+                            <div class="flex items-center justify-between border-b border-gray-50 pb-2 text-xs">
+                                <div class="flex items-center space-x-2 text-slate-600">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
+                                    <span>Build a Sentence accuracy</span>
+                                </div>
+                                <span id="res-sentence" class="font-bold text-slate-700">—</span>
+                            </div>
+                            <div class="flex items-center justify-between border-b border-gray-50 pb-2 text-xs">
+                                <div class="flex items-center space-x-2 text-slate-600">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+                                    <span>Email (teacher score)</span>
+                                </div>
+                                <span id="res-email" class="font-bold text-slate-700">—</span>
+                            </div>
+                            <div class="flex items-center justify-between border-b border-gray-50 pb-2 text-xs">
+                                <div class="flex items-center space-x-2 text-slate-600">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-teal-400"></span>
+                                    <span>Academic Discussion (teacher score)</span>
+                                </div>
+                                <span id="res-academic" class="font-bold text-slate-700">—</span>
+                            </div>
+                            <div class="flex items-center justify-between pb-1 text-xs">
+                                <div class="flex items-center space-x-2 text-slate-600">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
+                                    <span>Essays reviewed</span>
+                                </div>
+                                <span id="res-reviewed" class="font-bold text-slate-700">—</span>
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
 
             </div>
         </div>
-
-        <!-- VIEW 3: LEVEL COMPLETED SUMMARY -->
-        <div id="summaryView" class="hidden flex-1 flex-col items-center justify-center text-center py-10">
-            <div class="w-20 h-20 rounded-full bg-emerald-100 flex items-center justify-center mb-4 border border-emerald-200 shadow-sm">
-                <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Symbols/Check%20Mark%20Button.png" class="w-10 h-10" alt="Completed" />
-            </div>
-            <span class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-md uppercase tracking-wider border border-emerald-200">Level Complete</span>
-            <h2 class="text-2xl font-black text-slate-900 mt-3" id="summaryTitle">Level Finished!</h2>
-            <p class="text-xs text-slate-500 mt-2 max-w-sm leading-relaxed" id="summaryDesc">Great job! You have completed all sentence building exercises in this section.</p>
-
-            <div class="flex items-center space-x-3 mt-8">
-                <button onclick="showLevelsView()" class="px-5 py-3 bg-white border border-gray-200 text-slate-700 font-bold text-xs rounded-xl hover:bg-gray-50 transition shadow-sm flex items-center">
-                    <i data-lucide="grid" class="w-4 h-4 mr-1.5"></i> All Levels
-                </button>
-                <button id="retryLevelBtn" onclick="retryCurrentLevel()" class="px-5 py-3 bg-rose-500 text-white font-bold text-xs rounded-xl hover:bg-rose-600 transition shadow-sm flex items-center">
-                    <i data-lucide="rotate-ccw" class="w-4 h-4 mr-1.5"></i> Practice Again
-                </button>
-            </div>
-        </div>
-
     </main>
+
 
     <script>
         lucide.createIcons();
 
-        // --- SUPABASE CONFIGURATION ---
         const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
-        // Один клиент на страницу — тот, что создал auth.js (второй спорил с ним за сессию)
+        // Один клиент на страницу — тот, что создал auth.js. Второй клиент спорил с первым
+        // за общую «блокировку» сессии и мог надолго задержать проверку доступа.
         const supabaseClient = window.supabaseClient || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // --- STATE VARIABLES ---
-        let LEVELS_DATA = [];
-        let currentLevel = null;
-        let currentTasks = [];
-        let currentQuestionIdx = 0;
-        let activeSortables = [];
-        let completedLevels = [];
-        let progressUserId = 'anon';
+        // Эссе проверено, если есть балл преподавателя. «0/6.0» — заглушка старой
+        // версии практики, это не оценка.
+        // Балл бывает «4.5» и «4.5/6.0» (так сохранялись оценки раньше)
+        function essayScore(r) {
+            if (!r || r.score === null || r.score === undefined) return null;
+            const s = String(r.score).trim();
+            if (!s || /^0\s*\/\s*6(\.0+)?$/.test(s)) return null;
+            const m = s.match(/^(\d+(?:\.\d+)?)(?:\s*\/\s*6(?:\.0+)?)?$/);
+            return m ? parseFloat(m[1]) : null;
+        }
 
-        // Прогресс тренажёра хранится на устройстве — теперь отдельно для каждой
-        // ученицы (раньше на общем компьютере прогресс одной видела другая)
-        function lsGet(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
-        function lsSet(key, val) { try { localStorage.setItem(key, val); } catch (e) {} }
-        function lsDel(key) { try { localStorage.removeItem(key); } catch (e) {} }
-        const progressKey = levelId => `toefl_progress_v2:${progressUserId}:${levelId}`;
-        const completedKey = () => `toefl_completed_levels_v2:${progressUserId}`;
+        function startOfWeek() {
+            const d = new Date();
+            d.setHours(0, 0, 0, 0);
+            d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // понедельник
+            return d;
+        }
 
-        function loadCompletedLevels() {
-            // Однократный перенос старого прогресса (ключи без привязки к ученице)
-            const old = lsGet('toefl_completed_levels');
-            if (old !== null && lsGet(completedKey()) === null) {
-                lsSet(completedKey(), old);
-                lsDel('toefl_completed_levels');
+        async function loadWritingStats(userId) {
+            try {
+                const { data: responses, error } = await supabaseClient
+                    .from('student_responses')
+                    .select('task_id, task_type, response_content, score, created_at')
+                    .eq('user_id', userId)
+                    .in('task_type', ['sentence', 'email', 'academic']);
+                if (error) throw error;
+                const rows = responses || [];
+
+                // Build a Sentence — это наборы: набор считаем одним заданием, а не 10
+                const sentenceRows = rows.filter(r => r.task_type === 'sentence');
+                const setOf = {};
+                const sentenceIds = [...new Set(sentenceRows.map(r => r.task_id))];
+                if (sentenceIds.length) {
+                    const { data: tasks } = await supabaseClient.from('writing_tasks').select('id, test_id').in('id', sentenceIds);
+                    (tasks || []).forEach(t => { setOf[String(t.id)] = t.test_id !== null && t.test_id !== undefined ? 'set:' + t.test_id : 'task:' + t.id; });
+                }
+                const setKey = r => setOf[String(r.task_id)] || ('task:' + r.task_id);
+                const essays = rows.filter(r => r.task_type === 'email' || r.task_type === 'academic');
+
+                let mocks = [];
                 try {
-                    Object.keys(localStorage).filter(k => /^toefl_progress_[^:]+$/.test(k) && !k.startsWith('toefl_progress_v2')).forEach(k => {
-                        const levelId = k.slice('toefl_progress_'.length);
-                        if (lsGet(progressKey(levelId)) === null) lsSet(progressKey(levelId), lsGet(k));
-                        lsDel(k);
-                    });
-                } catch (e) {}
-            }
-            try { completedLevels = JSON.parse(lsGet(completedKey()) || '[]'); } catch (e) { completedLevels = []; }
-            if (!Array.isArray(completedLevels)) completedLevels = [];
-        }
+                    const { data: m } = await supabaseClient.from('mini_mock_writing_attempts').select('id, created_at').eq('user_id', userId);
+                    mocks = m || [];
+                } catch (e) { /* мини-моки не обязательны для статистики */ }
 
-        function spEsc(s) {
-            return String(s === null || s === undefined ? '' : s)
-                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-        }
+                const tasksDone = new Set(sentenceRows.map(setKey)).size + essays.length + mocks.length;
+                const wordsWritten = essays.reduce((sum, r) => sum + ((r.response_content || '').trim() ? r.response_content.trim().split(/\s+/).length : 0), 0);
+                const emailsSent = essays.filter(r => r.task_type === 'email').length;
 
-        // Сравниваются слова и их порядок; знаки препинания не влияют,
-        // апостроф влияет (раньше its и it's считались одинаковыми)
-        function normalizeForCompare(text) {
-            return String(text || '')
-                .replace(/[\u2018\u2019\u201B`\u00B4]/g, "'")
-                .toLowerCase()
-                .replace(/[^\p{L}\p{N}'\s-]/gu, ' ')
-                .replace(/\s+/g, ' ')
-                .trim();
-        }
+                const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+                const fmt = v => v === null ? '—' : (Math.round(v * 10) / 10).toFixed(1);
+                const emailScores = essays.filter(r => r.task_type === 'email').map(essayScore).filter(v => v !== null);
+                const academicScores = essays.filter(r => r.task_type === 'academic').map(essayScore).filter(v => v !== null);
+                const allScores = emailScores.concat(academicScores);
 
-        document.addEventListener('DOMContentLoaded', async () => {
-            // Раньше тренажёр открывался без проверки входа и доступа к Writing
-            if (typeof requireAuth === 'function') {
-                const user = await requireAuth();
-                if (!user) return;
-                progressUserId = user.id;
-            }
-            loadCompletedLevels();
-            await fetchLevels();
-            renderLevelsGrid();
-        });
-
-        // --- 1. FETCH LEVELS FROM SUPABASE ---
-        async function fetchLevels() {
-            try {
-                const { data, error } = await supabaseClient
-                    .from('trainer_sentence_levels')
-                    .select('*')
-                    .eq('is_published', true)
-                    .order('level_order', { ascending: true });
-
-                if (error) throw error;
-                LEVELS_DATA = data || [];
-            } catch (err) {
-                console.error("Error fetching levels:", err);
-                document.getElementById('levelsGrid').innerHTML = `<p class="text-rose-500 text-sm">Failed to load levels from database.</p>`;
-            }
-        }
-
-        // --- RENDER LEVEL SELECTION ---
-        function renderLevelsGrid() {
-            const grid = document.getElementById('levelsGrid');
-            grid.innerHTML = '';
-
-            if (LEVELS_DATA.length === 0) {
-                grid.innerHTML = `<p class="text-gray-400 text-xs">No levels available yet.</p>`;
-                return;
-            }
-
-            LEVELS_DATA.forEach(level => {
-                const isDone = completedLevels.includes(level.id);
-                const savedProgress = lsGet(progressKey(level.id));
-                const hasProgress = savedProgress !== null && !isDone;
-
-                const card = document.createElement('div');
-                card.className = `bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between hover:border-rose-500/40 hover:shadow-md transition-all cursor-pointer group relative overflow-hidden`;
-                card.onclick = () => startLevel(level.id);
-
-                let badgeHTML = `<span class="text-[9px] font-extrabold px-2 py-0.5 rounded uppercase tracking-wider bg-slate-100 text-slate-600">${spEsc(level.badge || 'Practice')}</span>`;
-                
-                if (isDone) {
-                    badgeHTML = `<span class="text-[9px] font-extrabold px-2 py-0.5 rounded uppercase tracking-wider bg-emerald-50 text-emerald-600 border border-emerald-100">✓ Completed</span>`;
-                } else if (hasProgress) {
-                    const savedIdx = parseInt(savedProgress, 10) + 1;
-                    badgeHTML = `<span class="text-[9px] font-extrabold px-2 py-0.5 rounded uppercase tracking-wider bg-amber-50 text-amber-600 border border-amber-100">In Progress (Q${savedIdx})</span>`;
-                }
-
-                card.innerHTML = `
-                    <div>
-                        <div class="flex items-center justify-between mb-4">
-                            ${badgeHTML}
-                            <div class="w-8 h-8 rounded-xl bg-rose-50 text-rose-500 flex items-center justify-center group-hover:bg-rose-500 group-hover:text-white transition">
-                                <i data-lucide="${spEsc(level.icon || 'layers')}" class="w-4 h-4"></i>
-                            </div>
-                        </div>
-                        <h3 class="font-black text-slate-900 text-base mb-1 group-hover:text-rose-500 transition-colors">${spEsc(level.title)}</h3>
-                        <p class="text-xs text-gray-400 font-medium">${spEsc(level.subtitle || '')}</p>
-                    </div>
-                    <div class="pt-6 mt-4 border-t border-gray-50 flex items-center justify-between">
-                        <span class="text-xs font-bold text-rose-500 flex items-center group-hover:translate-x-1 transition-transform ml-auto">
-                            ${hasProgress ? 'Resume' : 'Start'} <i data-lucide="arrow-right" class="w-3.5 h-3.5 ml-1"></i>
-                        </span>
-                    </div>
-                `;
-                grid.appendChild(card);
-            });
-            lucide.createIcons();
-        }
-
-        // --- EXERCISE NAVIGATION & TASK FETCHING ---
-        async function startLevel(levelId) {
-            currentLevel = LEVELS_DATA.find(l => l.id === levelId);
-
-            document.getElementById('headerTitle').innerText = "Loading...";
-
-            try {
-                const { data: tasks, error } = await supabaseClient
-                    .from('trainer_sentence_tasks')
-                    .select('*')
-                    .eq('level_id', levelId)
-                    .order('task_order', { ascending: true });
-
-                if (error) throw error;
-                currentTasks = tasks || [];
-            } catch (err) {
-                console.error("Error fetching tasks:", err);
-                return;
-            }
-
-            // --- RESTORE SAVED QUESTION INDEX IF AVAILABLE ---
-            const savedIdx = lsGet(progressKey(levelId));
-            if (savedIdx !== null) {
-                const parsedIdx = parseInt(savedIdx, 10);
-                if (!isNaN(parsedIdx) && parsedIdx >= 0 && parsedIdx < currentTasks.length) {
-                    currentQuestionIdx = parsedIdx;
-                } else {
-                    currentQuestionIdx = 0;
-                }
-            } else {
-                currentQuestionIdx = 0;
-            }
-
-            document.getElementById('levelsView').classList.add('hidden');
-            document.getElementById('summaryView').classList.add('hidden');
-            document.getElementById('exerciseView').classList.remove('hidden');
-            document.getElementById('exerciseView').classList.add('flex');
-            document.getElementById('exerciseProgressHeader').classList.remove('hidden');
-
-            document.getElementById('headerTitle').innerText = currentLevel.title;
-            document.getElementById('headerSubtitle').innerText = currentLevel.subtitle || 'Grammar Mastery';
-
-            if (currentTasks.length > 0) {
-                loadQuestion(currentQuestionIdx);
-            } else {
-                document.getElementById('contextPromptText').innerText = "No exercises found for this level.";
-                document.getElementById('dropzoneContainer').innerHTML = "";
-                document.getElementById('wordBankContainer').innerHTML = "";
-                document.getElementById('checkBtn').classList.add('hidden');
-            }
-        }
-
-        // --- TEMPLATE PARSER (Converts "Text [slot] text" to structured array) ---
-        function parseSentenceTemplate(templateString) {
-            const parts = [];
-            const splitStr = templateString.split('[slot]');
-
-            splitStr.forEach((text, index) => {
-                if (text.trim() !== '') {
-                    parts.push({ type: 'text', value: text.trim() });
-                }
-                if (index < splitStr.length - 1) {
-                    parts.push({ type: 'slot' });
-                }
-            });
-            return parts;
-        }
-
-        function loadQuestion(idx) {
-            const q = currentTasks[idx];
-            document.getElementById('currentQNum').innerText = idx + 1;
-            document.getElementById('totalQNum').innerText = currentTasks.length;
-
-            // --- SAVE PROGRESS TO LOCALSTORAGE ---
-            if (currentLevel) {
-                lsSet(progressKey(currentLevel.id), String(idx));
-            }
-
-            // Context Prompt
-            document.getElementById('contextPromptText').innerText = q.prompt;
-
-            // Reset Feedback & Buttons
-            document.getElementById('feedbackBanner').className = 'hidden mb-6 p-4 rounded-2xl border transition-all';
-            document.getElementById('checkBtn').classList.remove('hidden');
-            document.getElementById('nextBtn').classList.add('hidden');
-
-            // Render Sentence Dropzone using Template Parser
-            const dropzone = document.getElementById('dropzoneContainer');
-            dropzone.innerHTML = '';
-
-            const structure = parseSentenceTemplate(q.sentence_template);
-            
-            // --- ЛОГИКА ДЛЯ ЗНАКА ПРЕПИНАНИЯ ---
-            const punctuationMatch = q.correct_answer.trim().match(/[.?!]$/);
-            const finalPunctuation = punctuationMatch ? punctuationMatch[0] : '.';
-
-            structure.forEach((item, slotIndex) => {
-                if (item.type === 'text') {
-                    let textValue = item.value;
-                    
-                    if (slotIndex === structure.length - 1) {
-                        textValue = textValue.replace(/[.?!]+$/, '').trim();
-                    }
-                    
-                    if (textValue) {
-                        dropzone.innerHTML += `<div class="inline-flex items-center px-1.5 py-2 text-sm font-bold text-slate-800 select-none">${spEsc(textValue)}</div>`;
-                    }
-                } else if (item.type === 'slot') {
-                    dropzone.innerHTML += `<div class="word-slot inline-flex items-center justify-center border-b-2 border-gray-300 mx-1 pb-1 align-bottom min-w-[120px]" id="slot-${idx}-${slotIndex}"></div>`;
-                }
-            });
-
-            // Добавляем финальный знак препинания в конце строки
-            dropzone.innerHTML += `<div class="inline-flex items-center pl-0.5 pr-2 py-2 text-xl font-black text-rose-500 select-none">${finalPunctuation}</div>`;
-
-            // Render Word Bank
-            const bank = document.getElementById('wordBankContainer');
-            bank.innerHTML = '';
-            
-            // Shuffle word choices from DB array
-            const shuffledWords = [...(Array.isArray(q.word_bank) ? q.word_bank : [])].sort(() => Math.random() - 0.5);
-            shuffledWords.forEach(word => {
-                bank.innerHTML += `<div class="draggable-word bg-slate-50 border border-gray-200 text-slate-800 text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm cursor-grab active:cursor-grabbing hover:border-slate-400 transition select-none">${spEsc(word)}</div>`;
-            });
-
-            initDragAndDrop(idx);
-        }
-
-        // Размещение нажатием: работает на телефоне и если SortableJS не загрузился
-        let tapQIdx = null;
-        let dragJustEnded = false;
-        document.addEventListener('click', e => {
-            if (dragJustEnded || tapQIdx === null) return;
-            const word = e.target.closest && e.target.closest('.draggable-word');
-            if (!word) return;
-            const bankContainer = document.getElementById('wordBankContainer');
-            const slots = [...document.querySelectorAll(`[id^="slot-${tapQIdx}-"]`)];
-            if (word.parentElement === bankContainer) {
-                const empty = slots.find(s => s.children.length === 0);
-                if (empty) empty.appendChild(word);
-            } else if (slots.includes(word.parentElement)) {
-                bankContainer.appendChild(word);
-            }
-        });
-
-        function initDragAndDrop(qIdx) {
-            activeSortables.forEach(s => s.destroy());
-            activeSortables = [];
-            tapQIdx = qIdx;
-            if (typeof Sortable === 'undefined') return; // остаётся размещение нажатием
-
-            const bankContainer = document.getElementById('wordBankContainer');
-            const slots = document.querySelectorAll(`[id^="slot-${qIdx}-"]`);
-            // forceFallback: без него на Android-планшетах перетаскивание пальцем не работает
-            const touchOpts = { forceFallback: true, fallbackOnBody: true, fallbackTolerance: 3,
-                onEnd: () => { dragJustEnded = true; setTimeout(() => { dragJustEnded = false; }, 80); } };
-
-            const bankSortable = new Sortable(bankContainer, {
-                group: `level-group-${qIdx}`,
-                animation: 150,
-                ghostClass: 'sortable-ghost',
-                ...touchOpts
-            });
-            activeSortables.push(bankSortable);
-
-            slots.forEach(slot => {
-                const slotSortable = new Sortable(slot, {
-                    group: `level-group-${qIdx}`,
-                    animation: 150,
-                    ghostClass: 'sortable-ghost',
-                    ...touchOpts,
-                    onAdd: function (evt) {
-                        if (evt.to.children.length > 1) {
-                            Array.from(evt.to.children).forEach(child => {
-                                if (child !== evt.item) bankContainer.appendChild(child);
-                            });
-                        }
+                let sEarned = 0, sTotal = 0;
+                sentenceRows.forEach(r => {
+                    if (r.score && String(r.score).includes('/')) {
+                        const [e, m] = String(r.score).split('/').map(Number);
+                        if (!isNaN(e) && m > 0) { sEarned += e; sTotal += m; }
                     }
                 });
-                activeSortables.push(slotSortable);
-            });
+
+                document.getElementById('stat-tasks').innerText = tasksDone;
+                document.getElementById('stat-words').innerText = wordsWritten;
+                document.getElementById('stat-score').innerText = allScores.length ? fmt(avg(allScores)) : '-';
+                document.getElementById('stat-emails').innerText = emailsSent;
+
+                document.getElementById('res-sentence').innerText = sTotal ? Math.round(sEarned / sTotal * 100) + '%' : '—';
+                document.getElementById('res-email').innerText = emailScores.length ? fmt(avg(emailScores)) + ' / 6' : '—';
+                document.getElementById('res-academic').innerText = academicScores.length ? fmt(avg(academicScores)) + ' / 6' : '—';
+                document.getElementById('res-reviewed').innerText = essays.length ? `${allScores.length} of ${essays.length}` : '—';
+
+                // Цель недели: задания, сделанные с понедельника
+                const since = startOfWeek().getTime();
+                const thisWeek = r => r.created_at && new Date(r.created_at).getTime() >= since;
+                const goalDone = new Set(sentenceRows.filter(thisWeek).map(setKey)).size
+                    + essays.filter(thisWeek).length + mocks.filter(thisWeek).length;
+                const goalTotal = 5;
+                const goalCurrent = Math.min(goalDone, goalTotal);
+                setTimeout(() => {
+                    document.getElementById('goal-bar').style.width = (goalCurrent / goalTotal * 100) + '%';
+                }, 100);
+                document.getElementById('goal-text').innerText = `${goalCurrent} / ${goalTotal}`;
+            } catch (err) {
+                console.error("Error loading stats:", err);
+            }
         }
 
-        // --- CHECK ANSWER LOGIC ---
-        function checkAnswer() {
-            const q = currentTasks[currentQuestionIdx];
-            const structure = parseSentenceTemplate(q.sentence_template);
-            
-            let parts = [];
-            structure.forEach((item, slotIndex) => {
-                if (item.type === 'text') {
-                    parts.push(item.value);
-                } else if (item.type === 'slot') {
-                    const slotEl = document.getElementById(`slot-${currentQuestionIdx}-${slotIndex}`);
-                    parts.push(slotEl && slotEl.children.length > 0 ? slotEl.children[0].textContent.trim() : "");
+        async function checkAuth() {
+            try {
+                // requireAuth проверяет не только сессию, но и открыт ли ученику
+                // доступ к Writing. Раньше здесь проверялась одна сессия, и
+                // страница открывалась даже при закрытой секции.
+                let userId = null;
+                if (typeof requireAuth === 'function') {
+                    const user = await requireAuth();
+                    if (!user) return;
+                    userId = user.id;
+                } else {
+                    const { data: { session }, error } = await supabaseClient.auth.getSession();
+                    if (error || !session) { window.location.replace('index.html'); return; }
+                    userId = session.user.id;
                 }
-            });
 
-            let userSentence = parts.join(" ").replace(/\s+([.?!,])/g, "$1").trim();
-            if (!userSentence.match(/[.?!]$/)) userSentence += ".";
-
-            const isCorrect = normalizeForCompare(userSentence) === normalizeForCompare(q.correct_answer);
-
-            showFeedback(isCorrect, q);
-
-            document.getElementById('checkBtn').classList.add('hidden');
-            document.getElementById('nextBtn').classList.remove('hidden');
-        }
-
-        function showFeedback(isCorrect, q) {
-            const banner = document.getElementById('feedbackBanner');
-            const iconBox = document.getElementById('feedbackIcon');
-            const title = document.getElementById('feedbackTitle');
-            const text = document.getElementById('feedbackText');
-
-            banner.classList.remove('hidden');
-
-            if (isCorrect) {
-                banner.className = 'mb-6 p-4 rounded-2xl border transition-all bg-emerald-50 border-emerald-200 text-emerald-900';
-                iconBox.innerHTML = `<i data-lucide="check-circle-2" class="w-6 h-6 text-emerald-600"></i>`;
-                title.innerText = 'Correct Answer!';
-                text.innerText = q.explanation || 'Great job! You structured the sentence perfectly.';
-            } else {
-                banner.className = 'mb-6 p-4 rounded-2xl border transition-all bg-rose-50 border-rose-200 text-rose-900';
-                iconBox.innerHTML = `<i data-lucide="x-circle" class="w-6 h-6 text-rose-600"></i>`;
-                title.innerText = 'Incorrect Construction';
-                text.innerHTML = `Correct pattern: <strong class="underline">${spEsc(q.correct_answer)}</strong><br><span class="opacity-80 mt-1 inline-block">${spEsc(q.explanation || '')}</span>`;
-            }
-            lucide.createIcons();
-        }
-
-        function nextQuestion() {
-            if (currentQuestionIdx < currentTasks.length - 1) {
-                currentQuestionIdx++;
-                loadQuestion(currentQuestionIdx);
-            } else {
-                finishLevel();
+                const body = document.getElementById('mainBody');
+                if (body) body.classList.remove('opacity-0');
+                await loadWritingStats(userId);
+            } catch (err) {
+                console.error("Auth protection error:", err);
+                window.location.replace('index.html');
             }
         }
 
-        function finishLevel() {
-            // Очищаем прогресс текущего уровня, так как он пройден полностью
-            if (currentLevel) {
-                lsDel(progressKey(currentLevel.id));
-                
-                if (!completedLevels.includes(currentLevel.id)) {
-                    completedLevels.push(currentLevel.id);
-                    lsSet(completedKey(), JSON.stringify(completedLevels));
-                }
-            }
-
-            document.getElementById('exerciseView').classList.add('hidden');
-            document.getElementById('exerciseView').classList.remove('flex');
-            document.getElementById('exerciseProgressHeader').classList.add('hidden');
-
-            document.getElementById('summaryTitle').innerText = `${currentLevel.title} Mastered!`;
-            document.getElementById('summaryDesc').innerText = `You have completed all exercises for ${currentLevel.subtitle || 'this level'}.`;
-            
-            document.getElementById('summaryView').classList.remove('hidden');
-            document.getElementById('summaryView').classList.add('flex');
-            
-            renderLevelsGrid();
-        }
-
-        function retryCurrentLevel() {
-            if (currentLevel) {
-                lsDel(progressKey(currentLevel.id));
-                startLevel(currentLevel.id);
-            }
-        }
-
-        function showLevelsView() {
-            document.getElementById('exerciseView').classList.add('hidden');
-            document.getElementById('summaryView').classList.add('hidden');
-            document.getElementById('exerciseProgressHeader').classList.add('hidden');
-            document.getElementById('levelsView').classList.remove('hidden');
-
-            document.getElementById('headerTitle').innerText = 'Build a Sentence Trainer';
-            document.getElementById('headerSubtitle').innerText = 'Grammar Mastery';
-            
-            renderLevelsGrid();
-        }
-
-        function handleBackAction() {
-            if (!document.getElementById('exerciseView').classList.contains('hidden') || !document.getElementById('summaryView').classList.contains('hidden')) {
-                showLevelsView();
-            } else {
-                window.location.href = 'writing.html';
-            }
-        }
+        document.addEventListener('DOMContentLoaded', checkAuth);
     </script>
 </body>
 </html>
