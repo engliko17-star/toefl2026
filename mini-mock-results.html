@@ -81,6 +81,9 @@
         // «блокировку» сессии и мог надолго задержать проверку доступа)
         const supabaseClient = window.supabaseClient || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         let isTeacherView = false;
+        let currentAttemptId = null;
+        let currentAttempt = null;      // строка попытки
+        let currentResponses = [];      // ответы + задания — для пересчёта балла после проверки
 
         // Экранирование текста, который вводят ученики. Эту страницу открывает и
         // преподаватель для проверки: без экранирования HTML-код из эссе ученицы
@@ -98,9 +101,8 @@
                 const user = typeof requireAuth === 'function' ? await requireAuth() : null;
                 if (typeof requireAuth === 'function' && !user) return;
                 isTeacherView = !!(user && user.role === 'teacher');
-
-                const { data: { session } } = await supabaseClient.auth.getSession();
-                if (!session) return window.location.replace('index.html');
+                // Отдельная проверка getSession() убрана: requireAuth уже проверил вход,
+                // а getSession иногда зависал, и страница оставалась на «Loading…»
 
                 // Возврат туда, откуда пришли: из CRM — к ученице, иначе в список мини-моков
                 const back = new URLSearchParams(location.search).get('back');
@@ -122,6 +124,7 @@
                     document.getElementById('loadingIndicator').textContent = 'Attempt ID is missing in URL.';
                     return;
                 }
+                currentAttemptId = attemptId;
 
                 await loadAttemptData(attemptId);
             } catch (err) {
@@ -136,7 +139,7 @@
                 .from('mini_mock_writing_attempts')
                 .select('*')
                 .eq('id', attemptId)
-                .single();
+                .maybeSingle();
 
             if (attemptError || !attempt) {
                 console.error('Error fetching attempt:', attemptError);
@@ -188,6 +191,8 @@
                 ...r,
                 task: tasksMap[r.task_id] || null
             }));
+            currentAttempt = attempt;
+            currentResponses = fullResponses;
 
             // Считаем автоматический балл
             const autoCalculatedScore = calculateOverallScore(fullResponses);
@@ -207,14 +212,17 @@
         // сравнение строк).
         // Как в большом тесте и в профиле ученика: регистр, лишние пробелы и
         // типографские кавычки/апострофы (’ ‘ ` “ ”) на результат не влияют.
+        // Сравниваются слова и их порядок. Знаки препинания (в том числе точка
+        // в конце, которую страница дописывает сама) на результат не влияют,
+        // а апостроф влияет: its ≠ it's. Та же функция — в мини-моке, в полном
+        // тесте (writing-engine.js), в практике и в профиле ученицы.
         function normalizeForCompare(text) {
             return String(text || '')
                 .replace(/[\u2018\u2019\u201B`\u00B4]/g, "'")
-                .replace(/[\u201C\u201D]/g, '"')
-                .replace(/\s+([.?!,;:])/g, '$1')
+                .toLowerCase()
+                .replace(/[^\p{L}\p{N}'\s-]/gu, ' ')
                 .replace(/\s+/g, ' ')
-                .trim()
-                .toLowerCase();
+                .trim();
         }
 
         function calculateOverallScore(responses) {
@@ -265,12 +273,16 @@
                 overallBand = Math.min(6, Math.max(1, Math.round(overallBand * 2) / 2));
             }
 
+            // «Проверено» — только когда оценены ОБА эссе (раньше хватало одного)
+            const scored = r => !r || (r.score !== null && r.score !== undefined && r.score !== '' && !isNaN(parseFloat(r.score)));
+            const essaysDone = (email || academic) ? (scored(email) && scored(academic)) : false;
+
             return {
                 sentenceRawLabel: `${correctSentences}/${totalSentences}`,
                 sentenceBand,
                 essayBand,
                 overallBand,
-                fullyGraded: sentenceBand !== null && essayBand !== null
+                fullyGraded: essaysDone && (totalSentences === 0 || sentenceBand !== null)
             };
         }
 
@@ -286,17 +298,18 @@
             // Raw-балл по Build a Sentence — всегда показываем отдельно, он объективный
             rawBadge.innerHTML = `<i data-lucide="list-checks" class="w-3.5 h-3.5 inline mr-1 -mt-0.5"></i> Sentence: ${autoResult.sentenceRawLabel}`;
 
-            // Если учитель выставил финальный балл вручную в attempts — используем его,
-            // иначе показываем расчёт по формуле 50% Sentence + 50% Email/Academic
-            const hasManualOverall = attempt.overall_score !== null && attempt.overall_score !== undefined;
-            const displayBand = hasManualOverall
-                ? Number(attempt.overall_score).toFixed(1)
-                : (autoResult.overallBand !== null ? autoResult.overallBand.toFixed(1) : '—');
+            // Итог считается от фактических оценок (50% Sentence + 50% Email/Academic).
+            // Балл, вписанный в саму попытку вручную, показываем, только если
+            // расчёт ещё не готов (старые попытки, проверенные напрямую в базе).
+            const hasManualOverall = attempt.status === 'reviewed' && attempt.overall_score !== null && attempt.overall_score !== undefined && attempt.overall_score !== '';
+            const displayBand = autoResult.fullyGraded && autoResult.overallBand !== null
+                ? autoResult.overallBand.toFixed(1)
+                : hasManualOverall
+                    ? Number(attempt.overall_score).toFixed(1)
+                    : (autoResult.overallBand !== null ? autoResult.overallBand.toFixed(1) : '—');
 
-            // "Проверено" — если учитель явно выставил статус reviewed ИЛИ если все части
-            // уже оценены (Sentence всегда авто-оценён, значит нужен ещё и essayBand) —
-            // не заставляем учителя дополнительно щёлкать отдельный переключатель статуса.
-            const isReviewed = attempt.status === 'reviewed' || autoResult.fullyGraded;
+            // «Проверено» — когда оценены оба эссе (Sentence оценивается сам)
+            const isReviewed = autoResult.fullyGraded || hasManualOverall;
 
             if (isReviewed) {
                 badge.className = 'text-sm font-bold px-4 py-1.5 rounded-lg border bg-emerald-50 text-emerald-600 border-emerald-200 flex items-center';
@@ -416,6 +429,26 @@
             return '';
         }
 
+        // Балл за конкретное эссе в квадратике рядом с заголовком части
+        function renderEssayScoreBadge(response, scoreId) {
+            const scoreBadge = document.getElementById(scoreId);
+            if (!scoreBadge) return;
+            const has = response && response.score !== undefined && response.score !== null && response.score !== '' && !isNaN(parseFloat(response.score));
+            if (!has) {
+                scoreBadge.classList.add('hidden');
+                scoreBadge.classList.remove('flex');
+                return;
+            }
+            scoreBadge.classList.remove('hidden');
+            scoreBadge.classList.add('flex');
+            const formattedScore = Number(response.score).toFixed(1);
+            if (response.raw_score !== undefined && response.raw_score !== null) {
+                scoreBadge.innerHTML = `<span class="opacity-60 text-xs font-semibold mr-2 pr-2 border-r border-current">Raw: ${mmEsc(response.raw_score)}</span><span>Score: ${formattedScore} / 6.0</span>`;
+            } else {
+                scoreBadge.textContent = `Score: ${formattedScore} / 6.0`;
+            }
+        }
+
         function renderEssay(response, containerId, scoreId) {
             const container = document.getElementById(containerId);
             if (!response) {
@@ -423,20 +456,7 @@
                 return;
             }
 
-            // Выводим балл за конкретное эссе в мини-квадратик
-            if (response.score !== undefined && response.score !== null) {
-                const scoreBadge = document.getElementById(scoreId);
-                scoreBadge.classList.remove('hidden');
-                scoreBadge.classList.add('flex'); // Обеспечиваем отображение flex-элемента
-                
-                const formattedScore = Number(response.score).toFixed(1);
-                
-                if (response.raw_score !== undefined && response.raw_score !== null) {
-                    scoreBadge.innerHTML = `<span class="opacity-60 text-xs font-semibold mr-2 pr-2 border-r border-current">Raw: ${mmEsc(response.raw_score)}</span><span>Score: ${formattedScore} / 6.0</span>`;
-                } else {
-                    scoreBadge.textContent = `Score: ${formattedScore} / 6.0`;
-                }
-            }
+            renderEssayScoreBadge(response, scoreId);
 
             const promptHTML = renderPromptHTML(response.task, response.task_type);
 
@@ -459,7 +479,7 @@
                                 <i data-lucide="pen-tool" class="w-4 h-4 mr-1.5"></i> Teacher's Correction & Feedback
                             </h3>
                             ${isTeacherView ? teacherEditorHTML(response) : response.teacher_correction 
-                                ? `<div class="correction-box bg-indigo-50 border border-indigo-100 rounded-xl p-5 text-sm text-indigo-900 leading-relaxed flex-1 shadow-inner">${response.teacher_correction}</div>`
+                                ? `<div class="correction-box bg-indigo-50 border border-indigo-100 rounded-xl p-5 text-sm text-indigo-900 leading-relaxed flex-1 shadow-inner">${mmEsc(response.teacher_correction)}</div>`
                                 : `<div class="flex-1 border-2 border-dashed border-gray-100 rounded-xl flex items-center justify-center flex-col text-gray-400 p-8 text-center">
                                      <i data-lucide="clock" class="w-8 h-8 mb-2 opacity-50"></i>
                                      <p class="text-sm font-medium">Your teacher hasn't reviewed this task yet.</p>
@@ -526,8 +546,35 @@
                     : 'Не удалось сохранить: база приняла запрос, но строка не изменилась.\n\nВероятно, преподавателю не разрешено менять ответы учеников.');
                 return;
             }
-            status.textContent = 'Сохранено ✓';
-            setTimeout(() => { status.textContent = ''; }, 2000);
+            // Обновляем балл на странице и итог попытки. Раньше итог в саму
+            // попытку не записывался, и в списке у ученицы мок навсегда
+            // оставался «Pending Review».
+            const resp = currentResponses.find(r => String(r.id) === String(responseId));
+            if (resp) { resp.score = score; resp.teacher_correction = textEl.value.trim() || null; }
+            const auto = calculateOverallScore(currentResponses);
+            if (resp) renderEssayScoreBadge(resp, resp.task_type === 'email' ? 'emailScore' : 'academicScore');
+
+            let attemptNote = '';
+            if (currentAttempt) {
+                const patch = auto.fullyGraded
+                    ? { overall_score: auto.overallBand, status: 'reviewed' }
+                    : { overall_score: null };
+                const { data: aRows, error: aErr } = await supabaseClient
+                    .from('mini_mock_writing_attempts')
+                    .update(patch)
+                    .eq('id', currentAttempt.id)
+                    .select('id');
+                if (aErr || !aRows || aRows.length !== 1) {
+                    console.error('Итог попытки не обновился:', { aErr, aRows });
+                    attemptNote = ' (итог попытки в базе не обновился — нет права на изменение попыток)';
+                } else {
+                    Object.assign(currentAttempt, patch);
+                }
+            }
+            renderStatus(currentAttempt || {}, auto);
+
+            status.textContent = 'Сохранено ✓' + attemptNote;
+            setTimeout(() => { status.textContent = ''; }, attemptNote ? 8000 : 2000);
         }
 
     </script>
