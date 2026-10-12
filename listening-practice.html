@@ -129,10 +129,17 @@
     <script>
         lucide.createIcons();
 
-        // 1. Инициализация Supabase
-        const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // 1. Один клиент на страницу — тот, что создал auth.js. Свой второй клиент
+        // на том же хранилище сессии иногда «зависал» на входе и мог разлогинить.
+        const supabaseClient = window.supabaseClient;
+
+        // Ссылки с главной Listening ведут сюда с ?type=... — раньше параметр
+        // игнорировался, и нужно было кликать ещё раз. Сразу открываем нужный список.
+        (function goToRequestedType() {
+            const type = new URLSearchParams(window.location.search).get('type');
+            if (type === 'response') window.location.replace('choose-response-list.html');
+            else if (['conversation', 'announcement', 'academic'].includes(type)) window.location.replace('practice-view.html?type=' + type);
+        })();
 
         // 2. Функция проверки авторизации
         async function checkAuth() {
@@ -155,9 +162,17 @@
         async function loadCounts() {
             const set = (id, n, word) => { const el = document.getElementById(id); if (el) el.textContent = n === null ? '—' : n + ' ' + word; };
             try {
-                const { data } = await supabaseClient.from('listening_questions')
-                    .select('set_number').or('is_mock_only.eq.false,is_mock_only.is.null');
-                const sets = new Set((data || []).map(q => q.set_number).filter(Boolean));
+                // Порциями по 1000: больше база за раз не отдаёт, и при росте банка
+                // вопросов число наборов занижалось бы. Ошибка — «—», а не «0 Sets».
+                const sets = new Set();
+                for (let from = 0; ; from += 1000) {
+                    const { data, error } = await supabaseClient.from('listening_questions')
+                        .select('set_number').or('is_mock_only.eq.false,is_mock_only.is.null')
+                        .order('id', { ascending: true }).range(from, from + 999);
+                    if (error) throw error;
+                    (data || []).forEach(q => { if (q.set_number) sets.add(q.set_number); });
+                    if (!data || data.length < 1000) break;
+                }
                 set('count-response', sets.size, sets.size === 1 ? 'Set' : 'Sets');
             } catch (e) { set('count-response', null); }
 
