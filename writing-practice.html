@@ -93,54 +93,106 @@
     </div>
 
     <script>
-        const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // ==========================================
+        // WRITING PRACTICE: Build a Sentence / Email / Academic Discussion
+        // ==========================================
+        // После ревизии:
+        //  • один клиент базы (тот, что создал auth.js) и проверка через requireAuth;
+        //  • тип задания берётся из самого задания, а не из адреса страницы;
+        //  • набор собирается так же, как в списке: тот же test_id, тот же тип,
+        //    без заданий «только для мока»;
+        //  • эссе сохраняется без балла — его ставит преподаватель (раньше
+        //    сохранялось «0/6.0», и работа выглядела уже проверенной на 0);
+        //  • ученица видит и правки, и объяснение преподавателя;
+        //  • текст эссе и собранные предложения сохраняются на устройстве на
+        //    каждом шаге — перезагрузка или вылет не теряют работу;
+        //  • «Resume Test» показывает только задания, на которые ещё нет ответа,
+        //    и не задваивает уже сохранённые ответы.
+        const db = window.supabaseClient;
         const urlParams = new URLSearchParams(window.location.search);
-        const taskType = urlParams.get('type') || 'sentence';
-        const taskId = urlParams.get('id') || '1';
+        const TASK_TYPES = ['sentence', 'email', 'academic'];
+        const urlType = String(urlParams.get('type') || '').toLowerCase();
+        let taskType = TASK_TYPES.includes(urlType) ? urlType : 'sentence';
+        const taskId = urlParams.get('id');
 
-        document.getElementById('backBtn').href = `task-list.html?type=${taskType}`;
-
-        let testQuestions = [];
-        let studentResponses = [];
+        let testQuestions = [];       // весь набор (для разбора)
+        let practiceQuestions = [];   // то, что осталось сделать
+        let studentResponses = [];    // последний ответ на каждое задание набора
         let currentSlide = 0;
         let isTestCompleted = false;
-        let wordCountStates = {}; 
+        let wordCountStates = {};
         let currentUserId = null;
+        let draftKey = null;
+        let isSubmitting = false;
+        let dragJustEnded = false;
+
+        function wpEsc(s) {
+            return String(s === null || s === undefined ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        function normalizeType(t) {
+            const s = String(t || '').toLowerCase();
+            if (s.includes('sentence')) return 'sentence';
+            if (s.includes('email')) return 'email';
+            if (s.includes('academic') || s.includes('discussion')) return 'academic';
+            return null;
+        }
+
+        function parseJson(v, fallback) {
+            if (typeof v !== 'string') return v === null || v === undefined ? fallback : v;
+            try { return JSON.parse(v); } catch (e) { return fallback; }
+        }
+
+        // Счёт слов как в обычных редакторах и в мини-моке: токены через пробел
+        function countWords(text) {
+            const trimmed = (text || '').trim();
+            return trimmed ? trimmed.split(/\s+/).length : 0;
+        }
+
+        // Сравниваются слова и их порядок; знаки препинания не влияют,
+        // апостроф влияет (its ≠ it's). Та же функция — в моках и в профиле.
+        function normalizeForCompare(text) {
+            return String(text || '')
+                .replace(/[‘’‛`´]/g, "'")
+                .toLowerCase()
+                .replace(/[^\p{L}\p{N}'\s-]/gu, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        function isEssayGraded(r) {
+            if (!r) return false;
+            const raw = r.score;
+            if (raw === null || raw === undefined || raw === '') return false;
+            if (String(raw).includes('/')) return false;   // «0/6.0» — заглушка старой версии, не оценка
+            return !isNaN(parseFloat(raw));
+        }
 
         // --- ЛОГИКА ТАЙМЕРА ---
         let timerInterval = null;
-        let timeRemaining = 0; 
+        let timeRemaining = 0;
         let timeExpiredModalShown = false;
 
         function initTimer() {
-            if (taskType === 'sentence') {
-                timeRemaining = 6 * 60;
-            } else if (taskType === 'email') {
-                timeRemaining = 7 * 60;
-            } else if (taskType === 'academic') {
-                timeRemaining = 10 * 60;
-            } else {
-                timeRemaining = 6 * 60; 
-            }
+            timeRemaining = (taskType === 'email' ? 7 : taskType === 'academic' ? 10 : 6) * 60;
         }
 
         function startTimer() {
             if (timerInterval) clearInterval(timerInterval);
-            
             const display = document.getElementById('timerDisplay');
             display.innerText = formatTime(timeRemaining);
-            
             timerInterval = setInterval(() => {
                 timeRemaining--;
                 display.innerText = formatTime(timeRemaining);
-                
                 if (timeRemaining < 0) {
                     display.classList.remove('text-slate-700');
                     display.classList.add('text-red-500');
                 }
-
+                saveDraft();
                 if (timeRemaining === 0 && !timeExpiredModalShown) {
-                    stopTimer(); 
+                    stopTimer();
                     showTimeExpiredModal();
                 }
             }, 1000);
@@ -169,10 +221,34 @@
             const modal = document.getElementById('timeModal');
             modal.classList.add('hidden');
             modal.classList.remove('flex');
-            
-            startTimer(); 
+            startTimer();
         }
         // --- КОНЕЦ ЛОГИКИ ТАЙМЕРА ---
+
+        // --- ЧЕРНОВИК НА УСТРОЙСТВЕ ---
+        function readDraft() {
+            if (!draftKey) return null;
+            try { return JSON.parse(localStorage.getItem(draftKey)) || null; } catch (e) { return null; }
+        }
+        function clearDraft() {
+            if (!draftKey) return;
+            try { localStorage.removeItem(draftKey); } catch (e) {}
+        }
+        function saveDraft() {
+            if (!draftKey || isTestCompleted || !practiceQuestions.length) return;
+            const answers = {};
+            practiceQuestions.forEach((q, i) => {
+                if (taskType === 'sentence') {
+                    answers[q.id] = [...document.querySelectorAll(`[id^="slot-${i}-"]`)].map(sl => sl.children.length ? sl.children[0].textContent.trim() : null);
+                } else {
+                    const area = document.getElementById(`editorArea-${i}`);
+                    if (area) answers[q.id] = area.value;
+                }
+            });
+            try {
+                localStorage.setItem(draftKey, JSON.stringify({ v: 1, type: taskType, answers, timeRemaining, timeExpiredModalShown, savedAt: new Date().toISOString() }));
+            } catch (e) { /* хранилище недоступно — работаем без черновика */ }
+        }
 
         function shuffleArray(array) {
             let shuffled = [...array];
@@ -183,96 +259,134 @@
             return shuffled;
         }
 
+        function showPageMessage(message) {
+            document.getElementById('topNavigation').classList.add('hidden');
+            document.getElementById('sliderContainer').innerHTML = `
+                <div class="flex-1 flex items-center justify-center p-10">
+                    <div class="text-center max-w-md">
+                        <p class="text-slate-700 font-bold mb-5">${wpEsc(message)}</p>
+                        <a href="task-list.html?type=${encodeURIComponent(taskType)}" class="inline-flex bg-slate-900 text-white px-6 py-3 rounded-xl text-sm font-bold hover:bg-slate-800">Back to the list</a>
+                    </div>
+                </div>`;
+        }
+
+        function setBackLink() {
+            document.getElementById('backBtn').href = `task-list.html?type=${encodeURIComponent(taskType)}`;
+        }
+        setBackLink();
+
         document.addEventListener('DOMContentLoaded', async () => {
             await fetchTestContext();
         });
 
         async function fetchTestContext() {
             try {
-                const { data: { session } } = await db.auth.getSession();
-                currentUserId = session ? session.user.id : null;
+                if (typeof requireAuth !== 'function' || !db) throw new Error('Page failed to load');
+                const user = await requireAuth();
+                if (!user) return;   // auth.js уже показал нужный экран
+                currentUserId = user.id;
 
-                const { data: firstTask } = await db.from('writing_tasks').select('*').eq('id', taskId).single();
-                
-                if (firstTask) {
-                    if (firstTask.test_id) {
-                        const { data: allTestTasks } = await db.from('writing_tasks').select('*').eq('test_id', firstTask.test_id).order('id', { ascending: true });
-                        testQuestions = allTestTasks;
-                        document.getElementById('testHeaderTitle').innerText = `Practice Set ${firstTask.test_id}`;
-                    } else {
-                        testQuestions = [firstTask];
-                        document.getElementById('testHeaderTitle').innerText = firstTask.title || "Writing Exercise";
-                    }
+                if (!taskId) return showPageMessage('No task selected.');
 
-                    testQuestions.forEach(q => {
-                        if (typeof q.structure === 'string') q.structure = JSON.parse(q.structure);
-                        if (typeof q.bank === 'string') q.bank = JSON.parse(q.bank);
-                        if (typeof q.instructions === 'string') q.instructions = JSON.parse(q.instructions);
-                        if (typeof q.peers === 'string') q.peers = JSON.parse(q.peers);
-                    });
+                const { data: firstTask, error: firstErr } = await db.from('writing_tasks').select('*').eq('id', taskId).maybeSingle();
+                if (firstErr) throw firstErr;
+                if (!firstTask) return showPageMessage('This task is not available.');
 
-                    if (currentUserId) {
-                        const questionIds = testQuestions.map(q => q.id);
-                        const { data: resps } = await db.from('student_responses')
-                            .select('*')
-                            .eq('user_id', currentUserId)
-                            .in('task_id', questionIds)
-                            .order('id', { ascending: false });
-                            
-                        studentResponses = resps || [];
-                        
-                        isTestCompleted = testQuestions.length > 0 && testQuestions.every(q => 
-                            studentResponses.some(r => String(r.task_id) === String(q.id))
-                        );
-                    }
+                const realType = normalizeType(firstTask.type);
+                if (!realType) return showPageMessage('This task has an unknown type. Please tell your teacher.');
+                taskType = realType;
+                setBackLink();
+
+                if (firstTask.test_id !== null && firstTask.test_id !== undefined) {
+                    // Тот же набор, что показывает список: тот же test_id и тип,
+                    // без заданий «только для мока» (если открыто не мок-задание)
+                    let q = db.from('writing_tasks').select('*').eq('test_id', firstTask.test_id).ilike('type', firstTask.type);
+                    if (firstTask.is_mock_only !== true) q = q.or('is_mock_only.eq.false,is_mock_only.is.null');
+                    const { data: allTestTasks, error: setErr } = await q.order('id', { ascending: true });
+                    if (setErr) throw setErr;
+                    testQuestions = (allTestTasks && allTestTasks.length) ? allTestTasks : [firstTask];
+                    document.getElementById('testHeaderTitle').innerText = `Practice Set ${firstTask.test_id}`;
+                } else {
+                    testQuestions = [firstTask];
+                    document.getElementById('testHeaderTitle').innerText = firstTask.title || 'Writing Exercise';
                 }
+
+                testQuestions.forEach(q => {
+                    q.structure = parseJson(q.structure, []);
+                    q.bank = parseJson(q.bank, []);
+                    q.instructions = parseJson(q.instructions, []);
+                    q.peers = parseJson(q.peers, []);
+                });
+
+                const questionIds = testQuestions.map(q => q.id);
+                const { data: resps, error: respErr } = await db.from('student_responses')
+                    .select('*')
+                    .eq('user_id', currentUserId)
+                    .in('task_id', questionIds)
+                    .order('created_at', { ascending: false });
+                if (respErr) throw respErr;
+
+                // По одному (последнему) ответу на задание: раньше в итог шли все
+                // строки подряд, включая повторы, и балл набора завышался
+                const latest = {};
+                (resps || []).forEach(r => { if (!latest[String(r.task_id)]) latest[String(r.task_id)] = r; });
+                studentResponses = testQuestions.map(q => latest[String(q.id)]).filter(Boolean);
+
+                practiceQuestions = testQuestions.filter(q => !latest[String(q.id)]);
+                isTestCompleted = practiceQuestions.length === 0;
+                draftKey = `wp_draft_v1:${currentUserId}:${questionIds.join(',')}`;
+                if (isTestCompleted) clearDraft();
 
                 renderTestSlider();
             } catch (e) {
-                console.error("Error loading test:", e);
-                document.getElementById('sliderContainer').innerHTML = `<div class="text-center p-10 text-red-500 font-bold">Error loading test data.</div>`;
+                console.error('Error loading test:', e);
+                document.getElementById('sliderContainer').innerHTML = `<div class="text-center p-10 text-red-500 font-bold">Error loading test data. Check your connection and refresh the page.</div>`;
             }
         }
 
         function renderTestSlider() {
             const container = document.getElementById('sliderContainer');
             const topNav = document.getElementById('topNavigation');
-            container.innerHTML = ''; 
+            container.innerHTML = '';
 
             if (isTestCompleted) {
                 if (topNav) topNav.classList.add('hidden');
                 container.innerHTML = generateFullResultsView();
-            } else {
-                if (topNav) topNav.classList.remove('hidden');
-                
-                initTimer();
-                startTimer();
-                
-                testQuestions.forEach((q, index) => {
-                    wordCountStates[index] = true; 
-                    
-                    const displayClass = index === 0 ? 'flex' : 'hidden'; 
-                    let slideHTML = `<div id="slide-${index}" class="slide-container ${displayClass} flex-col h-full w-full absolute inset-0 bg-white">`;
-                    
-                    slideHTML += generatePracticeView(q, index);
-                    slideHTML += `</div>`;
-
-                    container.insertAdjacentHTML('beforeend', slideHTML);
-                });
-
-                if (taskType === 'sentence') {
-                    testQuestions.forEach((q, index) => {
-                        initSentenceDragAndDrop(q, index);
-                    });
-                }
-                
-                updateTopNavigation(0);
+                return;
             }
+
+            if (topNav) topNav.classList.remove('hidden');
+            const draft = readDraft();
+            initTimer();
+            if (draft && draft.type === taskType && typeof draft.timeRemaining === 'number') {
+                timeRemaining = draft.timeRemaining;
+                timeExpiredModalShown = !!draft.timeExpiredModalShown || timeRemaining <= 0;
+            }
+
+            practiceQuestions.forEach((q, index) => {
+                wordCountStates[index] = true;
+                const displayClass = index === 0 ? 'flex' : 'hidden';
+                container.insertAdjacentHTML('beforeend',
+                    `<div id="slide-${index}" class="slide-container ${displayClass} flex-col h-full w-full absolute inset-0 bg-white">${generatePracticeView(q, index)}</div>`);
+            });
+
+            const saved = (draft && draft.type === taskType && draft.answers) || {};
+            if (taskType === 'sentence') {
+                practiceQuestions.forEach((q, index) => initSentenceDragAndDrop(q, index, saved[q.id]));
+            } else {
+                practiceQuestions.forEach((q, index) => {
+                    const area = document.getElementById(`editorArea-${index}`);
+                    if (area && typeof saved[q.id] === 'string') area.value = saved[q.id];
+                    updateWordCount(index);
+                });
+            }
+
+            startTimer();
+            updateTopNavigation(0);
         }
 
         function updateTopNavigation(index) {
-            const total = testQuestions.length;
-            
+            const total = practiceQuestions.length;
             document.getElementById('current-q-label').innerText = index + 1;
             document.getElementById('total-q-label').innerText = total;
 
@@ -280,13 +394,9 @@
             const btnNext = document.getElementById('btn-next');
             const btnSubmit = document.getElementById('btn-submit');
 
-            if (index === 0) {
-                btnPrev.disabled = true;
-                btnPrev.classList.add('opacity-50', 'cursor-not-allowed');
-            } else {
-                btnPrev.disabled = false;
-                btnPrev.classList.remove('opacity-50', 'cursor-not-allowed');
-            }
+            btnPrev.disabled = index === 0;
+            btnPrev.classList.toggle('opacity-50', index === 0);
+            btnPrev.classList.toggle('cursor-not-allowed', index === 0);
 
             if (index === total - 1) {
                 btnNext.classList.add('hidden');
@@ -301,20 +411,15 @@
 
         function showSlide(index) {
             document.querySelectorAll('.slide-container').forEach((el, i) => {
-                if (i === index) {
-                    el.classList.remove('hidden');
-                    el.classList.add('flex');
-                } else {
-                    el.classList.add('hidden');
-                    el.classList.remove('flex');
-                }
+                el.classList.toggle('hidden', i !== index);
+                el.classList.toggle('flex', i === index);
             });
             currentSlide = index;
             updateTopNavigation(index);
         }
 
         function nextSlide() {
-            if (currentSlide < testQuestions.length - 1) showSlide(currentSlide + 1);
+            if (currentSlide < practiceQuestions.length - 1) showSlide(currentSlide + 1);
         }
 
         function prevSlide() {
@@ -322,50 +427,44 @@
         }
 
         function generateFullResultsView() {
-            let totalEarned = 0;
-            let totalMax = 0;
-            let hasScores = false;
+            const respFor = q => studentResponses.find(r => String(r.task_id) === String(q.id)) || null;
 
-            studentResponses.forEach(r => {
-                if (r.score && String(r.score).includes('/')) {
-                    const [e, m] = String(r.score).split('/').map(Number);
-                    totalEarned += e;
-                    totalMax += m;
-                    hasScores = true;
-                }
-            });
-
+            // Итог: Build a Sentence — сколько верно из скольких; эссе — балл преподавателя
             let scoreDisplay = 'Awaiting';
-            if (hasScores) {
-                if (taskType === 'sentence') {
-                    scoreDisplay = `${totalEarned} / ${totalMax}`;
-                } else {
-                    scoreDisplay = Number.isInteger(totalEarned) ? totalEarned.toString() : totalEarned.toFixed(1);
+            if (taskType === 'sentence') {
+                let earned = 0, max = 0, has = false;
+                testQuestions.forEach(q => {
+                    const r = respFor(q);
+                    if (r && r.score && String(r.score).includes('/')) {
+                        const [e, m] = String(r.score).split('/').map(Number);
+                        if (!isNaN(e) && !isNaN(m)) { earned += e; max += m; has = true; }
+                    }
+                });
+                if (has) scoreDisplay = `${earned} / ${max}`;
+            } else {
+                const r = respFor(testQuestions[0]);
+                if (isEssayGraded(r)) {
+                    const v = parseFloat(r.score);
+                    scoreDisplay = Number.isInteger(v) ? v.toString() : v.toFixed(1);
                 }
             }
 
-            let savedTimeStr = null;
-            if (studentResponses.length > 0 && studentResponses[0].time_left_seconds !== undefined) {
-                savedTimeStr = studentResponses[0].time_left_seconds;
-            }
+            const anyResp = studentResponses[0];
+            const savedTime = anyResp && anyResp.time_left_seconds !== undefined && anyResp.time_left_seconds !== null
+                ? parseInt(anyResp.time_left_seconds, 10) : null;
 
             let timeCardHtml = '';
-            if (savedTimeStr !== null) {
-                const timeNum = parseInt(savedTimeStr, 10);
-                const isOvertime = timeNum < 0; 
-                const formattedSavedTime = formatTime(timeNum);
-                
+            if (savedTime !== null && !isNaN(savedTime)) {
+                const isOvertime = savedTime < 0;
                 const bgColorClass = isOvertime ? 'bg-rose-50 border-rose-100' : 'bg-indigo-50 border-indigo-100';
                 const iconColorClass = isOvertime ? 'text-rose-600' : 'text-indigo-600';
                 const textColorClass = isOvertime ? 'text-rose-700' : 'text-indigo-700';
-                const labelText = isOvertime ? 'Extra Time Used' : 'Time Left';
-
                 timeCardHtml = `
                     <div class="${bgColorClass} border rounded-3xl p-5 flex flex-col items-center justify-center shadow-sm shrink-0">
                         <span class="text-[10px] font-bold ${iconColorClass} uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                            <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Travel%20and%20places/Stopwatch.png" class="w-3 h-3" alt="Clock" /> ${labelText}
+                            <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Travel%20and%20places/Stopwatch.png" class="w-3 h-3" alt="Clock" /> ${isOvertime ? 'Extra Time Used' : 'Time Left'}
                         </span>
-                        <span class="text-2xl font-black ${textColorClass}">${formattedSavedTime}</span>
+                        <span class="text-2xl font-black ${textColorClass}">${formatTime(savedTime)}</span>
                     </div>
                 `;
             }
@@ -378,12 +477,12 @@
                             <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Symbols/Check%20Mark%20Button.png" class="w-8 h-8" alt="Complete" />
                         </div>
                         <h3 class="text-lg font-bold text-slate-800">Practice Completed</h3>
-                        <p class="text-sm text-slate-500 mt-2 max-w-[250px] mx-auto leading-relaxed">You have successfully submitted answers for all questions in this set.</p>
+                        <p class="text-sm text-slate-500 mt-2 max-w-[250px] mx-auto leading-relaxed">You have submitted answers for all questions in this set.</p>
                     </div>
                 `;
             } else if (taskType === 'email') {
                 const q = testQuestions[0];
-                let instructionsHTML = (q.instructions || []).map(li => `<li>${li}</li>`).join('');
+                const instructionsHTML = (Array.isArray(q.instructions) ? q.instructions : []).map(li => `<li>${li}</li>`).join('');
                 leftPanelContent = `
                     <div class="mt-8 border-t border-gray-100 pt-6 space-y-4">
                         <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Original Context & Prompt</h3>
@@ -400,26 +499,20 @@
                 `;
             } else if (taskType === 'academic') {
                 const q = testQuestions[0];
-                let peersHTML = (q.peers || []).map(peer => `
+                const peersHTML = (Array.isArray(q.peers) ? q.peers : []).map(peer => `
                     <div class="flex items-start space-x-2.5 bg-gray-50 p-3 rounded-xl border border-gray-100">
                         <div class="flex flex-col items-center shrink-0">
                             <div class="w-7 h-7 rounded-full bg-white border border-gray-100 flex items-center justify-center text-xs shadow-sm">${peer.avatar || '👤'}</div>
-                            <span class="text-[8px] font-bold text-gray-400 mt-0.5">${peer.name}</span>
+                            <span class="text-[8px] font-bold text-gray-400 mt-0.5">${peer.name || ''}</span>
                         </div>
-                        <p class="text-[11px] text-slate-600 leading-relaxed mt-0.5">${peer.text}</p>
+                        <p class="text-[11px] text-slate-600 leading-relaxed mt-0.5">${peer.text || ''}</p>
                     </div>
                 `).join('');
 
                 leftPanelContent = `
                     <div class="mt-8 border-t border-gray-100 pt-6 space-y-4">
                         <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Original Context & Prompt</h3>
-                        
-                        ${q.instruction_box ? `
-                            <div class="bg-teal-50 border border-teal-100 rounded-xl px-3.5 py-2.5 text-xs font-bold text-teal-800 leading-relaxed">
-                                ${q.instruction_box}
-                            </div>
-                        ` : ''}
-
+                        ${q.instruction_box ? `<div class="bg-teal-50 border border-teal-100 rounded-xl px-3.5 py-2.5 text-xs font-bold text-teal-800 leading-relaxed">${q.instruction_box}</div>` : ''}
                         ${q.professor_prompt ? `
                             <div class="flex items-start space-x-3 bg-gray-50 p-3.5 rounded-2xl border border-gray-100">
                                 <div class="flex flex-col items-center shrink-0">
@@ -429,13 +522,10 @@
                                 <p class="text-xs text-slate-600 leading-relaxed font-medium pt-0.5">${q.professor_prompt}</p>
                             </div>
                         ` : ''}
-
                         ${peersHTML ? `
                             <div class="space-y-2 pt-1">
                                 <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Student Posts</span>
-                                <div class="space-y-2">
-                                    ${peersHTML}
-                                </div>
+                                <div class="space-y-2">${peersHTML}</div>
                             </div>
                         ` : ''}
                     </div>
@@ -443,16 +533,13 @@
             }
 
             const questionsHtml = testQuestions.map((q, index) => {
-                const resp = studentResponses.find(r => String(r.task_id) === String(q.id)) || {};
+                const resp = respFor(q) || {};
                 let qScore = 'Awaiting';
-                
-                if (resp.score) {
-                    if (taskType === 'sentence') {
-                        qScore = String(resp.score).replace('/', ' / ');
-                    } else {
-                        const earned = parseFloat(String(resp.score).split('/')[0]);
-                        qScore = isNaN(earned) ? 'Awaiting' : (Number.isInteger(earned) ? earned.toString() : earned.toFixed(1));
-                    }
+                if (taskType === 'sentence') {
+                    if (resp.score && String(resp.score).includes('/')) qScore = String(resp.score).replace('/', ' / ');
+                } else if (isEssayGraded(resp)) {
+                    const earned = parseFloat(resp.score);
+                    qScore = Number.isInteger(earned) ? earned.toString() : earned.toFixed(1);
                 }
 
                 const hasExplanation = q.explanation && q.explanation.trim().toLowerCase() !== 'none' && q.explanation.trim() !== '';
@@ -465,22 +552,31 @@
                                 <h3 class="text-sm font-bold text-slate-800 leading-relaxed">${q.prompt_context || q.title || 'Writing Task'}</h3>
                             </div>
                             <div class="shrink-0">
-                                <span class="text-[11px] font-bold px-2.5 py-1 rounded-md bg-gray-100 text-slate-600 border border-gray-200">${qScore}</span>
+                                <span class="text-[11px] font-bold px-2.5 py-1 rounded-md bg-gray-100 text-slate-600 border border-gray-200">${wpEsc(qScore)}</span>
                             </div>
                         </div>
 
                         <div class="space-y-4 md:pl-9">
                             <div class="space-y-1.5">
                                 <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Your Answer</span>
-                                <div class="text-sm text-slate-700 bg-gray-50 border border-gray-100 rounded-xl p-3.5 leading-relaxed whitespace-pre-wrap font-medium">${resp.response_content || 'No answer provided'}</div>
+                                <div class="text-sm text-slate-700 bg-gray-50 border border-gray-100 rounded-xl p-3.5 leading-relaxed whitespace-pre-wrap font-medium">${wpEsc(resp.response_content || 'No answer provided')}</div>
                             </div>
 
                             ${resp.correction ? `
                             <div class="space-y-1.5 pt-1">
                                 <span class="text-[10px] font-bold text-teal-600 uppercase tracking-wider flex items-center gap-1">
-                                    <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Fountain%20Pen.png" class="w-3 h-3" alt="Correction" /> Teacher's Correction
+                                    <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Fountain%20Pen.png" class="w-3 h-3" alt="Correction" /> Teacher's Corrections
                                 </span>
-                                <div class="text-sm text-teal-950 bg-teal-50/40 border border-teal-100 rounded-xl p-3.5 leading-relaxed whitespace-pre-wrap font-medium">${resp.correction}</div>
+                                <div class="text-sm text-teal-950 bg-teal-50/40 border border-teal-100 rounded-xl p-3.5 leading-relaxed whitespace-pre-wrap font-medium">${wpEsc(resp.correction)}</div>
+                            </div>
+                            ` : ''}
+
+                            ${resp.teacher_correction ? `
+                            <div class="space-y-1.5 pt-1">
+                                <span class="text-[10px] font-bold text-violet-600 uppercase tracking-wider flex items-center gap-1">
+                                    <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Light%20Bulb.png" class="w-3 h-3" alt="Explanation" /> Teacher's Explanation
+                                </span>
+                                <div class="text-sm text-violet-950 bg-violet-50/40 border border-violet-100 rounded-xl p-3.5 leading-relaxed whitespace-pre-wrap font-medium">${wpEsc(resp.teacher_correction)}</div>
                             </div>
                             ` : ''}
 
@@ -498,7 +594,7 @@
                                 <span class="text-[10px] font-bold text-amber-500 uppercase tracking-wider flex items-center gap-1">
                                     <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Light%20Bulb.png" class="w-3 h-3" alt="Note" /> Teacher's Note
                                 </span>
-                                <div class="text-sm text-amber-900 bg-amber-50/50 border border-amber-100 rounded-xl p-3.5 leading-relaxed whitespace-pre-wrap font-medium">${hasExplanation ? q.explanation : ''}</div>
+                                <div class="text-sm text-amber-900 bg-amber-50/50 border border-amber-100 rounded-xl p-3.5 leading-relaxed whitespace-pre-wrap font-medium">${q.explanation}</div>
                             </div>
                             ` : ''}
                         </div>
@@ -513,20 +609,20 @@
                             <h2 class="text-lg font-bold text-slate-900 mb-6 flex items-center gap-2">
                                 <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Bar%20Chart.png" class="w-5 h-5" alt="Chart" /> Results Overview
                             </h2>
-                            
-                            <div class="${savedTimeStr !== null ? 'grid grid-cols-2 gap-3' : 'flex flex-col'} mb-2">
+
+                            <div class="${timeCardHtml ? 'grid grid-cols-2 gap-3' : 'flex flex-col'} mb-2">
                                 <div class="bg-emerald-50 border border-emerald-100 rounded-3xl p-5 flex flex-col items-center justify-center shadow-sm shrink-0">
-                                    <span class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-1.5">Total Score</span>
-                                    <span class="${savedTimeStr !== null ? 'text-2xl' : 'text-4xl'} font-black text-emerald-700">${scoreDisplay}</span>
+                                    <span class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-1.5">${taskType === 'sentence' ? 'Total Score' : 'Teacher Score'}</span>
+                                    <span class="${timeCardHtml ? 'text-2xl' : 'text-4xl'} font-black text-emerald-700">${wpEsc(scoreDisplay)}</span>
                                 </div>
                                 ${timeCardHtml}
                             </div>
 
                             ${leftPanelContent}
                         </div>
-                        
+
                         <div class="p-6 border-t border-gray-100 bg-gray-50/50 shrink-0">
-                            <a href="task-list.html?type=${taskType}" class="w-full flex items-center justify-center space-x-2 py-3.5 bg-white border border-gray-200 text-slate-700 font-bold rounded-xl text-sm hover:bg-gray-50 hover:text-slate-900 hover:border-gray-300 transition shadow-sm">
+                            <a href="task-list.html?type=${encodeURIComponent(taskType)}" class="w-full flex items-center justify-center space-x-2 py-3.5 bg-white border border-gray-200 text-slate-700 font-bold rounded-xl text-sm hover:bg-gray-50 hover:text-slate-900 hover:border-gray-300 transition shadow-sm">
                                 <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/File%20Folder.png" class="w-4 h-4" alt="Dashboard" />
                                 <span>Back to Dashboard</span>
                             </a>
@@ -542,26 +638,30 @@
             `;
         }
 
+        function getEndMark(q) {
+            const lastChar = (q.sample_answer || '').trim().slice(-1);
+            return ['.', '?', '!'].includes(lastChar) ? lastChar : '.';
+        }
+
         function generatePracticeView(q, qIndex) {
             if (taskType === 'sentence') {
                 let sentenceHTML = '';
-                (q.structure || []).forEach((item, slotIndex) => {
+                const items = Array.isArray(q.structure) ? q.structure : [];
+                items.forEach((item, slotIndex) => {
                     if (item.type === 'text') {
-                        sentenceHTML += `<div class="inline-flex items-center justify-center px-1.5 py-2 text-sm font-bold text-slate-800 select-none">${item.value}</div>`;
+                        sentenceHTML += `<div class="inline-flex items-center justify-center px-1.5 py-2 text-sm font-bold text-slate-800 select-none">${wpEsc(item.value)}</div>`;
                     } else if (item.type === 'slot') {
                         sentenceHTML += `<div class="word-slot inline-flex items-center justify-center border-b-2 border-gray-300 mx-1 pb-1 align-bottom" id="slot-${qIndex}-${slotIndex}"></div>`;
                     }
                 });
-                
-                let endMark = ".";
-                if (q.sample_answer) {
-                    const lastChar = q.sample_answer.trim().slice(-1);
-                    if (['.', '?', '!'].includes(lastChar)) endMark = lastChar;
+                // Знак в конце — только если структура сама им не заканчивается (иначе было «?.»)
+                const last = items[items.length - 1];
+                if (!(last && last.type === 'text' && /[.?!]\s*$/.test(String(last.value || '')))) {
+                    sentenceHTML += `<span class="text-2xl font-bold text-slate-400 select-none ml-1 align-bottom leading-none">${getEndMark(q)}</span>`;
                 }
-                sentenceHTML += `<span class="text-2xl font-bold text-slate-400 select-none ml-1 align-bottom leading-none">${endMark}</span>`;
 
-                const avatarLeft = q.avatar_left || `<img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/People%20with%20professions/Man%20Teacher%20Light%20Skin%20Tone.png" class="w-8 h-8 inline-block" alt="Man" />`;
-                const avatarRight = q.avatar_right || `<img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/People%20with%20professions/Woman%20Teacher%20Light%20Skin%20Tone.png" class="w-8 h-8 inline-block" alt="Woman" />`;
+                const avatarLeft = q.avatar_left ? wpEsc(q.avatar_left) : `<img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/People%20with%20professions/Man%20Teacher%20Light%20Skin%20Tone.png" class="w-8 h-8 inline-block" alt="Man" />`;
+                const avatarRight = q.avatar_right ? wpEsc(q.avatar_right) : `<img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/People%20with%20professions/Woman%20Teacher%20Light%20Skin%20Tone.png" class="w-8 h-8 inline-block" alt="Woman" />`;
 
                 return `
                     <div class="flex-1 overflow-y-auto flex flex-col items-center justify-center p-6 w-full">
@@ -570,7 +670,7 @@
                             <div class="w-full space-y-8 mb-12 bg-[#f8f9fa] p-8 rounded-3xl border border-gray-100 shadow-sm">
                                 <div class="flex items-start space-x-4">
                                     <div class="flex items-center justify-center w-12 h-12 bg-blue-50 border border-blue-100 rounded-full shrink-0 shadow-sm">${avatarLeft}</div>
-                                    <div class="bg-white border border-gray-100 rounded-2xl px-5 py-3 text-sm font-medium text-slate-700 max-w-md mt-1">${q.prompt_context}</div>
+                                    <div class="bg-white border border-gray-100 rounded-2xl px-5 py-3 text-sm font-medium text-slate-700 max-w-md mt-1">${q.prompt_context || ''}</div>
                                 </div>
                                 <div class="flex items-start space-x-4 pt-4 border-t border-dashed border-gray-200">
                                     <div class="flex items-center justify-center w-12 h-12 bg-rose-50 border border-rose-100 rounded-full shrink-0 shadow-sm">${avatarRight}</div>
@@ -578,20 +678,20 @@
                                 </div>
                             </div>
                             <div class="w-full max-w-2xl mx-auto">
-                                <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center mb-3">Drag words to the empty slots above</p>
+                                <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center mb-3">Drag words to the empty slots above, or tap a word to place it</p>
                                 <div class="flex flex-wrap justify-center gap-2.5 bg-gray-50 border border-gray-200 p-5 rounded-3xl min-h-[80px]" id="wordBankContainer-${qIndex}"></div>
                             </div>
                         </div>
                     </div>
                 `;
             } else if (taskType === 'email') {
-                let instructionsHTML = (q.instructions || []).map(li => `<li>${li}</li>`).join('');
+                const instructionsHTML = (Array.isArray(q.instructions) ? q.instructions : []).map(li => `<li>${li}</li>`).join('');
                 return `
                     <div class="flex-1 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-100 overflow-hidden">
                         <div class="p-8 overflow-y-auto space-y-6 bg-white">
-                            <h2 class="text-lg font-bold mb-4 text-slate-900">${q.title}</h2>
+                            <h2 class="text-lg font-bold mb-4 text-slate-900">${q.title || 'Write an Email'}</h2>
                             <div class="prose prose-slate max-w-none">
-                                <p class="text-sm text-slate-700 leading-relaxed font-medium">${q.prompt_context}</p>
+                                <p class="text-sm text-slate-700 leading-relaxed font-medium">${q.prompt_context || ''}</p>
                                 <div class="h-px bg-gray-100 my-6"></div>
                                 <h3 class="text-sm font-bold text-slate-900 uppercase tracking-wide">Write an email to ${q.meta_to || 'Daniel'}. In the email, do each of the following:</h3>
                                 <ul class="list-disc pl-5 text-sm text-slate-600 space-y-2.5 mt-3">${instructionsHTML}</ul>
@@ -605,34 +705,34 @@
                                 </div>
                                 ${generateToolbar(qIndex)}
                                 <div class="flex-1 relative overflow-hidden">
-                                    <textarea id="editorArea-${qIndex}" oninput="updateWordCount(${qIndex})" placeholder="Write your response here..." class="w-full h-full resize-none border-0 outline-none p-1 text-sm leading-relaxed text-slate-800 placeholder-gray-300 focus:ring-0"></textarea>
+                                    <textarea id="editorArea-${qIndex}" oninput="onEditorInput(${qIndex})" spellcheck="false" autocomplete="off" placeholder="Write your response here..." class="w-full h-full resize-none border-0 outline-none p-1 text-sm leading-relaxed text-slate-800 placeholder-gray-300 focus:ring-0"></textarea>
                                 </div>
                             </div>
                         </div>
                     </div>
                 `;
-            } else if (taskType === 'academic') {
-                let peersHTML = (q.peers || []).map(peer => `
+            } else {
+                const peersHTML = (Array.isArray(q.peers) ? q.peers : []).map(peer => `
                     <div class="flex items-start space-x-3 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
                         <div class="flex flex-col items-center shrink-0">
-                            <div class="w-10 h-10 rounded-full bg-slate-50 border border-gray-100 flex items-center justify-center text-lg">${peer.avatar}</div>
-                            <span class="text-[9px] font-bold text-gray-400 mt-1">${peer.name}</span>
+                            <div class="w-10 h-10 rounded-full bg-slate-50 border border-gray-100 flex items-center justify-center text-lg">${peer.avatar || '👤'}</div>
+                            <span class="text-[9px] font-bold text-gray-400 mt-1">${peer.name || ''}</span>
                         </div>
-                        <p class="text-xs text-slate-600 leading-relaxed mt-1">${peer.text}</p>
+                        <p class="text-xs text-slate-600 leading-relaxed mt-1">${peer.text || ''}</p>
                     </div>
                 `).join('');
 
                 return `
                     <div class="flex-1 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-100 overflow-hidden">
                         <div class="p-8 overflow-y-auto space-y-6 bg-white">
-                            <h2 class="text-lg font-bold mb-4 text-slate-900">${q.title}</h2>
-                            <div class="bg-teal-50 border border-teal-100 rounded-xl px-4 py-3 text-xs font-bold text-teal-800 mb-6">${q.instruction_box}</div>
+                            <h2 class="text-lg font-bold mb-4 text-slate-900">${q.title || 'Academic Discussion'}</h2>
+                            ${q.instruction_box ? `<div class="bg-teal-50 border border-teal-100 rounded-xl px-4 py-3 text-xs font-bold text-teal-800 mb-6">${q.instruction_box}</div>` : ''}
                             <div class="flex items-start space-x-4 bg-gray-50/80 p-5 rounded-2xl border border-gray-100">
                                 <div class="flex flex-col items-center shrink-0">
-                                    <div class="text-2xl p-2 bg-white rounded-full shadow-sm border border-gray-100">${q.professor_avatar}</div>
-                                    <span class="text-[10px] font-bold text-slate-800 mt-2">${q.professor_name}</span>
+                                    <div class="text-2xl p-2 bg-white rounded-full shadow-sm border border-gray-100">${q.professor_avatar || '🎓'}</div>
+                                    <span class="text-[10px] font-bold text-slate-800 mt-2">${q.professor_name || 'Professor'}</span>
                                 </div>
-                                <p class="text-xs text-slate-600 leading-relaxed font-medium pt-1">${q.professor_prompt}</p>
+                                <p class="text-xs text-slate-600 leading-relaxed font-medium pt-1">${q.professor_prompt || ''}</p>
                             </div>
                         </div>
                         <div class="p-6 bg-[#f8f9fa] flex flex-col overflow-hidden h-full space-y-4">
@@ -640,7 +740,7 @@
                             <div class="bg-white border border-gray-200 rounded-3xl p-5 flex flex-col h-[55%] shadow-sm overflow-hidden">
                                 ${generateToolbar(qIndex)}
                                 <div class="flex-1 overflow-hidden relative">
-                                    <textarea id="editorArea-${qIndex}" oninput="updateWordCount(${qIndex})" placeholder="Write your contribution here..." class="w-full h-full resize-none border-0 outline-none text-sm leading-relaxed text-slate-800 placeholder-gray-300 focus:ring-0 p-1"></textarea>
+                                    <textarea id="editorArea-${qIndex}" oninput="onEditorInput(${qIndex})" spellcheck="false" autocomplete="off" placeholder="Write your contribution here..." class="w-full h-full resize-none border-0 outline-none text-sm leading-relaxed text-slate-800 placeholder-gray-300 focus:ring-0 p-1"></textarea>
                                 </div>
                             </div>
                         </div>
@@ -660,173 +760,164 @@
             `;
         }
 
-        function initSentenceDragAndDrop(q, qIndex) {
+        function initSentenceDragAndDrop(q, qIndex, savedSlots) {
             const bankContainer = document.getElementById(`wordBankContainer-${qIndex}`);
-            const slots = document.querySelectorAll(`[id^="slot-${qIndex}-"]`);
-            if(!bankContainer) return;
+            const slots = [...document.querySelectorAll(`[id^="slot-${qIndex}-"]`)];
+            if (!bankContainer) return;
 
-            const words = q.bank || [];
-            const shuffledWords = shuffleArray(words);
-
-            shuffledWords.forEach(word => {
-                bankContainer.innerHTML += `<div class="draggable-word bg-white border border-gray-200 text-slate-700 text-xs font-bold px-4 py-2 rounded-xl shadow-sm cursor-grab active:cursor-grabbing hover:border-slate-400 select-none">${word}</div>`;
+            shuffleArray(Array.isArray(q.bank) ? q.bank : []).forEach(word => {
+                bankContainer.insertAdjacentHTML('beforeend', `<div class="draggable-word bg-white border border-gray-200 text-slate-700 text-xs font-bold px-4 py-2 rounded-xl shadow-sm cursor-grab active:cursor-grabbing hover:border-slate-400 select-none">${wpEsc(word)}</div>`);
             });
+
+            // Продолжение: раскладываем сохранённые слова по ячейкам
+            if (Array.isArray(savedSlots)) {
+                savedSlots.forEach((w, k) => {
+                    if (!w || !slots[k]) return;
+                    const el = [...bankContainer.querySelectorAll('.draggable-word')].find(x => x.textContent.trim() === w);
+                    if (el) slots[k].appendChild(el);
+                });
+            }
 
             const sortableTouchOptions = {
                 // КРИТИЧНО ДЛЯ ANDROID/ПЛАНШЕТОВ: без forceFallback SortableJS
                 // использует нативный HTML5 drag-and-drop, который на Android
-                // с сенсорным вводом просто не запускает перетаскивание —
-                // ни пальцем, ни стилусом. forceFallback включает собственную
-                // реализацию Sortable, она работает на всех сенсорных экранах.
+                // с сенсорным вводом не запускает перетаскивание.
                 forceFallback: true,
                 fallbackOnBody: true,
-                fallbackTolerance: 3    // допуск на дрожание пальца
-                // БЕЗ delay/touchStartThreshold: с задержкой 80 мс и порогом
-                // 5 px SortableJS отменял захват, если палец успевал сдвинуться
-                // до окончания задержки — а на планшете естественный жест
-                // «нажал и сразу потянул» сдвигается всегда. От прокрутки
-                // страницы и так защищает touch-action: none на словах.
+                fallbackTolerance: 3
             };
+            const onEnd = () => { dragJustEnded = true; setTimeout(() => { dragJustEnded = false; }, 80); saveDraft(); };
 
-            new Sortable(bankContainer, { group: `shared-${qIndex}`, animation: 150, ghostClass: 'sortable-ghost', ...sortableTouchOptions });
-            slots.forEach(slot => {
-                new Sortable(slot, {
-                    group: `shared-${qIndex}`, animation: 150, ghostClass: 'sortable-ghost',
-                    ...sortableTouchOptions,
-                    onAdd: function (evt) {
-                        if (evt.to.children.length > 1) {
-                            Array.from(evt.to.children).forEach(child => { if (child !== evt.item) bankContainer.appendChild(child); });
+            if (typeof Sortable !== 'undefined') {
+                new Sortable(bankContainer, { group: `shared-${qIndex}`, animation: 150, ghostClass: 'sortable-ghost', onEnd, ...sortableTouchOptions });
+                slots.forEach(slot => {
+                    new Sortable(slot, {
+                        group: `shared-${qIndex}`, animation: 150, ghostClass: 'sortable-ghost', onEnd,
+                        ...sortableTouchOptions,
+                        onAdd: function (evt) {
+                            if (evt.to.children.length > 1) {
+                                Array.from(evt.to.children).forEach(child => { if (child !== evt.item) bankContainer.appendChild(child); });
+                            }
                         }
-                    }
+                    });
                 });
+            }
+
+            // Размещение нажатием (телефон, или если SortableJS не загрузился)
+            const slide = document.getElementById(`slide-${qIndex}`);
+            slide.addEventListener('click', e => {
+                if (dragJustEnded) return;
+                const word = e.target.closest('.draggable-word');
+                if (!word || !slide.contains(word)) return;
+                if (word.parentElement === bankContainer) {
+                    const empty = slots.find(s => s.children.length === 0);
+                    if (empty) empty.appendChild(word);
+                } else {
+                    bankContainer.appendChild(word);
+                }
+                saveDraft();
             });
+        }
+
+        function onEditorInput(qIndex) {
+            updateWordCount(qIndex);
+            saveDraft();
         }
 
         function updateWordCount(qIndex) {
             const area = document.getElementById(`editorArea-${qIndex}`);
             if (!area) return;
-            const text = area.value;
-            const words = text.match(/\b[a-zA-Z0-9]+(?:[''-][a-zA-Z0-9]+)*\b/g);
-            const actualCount = words ? words.length : 0;
             const label = document.getElementById(`wordCountLabel-${qIndex}`);
-            if (label) label.innerText = wordCountStates[qIndex] ? `Words : ${actualCount}` : `Hidden`;
+            if (label) label.innerText = wordCountStates[qIndex] ? `Words : ${countWords(area.value)}` : 'Hidden';
         }
 
-        function toggleWordCount(qIndex) { 
-            wordCountStates[qIndex] = !wordCountStates[qIndex]; 
-            updateWordCount(qIndex); 
+        function toggleWordCount(qIndex) {
+            wordCountStates[qIndex] = !wordCountStates[qIndex];
+            updateWordCount(qIndex);
         }
 
         function extractAnswerFromUI(q, qIndex) {
             if (taskType === 'sentence') {
-                let parts = [];
-                (q.structure || []).forEach((item, slotIndex) => {
-                    if (item.type === 'text') {
-                        parts.push(item.value);
-                    } else if (item.type === 'slot') {
+                const parts = [];
+                let filled = 0;
+                (Array.isArray(q.structure) ? q.structure : []).forEach((item, slotIndex) => {
+                    if (item.type === 'text') parts.push(item.value);
+                    else if (item.type === 'slot') {
                         const s = document.getElementById(`slot-${qIndex}-${slotIndex}`);
-                        parts.push(s && s.children.length > 0 ? s.children[0].textContent.trim() : "____");
+                        if (s && s.children.length > 0) { parts.push(s.children[0].textContent.trim()); filled++; }
+                        else parts.push('____');
                     }
                 });
-                
-                let userResult = parts.join(" ").replace(/\s+([.?!])/g, "$1").trim();
-                
-                let endMark = ".";
-                if (q.sample_answer) {
-                    const lastChar = q.sample_answer.trim().slice(-1);
-                    if (['.', '?', '!'].includes(lastChar)) endMark = lastChar;
-                }
-                
-                if (!userResult.endsWith(endMark)) userResult += endMark;
+                if (filled === 0) return '';
+                let userResult = parts.join(' ').replace(/\s+/g, ' ').replace(/\s+([.?!,;:])/g, '$1').trim();
+                if (!['.', '?', '!'].includes(userResult.slice(-1))) userResult += getEndMark(q);
                 return userResult;
-            } else {
-                return document.getElementById(`editorArea-${qIndex}`)?.value.trim() || "";
             }
+            return (document.getElementById(`editorArea-${qIndex}`)?.value || '').trim();
         }
 
+        // Build a Sentence — проверка сразу: «1/1» или «0/1».
+        // Эссе — без балла (null): его ставит преподаватель.
         function calculateScore(q, userResult) {
-            if (taskType !== 'sentence') return "0/6.0"; 
+            if (taskType !== 'sentence') return null;
             if (!q.sample_answer) return null;
-            
-            const prepareSentences = (text) => {
-                return text
-                    .replace(/p\.m\./gi, 'pm')
-                    .replace(/a\.m\./gi, 'am')
-                    .split(/[.?!]/)
-                    .map(s => s.replace(/\s+/g, ' ').trim().toLowerCase())
-                    .filter(s => s.length > 0);
-            };
-
-            const sampleSents = prepareSentences(q.sample_answer);
-            const userSents = prepareSentences(userResult);
-            
-            let maxScore = sampleSents.length > 0 ? sampleSents.length : 1;
-            let correctCount = 0;
-            
-            sampleSents.forEach((sent, index) => {
-                if (userSents[index] === sent) correctCount++;
-            });
-
-            if (maxScore === 1 && correctCount === 0) {
-                const cleanUser = userResult.replace(/[^\w\s]/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
-                const cleanSample = q.sample_answer.replace(/[^\w\s]/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
-                if (cleanUser === cleanSample && cleanSample !== "") correctCount = 1;
-            }
-            return `${correctCount}/${maxScore}`;
+            return normalizeForCompare(userResult) === normalizeForCompare(q.sample_answer) ? '1/1' : '0/1';
         }
 
         async function submitEntireTest() {
-            if (!currentUserId) return alert("Please log in first.");
+            if (isSubmitting) return;
+            if (!currentUserId) return alert('Please log in first.');
 
-            const submitBtn = document.getElementById('btn-submit');
-            if (submitBtn) {
-                submitBtn.disabled = true;
-                submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
-            }
-
-            stopTimer();
-
-            let payloads = [];
-
-            for (let i = 0; i < testQuestions.length; i++) {
-                const q = testQuestions[i];
+            const payloads = [];
+            for (let i = 0; i < practiceQuestions.length; i++) {
+                const q = practiceQuestions[i];
                 const ans = extractAnswerFromUI(q, i);
-                
-                if (!ans || ans === "." || ans === "?" || ans === "!" || ans.includes("____")) {
-                    alert(`Question ${i + 1} is incomplete. Please finish it before submitting the test.`);
-                    showSlide(i); 
-                    
-                    if (submitBtn) {
-                        submitBtn.disabled = false;
-                        submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-                    }
-
-                    startTimer();
+                if (!ans || ans.includes('____')) {
+                    alert(`Question ${i + 1} is incomplete. Please finish it before submitting.`);
+                    showSlide(i);
                     return;
                 }
-
                 payloads.push({
                     task_id: q.id,
                     task_type: taskType,
                     response_content: ans,
                     user_id: currentUserId,
                     score: calculateScore(q, ans),
-                    time_left_seconds: timeRemaining 
+                    time_left_seconds: timeRemaining
                 });
             }
 
+            isSubmitting = true;
+            stopTimer();
+            saveDraft();
+            const submitBtn = document.getElementById('btn-submit');
+            submitBtn.disabled = true;
+            submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            document.body.style.cursor = 'wait';
+
             try {
-                document.body.style.cursor = 'wait';
-                const { error } = await db.from('student_responses').insert(payloads);
-                if (error) throw error;
-                
+                // Если ответ на задание уже есть (вторая вкладка, повторная отправка) —
+                // второй раз его не записываем
+                const { data: existing, error: exErr } = await db.from('student_responses')
+                    .select('task_id').eq('user_id', currentUserId).in('task_id', payloads.map(p => p.task_id));
+                if (exErr) throw exErr;
+                const have = new Set((existing || []).map(r => String(r.task_id)));
+                const toInsert = payloads.filter(p => !have.has(String(p.task_id)));
+                if (toInsert.length) {
+                    const { error } = await db.from('student_responses').insert(toInsert);
+                    if (error) throw error;
+                }
+                clearDraft();
+                isTestCompleted = true;
                 window.location.reload();
             } catch (err) {
-                alert("Error saving test: " + err.message);
-                if (submitBtn) {
-                    submitBtn.disabled = false;
-                    submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-                }
+                console.error('Error saving test:', err);
+                alert('Your answers were not saved yet (they are kept on this device).\n\n'
+                    + (err && err.code ? 'The server did not accept them — please tell your teacher.\n' : 'Check your internet connection and press Submit again.\n')
+                    + (err && err.message ? err.message : ''));
+                isSubmitting = false;
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
                 startTimer();
             } finally {
                 document.body.style.cursor = 'default';
