@@ -102,9 +102,14 @@
                 <div id="test-audio-phase" class="flex-1 flex flex-col items-center justify-center fade-in">
                     <img id="testImageMain" src="" alt="Context" class="w-full max-w-md rounded-xl shadow-sm mb-6 border border-slate-200/60 object-cover aspect-video">
                     <div class="bg-white p-6 rounded-2xl border border-slate-200/60 w-full max-w-md text-center shadow-sm">
-                        <p class="text-sm font-bold text-slate-800 mb-4">Listen to the audio track. You cannot pause or replay.</p>
+                        <p class="text-sm font-bold text-slate-800 mb-4">Listen to the audio track. The questions appear when it ends.</p>
                         <audio id="activeAudioPlayer" class="w-full mb-4" controls controlsList="nodownload noplaybackrate"></audio>
-                        <button onclick="transitionToQuestions()" class="text-[10px] text-gray-400 underline tracking-wide">Skip audio (Dev Mode)</button>
+                        <div id="audioErrorBox" class="hidden mb-3 text-xs text-rose-600 bg-rose-50 border border-rose-100 rounded-lg p-3">
+                            The audio failed to load. Check your connection and press play again, or
+                            <button onclick="transitionToQuestions()" class="font-bold underline">continue to the questions</button>.
+                        </div>
+                        <!-- Пропуск аудио — только для преподавателя (проверка заданий) -->
+                        <button id="devSkipBtn" onclick="transitionToQuestions()" class="hidden text-[10px] text-gray-400 underline tracking-wide">Skip audio (teacher)</button>
                     </div>
                 </div>
 
@@ -129,6 +134,13 @@
             </div>
 
             <div id="view-results" class="hidden max-w-6xl mx-auto fade-in">
+                <div id="saveErrorBox" class="hidden bg-rose-50 border border-rose-200 rounded-2xl p-4 mb-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div>
+                        <p class="text-sm font-bold text-rose-700">Результат пока не сохранён в базе</p>
+                        <p id="saveErrorText" class="text-xs text-rose-600 mt-0.5"></p>
+                    </div>
+                    <button id="saveRetryBtn" onclick="retryPendingSaves(true)" class="px-4 py-2 rounded-lg bg-rose-600 text-white text-xs font-bold hover:bg-rose-700 transition shrink-0">Сохранить ещё раз</button>
+                </div>
                 <div class="bg-white p-6 rounded-2xl border border-slate-200/60 shadow-sm mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
                     <div>
                         <h2 class="text-xl font-extrabold text-slate-900">Test Review</h2>
@@ -198,6 +210,79 @@
         let currentTest = null;
         let currentQuestionIndex = 0;
         let userAnswers = {};
+        let currentUser = null;
+        let latestResults = {};   // task_id -> последняя попытка ученицы (из базы)
+        let finishing = false;    // защита от двойного сохранения
+
+        // Ключ ответа может прийти и числом, и строкой — сравниваем как числа
+        function keyOf(q) {
+            const v = (q.correct_index !== undefined && q.correct_index !== null) ? q.correct_index : q.correct_answer;
+            return (v === undefined || v === null || v === '') ? null : Number(v);
+        }
+
+        function rowTime(r) { return Date.parse(r.completed_at || r.updated_at || r.created_at || '') || 0; }
+        function isNewer(a, b) { return rowTime(a) > rowTime(b) || (rowTime(a) === rowTime(b) && (Number(a.id) || 0) > (Number(b.id) || 0)); }
+
+        function parseAnswers(raw) {
+            if (raw && typeof raw === 'object') return raw;
+            if (typeof raw === 'string') { try { const v = JSON.parse(raw); return v && typeof v === 'object' ? v : null; } catch (e) { return null; } }
+            return null;
+        }
+
+        // Неотправленные результаты ждут на устройстве (ключ привязан к ученице)
+        // и уходят в базу при следующем открытии страницы.
+        function pendingKey() { return `listening_pending_v1:${currentUser ? currentUser.id : 'anon'}`; }
+        function readPending() { try { return JSON.parse(localStorage.getItem(pendingKey())) || []; } catch (e) { return []; } }
+        function writePending(list) { try { list.length ? localStorage.setItem(pendingKey(), JSON.stringify(list)) : localStorage.removeItem(pendingKey()); } catch (e) {} }
+
+        async function loadMyResults() {
+            latestResults = {};
+            const { data, error } = await _supabase.from('listening_results').select('*').eq('user_id', currentUser.id);
+            if (error) { console.error('Не удалось загрузить результаты:', error); return false; }
+            (data || []).forEach(r => {
+                const k = String(r.task_id);
+                if (!latestResults[k] || isNewer(r, latestResults[k])) latestResults[k] = r;
+            });
+            // Ещё не отправленные попытки тоже показываем как пройденные
+            readPending().forEach(row => {
+                const k = String(row.task_id);
+                if (!latestResults[k] || isNewer(row, latestResults[k])) latestResults[k] = Object.assign({ _unsaved: true }, row);
+            });
+            return true;
+        }
+
+        async function retryPendingSaves(fromButton) {
+            const list = readPending();
+            if (!list.length) { showSaveError(null); return true; }
+            const btn = document.getElementById('saveRetryBtn');
+            if (fromButton && btn) { btn.disabled = true; btn.innerText = 'Сохраняю...'; }
+            const left = [];
+            let lastError = null;
+            for (const row of list) {
+                const { completed_at, ...payload } = row;
+                const { error } = await _supabase.from('listening_results').insert([payload]);
+                if (error) { left.push(row); lastError = error; }
+            }
+            writePending(left);
+            if (fromButton && btn) { btn.disabled = false; btn.innerText = 'Сохранить ещё раз'; }
+            if (!left.length) {
+                await loadMyResults();
+                showSaveError(null);
+                return true;
+            }
+            showSaveError(lastError.message || String(lastError));
+            return false;
+        }
+
+        function showSaveError(message) {
+            const box = document.getElementById('saveErrorBox');
+            if (!box) return;
+            if (!message) { box.classList.add('hidden'); box.classList.remove('flex'); return; }
+            document.getElementById('saveErrorText').innerText =
+                'Он сохранён на этом устройстве и отправится сам при следующем открытии страницы. Можно нажать «Сохранить ещё раз». (' + message + ')';
+            box.classList.remove('hidden');
+            box.classList.add('flex');
+        }
 
         // --- ЛОГИКА ТАЙМЕРА ---
         let timerInterval = null;
@@ -273,6 +358,11 @@
             // Раньше список заданий открывался без проверки входа вообще
             const user = await requireAuth();
             if (!user) return;
+            currentUser = user;
+            if (user.role === 'teacher') document.getElementById('devSkipBtn').classList.remove('hidden');
+            // Сначала досылаем то, что не сохранилось в прошлый раз
+            await retryPendingSaves(false);
+            await loadMyResults();
             await loadTestsFromSupabase();
         };
 
@@ -301,7 +391,8 @@
                 .from('listening_tests')
                 .select('id, title, audio_url, image_url, transcript, questions, task_type')
                 .eq('task_type', currentType)
-                .or('is_mock_only.eq.false,is_mock_only.is.null');
+                .or('is_mock_only.eq.false,is_mock_only.is.null')
+                .order('id', { ascending: true });   // порядок карточек и «Test #N» не скачет
 
             if (error) {
                 console.error('Error fetching data:', error);
@@ -327,6 +418,8 @@
 
         function hideAllViews() {
             stopTimer(); // Останавливаем таймер при переключении видов для безопасности
+            // Разбор продолжал играть в фоне, а со следующим тестом звучали две дорожки
+            ['activeAudioPlayer', 'reviewAudioPlayer'].forEach(id => { const a = document.getElementById(id); if (a) a.pause(); });
             document.getElementById('view-list').classList.add('hidden');
             document.getElementById('view-test').classList.add('hidden');
             document.getElementById('view-results').classList.add('hidden');
@@ -368,15 +461,20 @@
             const currentType = urlParams.get('type') || 'conversation';
 
             mockTests.forEach((test, index) => {
-                const savedResult = JSON.parse(localStorage.getItem(`toefl_result_${test.id}`));
+                // Статус и балл — из базы (последняя попытка этой ученицы). Раньше они
+                // брались из памяти браузера, общей для всех, кто входит с устройства:
+                // вторая ученица видела чужие «Completed» и ответы, а на новом
+                // устройстве всё выглядело непройденным.
+                const savedResult = latestResults[String(test.id)];
                 const isCompleted = !!savedResult;
-                const scorePct = isCompleted ? Math.round((savedResult.scoreEarned / savedResult.scoreTotal) * 100) : 0;
+                const scorePct = isCompleted && Number(savedResult.score_total) > 0
+                    ? Math.round((savedResult.score_earned / savedResult.score_total) * 100) : 0;
 
                 const circumference = 2 * Math.PI * 18; 
                 const strokeDashoffset = isCompleted ? circumference - (scorePct / 100) * circumference : circumference;
                 let strokeColor = scorePct >= 80 ? '#10b981' : (scorePct >= 50 ? '#f59e0b' : '#f43f5e');
                 
-                const questionCount = test.questions ? test.questions.length : 0;
+                const questionCount = Array.isArray(test.questions) ? test.questions.length : 0;
                 const displayBadge = currentType.toUpperCase();
 
                 let cardHTML = `
@@ -424,8 +522,13 @@
         }
 
         function startTest(testId) {
-            currentTest = mockTests.find(t => t.id === testId);
+            currentTest = mockTests.find(t => String(t.id) === String(testId));
             if(!currentTest) return;
+            if (!Array.isArray(currentTest.questions) || currentTest.questions.length === 0) {
+                alert('В этом задании пока нет вопросов — сообщите преподавателю.');
+                return;
+            }
+            finishing = false;
 
             hideAllViews();
             document.getElementById('view-test').classList.remove('hidden');
@@ -443,6 +546,10 @@
             audioPlayer.src = currentTest.audio_url;
             
             audioPlayer.onended = () => { transitionToQuestions(); };
+            const errBox = document.getElementById('audioErrorBox');
+            errBox.classList.add('hidden');
+            audioPlayer.onerror = () => { if (audioPlayer.getAttribute('src')) errBox.classList.remove('hidden'); };
+            audioPlayer.onplaying = () => errBox.classList.add('hidden');
         }
 
         function transitionToQuestions() {
@@ -544,7 +651,10 @@
         }
 
         async function finishTestLogic() {
+            if (finishing) return;   // повторное нажатие во время сохранения раньше записывало попытку дважды
+            finishing = true;
             stopTimer(); // Останавливаем таймер при завершении теста
+            document.querySelectorAll('input[name="currentQ"]').forEach(r => { r.disabled = true; });
 
             let scoreEarned = 0;
             let categoryStats = {};
@@ -562,7 +672,7 @@
                 if (!categoryStats[typeKey]) categoryStats[typeKey] = { earned: 0, total: 0 };
                 categoryStats[typeKey].total += 1;
 
-                if (userAnswers[qKey] === q.correct_index) {
+                if (userAnswers[qKey] === keyOf(q)) {
                     scoreEarned += 1;
                     categoryStats[typeKey].earned += 1;
                 }
@@ -578,56 +688,45 @@
                 if (given !== undefined && given !== null) answersByIndex[qIdx] = Number(given);
             });
 
-            const resultObj = {
-                scoreEarned: scoreEarned,
-                scoreTotal: currentTest.questions.length,
-                userAnswers: userAnswers,
-                categoryStats: categoryStats
+            // Пользователь — из requireAuth(), а не из getSession(): тот мог зависнуть
+            // на блокировке сессии, и сохранение висело на «Saving...» без конца.
+            const row = {
+                user_id: currentUser.id,
+                task_id: currentTest.id,
+                score_earned: scoreEarned,
+                score_total: currentTest.questions.length,
+                category_stats: categoryStats,
+                // Ответы по каждому вопросу: номер вопроса -> выбранный вариант.
+                user_answers: answersByIndex,
+                // Тип берём у самого задания, а не из адреса страницы
+                task_type: currentTest.task_type || (new URLSearchParams(window.location.search).get('type') || 'conversation')
             };
 
-            localStorage.setItem(`toefl_result_${currentTest.id}`, JSON.stringify(resultObj));
-
-            const { data: { session } } = await _supabase.auth.getSession();
-            const user = session?.user;
-
-            const urlParams = new URLSearchParams(window.location.search);
-            const currentType = urlParams.get('type') || 'conversation';
-
-            if (user) {
-                const { error } = await _supabase
-                    .from('listening_results')
-                    .insert([{
-                        user_id: user.id,
-                        task_id: currentTest.id,
-                        score_earned: scoreEarned,
-                        score_total: currentTest.questions.length,
-                        category_stats: categoryStats,
-                        // Ответы по каждому вопросу: номер вопроса -> выбранный вариант.
-                        // Раньше они оставались только в браузере, поэтому обкатать
-                        // отдельные вопросы было невозможно — виден был только балл.
-                        user_answers: answersByIndex,
-                        task_type: currentType
-                    }]);
-
-                if (error) {
-                    console.error("Error saving results to Supabase:", error);
-                    alert("Could not save to the database, but your local results are saved.");
-                }
+            const { error } = await _supabase.from('listening_results').insert([row]);
+            if (error) {
+                // Раньше: сообщение «локально сохранено», а попытка терялась.
+                // Теперь она ждёт на устройстве и отправится сама.
+                console.error("Error saving results to Supabase:", error);
+                writePending(readPending().concat([Object.assign({}, row, { completed_at: new Date().toISOString() })]));
             }
-
+            await loadMyResults();
             showResults(currentTest.id);
+            showSaveError(error ? (error.message || String(error)) : null);
         }
 
         function showResults(testId) {
-            currentTest = mockTests.find(t => t.id === testId);
-            const savedResult = JSON.parse(localStorage.getItem(`toefl_result_${testId}`));
+            currentTest = mockTests.find(t => String(t.id) === String(testId));
+            const savedResult = latestResults[String(testId)];
             if(!currentTest || !savedResult) return;
+            // Ответы: номер вопроса -> выбранный вариант (так их пишет сохранение)
+            const answersByIndex = parseAnswers(savedResult.user_answers) || {};
 
             hideAllViews();
             document.getElementById('view-results').classList.remove('hidden');
             document.getElementById('pageTitle').innerText = "Results: " + currentTest.title;
 
-            document.getElementById('resultScore').innerText = `${savedResult.scoreEarned} / ${savedResult.scoreTotal}`;
+            document.getElementById('resultScore').innerText = `${savedResult.score_earned} / ${savedResult.score_total}`;
+            showSaveError(savedResult._unsaved ? 'нет связи с базой' : null);
             
             document.getElementById('reviewImage').src = currentTest.image_url || '';
             document.getElementById('reviewAudioPlayer').src = currentTest.audio_url;
@@ -636,10 +735,11 @@
             const container = document.getElementById('reviewQuestionsContainer');
             container.innerHTML = '';
 
-            currentTest.questions.forEach((q, index) => {
-                const qKey = q.id !== undefined ? q.id : index;
-                const userAnsIdx = savedResult.userAnswers[qKey];
-                const isCorrect = userAnsIdx === q.correct_index;
+            (currentTest.questions || []).forEach((q, index) => {
+                const raw = answersByIndex[index];
+                const userAnsIdx = (raw === undefined || raw === null) ? null : Number(raw);
+                const correctIdx = keyOf(q);
+                const isCorrect = userAnsIdx !== null && userAnsIdx === correctIdx;
                 const typeBadge = q.type || 'Question';
                 
                 let optionsHTML = '';
@@ -647,7 +747,7 @@
                     let styleClass = "border-slate-100 bg-white text-gray-500";
                     let icon = `<div class="w-3.5 h-3.5 rounded-full border border-slate-300 shrink-0"></div>`;
                     
-                    if (optIndex === q.correct_index) {
+                    if (optIndex === correctIdx) {
                         styleClass = "border-emerald-200 bg-emerald-50/50 text-emerald-800 font-medium";
                         icon = `<i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500 shrink-0"></i>`;
                     } else if (optIndex === userAnsIdx && !isCorrect) {
@@ -690,11 +790,21 @@
             lucide.createIcons();
         }
 
-        function resetTest(testId) {
-            if(confirm("Reset this test? Your score will be deleted.")) {
-                localStorage.removeItem(`toefl_result_${testId}`);
-                showList();
+        async function resetTest(testId) {
+            if (!confirm("Reset this test? Your saved results for it will be deleted.")) return;
+            // Раньше сброс стирал только память браузера, а результат в базе оставался
+            const { error } = await _supabase
+                .from('listening_results')
+                .delete()
+                .eq('user_id', currentUser.id)
+                .eq('task_id', testId);
+            writePending(readPending().filter(r => String(r.task_id) !== String(testId)));
+            try { localStorage.removeItem(`toefl_result_${testId}`); } catch (e) {}
+            await loadMyResults();
+            if (error || latestResults[String(testId)]) {
+                alert('Не получилось сбросить результат — сообщите преподавателю.' + (error ? '\n\n' + error.message : ''));
             }
+            showList();
         }
     </script>
 </body>
