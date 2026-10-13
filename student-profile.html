@@ -2326,13 +2326,16 @@
 
                     miniEl.innerHTML = miniAttempts.map(a => {
                         const hasScore = a.overall_score !== null && a.overall_score !== undefined;
+                        // Брошенный на середине мок — «не закончен», а не «ждёт проверки»
                         const scoreLabel = hasScore
                             ? `<span class="text-xs font-black text-emerald-600">${Number(a.overall_score).toFixed(1)}</span>`
-                            : `<span class="text-[10px] font-bold text-amber-600 uppercase">Pending</span>`;
+                            : a.status === 'in_progress'
+                                ? `<span class="text-[10px] font-bold text-slate-400 uppercase">Не закончен</span>`
+                                : `<span class="text-[10px] font-bold text-amber-600 uppercase">Pending</span>`;
                         return `
                             <div onclick="openSpeakingGrading('mini', '${a.id}')" class="flex items-center justify-between p-3 bg-gray-50/60 hover:bg-indigo-50/60 rounded-xl border border-gray-100 transition cursor-pointer">
                                 <div class="min-w-0">
-                                    <p class="text-xs font-bold text-slate-800 truncate">${titleMap[a.test_id] || 'Mini-Mock Speaking'}</p>
+                                    <p class="text-xs font-bold text-slate-800 truncate">${spEsc(titleMap[a.test_id] || 'Mini-Mock Speaking')}</p>
                                     <p class="text-[10px] text-gray-400">${a.completed_at ? new Date(a.completed_at).toLocaleDateString('ru-RU') : '—'}</p>
                                 </div>
                                 <div class="shrink-0 ml-3">${scoreLabel}</div>
@@ -2394,14 +2397,26 @@
             // --- Обычная практика Speaking (Interview / Listen & Repeat) ---
             const practEl = document.getElementById('speakingPracticeList');
             try {
-                const { data: practAttempts, error: practErr } = await _supabase
+                const { data: allPractAttempts, error: practErr } = await _supabase
                     .from('speaking_attempts')
                     .select('id, test_id, score, status, created_at')
                     .eq('user_id', studentId)
                     .order('created_at', { ascending: false })
-                    .limit(10);
+                    .limit(60);
 
                 if (practErr) throw practErr;
+
+                // Только попытки, где есть записи. Плеер создавал попытку при
+                // каждом открытии, и список забивался пустыми «Pending».
+                let practAttempts = [];
+                const pIds = (allPractAttempts || []).map(a => a.id);
+                if (pIds.length) {
+                    const { data: pResp, error: pRespErr } = await _supabase
+                        .from('speaking_responses').select('attempt_id').in('attempt_id', pIds);
+                    if (pRespErr) throw pRespErr;
+                    const withAnswers = new Set((pResp || []).map(r => String(r.attempt_id)));
+                    practAttempts = allPractAttempts.filter(a => withAnswers.has(String(a.id))).slice(0, 10);
+                }
 
                 if (!practAttempts || practAttempts.length === 0) {
                     practEl.innerHTML = `<p class="text-xs text-gray-400 text-center py-6">Нет попыток пока</p>`;
@@ -2422,7 +2437,7 @@
                         return `
                             <div onclick="openSpeakingGrading('practice', '${a.id}')" class="flex items-center justify-between p-3 bg-gray-50/60 hover:bg-indigo-50/60 rounded-xl border border-gray-100 transition cursor-pointer">
                                 <div class="min-w-0">
-                                    <p class="text-xs font-bold text-slate-800 truncate">${testInfo ? testInfo.title : 'Speaking Practice'}</p>
+                                    <p class="text-xs font-bold text-slate-800 truncate">${spEsc(testInfo ? testInfo.title : 'Speaking Practice')}</p>
                                     <p class="text-[10px] text-gray-400">${testInfo ? (testInfo.type === 'interview' ? 'Interview' : 'Listen & Repeat') : ''} • ${a.created_at ? new Date(a.created_at).toLocaleDateString('ru-RU') : '—'}</p>
                                 </div>
                                 <div class="shrink-0 ml-3">${scoreLabel}</div>
@@ -2655,4 +2670,4 @@
         }
     </script>
 </body>
-</html>
+    </html>
