@@ -177,7 +177,33 @@
         // 1. НАСТРОЙКИ SUPABASE
         const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Один клиент на страницу — тот, что создал auth.js (второй спорил с ним за сессию)
+        const supabaseClient = window.supabaseClient || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        function shEsc(s) {
+            return String(s === null || s === undefined ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        // Результаты тренажёра хранятся на устройстве — теперь отдельно для каждой
+        // ученицы (раньше на общем компьютере одна видела результаты другой)
+        let scoresKey = 'shadowing_scores_v2:anon';
+        function loadScores() {
+            try { return JSON.parse(localStorage.getItem(scoresKey) || '{}') || {}; } catch (e) { return {}; }
+        }
+        function saveScores(obj) {
+            try { localStorage.setItem(scoresKey, JSON.stringify(obj)); } catch (e) {}
+        }
+        function initScores(userId) {
+            scoresKey = 'shadowing_scores_v2:' + userId;
+            try {
+                const old = localStorage.getItem('shadowing_scores');
+                if (old !== null && localStorage.getItem(scoresKey) === null) localStorage.setItem(scoresKey, old);
+                localStorage.removeItem('shadowing_scores');
+            } catch (e) {}
+        }
+        let levelKeys = [];
 
         // Глобальная база данных
         let db = {};
@@ -195,6 +221,7 @@
             if (typeof requireAuth === 'function') {
                 const user = await requireAuth();
                 if (!user) return;
+                initScores(user.id);
             }
             initSpeechRecognition();
             
@@ -278,9 +305,11 @@
                 return;
             }
 
-            const savedScores = JSON.parse(localStorage.getItem('shadowing_scores') || '{}');
+            const savedScores = loadScores();
 
-            Object.keys(db).forEach(levelKey => {
+            levelKeys = Object.keys(db);
+
+            levelKeys.forEach((levelKey, levelIdx) => {
                 const level = db[levelKey];
                 
                 let completed = 0;
@@ -292,11 +321,11 @@
                 const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
 
                 const card = `
-                    <div class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col hover:border-${level.color}-400 hover:shadow-md transition cursor-pointer" onclick="openLevel('${levelKey}')">
+                    <div class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col hover:border-${level.color}-400 hover:shadow-md transition cursor-pointer" onclick="openLevel(levelKeys[${levelIdx}])">
                         <div class="w-12 h-12 rounded-xl bg-${level.color}-50 flex items-center justify-center text-${level.color}-600 mb-4">
                             <i data-lucide="layers" class="w-6 h-6"></i>
                         </div>
-                        <h3 class="font-bold text-slate-900 mb-1">${level.title}</h3>
+                        <h3 class="font-bold text-slate-900 mb-1">${shEsc(level.title)}</h3>
                         <p class="text-xs text-gray-500 mb-6 flex-1">${total} Audio Tracks</p>
                         
                         <div class="mt-auto">
@@ -320,7 +349,7 @@
             const container = document.getElementById('tasks-container');
             container.innerHTML = '';
             const levelData = db[currentLevel];
-            const savedScores = JSON.parse(localStorage.getItem('shadowing_scores') || '{}');
+            let savedScores = loadScores();
 
             levelData.exercises.forEach((ex, index) => {
                 const scoreData = savedScores[ex.id];
@@ -347,7 +376,7 @@
                 const card = `
                     <div class="${bgClass} p-5 rounded-2xl border shadow-sm flex flex-col transition cursor-pointer hover:shadow-md" onclick="openExercise(${index})">
                         <div class="flex justify-between items-center">
-                            <h3 class="font-bold text-sm ${textClass}">${ex.title || `Audio #${index + 1}`}</h3>
+                            <h3 class="font-bold text-sm ${textClass}">${shEsc(ex.title || `Audio #${index + 1}`)}</h3>
                             ${hasScore 
                                 ? `<span class="text-sm font-black ${textClass}">${percent}%</span>` 
                                 : `<i data-lucide="mic" class="w-4 h-4 text-gray-400"></i>`}
@@ -414,7 +443,7 @@
 
             document.getElementById('result-box').classList.add('hidden');
             
-            const savedScores = JSON.parse(localStorage.getItem('shadowing_scores') || '{}');
+            let savedScores = loadScores();
             if (savedScores[exercise.id]) {
                 document.getElementById('result-box').classList.remove('hidden');
                 document.getElementById('score-percent').innerText = savedScores[exercise.id].percent + '%';
@@ -550,10 +579,10 @@
                 const idx = userWords.indexOf(word);
                 if (idx > -1) {
                     matches++;
-                    analysisHtml += `<span class="text-emerald-400 font-bold mr-1">${word}</span>`;
+                    analysisHtml += `<span class="text-emerald-400 font-bold mr-1">${shEsc(word)}</span>`;
                     userWords.splice(idx, 1);
                 } else {
-                    analysisHtml += `<span class="text-rose-400 mr-1 line-through opacity-70">${word}</span>`;
+                    analysisHtml += `<span class="text-rose-400 mr-1 line-through opacity-70">${shEsc(word)}</span>`;
                 }
             });
             
@@ -564,7 +593,7 @@
             const finalHtml = `
                 <div class="mb-3">
                     <span class="text-slate-400 text-xs uppercase tracking-wider font-bold">You said:</span><br/> 
-                    <span class="italic text-slate-300">"${transcript}"</span>
+                    <span class="italic text-slate-300">"${shEsc(transcript)}"</span>
                 </div>
                 <div>
                     <span class="text-slate-400 text-xs uppercase tracking-wider font-bold">Word match analysis:</span><br/> 
@@ -582,12 +611,12 @@
 
             document.getElementById('analysis-text').innerHTML = finalHtml;
             
-            let savedScores = JSON.parse(localStorage.getItem('shadowing_scores') || '{}');
+            let savedScores = loadScores();
             const prevBest = savedScores[exercise.id] ? savedScores[exercise.id].percent : 0;
             
             if (percent >= prevBest) {
                 savedScores[exercise.id] = { percent: percent, html: finalHtml };
-                localStorage.setItem('shadowing_scores', JSON.stringify(savedScores));
+                saveScores(savedScores);
             }
         }
     </script>
