@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Мои курсы — General English</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="auth.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #f8f9fa; }
+        .chip { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 600; padding: 5px 10px; border-radius: 999px; white-space: nowrap; }
+        .chip-open { background: #eef2ff; color: #3730a3; }
+        .chip-open:hover { background: #e0e7ff; }
+        .chip-done { background: #dcfce7; color: #166534; }
+        .chip-done:hover { background: #bbf7d0; }
+        .chip-lock { background: #f1f5f9; color: #94a3b8; }
+        .chip-fb { background: #fef3c7; color: #92400e; }
+    </style>
+</head>
+<body class="min-h-screen text-slate-800 flex flex-col md:flex-row">
+    <div id="app-sidebar"></div>
+    <script src="nav.js"></script>
+    <div class="flex-1 min-w-0">
+    <header class="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200">
+        <div class="max-w-4xl mx-auto px-4 h-14 flex items-center gap-3">
+            <span class="font-bold text-slate-900 truncate">General English</span>
+            <nav id="teacherNav" class="ml-auto hidden gap-2 text-sm">
+                <a href="ge-builder.html" class="font-semibold px-3 py-1.5 rounded-xl hover:bg-slate-100">Конструктор</a>
+                <a href="ge-students.html" class="font-semibold px-3 py-1.5 rounded-xl hover:bg-slate-100">Ученики</a>
+            </nav>
+        </div>
+    </header>
+
+    <main id="app" class="max-w-4xl mx-auto px-4 py-6">
+        <div class="text-slate-400 text-sm">Загрузка курсов…</div>
+    </main>
+
+    </div>
+
+    <script src="ge-core.js"></script>
+    <script>
+    (async function () {
+        'use strict';
+        const app = document.getElementById('app');
+        const esc = GE.esc;
+
+        const user = await requireAuth();
+        if (!user) return;
+        const db = GE.db();
+        const isTeacher = user.role === 'teacher';
+        if (isTeacher) document.getElementById('teacherNav').classList.replace('hidden', 'flex');
+
+        function fail(text) {
+            app.innerHTML = '<div class="bg-white border border-red-200 rounded-3xl p-6 text-red-700 text-sm">Не удалось загрузить курсы: ' + esc(text) + '</div>';
+        }
+
+        const { data: courses, error } = await db.from('ge_courses')
+            .select('id,title,level,description,sort_order,created_at,units:ge_units(id,title,sort_order,created_at,lessons:ge_lessons(id,title,sort_order,created_at))')
+            .order('sort_order').order('created_at');
+        if (error) return fail(error.message);
+
+        // задания видны только из открытых частей (для ученика) — по ним и считаем прогресс
+        const [{ data: tasks, error: tErr }, accessRes, answersRes] = await Promise.all([
+            db.from('ge_tasks').select('id,lesson_id,part,type'),
+            isTeacher ? Promise.resolve({ data: [] }) : db.from('ge_lesson_access').select('*').eq('student_id', user.id),
+            isTeacher ? Promise.resolve({ data: [] }) : db.from('ge_answers').select('task_id,status,feedback').eq('student_id', user.id)
+        ]);
+        if (tErr) return fail(tErr.message);
+        const access = new Map((accessRes.data || []).map(a => [a.lesson_id, a]));
+        const answers = new Map((answersRes.data || []).map(a => [a.task_id, a]));
+        const byLesson = new Map();
+        (tasks || []).forEach(t => {
+            if (!byLesson.has(t.lesson_id)) byLesson.set(t.lesson_id, []);
+            byLesson.get(t.lesson_id).push(t);
+        });
+
+        if (!courses.length) {
+            app.innerHTML = '<div class="bg-white border border-slate-200 rounded-3xl p-10 text-center">' +
+                '<div class="text-4xl mb-3">📘</div>' +
+                (isTeacher
+                    ? '<h2 class="font-bold text-lg mb-2">Курсов пока нет</h2><p class="text-slate-500 text-sm mb-5">Создайте первый курс в конструкторе.</p>' +
+                      '<a href="ge-builder.html" class="inline-block bg-indigo-600 text-white font-semibold text-sm px-5 py-2.5 rounded-xl">Открыть конструктор</a>'
+                    : '<h2 class="font-bold text-lg mb-2">Курсов пока нет</h2><p class="text-slate-500 text-sm">Преподаватель скоро добавит ваш курс.</p>') +
+                '</div>';
+            return;
+        }
+
+        function lessonRowStudent(lesson) {
+            const acc = access.get(lesson.id) || {};
+            const list = byLesson.get(lesson.id) || [];
+            const hasFeedback = list.some(t => { const a = answers.get(t.id); return a && a.status === 'reviewed' && a.feedback; });
+            const chips = ['class', 'homework'].map(p => {
+                const open = p === 'class' ? acc.class_open : acc.homework_open;
+                const label = GE.PART_LABEL[p];
+                if (!open) return '<span class="chip chip-lock">' + label + ' 🔒</span>';
+                const work = list.filter(t => t.part === p && t.type !== 'info');
+                const done = work.filter(t => answers.has(t.id)).length;
+                const full = work.length && done === work.length;
+                return '<a class="chip ' + (full ? 'chip-done' : 'chip-open') + '" href="ge-lesson.html?lesson=' + encodeURIComponent(lesson.id) + '&part=' + p + '">' +
+                    (full ? '✓ ' : '') + label + (work.length ? ' · ' + done + '/' + work.length : '') + '</a>';
+            }).join('');
+            const anyOpen = acc.class_open || acc.homework_open;
+            return '<div class="flex flex-col sm:flex-row sm:items-center gap-2 py-3 border-t border-slate-100 first:border-t-0">' +
+                (anyOpen
+                    ? '<a class="flex-1 font-semibold text-slate-800 hover:text-indigo-600" href="ge-lesson.html?lesson=' + encodeURIComponent(lesson.id) + '">' + esc(lesson.title) + '</a>'
+                    : '<span class="flex-1 font-semibold text-slate-400">' + esc(lesson.title) + '</span>') +
+                '<div class="flex flex-wrap gap-2">' + chips + (hasFeedback ? '<span class="chip chip-fb">💬 есть комментарий</span>' : '') + '</div>' +
+                '</div>';
+        }
+
+        function lessonRowTeacher(lesson) {
+            const list = byLesson.get(lesson.id) || [];
+            const c = list.filter(t => t.part === 'class').length;
+            const h = list.filter(t => t.part === 'homework').length;
+            return '<div class="flex flex-col sm:flex-row sm:items-center gap-2 py-3 border-t border-slate-100 first:border-t-0">' +
+                '<a class="flex-1 font-semibold text-slate-800 hover:text-indigo-600" href="ge-lesson.html?lesson=' + encodeURIComponent(lesson.id) + '">' + esc(lesson.title) + '</a>' +
+                '<div class="flex flex-wrap items-center gap-2 text-sm">' +
+                    '<span class="chip chip-lock" style="color:#475569">Урок: ' + c + ' · Домашка: ' + h + '</span>' +
+                    '<a class="chip chip-open" href="ge-builder.html?lesson=' + encodeURIComponent(lesson.id) + '">✎ Изменить</a>' +
+                '</div></div>';
+        }
+
+        app.innerHTML = '<h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 mb-6">' + (isTeacher ? 'Все курсы' : 'Мои курсы') + '</h1>' +
+            courses.map(course => {
+                const units = (course.units || []).slice().sort(GE.bySort);
+                return '<section class="bg-white border border-slate-200 rounded-3xl p-5 md:p-6 mb-6">' +
+                    '<div class="flex items-start gap-3 mb-4">' +
+                        '<div class="flex-1">' +
+                            '<h2 class="text-xl font-extrabold text-slate-900">' + esc(course.title) + '</h2>' +
+                            (course.description ? '<p class="text-sm text-slate-500 mt-1 whitespace-pre-wrap">' + esc(course.description) + '</p>' : '') +
+                        '</div>' +
+                        (course.level ? '<span class="chip chip-open">' + esc(course.level) + '</span>' : '') +
+                    '</div>' +
+                    (units.length ? units.map(u => {
+                        const lessons = (u.lessons || []).slice().sort(GE.bySort);
+                        return '<div class="mt-4">' +
+                            '<div class="text-xs font-bold uppercase tracking-wide text-slate-400 mb-1">' + esc(u.title) + '</div>' +
+                            (lessons.length
+                                ? lessons.map(isTeacher ? lessonRowTeacher : lessonRowStudent).join('')
+                                : '<div class="text-sm text-slate-400 py-2">Уроков пока нет</div>') +
+                            '</div>';
+                    }).join('') : '<div class="text-sm text-slate-400">В курсе пока нет юнитов.</div>') +
+                    '</section>';
+            }).join('');
+    })();
+    </script>
+</body>
+</html>
