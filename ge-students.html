@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ученики — General English</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="auth.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #f8f9fa; }
+        .switch { position: relative; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; font-size: 13px; font-weight: 600; color: #334155; }
+        .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+        .switch .track { width: 36px; height: 20px; border-radius: 999px; background: #cbd5e1; position: relative; transition: background .15s; flex: none; }
+        .switch .track::after { content: ''; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: transform .15s; }
+        .switch input:checked + .track { background: #4f46e5; }
+        .switch input:checked + .track::after { transform: translateX(16px); }
+        .switch input:focus-visible + .track { outline: 2px solid #6366f1; outline-offset: 2px; }
+        .stu-item[aria-current="true"] { background: #eef2ff; border-color: #c7d2fe; }
+        .badge { display: inline-flex; align-items: center; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+    </style>
+</head>
+<body class="min-h-screen text-slate-800 flex flex-col md:flex-row">
+    <div id="app-sidebar"></div>
+    <script src="nav.js"></script>
+    <div class="flex-1 min-w-0">
+    <header class="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200">
+        <div class="max-w-6xl mx-auto px-4 h-14 flex items-center gap-3">
+            <a href="ge-courses.html" class="text-sm font-semibold text-slate-500 hover:text-indigo-600 whitespace-nowrap">← Курсы</a>
+            <span class="text-slate-300">|</span>
+            <span class="font-bold text-slate-900 truncate">Ученики и доступ</span>
+            <nav class="ml-auto flex gap-2 text-sm">
+                <a href="ge-builder.html" class="font-semibold px-3 py-1.5 rounded-xl hover:bg-slate-100">Конструктор</a>
+            </nav>
+        </div>
+    </header>
+
+    <main id="app" class="max-w-6xl mx-auto px-4 py-6">
+        <div class="text-slate-400 text-sm">Загрузка…</div>
+    </main>
+
+    </div>
+
+    <script src="ge-core.js"></script>
+    <script>
+    (async function () {
+        'use strict';
+        const app = document.getElementById('app');
+        const esc = GE.esc;
+
+        const user = await requireAuth();
+        if (!user) return;
+        if (user.role !== 'teacher') { location.href = 'ge-courses.html'; return; }
+        const db = GE.db();
+
+        let students = [], courses = [], tasks = [], assigns = [], access = [], pending = [];
+        let current = GE.param('student') || '';
+        let stuAnswers = new Map();
+        let search = '';
+
+        const lessonById = new Map();     // lesson_id → { lesson, unit, course }
+        const tasksByLesson = new Map();
+
+        async function loadAll() {
+            const [p, c, t, a, ac, pe] = await Promise.all([
+                db.from('profiles').select('*').eq('role', 'student'),
+                db.from('ge_courses').select('id,title,level,sort_order,created_at,units:ge_units(id,title,sort_order,created_at,lessons:ge_lessons(id,title,sort_order,created_at))').order('sort_order').order('created_at'),
+                db.from('ge_tasks').select('id,lesson_id,part,type,number'),
+                db.from('ge_course_students').select('*'),
+                db.from('ge_lesson_access').select('*'),
+                db.from('ge_answers').select('id,task_id,student_id,updated_at').eq('status', 'pending_review').order('updated_at')
+            ]);
+            const err = [p, c, t, a, ac, pe].find(r => r.error);
+            if (err) throw err.error;
+            students = (p.data || []).sort(GE.byName);
+            courses = c.data || [];
+            tasks = t.data || [];
+            assigns = a.data || [];
+            access = ac.data || [];
+            pending = pe.data || [];
+            lessonById.clear();
+            courses.forEach(co => {
+                co.units = (co.units || []).sort(GE.bySort);
+                co.units.forEach(u => {
+                    u.lessons = (u.lessons || []).sort(GE.bySort);
+                    u.lessons.forEach(l => lessonById.set(l.id, { lesson: l, unit: u, course: co }));
+                });
+            });
+            tasksByLesson.clear();
+            tasks.forEach(t => {
+                if (!tasksByLesson.has(t.lesson_id)) tasksByLesson.set(t.lesson_id, []);
+                tasksByLesson.get(t.lesson_id).push(t);
+            });
+        }
+        async function loadStudentAnswers() {
+            stuAnswers = new Map();
+            if (!current) return;
+            const { data, error } = await db.from('ge_answers').select('task_id,status,updated_at').eq('student_id', current);
+            if (error) throw error;
+            (data || []).forEach(a => stuAnswers.set(a.task_id, a));
+        }
+
+        try {
+            await loadAll();
+            if (current && !students.some(s => s.id === current)) current = '';
+            await loadStudentAnswers();
+        } catch (e) {
+            app.innerHTML = '<div class="bg-white border border-red-200 rounded-3xl p-6 text-red-700 text-sm">Не удалось загрузить данные: ' + esc(e.message) + '</div>';
+            return;
+        }
+
+        const taskById = () => new Map(tasks.map(t => [t.id, t]));
+        const studentName = id => GE.personName(students.find(s => s.id === id));
+        const coursesOf = id => assigns.filter(a => a.student_id === id).map(a => courses.find(c => c.id === a.course_id)).filter(Boolean);
+        const accessOf = (lessonId, sid) => access.find(a => a.lesson_id === lessonId && a.student_id === sid) || { class_open: false, homework_open: false };
+
+        app.innerHTML =
+            '<div id="pendingBox" class="mb-6"></div>' +
+            '<div class="grid md:grid-cols-[280px_minmax(0,1fr)] gap-6">' +
+                '<aside class="bg-white border border-slate-200 rounded-3xl p-4 h-max md:sticky md:top-20">' +
+                    '<input id="stuSearch" type="search" placeholder="Поиск ученика…" class="ge-input-block mb-3">' +
+                    '<div id="stuList" class="flex flex-col gap-1 max-h-[60vh] overflow-y-auto"></div>' +
+                '</aside>' +
+                '<section id="detail"></section>' +
+            '</div>';
+
+        // ---------- ждут проверки ----------
+        function renderPending() {
+            const box = document.getElementById('pendingBox');
+            const tmap = taskById();
+            const rows = pending.map(p => {
+                const t = tmap.get(p.task_id);
+                const info = t && lessonById.get(t.lesson_id);
+                return t && info ? { p: p, t: t, info: info } : null;
+            }).filter(Boolean);
+            if (!rows.length) {
+                box.innerHTML = '<div class="bg-white border border-slate-200 rounded-3xl px-5 py-4 text-sm text-slate-500">✓ Нет ответов, которые ждут проверки.</div>';
+                return;
+            }
+            box.innerHTML = '<div class="bg-amber-50 border border-amber-200 rounded-3xl p-5">' +
+                '<div class="font-bold text-amber-900 mb-3">⏳ Ждут проверки: ' + rows.length + '</div>' +
+                '<div class="flex flex-col divide-y divide-amber-100">' +
+                rows.slice(0, 30).map(r => {
+                    const href = 'ge-lesson.html?lesson=' + encodeURIComponent(r.t.lesson_id) + '&part=' + r.t.part + '&student=' + encodeURIComponent(r.p.student_id) + '#task-' + r.t.id;
+                    return '<a href="' + href + '" class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 py-2 text-sm hover:text-indigo-700">' +
+                        '<span class="font-semibold">' + esc(studentName(r.p.student_id)) + '</span>' +
+                        '<span class="text-slate-600 flex-1">' + esc(r.info.course.title) + ' › ' + esc(r.info.lesson.title) + ' · ' + esc(GE.PART_LABEL[r.t.part]) +
+                            (r.t.number ? ' · ' + esc(r.t.number) : '') + ' · ' + esc((GE.TYPES[r.t.type] || {}).label || '') + '</span>' +
+                        '<span class="text-xs text-slate-400">' + esc(GE.timeAgo(r.p.updated_at)) + '</span></a>';
+                }).join('') +
+                '</div></div>';
+        }
+
+        // ---------- список учеников ----------
+        function renderList() {
+            const list = document.getElementById('stuList');
+            const q = search.trim().toLowerCase();
+            const shown = students.filter(s => !q || (GE.personName(s) + ' ' + (s.email || '')).toLowerCase().includes(q));
+            if (!students.length) { list.innerHTML = '<div class="text-sm text-slate-400 p-2">Учеников пока нет.</div>'; return; }
+            if (!shown.length) { list.innerHTML = '<div class="text-sm text-slate-400 p-2">Никого не нашлось.</div>'; return; }
+            list.innerHTML = shown.map(s => {
+                const nCourses = assigns.filter(a => a.student_id === s.id).length;
+                const nPending = pending.filter(p => p.student_id === s.id).length;
+                return '<button type="button" data-id="' + esc(s.id) + '" aria-current="' + (s.id === current) + '" class="stu-item text-left px-3 py-2.5 rounded-2xl border border-transparent hover:bg-slate-50">' +
+                    '<div class="font-semibold text-sm text-slate-800 truncate">' + esc(GE.personName(s)) + '</div>' +
+                    '<div class="flex items-center gap-2 mt-0.5">' +
+                        '<span class="text-xs text-slate-400 truncate flex-1">' + esc(s.email || '') + '</span>' +
+                        (nCourses ? '<span class="badge bg-indigo-50 text-indigo-700">GE ' + nCourses + '</span>' : '') +
+                        (nPending ? '<span class="badge bg-amber-100 text-amber-800">⏳ ' + nPending + '</span>' : '') +
+                    '</div></button>';
+            }).join('');
+            list.querySelectorAll('.stu-item').forEach(b => {
+                b.onclick = async () => {
+                    current = b.dataset.id;
+                    const u = new URL(location.href);
+                    u.searchParams.set('student', current);
+                    history.replaceState(null, '', u);
+                    renderList();
+                    document.getElementById('detail').innerHTML = '<div class="text-slate-400 text-sm p-4">Загрузка…</div>';
+                    try { await loadStudentAnswers(); } catch (e) { GE.ui.toast(e.message, 'error'); }
+                    renderDetail();
+                    if (window.innerWidth < 768) document.getElementById('detail').scrollIntoView({ behavior: 'smooth' });
+                };
+            });
+        }
+        document.getElementById('stuSearch').addEventListener('input', e => { search = e.target.value; renderList(); });
+
+        // ---------- карточка ученика ----------
+        function progressText(lessonId, partName) {
+            const work = (tasksByLesson.get(lessonId) || []).filter(t => t.part === partName && t.type !== 'info');
+            if (!work.length) return '—';
+            return work.filter(t => stuAnswers.has(t.id)).length + '/' + work.length;
+        }
+
+        function renderDetail() {
+            const box = document.getElementById('detail');
+            if (!current) {
+                box.innerHTML = '<div class="bg-white border border-dashed border-slate-300 rounded-3xl p-10 text-center text-slate-500">Выберите ученика слева.</div>';
+                return;
+            }
+            const s = students.find(x => x.id === current);
+            const mine = coursesOf(current);
+            const others = courses.filter(c => !mine.includes(c));
+            box.innerHTML =
+                '<div class="bg-white border border-slate-200 rounded-3xl p-5 mb-5">' +
+                    '<div class="text-xl font-extrabold text-slate-900">' + esc(GE.personName(s)) + '</div>' +
+                    '<div class="text-sm text-slate-400 mb-4">' + esc(s.email || '') + '</div>' +
+                    (others.length
+                        ? '<div class="flex flex-col sm:flex-row gap-2"><select id="addCourse" class="ge-input-block sm:max-w-sm">' +
+                            others.map(c => '<option value="' + esc(c.id) + '">' + esc(c.title) + (c.level ? ' (' + esc(c.level) + ')' : '') + '</option>').join('') +
+                          '</select><button id="addCourseBtn" type="button" class="ge-btn ge-btn-primary">Назначить курс</button></div>'
+                        : (courses.length ? '<div class="text-sm text-slate-500">Назначены все курсы.</div>' : '<div class="text-sm text-slate-500">Курсов пока нет — создайте их в <a class="text-indigo-600 font-semibold" href="ge-builder.html">конструкторе</a>.</div>')) +
+                '</div>' +
+                (mine.length ? '' : '<div class="text-sm text-slate-500 px-1">У ученика пока нет курсов General English.</div>') +
+                mine.map(c => courseCard(c)).join('');
+
+            const addBtn = document.getElementById('addCourseBtn');
+            if (addBtn) addBtn.onclick = async () => {
+                const courseId = document.getElementById('addCourse').value;
+                addBtn.disabled = true;
+                const { data, error } = await db.from('ge_course_students').insert({ course_id: courseId, student_id: current }).select().single();
+                addBtn.disabled = false;
+                if (error) { GE.ui.toast('Не получилось: ' + error.message, 'error'); return; }
+                assigns.push(data);
+                GE.ui.toast('Курс назначен. Теперь откройте нужные уроки.');
+                renderDetail();
+                renderList();
+            };
+            box.querySelectorAll('[data-unassign]').forEach(b => {
+                b.onclick = async () => {
+                    const c = courses.find(x => x.id === b.dataset.unassign);
+                    const ok = await GE.ui.confirm('Убрать курс «' + c.title + '» у ученика? Ответы сохранятся, но курс пропадёт из его списка.', 'Убрать', true);
+                    if (!ok) return;
+                    const { error } = await db.from('ge_course_students').delete().eq('course_id', c.id).eq('student_id', current);
+                    if (error) { GE.ui.toast(error.message, 'error'); return; }
+                    assigns = assigns.filter(a => !(a.course_id === c.id && a.student_id === current));
+                    renderDetail();
+                    renderList();
+                };
+            });
+            box.querySelectorAll('input[data-lesson]').forEach(inp => {
+                inp.onchange = async () => {
+                    const lessonId = inp.dataset.lesson;
+                    const field = inp.dataset.field;
+                    const cur = accessOf(lessonId, current);
+                    const row = { lesson_id: lessonId, student_id: current, class_open: !!cur.class_open, homework_open: !!cur.homework_open };
+                    row[field] = inp.checked;
+                    const { data, error } = await db.from('ge_lesson_access').upsert(row, { onConflict: 'lesson_id,student_id' }).select().single();
+                    if (error) { inp.checked = !inp.checked; GE.ui.toast('Не сохранилось: ' + error.message, 'error'); return; }
+                    access = access.filter(a => !(a.lesson_id === lessonId && a.student_id === current));
+                    access.push(data);
+                };
+            });
+        }
+
+        function courseCard(c) {
+            return '<div class="bg-white border border-slate-200 rounded-3xl p-5 mb-5">' +
+                '<div class="flex items-start gap-3 mb-2">' +
+                    '<div class="flex-1"><div class="font-extrabold text-slate-900">' + esc(c.title) + '</div>' +
+                    (c.level ? '<div class="text-xs text-slate-400">' + esc(c.level) + '</div>' : '') + '</div>' +
+                    '<button type="button" data-unassign="' + esc(c.id) + '" class="text-xs font-semibold text-slate-400 hover:text-red-600">Убрать курс</button>' +
+                '</div>' +
+                (c.units.length ? c.units.map(u =>
+                    '<div class="mt-4"><div class="text-xs font-bold uppercase tracking-wide text-slate-400 mb-1">' + esc(u.title) + '</div>' +
+                    (u.lessons.length ? u.lessons.map(l => lessonRow(l)).join('') : '<div class="text-sm text-slate-400 py-2">Уроков нет</div>') +
+                    '</div>').join('') : '<div class="text-sm text-slate-400">В курсе пока нет юнитов.</div>') +
+                '</div>';
+        }
+
+        function lessonRow(l) {
+            const acc = accessOf(l.id, current);
+            const nPending = pending.filter(p => p.student_id === current && (tasksByLesson.get(l.id) || []).some(t => t.id === p.task_id)).length;
+            const href = 'ge-lesson.html?lesson=' + encodeURIComponent(l.id) + '&student=' + encodeURIComponent(current);
+            return '<div class="flex flex-col lg:flex-row lg:items-center gap-2 lg:gap-4 py-3 border-t border-slate-100">' +
+                '<a href="' + href + '" class="flex-1 font-semibold text-sm text-slate-800 hover:text-indigo-600">' + esc(l.title) + '</a>' +
+                '<div class="flex flex-wrap items-center gap-x-5 gap-y-2">' +
+                    '<label class="switch"><input type="checkbox" data-lesson="' + esc(l.id) + '" data-field="class_open"' + (acc.class_open ? ' checked' : '') + '><span class="track"></span>Урок <span class="text-slate-400 font-normal">' + progressText(l.id, 'class') + '</span></label>' +
+                    '<label class="switch"><input type="checkbox" data-lesson="' + esc(l.id) + '" data-field="homework_open"' + (acc.homework_open ? ' checked' : '') + '><span class="track"></span>Домашка <span class="text-slate-400 font-normal">' + progressText(l.id, 'homework') + '</span></label>' +
+                    (nPending ? '<span class="badge bg-amber-100 text-amber-800">⏳ ' + nPending + '</span>' : '') +
+                    '<a href="' + href + '" class="text-sm font-semibold text-indigo-600 hover:underline">Ответы →</a>' +
+                '</div></div>';
+        }
+
+        renderPending();
+        renderList();
+        renderDetail();
+    })();
+    </script>
+</body>
+</html>
