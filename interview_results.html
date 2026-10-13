@@ -48,6 +48,45 @@
         lucide.createIcons();
         let currentUser = null;
 
+        function srEsc(s) {
+            return String(s === null || s === undefined ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        // Оценка преподавателя за эту практику (ставится в профиле ученицы).
+        // Раньше ученица её нигде не видела.
+        async function renderTeacherScore(attemptId, headerSelector) {
+            try {
+                const { data: attempt } = await _supabase.from('speaking_attempts').select('*').eq('id', attemptId).maybeSingle();
+                const header = document.querySelector(headerSelector);
+                if (!attempt || !header) return;
+                const has = attempt.score !== null && attempt.score !== undefined && attempt.score !== '';
+                const box = document.createElement('div');
+                box.id = 'teacherScoreBadge';
+                box.className = has
+                    ? 'inline-flex items-center px-4 py-2 rounded-xl text-sm font-bold bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    : 'inline-flex items-center px-4 py-2 rounded-xl text-sm font-bold bg-amber-50 text-amber-700 border border-amber-200';
+                box.textContent = has ? `Teacher score: ${Number(attempt.score).toFixed(1)} / 6.0` : 'Pending teacher review';
+                header.appendChild(box);
+            } catch (e) { console.warn('Оценка не загрузилась:', e); }
+        }
+
+        // Ответы по порядку вопросов; если на один вопрос записей несколько
+        // (повторная отправка), показываем последнюю
+        function prepareResponses(data) {
+            const byQuestion = new Map();
+            (data || []).forEach(r => {
+                const key = r.speaking_questions ? 'q' + r.speaking_questions.id : 'r' + r.id;
+                const prev = byQuestion.get(key);
+                if (!prev || Number(r.id) > Number(prev.id) || String(r.id) > String(prev.id)) byQuestion.set(key, r);
+            });
+            return [...byQuestion.values()].sort((a, b) =>
+                ((a.speaking_questions && a.speaking_questions.order_num) || 0) - ((b.speaking_questions && b.speaking_questions.order_num) || 0));
+        }
+
+        const isVideoUrl = u => /\.(mp4|webm|mov|m4v)(\?|$)/i.test(String(u || ''));
+
         async function loadInterviewResults() {
             try {
                 if (typeof requireAuth !== 'function') throw new Error("auth.js is missing.");
@@ -82,11 +121,12 @@
                     return;
                 }
 
-                // Сортируем по порядку вопросов
-                data.sort((a, b) => a.speaking_questions.order_num - b.speaking_questions.order_num);
+                // По порядку вопросов, по одной записи на вопрос
+                const list = prepareResponses(data);
+                renderTeacherScore(attemptId, 'header > div');
 
                 // Асинхронно генерируем временные безопасные ссылки для аудиозаписей
-                const responsesWithUrls = await Promise.all(data.map(async (item) => {
+                const responsesWithUrls = await Promise.all(list.map(async (item) => {
                     const { data: urlData, error: urlError } = await _supabase.storage
                         .from('student_recordings')
                         .createSignedUrl(item.user_audio_url, 3600); // Ссылка живет 1 час
@@ -106,7 +146,7 @@
                 document.getElementById('interviewResultsContainer').innerHTML = `
                     <div class="bg-rose-50 text-rose-600 p-6 rounded-2xl border border-rose-100 text-center">
                         <p class="font-bold mb-2">Failed to load results</p>
-                        <p class="text-sm">${err.message}</p>
+                        <p class="text-sm">${srEsc(err.message || err)}</p>
                     </div>`;
             }
         }
@@ -116,7 +156,7 @@
             container.innerHTML = '';
 
             responses.forEach((item, index) => {
-                const q = item.speaking_questions;
+                const q = item.speaking_questions || {};
                 
                 // Используем сгенерированную подписанную ссылку
                 const userAudioPublicUrl = item.signed_url;
@@ -141,9 +181,9 @@
                                 
                                 ${q.media_url ? `
                                     <div class="w-full aspect-video bg-slate-900 rounded-xl overflow-hidden mb-4 border border-gray-100 relative">
-                                        ${q.media_url.includes('.mp4') || q.media_url.includes('.webm')
-                                            ? `<video src="${q.media_url}" class="w-full h-full object-cover" controls></video>`
-                                            : `<audio src="${q.media_url}" controls class="absolute bottom-4 left-4 right-4 w-[calc(100%-32px)]"></audio>
+                                        ${isVideoUrl(q.media_url)
+                                            ? `<video src="${srEsc(q.media_url)}" class="w-full h-full object-contain bg-black" controls playsinline></video>`
+                                            : `<audio src="${srEsc(q.media_url)}" controls class="absolute bottom-4 left-4 right-4 w-[calc(100%-32px)]"></audio>
                                                <div class="w-full h-full flex items-center justify-center text-slate-500"><i data-lucide="volume-2" class="w-12 h-12 text-slate-700"></i></div>`
                                         }
                                     </div>
@@ -164,7 +204,9 @@
                                         <i data-lucide="play" class="w-6 h-6 ml-1"></i>
                                     </div>
                                     
-                                    <audio src="${userAudioPublicUrl}" controls class="w-full max-w-sm"></audio>
+                                    ${userAudioPublicUrl
+                                        ? `<audio src="${srEsc(userAudioPublicUrl)}" controls class="w-full max-w-sm"></audio>`
+                                        : `<p class="text-sm text-rose-500 text-center">The recording file could not be opened. Please tell your teacher.</p>`}
                                     
                                     <p class="text-xs text-slate-400 mt-4 text-center max-w-xs">
                                         Review your fluency, pauses, and grammatical accuracy for this answer.
