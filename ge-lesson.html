@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Урок — General English</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="auth.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+    <style>
+        body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #f8f9fa; }
+        .tab-btn[aria-selected="true"] { background: #fff; color: #312e81; box-shadow: 0 1px 3px rgba(15,23,42,.12); }
+        .switch { position: relative; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; font-size: 14px; font-weight: 600; color: #334155; }
+        .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+        .switch .track { width: 40px; height: 22px; border-radius: 999px; background: #cbd5e1; position: relative; transition: background .15s; flex: none; }
+        .switch .track::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; }
+        .switch input:checked + .track { background: #4f46e5; }
+        .switch input:checked + .track::after { transform: translateX(18px); }
+        .switch input:focus-visible + .track { outline: 2px solid #6366f1; outline-offset: 2px; }
+        .grade-box { margin-top: 10px; padding: 14px; border-radius: 16px; background: #fffbeb; border: 1px solid #fde68a; }
+        .grade-box.is-done { background: #f0fdf4; border-color: #bbf7d0; }
+        .task-slot { scroll-margin-top: 80px; }
+    </style>
+</head>
+<body class="min-h-screen text-slate-800 flex flex-col md:flex-row">
+    <div id="app-sidebar"></div>
+    <script src="nav.js"></script>
+    <div class="flex-1 min-w-0">
+    <header class="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200">
+        <div class="max-w-4xl mx-auto px-4 h-14 flex items-center gap-3">
+            <a href="ge-courses.html" class="text-sm font-semibold text-slate-500 hover:text-indigo-600 whitespace-nowrap">← Мои курсы</a>
+            <span class="text-slate-300">|</span>
+            <span class="font-bold text-slate-900 truncate">General English</span>
+        </div>
+    </header>
+
+    <main id="app" class="max-w-4xl mx-auto px-4 py-6">
+        <div class="text-slate-400 text-sm">Загрузка урока…</div>
+    </main>
+
+    </div>
+
+    <script src="ge-core.js"></script>
+    <script>
+    (async function () {
+        'use strict';
+        const app = document.getElementById('app');
+        const esc = GE.esc;
+
+        function fail(title, text) {
+            app.innerHTML = '<div class="bg-white border border-slate-200 rounded-3xl p-8 text-center">' +
+                '<div class="text-4xl mb-3">📚</div><h2 class="font-bold text-lg mb-2">' + esc(title) + '</h2>' +
+                '<p class="text-slate-500 text-sm mb-5">' + esc(text || '') + '</p>' +
+                '<a href="ge-courses.html" class="inline-block bg-indigo-600 text-white font-semibold text-sm px-5 py-2.5 rounded-xl">К моим курсам</a></div>';
+        }
+
+        const user = await requireAuth();
+        if (!user) return;
+        const db = GE.db();
+        const isTeacher = user.role === 'teacher';
+        const lessonId = GE.param('lesson');
+        if (!lessonId) return fail('Урок не выбран');
+
+        // ---------- данные ----------
+        const { data: lesson, error: lErr } = await db.from('ge_lessons')
+            .select('id,title,unit:ge_units(id,title,course:ge_courses(id,title))')
+            .eq('id', lessonId).maybeSingle();
+        if (lErr) return fail('Не удалось загрузить урок', lErr.message);
+        if (!lesson) return fail('Урок не найден', 'Возможно, он ещё не открыт для вас.');
+        const unit = lesson.unit || {};
+        const course = unit.course || {};
+
+        let studentId = isTeacher ? (GE.param('student') || '') : user.id;
+        let students = [];
+        if (isTeacher && course.id) {
+            const { data: cs } = await db.from('ge_course_students').select('student_id').eq('course_id', course.id);
+            const ids = (cs || []).map(r => r.student_id);
+            if (ids.length) {
+                const { data: profs } = await db.from('profiles').select('*').in('id', ids);
+                students = (profs || []).sort(GE.byName);
+            }
+            if (studentId && !ids.includes(studentId)) studentId = '';
+        }
+
+        let tasks = [];
+        let answers = new Map();
+        let access = { class_open: false, homework_open: false };
+        let part = GE.param('part') === 'homework' ? 'homework' : (GE.param('part') === 'class' ? 'class' : '');
+        let refreshTimer = null;
+
+        async function loadTasks() {
+            const { data, error } = await db.from('ge_tasks').select('*').eq('lesson_id', lessonId).order('sort_order').order('created_at');
+            if (error) throw error;
+            tasks = data || [];
+        }
+        async function loadAccess() {
+            if (!studentId) { access = { class_open: true, homework_open: true }; return; }
+            const { data, error } = await db.from('ge_lesson_access').select('*').eq('lesson_id', lessonId).eq('student_id', studentId).maybeSingle();
+            if (error) throw error;
+            access = data || { class_open: false, homework_open: false };
+        }
+        async function loadAnswers() {
+            answers = new Map();
+            if (!studentId || !tasks.length) return;
+            const { data, error } = await db.from('ge_answers').select('*').eq('student_id', studentId).in('task_id', tasks.map(t => t.id));
+            if (error) throw error;
+            (data || []).forEach(a => answers.set(a.task_id, a));
+        }
+
+        try {
+            await Promise.all([loadTasks(), loadAccess()]);
+            await loadAnswers();
+        } catch (e) {
+            return fail('Не удалось загрузить урок', e.message);
+        }
+
+        const isOpen = p => p === 'class' ? !!access.class_open : !!access.homework_open;
+        if (!part) part = isTeacher ? 'class' : (isOpen('class') ? 'class' : (isOpen('homework') ? 'homework' : 'class'));
+
+        // ---------- каркас ----------
+        app.innerHTML =
+            '<div class="mb-5">' +
+                '<div class="text-xs font-semibold uppercase tracking-wide text-indigo-500 mb-1">' + esc(course.title || '') + (unit.title ? ' · ' + esc(unit.title) : '') + '</div>' +
+                '<h1 class="text-2xl md:text-3xl font-extrabold text-slate-900">' + esc(lesson.title) + '</h1>' +
+            '</div>' +
+            (isTeacher ? '<div id="teacherBar" class="bg-white border border-slate-200 rounded-2xl p-4 mb-5 flex flex-col gap-3"></div>' : '') +
+            '<div id="tabs" class="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-2xl mb-4" role="tablist"></div>' +
+            '<div id="progress" class="mb-4"></div>' +
+            '<div id="tasks"></div>';
+        const tabsEl = document.getElementById('tabs');
+        const tasksEl = document.getElementById('tasks');
+        const progressEl = document.getElementById('progress');
+
+        function partTasks(p) { return tasks.filter(t => t.part === p); }
+        function doneCount(list) { return list.filter(t => t.type !== 'info' && answers.has(t.id)).length; }
+        function workCount(list) { return list.filter(t => t.type !== 'info').length; }
+
+        function syncUrl() {
+            const u = new URL(location.href);
+            u.searchParams.set('part', part);
+            if (isTeacher) { if (studentId) u.searchParams.set('student', studentId); else u.searchParams.delete('student'); }
+            history.replaceState(null, '', u);
+        }
+
+        function renderTabs() {
+            tabsEl.innerHTML = '';
+            ['class', 'homework'].forEach(p => {
+                const list = partTasks(p);
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'tab-btn py-2.5 rounded-xl text-sm font-bold text-slate-500 transition';
+                b.setAttribute('role', 'tab');
+                b.setAttribute('aria-selected', String(p === part));
+                const locked = !isTeacher && !isOpen(p);
+                const w = workCount(list);
+                b.textContent = GE.PART_LABEL[p] + (locked ? ' 🔒' : (w ? ' · ' + doneCount(list) + '/' + w : ''));
+                b.onclick = () => { part = p; syncUrl(); renderTabs(); renderTasks(); };
+                tabsEl.appendChild(b);
+            });
+        }
+
+        function renderProgress() {
+            const list = partTasks(part);
+            const w = workCount(list);
+            if (!w || (!isTeacher && !isOpen(part)) || (isTeacher && !studentId)) { progressEl.innerHTML = ''; return; }
+            const d = doneCount(list);
+            const pct = Math.round(d / w * 100);
+            const pending = list.filter(t => (answers.get(t.id) || {}).status === 'pending_review').length;
+            progressEl.innerHTML =
+                '<div class="flex items-center gap-3 text-sm text-slate-500">' +
+                    '<div class="flex-1 h-2 rounded-full bg-slate-200 overflow-hidden"><div class="h-full bg-indigo-500 rounded-full" style="width:' + pct + '%"></div></div>' +
+                    '<span class="whitespace-nowrap">' + d + ' из ' + w + '</span>' +
+                    (pending ? '<span class="whitespace-nowrap text-amber-700 font-semibold">⏳ ' + pending + ' на проверке</span>' : '') +
+                '</div>';
+        }
+
+        function renderTasks() {
+            renderProgress();
+            tasksEl.innerHTML = '';
+            if (!isTeacher && !isOpen(part)) {
+                tasksEl.innerHTML = '<div class="bg-white border border-dashed border-slate-300 rounded-3xl p-10 text-center text-slate-500">' +
+                    '<div class="text-3xl mb-2">🔒</div>' + (part === 'homework' ? 'Домашнее задание пока не открыто.' : 'Эта часть урока пока закрыта.') + '</div>';
+                return;
+            }
+            const list = partTasks(part);
+            if (!list.length) {
+                tasksEl.innerHTML = '<div class="bg-white border border-dashed border-slate-300 rounded-3xl p-10 text-center text-slate-500">' +
+                    'В этой части пока нет заданий.' +
+                    (isTeacher ? '<div class="mt-3"><a class="text-indigo-600 font-semibold" href="ge-builder.html?lesson=' + encodeURIComponent(lessonId) + '&part=' + part + '">Добавить в конструкторе →</a></div>' : '') +
+                    '</div>';
+                return;
+            }
+            list.forEach(t => {
+                const slot = document.createElement('div');
+                slot.className = 'task-slot mb-4';
+                slot.id = 'task-' + t.id;
+                tasksEl.appendChild(slot);
+                renderOne(t, slot);
+            });
+            if (location.hash) {
+                const target = document.getElementById(location.hash.slice(1));
+                if (target) setTimeout(() => target.scrollIntoView({ behavior: 'smooth' }), 150);
+            }
+        }
+
+        function renderOne(task, slot) {
+            const saved = answers.get(task.id) || null;
+            slot.dataset.updated = saved ? saved.updated_at : '';
+            slot.dataset.dirty = '';
+            const holder = document.createElement('div');
+            slot.innerHTML = '';
+            slot.appendChild(holder);
+            let mode = 'student';
+            if (isTeacher) mode = studentId ? 'review' : 'preview';
+            GE.renderTask(holder, task, {
+                mode: mode,
+                answer: saved,
+                studentId: user.id,
+                onSubmit: async payload => {
+                    const row = await GE.saveAnswer(task.id, user.id, payload);
+                    answers.set(task.id, row);
+                    renderTabs();
+                    renderProgress();
+                    if (task.type === 'open' || task.type === 'speaking') renderOne(task, slot);
+                }
+            });
+            if (mode === 'review') addTeacherTools(task, slot, saved);
+        }
+
+        // ---------- инструменты преподавателя в режиме проверки ----------
+        function addTeacherTools(task, slot, saved) {
+            if (!saved) return;
+            const needsGrade = task.type === 'open' || task.type === 'speaking';
+            const box = document.createElement('div');
+            box.className = 'grade-box' + (saved.status === 'reviewed' ? ' is-done' : '');
+            box.innerHTML =
+                (needsGrade ?
+                    '<div class="flex flex-col sm:flex-row gap-3">' +
+                        '<label class="flex flex-col gap-1 sm:w-28"><span class="text-xs font-semibold text-slate-600">Балл</span>' +
+                            '<input type="number" step="0.5" class="g-score ge-input-block" placeholder="—"></label>' +
+                        '<label class="flex flex-col gap-1 flex-1"><span class="text-xs font-semibold text-slate-600">Комментарий для ученика</span>' +
+                            '<textarea rows="3" class="g-fb ge-input-block" placeholder="Что хорошо, что исправить…"></textarea></label>' +
+                    '</div>' : '') +
+                '<div class="flex flex-wrap items-center gap-2 mt-3">' +
+                    (needsGrade ? '<button type="button" class="g-save ge-btn ge-btn-primary">' + (saved.status === 'reviewed' ? 'Обновить проверку' : 'Сохранить проверку') + '</button>' : '') +
+                    '<button type="button" class="g-reset ge-btn ge-btn-ghost">Сбросить ответ</button>' +
+                    '<span class="g-msg text-xs text-slate-500"></span>' +
+                    '<span class="ml-auto text-xs text-slate-400">' + esc(GE.timeAgo(saved.updated_at)) + '</span>' +
+                '</div>';
+            slot.appendChild(box);
+            const msg = box.querySelector('.g-msg');
+            if (needsGrade) {
+                const score = box.querySelector('.g-score');
+                const fb = box.querySelector('.g-fb');
+                score.value = saved.score == null ? '' : saved.score;
+                fb.value = saved.feedback || '';
+                [score, fb].forEach(n => n.addEventListener('input', () => { slot.dataset.dirty = '1'; }));
+                box.querySelector('.g-save').onclick = async () => {
+                    msg.textContent = 'Сохраняю…';
+                    const val = score.value.trim();
+                    const { data, error } = await db.from('ge_answers')
+                        .update({ score: val === '' ? null : Number(val), feedback: fb.value.trim() || null, status: 'reviewed' })
+                        .eq('id', saved.id).select().single();
+                    if (error) { msg.textContent = 'Ошибка: ' + error.message; return; }
+                    answers.set(task.id, data);
+                    GE.ui.toast('Проверка сохранена');
+                    renderOne(task, slot);
+                    renderTabs();
+                    renderProgress();
+                };
+            }
+            box.querySelector('.g-reset').onclick = async () => {
+                const ok = await GE.ui.confirm('Удалить ответ ученика на это задание? Ученик сможет выполнить его заново.', 'Удалить ответ', true);
+                if (!ok) return;
+                const { error } = await db.from('ge_answers').delete().eq('id', saved.id);
+                if (error) { msg.textContent = 'Ошибка: ' + error.message; return; }
+                answers.delete(task.id);
+                renderOne(task, slot);
+                renderTabs();
+                renderProgress();
+            };
+        }
+
+        // ---------- панель преподавателя ----------
+        function renderTeacherBar() {
+            const bar = document.getElementById('teacherBar');
+            if (!bar) return;
+            const opts = '<option value="">Просмотр без ученика</option>' +
+                students.map(s => '<option value="' + esc(s.id) + '"' + (s.id === studentId ? ' selected' : '') + '>' + esc(GE.personName(s)) + '</option>').join('');
+            bar.innerHTML =
+                '<div class="flex flex-col sm:flex-row sm:items-center gap-3">' +
+                    '<label class="flex items-center gap-2 text-sm font-semibold text-slate-600">Ученик:' +
+                        '<select id="stuSel" class="ge-input-block" style="width:auto;min-width:220px">' + opts + '</select></label>' +
+                    '<div class="flex gap-3 sm:ml-auto text-sm">' +
+                        '<a class="font-semibold text-indigo-600 hover:underline" href="ge-builder.html?lesson=' + encodeURIComponent(lessonId) + '&part=' + part + '">✎ Редактировать урок</a>' +
+                        '<a class="font-semibold text-indigo-600 hover:underline" href="ge-students.html' + (studentId ? '?student=' + encodeURIComponent(studentId) : '') + '">Ученики</a>' +
+                    '</div>' +
+                '</div>' +
+                (!students.length ? '<div class="text-sm text-slate-500">Этот курс пока никому не назначен — назначить можно на странице «Ученики».</div>' : '') +
+                (studentId ?
+                    '<div class="flex flex-wrap items-center gap-x-6 gap-y-3 pt-3 border-t border-slate-100">' +
+                        '<label class="switch"><input type="checkbox" id="accClass"' + (access.class_open ? ' checked' : '') + '><span class="track"></span>Урок открыт</label>' +
+                        '<label class="switch"><input type="checkbox" id="accHw"' + (access.homework_open ? ' checked' : '') + '><span class="track"></span>Домашка открыта</label>' +
+                        '<label class="switch sm:ml-auto"><input type="checkbox" id="autoRef"' + (refreshTimer ? ' checked' : '') + '><span class="track"></span>Обновлять ответы каждые 10 с</label>' +
+                    '</div>' : '<div class="text-xs text-slate-400">В режиме просмотра задания можно решать и проверять — ничего не сохраняется.</div>');
+
+            document.getElementById('stuSel').onchange = async e => {
+                studentId = e.target.value;
+                stopAuto();
+                try { await loadAccess(); await loadAnswers(); } catch (err) { GE.ui.toast(err.message, 'error'); }
+                syncUrl();
+                renderTeacherBar();
+                renderTabs();
+                renderTasks();
+            };
+            if (studentId) {
+                const save = async (field, el) => {
+                    const row = { lesson_id: lessonId, student_id: studentId, class_open: !!access.class_open, homework_open: !!access.homework_open };
+                    row[field] = el.checked;
+                    const { data, error } = await db.from('ge_lesson_access').upsert(row, { onConflict: 'lesson_id,student_id' }).select().single();
+                    if (error) { el.checked = !el.checked; GE.ui.toast('Не сохранилось: ' + error.message, 'error'); return; }
+                    access = data;
+                    GE.ui.toast(el.checked ? (field === 'class_open' ? 'Урок открыт ученику' : 'Домашка открыта ученику') : 'Закрыто для ученика');
+                };
+                document.getElementById('accClass').onchange = e => save('class_open', e.target);
+                document.getElementById('accHw').onchange = e => save('homework_open', e.target);
+                document.getElementById('autoRef').onchange = e => { if (e.target.checked) startAuto(); else stopAuto(); };
+            }
+        }
+
+        // ---------- автообновление ответов (для урока «вживую») ----------
+        async function refreshAnswers() {
+            if (!studentId) return;
+            const before = new Map(answers);
+            try { await loadAnswers(); } catch (e) { return; }
+            let changed = false;
+            partTasks(part).forEach(t => {
+                const slot = document.getElementById('task-' + t.id);
+                if (!slot) return;
+                const now = answers.get(t.id);
+                const was = before.get(t.id);
+                if ((now && now.updated_at) === (was && was.updated_at)) return;
+                if (slot.dataset.dirty === '1' || slot.contains(document.activeElement)) { if (was) answers.set(t.id, was); else answers.delete(t.id); return; }
+                renderOne(t, slot);
+                changed = true;
+            });
+            if (changed || before.size !== answers.size) { renderTabs(); renderProgress(); }
+        }
+        function startAuto() { stopAuto(); refreshTimer = setInterval(refreshAnswers, 10000); refreshAnswers(); }
+        function stopAuto() { if (refreshTimer) clearInterval(refreshTimer); refreshTimer = null; }
+
+        if (isTeacher) renderTeacherBar();
+        syncUrl();
+        renderTabs();
+        renderTasks();
+    })();
+    </script>
+</body>
+</html>
