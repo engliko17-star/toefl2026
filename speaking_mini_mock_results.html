@@ -43,6 +43,12 @@
         lucide.createIcons();
         let currentUser = null;
 
+        function mmEsc(s) {
+            return String(s === null || s === undefined ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
         async function init() {
             try {
                 currentUser = await requireAuth();
@@ -57,7 +63,7 @@
             } catch (err) {
                 console.error(err);
                 document.getElementById('loadingIndicator').innerHTML = `
-                    <div class="bg-red-50 text-red-600 rounded-2xl p-6 text-sm font-semibold">Failed to load results: ${err.message}</div>
+                    <div class="bg-red-50 text-red-600 rounded-2xl p-6 text-sm font-semibold">Failed to load results: ${mmEsc(err.message || err)}</div>
                 `;
             }
         }
@@ -68,9 +74,10 @@
                 .from('mini_mock_speaking_attempts')
                 .select('*, test:mini_mock_speaking_tests!fk_attempts_test(title)')
                 .eq('id', attemptId)
-                .single();
+                .maybeSingle();
 
             if (attemptError) throw attemptError;
+            if (!attempt) throw new Error('Attempt not found.');
 
             // 2. Загружаем ответы вместе с item'ом и исходным вопросом (media/transcript)
             const { data: responses, error: responsesError } = await _supabase
@@ -88,7 +95,7 @@
             });
 
             renderStatus(attempt);
-            await renderResponses(sorted);
+            await renderResponses(sorted, attempt.status);
 
             document.getElementById('loadingIndicator').classList.add('hidden');
             document.getElementById('contentArea').classList.remove('hidden');
@@ -104,7 +111,10 @@
                 ? Number(attempt.overall_score).toFixed(1)
                 : 'Pending';
 
-            if (attempt.status === 'reviewed') {
+            if (attempt.status === 'in_progress') {
+                badge.className = 'text-sm font-bold px-4 py-1.5 rounded-lg border bg-slate-50 text-slate-500 border-slate-200 flex items-center';
+                badge.innerHTML = `<i data-lucide="alert-circle" class="w-4 h-4 mr-1.5"></i> Unfinished attempt`;
+            } else if (attempt.status === 'reviewed') {
                 badge.className = 'text-sm font-bold px-4 py-1.5 rounded-lg border bg-emerald-50 text-emerald-600 border-emerald-200 flex items-center';
                 badge.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 mr-1.5"></i> Reviewed (Score: ${scoreText})`;
             } else {
@@ -114,7 +124,7 @@
             lucide.createIcons();
         }
 
-        async function renderResponses(responses) {
+        async function renderResponses(responses, attemptStatus) {
             const container = document.getElementById('contentArea');
 
             if (!responses.length) {
@@ -143,14 +153,17 @@
 
                 const audioUrl = audioUrls[i];
 
+                // Преподаватель ставит общий балл за мок; отдельного балла за вопрос
+                // может не быть — тогда после проверки «Pending» у вопроса не показываем
                 const scoreHTML = (r.score !== null && r.score !== undefined)
-                    ? `<span class="text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-lg">Score: ${r.score}</span>`
+                    ? `<span class="text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-lg">Score: ${mmEsc(r.score)}</span>`
+                    : attemptStatus === 'reviewed' ? ''
                     : `<span class="text-xs font-bold text-amber-600 bg-amber-50 border border-amber-100 px-2.5 py-1 rounded-lg">Pending Review</span>`;
 
                 const feedbackHTML = r.feedback
                     ? `<div class="mt-3 bg-indigo-50/60 border border-indigo-100 rounded-xl p-3 text-xs text-indigo-900 leading-relaxed">
                             <span class="font-bold uppercase tracking-wide text-indigo-500 text-[10px] block mb-1">Teacher Feedback</span>
-                            ${r.feedback}
+                            ${mmEsc(r.feedback)}
                        </div>`
                     : '';
 
@@ -176,7 +189,7 @@
                         ${audioUrl ? `
                             <div class="mt-3">
                                 <p class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">Your Recording</p>
-                                <audio controls class="w-full h-10" src="${audioUrl}"></audio>
+                                <audio controls class="w-full h-10" src="${mmEsc(audioUrl)}"></audio>
                             </div>
                         ` : `<p class="text-xs text-gray-400 italic">No recording found.</p>`}
 
