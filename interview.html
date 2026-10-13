@@ -43,6 +43,12 @@
 
         let currentUser = null;
 
+        function spListEsc(s) {
+            return String(s === null || s === undefined ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
         // Функция для загрузки тестов из базы данных
         async function loadTests() {
             const container = document.getElementById('tests-container');
@@ -66,11 +72,26 @@
                 // 3. Запрашиваем попытки текущего пользователя для этого типа
                 const { data: attempts, error: attemptsError } = await _supabase
                     .from('speaking_attempts')
-                    .select('id, test_id')
+                    .select('*')
                     .eq('user_id', currentUser.id)
                     .order('created_at', { ascending: false }); // От новых попыток к старым
 
                 if (attemptsError) throw attemptsError;
+
+                // Сколько записей в каждой попытке. Попытка создавалась при открытии
+                // плеера, и даже пустая (ничего не записано) показывалась как
+                // Completed с кнопкой Review.
+                const answeredByAttempt = {};
+                const attemptIds = (attempts || []).map(a => a.id);
+                if (attemptIds.length) {
+                    const { data: resps, error: respErr } = await _supabase
+                        .from('speaking_responses').select('attempt_id, question_id').in('attempt_id', attemptIds);
+                    if (respErr) throw respErr;
+                    (resps || []).forEach(r => {
+                        const k = String(r.attempt_id);
+                        (answeredByAttempt[k] = answeredByAttempt[k] || new Set()).add(String(r.question_id));
+                    });
+                }
 
                 // Очищаем надпись загрузки
                 container.innerHTML = '';
@@ -92,7 +113,12 @@
                     const setNumber = index + 1;
                     
                     // Ищем последнюю попытку для текущего теста
-                    const testAttempt = attempts ? attempts.find(a => a.test_id === test.id) : null;
+                    // Последняя попытка, в которой есть хотя бы одна запись
+                    const testAttempt = (attempts || []).find(a => String(a.test_id) === String(test.id) && answeredByAttempt[String(a.id)]) || null;
+                    const answered = testAttempt ? answeredByAttempt[String(testAttempt.id)].size : 0;
+                    const total = Number(test.total_questions) || 0;
+                    const isPartial = testAttempt && total > 0 && answered < total;
+                    const hasScore = testAttempt && testAttempt.score !== null && testAttempt.score !== undefined && testAttempt.score !== '';
                     
                     let buttonsHTML = '';
 
@@ -100,10 +126,10 @@
                     if (testAttempt) {
                         buttonsHTML = `
                             <div class="mt-auto flex space-x-2 w-full pt-4">
-                                <a href="interview_results.html?attempt_id=${testAttempt.id}" class="flex-1 py-2.5 bg-sky-50 hover:bg-sky-100 text-sky-600 text-xs font-bold rounded-xl flex items-center justify-center transition border border-sky-200 shadow-sm">
+                                <a href="interview_results.html?attempt_id=${encodeURIComponent(testAttempt.id)}" class="flex-1 py-2.5 bg-sky-50 hover:bg-sky-100 text-sky-600 text-xs font-bold rounded-xl flex items-center justify-center transition border border-sky-200 shadow-sm">
                                     Review <i data-lucide="video" class="w-3.5 h-3.5 ml-1.5"></i>
                                 </a>
-                                <a href="speaking_player.html?type=interview&id=${test.id}" class="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl flex items-center justify-center transition shadow-sm">
+                                <a href="speaking_player.html?type=interview&id=${encodeURIComponent(test.id)}" class="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl flex items-center justify-center transition shadow-sm">
                                     Retake <i data-lucide="rotate-cw" class="w-3.5 h-3.5 ml-1.5"></i>
                                 </a>
                             </div>
@@ -112,7 +138,7 @@
                         // Если попыток нет, показываем кнопку Start Practice
                         buttonsHTML = `
                             <div class="mt-auto pt-4">
-                                <a href="speaking_player.html?type=interview&id=${test.id}" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl flex items-center justify-center transition shadow-sm">
+                                <a href="speaking_player.html?type=interview&id=${encodeURIComponent(test.id)}" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl flex items-center justify-center transition shadow-sm">
                                     Start Practice <i data-lucide="arrow-right" class="w-3.5 h-3.5 ml-1.5"></i>
                                 </a>
                             </div>
@@ -120,7 +146,11 @@
                     }
 
                     // Формируем бейдж статуса
-                    const cardStatus = testAttempt 
+                    const cardStatus = hasScore
+                        ? `<span class="text-[10px] font-bold tracking-wider text-emerald-700 uppercase bg-emerald-50 px-2 py-1 rounded border border-emerald-200">Score ${Number(testAttempt.score).toFixed(1)}</span>`
+                        : isPartial
+                        ? `<span class="text-[10px] font-bold tracking-wider text-amber-700 uppercase bg-amber-50 px-2 py-1 rounded border border-amber-200">${answered}/${total} done</span>`
+                        : testAttempt
                         ? `<span class="text-[10px] font-bold tracking-wider text-sky-600 uppercase bg-sky-100 px-2 py-1 rounded border border-sky-200">Completed</span>`
                         : `<span class="text-[10px] font-bold tracking-wider text-slate-500 uppercase bg-slate-100 px-2 py-1 rounded border border-slate-200">New</span>`;
                     
@@ -131,7 +161,7 @@
                                 <span class="text-[10px] font-bold tracking-wider text-sky-500 uppercase bg-sky-50 px-2 py-1 rounded border border-sky-100">Set ${setNumber}</span>
                                 ${cardStatus}
                             </div>
-                            <h3 class="font-bold text-slate-800 text-[15px] leading-snug mb-1 mt-3">${test.title}</h3>
+                            <h3 class="font-bold text-slate-800 text-[15px] leading-snug mb-1 mt-3">${spListEsc(test.title)}</h3>
                             <p class="text-xs text-gray-400 mb-2">${test.total_questions} Questions • 45s Response</p>
                             
                             ${buttonsHTML}
