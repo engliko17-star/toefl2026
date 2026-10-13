@@ -162,13 +162,16 @@
                 .trim();
         }
 
-        function isEssayGraded(r) {
-            if (!r) return false;
-            const raw = r.score;
-            if (raw === null || raw === undefined || raw === '') return false;
-            if (String(raw).includes('/')) return false;   // «0/6.0» — заглушка старой версии, не оценка
-            return !isNaN(parseFloat(raw));
+        // Балл эссе в базе бывает в двух видах: «4.5» и «4.5/6.0» (так сохранялись
+        // оценки раньше). «0/6.0» — заглушка старой практики, а не оценка.
+        function essayScoreOf(r) {
+            if (!r || r.score === null || r.score === undefined) return null;
+            const s = String(r.score).trim();
+            if (!s || /^0\s*\/\s*6(\.0+)?$/.test(s)) return null;
+            const m = s.match(/^(\d+(?:\.\d+)?)(?:\s*\/\s*6(?:\.0+)?)?$/);
+            return m ? parseFloat(m[1]) : null;
         }
+        function isEssayGraded(r) { return essayScoreOf(r) !== null; }
 
         // --- ЛОГИКА ТАЙМЕРА ---
         let timerInterval = null;
@@ -442,11 +445,8 @@
                 });
                 if (has) scoreDisplay = `${earned} / ${max}`;
             } else {
-                const r = respFor(testQuestions[0]);
-                if (isEssayGraded(r)) {
-                    const v = parseFloat(r.score);
-                    scoreDisplay = Number.isInteger(v) ? v.toString() : v.toFixed(1);
-                }
+                const v = essayScoreOf(respFor(testQuestions[0]));
+                if (v !== null) scoreDisplay = Number.isInteger(v) ? v.toString() : String(v);
             }
 
             const anyResp = studentResponses[0];
@@ -538,8 +538,8 @@
                 if (taskType === 'sentence') {
                     if (resp.score && String(resp.score).includes('/')) qScore = String(resp.score).replace('/', ' / ');
                 } else if (isEssayGraded(resp)) {
-                    const earned = parseFloat(resp.score);
-                    qScore = Number.isInteger(earned) ? earned.toString() : earned.toFixed(1);
+                    const earned = essayScoreOf(resp);
+                    qScore = Number.isInteger(earned) ? earned.toString() : String(earned);
                 }
 
                 const hasExplanation = q.explanation && q.explanation.trim().toLowerCase() !== 'none' && q.explanation.trim() !== '';
