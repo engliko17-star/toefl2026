@@ -7,7 +7,7 @@
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
 
@@ -19,6 +19,9 @@
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         .word-slot { min-width: 90px; min-height: 42px; transition: all 0.2s; }
         .sortable-ghost { opacity: 0.2; background-color: #f1f5f9; border: 2px dashed #94a3b8; color: transparent; }
+        /* Планшеты и телефоны: жест над словом — перетаскивание, а не прокрутка */
+        .draggable-word, .word-slot, #wordBankContainer { touch-action: none; }
+        .sortable-fallback { opacity: 1 !important; transform: scale(1.05); box-shadow: 0 8px 20px rgba(0,0,0,.18); }
     </style>
 </head>
 <body class="bg-[#f8f9fa] text-slate-900 min-h-screen flex flex-col antialiased">
@@ -143,7 +146,8 @@
         // --- SUPABASE CONFIGURATION ---
         const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Один клиент на страницу — тот, что создал auth.js (второй спорил с ним за сессию)
+        const supabaseClient = window.supabaseClient || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         // --- STATE VARIABLES ---
         let LEVELS_DATA = [];
@@ -151,14 +155,60 @@
         let currentTasks = [];
         let currentQuestionIdx = 0;
         let activeSortables = [];
-        let completedLevels = JSON.parse(localStorage.getItem('toefl_completed_levels') || '[]');
+        let completedLevels = [];
+        let progressUserId = 'anon';
+
+        // Прогресс тренажёра хранится на устройстве — теперь отдельно для каждой
+        // ученицы (раньше на общем компьютере прогресс одной видела другая)
+        function lsGet(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+        function lsSet(key, val) { try { localStorage.setItem(key, val); } catch (e) {} }
+        function lsDel(key) { try { localStorage.removeItem(key); } catch (e) {} }
+        const progressKey = levelId => `toefl_progress_v2:${progressUserId}:${levelId}`;
+        const completedKey = () => `toefl_completed_levels_v2:${progressUserId}`;
+
+        function loadCompletedLevels() {
+            // Однократный перенос старого прогресса (ключи без привязки к ученице)
+            const old = lsGet('toefl_completed_levels');
+            if (old !== null && lsGet(completedKey()) === null) {
+                lsSet(completedKey(), old);
+                lsDel('toefl_completed_levels');
+                try {
+                    Object.keys(localStorage).filter(k => /^toefl_progress_[^:]+$/.test(k) && !k.startsWith('toefl_progress_v2')).forEach(k => {
+                        const levelId = k.slice('toefl_progress_'.length);
+                        if (lsGet(progressKey(levelId)) === null) lsSet(progressKey(levelId), lsGet(k));
+                        lsDel(k);
+                    });
+                } catch (e) {}
+            }
+            try { completedLevels = JSON.parse(lsGet(completedKey()) || '[]'); } catch (e) { completedLevels = []; }
+            if (!Array.isArray(completedLevels)) completedLevels = [];
+        }
+
+        function spEsc(s) {
+            return String(s === null || s === undefined ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        // Сравниваются слова и их порядок; знаки препинания не влияют,
+        // апостроф влияет (раньше its и it's считались одинаковыми)
+        function normalizeForCompare(text) {
+            return String(text || '')
+                .replace(/[\u2018\u2019\u201B`\u00B4]/g, "'")
+                .toLowerCase()
+                .replace(/[^\p{L}\p{N}'\s-]/gu, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
 
         document.addEventListener('DOMContentLoaded', async () => {
             // Раньше тренажёр открывался без проверки входа и доступа к Writing
             if (typeof requireAuth === 'function') {
                 const user = await requireAuth();
                 if (!user) return;
+                progressUserId = user.id;
             }
+            loadCompletedLevels();
             await fetchLevels();
             renderLevelsGrid();
         });
@@ -192,14 +242,14 @@
 
             LEVELS_DATA.forEach(level => {
                 const isDone = completedLevels.includes(level.id);
-                const savedProgress = localStorage.getItem(`toefl_progress_${level.id}`);
+                const savedProgress = lsGet(progressKey(level.id));
                 const hasProgress = savedProgress !== null && !isDone;
 
                 const card = document.createElement('div');
                 card.className = `bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between hover:border-rose-500/40 hover:shadow-md transition-all cursor-pointer group relative overflow-hidden`;
                 card.onclick = () => startLevel(level.id);
 
-                let badgeHTML = `<span class="text-[9px] font-extrabold px-2 py-0.5 rounded uppercase tracking-wider bg-slate-100 text-slate-600">${level.badge || 'Practice'}</span>`;
+                let badgeHTML = `<span class="text-[9px] font-extrabold px-2 py-0.5 rounded uppercase tracking-wider bg-slate-100 text-slate-600">${spEsc(level.badge || 'Practice')}</span>`;
                 
                 if (isDone) {
                     badgeHTML = `<span class="text-[9px] font-extrabold px-2 py-0.5 rounded uppercase tracking-wider bg-emerald-50 text-emerald-600 border border-emerald-100">✓ Completed</span>`;
@@ -213,11 +263,11 @@
                         <div class="flex items-center justify-between mb-4">
                             ${badgeHTML}
                             <div class="w-8 h-8 rounded-xl bg-rose-50 text-rose-500 flex items-center justify-center group-hover:bg-rose-500 group-hover:text-white transition">
-                                <i data-lucide="${level.icon || 'layers'}" class="w-4 h-4"></i>
+                                <i data-lucide="${spEsc(level.icon || 'layers')}" class="w-4 h-4"></i>
                             </div>
                         </div>
-                        <h3 class="font-black text-slate-900 text-base mb-1 group-hover:text-rose-500 transition-colors">${level.title}</h3>
-                        <p class="text-xs text-gray-400 font-medium">${level.subtitle || ''}</p>
+                        <h3 class="font-black text-slate-900 text-base mb-1 group-hover:text-rose-500 transition-colors">${spEsc(level.title)}</h3>
+                        <p class="text-xs text-gray-400 font-medium">${spEsc(level.subtitle || '')}</p>
                     </div>
                     <div class="pt-6 mt-4 border-t border-gray-50 flex items-center justify-between">
                         <span class="text-xs font-bold text-rose-500 flex items-center group-hover:translate-x-1 transition-transform ml-auto">
@@ -251,7 +301,7 @@
             }
 
             // --- RESTORE SAVED QUESTION INDEX IF AVAILABLE ---
-            const savedIdx = localStorage.getItem(`toefl_progress_${levelId}`);
+            const savedIdx = lsGet(progressKey(levelId));
             if (savedIdx !== null) {
                 const parsedIdx = parseInt(savedIdx, 10);
                 if (!isNaN(parsedIdx) && parsedIdx >= 0 && parsedIdx < currentTasks.length) {
@@ -305,7 +355,7 @@
 
             // --- SAVE PROGRESS TO LOCALSTORAGE ---
             if (currentLevel) {
-                localStorage.setItem(`toefl_progress_${currentLevel.id}`, idx);
+                lsSet(progressKey(currentLevel.id), String(idx));
             }
 
             // Context Prompt
@@ -335,7 +385,7 @@
                     }
                     
                     if (textValue) {
-                        dropzone.innerHTML += `<div class="inline-flex items-center px-1.5 py-2 text-sm font-bold text-slate-800 select-none">${textValue}</div>`;
+                        dropzone.innerHTML += `<div class="inline-flex items-center px-1.5 py-2 text-sm font-bold text-slate-800 select-none">${spEsc(textValue)}</div>`;
                     }
                 } else if (item.type === 'slot') {
                     dropzone.innerHTML += `<div class="word-slot inline-flex items-center justify-center border-b-2 border-gray-300 mx-1 pb-1 align-bottom min-w-[120px]" id="slot-${idx}-${slotIndex}"></div>`;
@@ -350,25 +400,48 @@
             bank.innerHTML = '';
             
             // Shuffle word choices from DB array
-            const shuffledWords = [...q.word_bank].sort(() => Math.random() - 0.5);
+            const shuffledWords = [...(Array.isArray(q.word_bank) ? q.word_bank : [])].sort(() => Math.random() - 0.5);
             shuffledWords.forEach(word => {
-                bank.innerHTML += `<div class="draggable-word bg-slate-50 border border-gray-200 text-slate-800 text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm cursor-grab active:cursor-grabbing hover:border-slate-400 transition select-none">${word}</div>`;
+                bank.innerHTML += `<div class="draggable-word bg-slate-50 border border-gray-200 text-slate-800 text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm cursor-grab active:cursor-grabbing hover:border-slate-400 transition select-none">${spEsc(word)}</div>`;
             });
 
             initDragAndDrop(idx);
         }
 
+        // Размещение нажатием: работает на телефоне и если SortableJS не загрузился
+        let tapQIdx = null;
+        let dragJustEnded = false;
+        document.addEventListener('click', e => {
+            if (dragJustEnded || tapQIdx === null) return;
+            const word = e.target.closest && e.target.closest('.draggable-word');
+            if (!word) return;
+            const bankContainer = document.getElementById('wordBankContainer');
+            const slots = [...document.querySelectorAll(`[id^="slot-${tapQIdx}-"]`)];
+            if (word.parentElement === bankContainer) {
+                const empty = slots.find(s => s.children.length === 0);
+                if (empty) empty.appendChild(word);
+            } else if (slots.includes(word.parentElement)) {
+                bankContainer.appendChild(word);
+            }
+        });
+
         function initDragAndDrop(qIdx) {
             activeSortables.forEach(s => s.destroy());
             activeSortables = [];
+            tapQIdx = qIdx;
+            if (typeof Sortable === 'undefined') return; // остаётся размещение нажатием
 
             const bankContainer = document.getElementById('wordBankContainer');
             const slots = document.querySelectorAll(`[id^="slot-${qIdx}-"]`);
+            // forceFallback: без него на Android-планшетах перетаскивание пальцем не работает
+            const touchOpts = { forceFallback: true, fallbackOnBody: true, fallbackTolerance: 3,
+                onEnd: () => { dragJustEnded = true; setTimeout(() => { dragJustEnded = false; }, 80); } };
 
             const bankSortable = new Sortable(bankContainer, {
                 group: `level-group-${qIdx}`,
                 animation: 150,
-                ghostClass: 'sortable-ghost'
+                ghostClass: 'sortable-ghost',
+                ...touchOpts
             });
             activeSortables.push(bankSortable);
 
@@ -377,6 +450,7 @@
                     group: `level-group-${qIdx}`,
                     animation: 150,
                     ghostClass: 'sortable-ghost',
+                    ...touchOpts,
                     onAdd: function (evt) {
                         if (evt.to.children.length > 1) {
                             Array.from(evt.to.children).forEach(child => {
@@ -407,10 +481,7 @@
             let userSentence = parts.join(" ").replace(/\s+([.?!,])/g, "$1").trim();
             if (!userSentence.match(/[.?!]$/)) userSentence += ".";
 
-            const cleanUser = userSentence.replace(/[^\w\s]/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
-            const cleanSample = q.correct_answer.replace(/[^\w\s]/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
-
-            const isCorrect = cleanUser === cleanSample;
+            const isCorrect = normalizeForCompare(userSentence) === normalizeForCompare(q.correct_answer);
 
             showFeedback(isCorrect, q);
 
@@ -435,7 +506,7 @@
                 banner.className = 'mb-6 p-4 rounded-2xl border transition-all bg-rose-50 border-rose-200 text-rose-900';
                 iconBox.innerHTML = `<i data-lucide="x-circle" class="w-6 h-6 text-rose-600"></i>`;
                 title.innerText = 'Incorrect Construction';
-                text.innerHTML = `Correct pattern: <strong class="underline">${q.correct_answer}</strong><br><span class="opacity-80 mt-1 inline-block">${q.explanation || ''}</span>`;
+                text.innerHTML = `Correct pattern: <strong class="underline">${spEsc(q.correct_answer)}</strong><br><span class="opacity-80 mt-1 inline-block">${spEsc(q.explanation || '')}</span>`;
             }
             lucide.createIcons();
         }
@@ -452,11 +523,11 @@
         function finishLevel() {
             // Очищаем прогресс текущего уровня, так как он пройден полностью
             if (currentLevel) {
-                localStorage.removeItem(`toefl_progress_${currentLevel.id}`);
+                lsDel(progressKey(currentLevel.id));
                 
                 if (!completedLevels.includes(currentLevel.id)) {
                     completedLevels.push(currentLevel.id);
-                    localStorage.setItem('toefl_completed_levels', JSON.stringify(completedLevels));
+                    lsSet(completedKey(), JSON.stringify(completedLevels));
                 }
             }
 
@@ -475,7 +546,7 @@
 
         function retryCurrentLevel() {
             if (currentLevel) {
-                localStorage.removeItem(`toefl_progress_${currentLevel.id}`);
+                lsDel(progressKey(currentLevel.id));
                 startLevel(currentLevel.id);
             }
         }
