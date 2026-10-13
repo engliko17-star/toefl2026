@@ -22,6 +22,10 @@
             { href: 'index.html',  icon: 'home',       label: 'Dashboard' },
             { href: 'tests.html',  icon: 'file-check', label: 'Mock Tests' }
         ]},
+        // ge: true — группа видна только преподавателю и ученикам, которым назначен курс General English
+        { title: 'General English', ge: true, items: [
+            { href: 'ge-courses.html', icon: 'graduation-cap', label: 'My Courses', ge: true }
+        ]},
         { title: 'Секции TOEFL', items: [
             { href: 'reading.html',   icon: 'book-text',  label: 'Reading' },
             { href: 'listening.html', icon: 'headphones', label: 'Listening' },
@@ -70,6 +74,8 @@
         'review.html': 'vocabulary.html',
         'lesson-unit.html': 'lessons.html',
         'student-profile.html': 'teacher-board.html', 'mock-lab.html': 'content-lab.html',
+        // --- General English ---
+        'ge-lesson.html': 'ge-courses.html', 'ge-builder.html': 'ge-courses.html', 'ge-students.html': 'ge-courses.html',
 
         // Статьи обеих секций начинаются на article-, поэтому по префиксу их
         // не различить — каждая вписана явно. Новую статью добавлять сюда.
@@ -194,7 +200,9 @@
 
     function linkHtml(item, extraClass, id) {
         const active = item.href === activeHref ? ' is-active' : '';
-        return `<a href="${item.href}" ${id ? `id="${id}"` : ''} class="app-nav-link${active}${extraClass || ''}" title="${esc(item.label)}">
+        const geAttr = item.ge ? ' data-nav-ge="1"' : '';
+        const geCls = item.ge ? ' hidden' : '';
+        return `<a href="${item.href}" ${id ? `id="${id}"` : ''}${geAttr} class="app-nav-link${active}${extraClass || ''}${geCls}" title="${esc(item.label)}">
                     <i data-lucide="${item.icon}"></i><span class="app-nav-label">${esc(item.label)}</span>
                 </a>`;
     }
@@ -215,7 +223,7 @@
         </div>
         <nav class="app-nav-body">
             ${NAV_GROUPS.map(g => `
-                <div class="app-nav-group">
+                <div class="app-nav-group${g.ge ? ' hidden' : ''}"${g.ge ? ' data-nav-ge="1"' : ''}>
                     <p class="app-nav-title">${esc(g.title)}</p>
                     ${g.items.map(it => linkHtml(it)).join('')}
                 </div>`).join('')}
@@ -235,8 +243,8 @@
     mnav.className = 'app-mnav';
     mnav.id = 'mobileBottomNav';
     mnav.innerHTML = `<div class="app-mnav-row">
-        ${allItems.map(it => `<a href="${it.href}" class="app-mnav-link${it.href === activeHref ? ' is-active' : ''}">
-            <i data-lucide="${it.icon}"></i><span>${esc(it.label.replace('Speaking Topics', 'Topics').replace('Irregular Verbs', 'Verbs'))}</span></a>`).join('')}
+        ${allItems.map(it => `<a href="${it.href}"${it.ge ? ' data-nav-ge="1"' : ''} class="app-mnav-link${it.href === activeHref ? ' is-active' : ''}${it.ge ? ' hidden' : ''}">
+            <i data-lucide="${it.icon}"></i><span>${esc(it.label.replace('Speaking Topics', 'Topics').replace('Irregular Verbs', 'Verbs').replace('My Courses', 'Courses'))}</span></a>`).join('')}
         ${TEACHER_ITEMS.map((it, i) => `<a href="${it.href}" id="${i === 0 ? 'teacherLinkMobile' : 'teacherLinkLabMobile'}" class="app-mnav-link hidden${it.href === activeHref ? ' is-active' : ''}">
             <i data-lucide="${it.icon}"></i><span>${i === 0 ? 'Teacher' : 'Обкатка'}</span></a>`).join('')}
         <button type="button" class="app-mnav-link is-logout" onclick="logoutUser()"><i data-lucide="log-out"></i><span>Exit</span></button>
@@ -285,6 +293,34 @@
     try {
         if (typeof getCachedProfile === 'function') {
             getCachedProfile().then(p => { if (p && p.role === 'teacher') showTeacher(); }).catch(() => {});
+        }
+    } catch (e) {}
+
+    // ---------- General English ----------
+    // Пункт виден преподавателю и ученикам, которым назначен хотя бы один курс GE.
+    // Чтобы пункт не «мигал», последний ответ запоминается и показывается сразу,
+    // а проверка в базе уточняет его в фоне.
+    const GE_CACHE_KEY = 'appNavGeVisible';
+    function showGe(on) {
+        document.querySelectorAll('[data-nav-ge]').forEach(el => el.classList.toggle('hidden', !on));
+    }
+    try { if (localStorage.getItem(GE_CACHE_KEY) === '1') showGe(true); } catch (e) {}
+    if (activeHref === 'ge-courses.html') showGe(true);
+    try {
+        if (typeof getCachedProfile === 'function') {
+            getCachedProfile().then(async p => {
+                if (!p) return;
+                let on = false;
+                if (p.role === 'teacher') on = true;
+                else if (p.role !== 'guest' && window.supabaseClient) {
+                    const { count, error } = await window.supabaseClient
+                        .from('ge_course_students').select('course_id', { count: 'exact', head: true });
+                    if (error) return;            // таблицы ещё нет — пункт просто не показываем
+                    on = (count || 0) > 0;
+                }
+                showGe(on || activeHref === 'ge-courses.html');
+                try { localStorage.setItem(GE_CACHE_KEY, on ? '1' : '0'); } catch (e) {}
+            }).catch(() => {});
         }
     } catch (e) {}
 })();
