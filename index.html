@@ -66,6 +66,9 @@
                 </div>
             </div>
 
+            <!-- General English: появляется только у учеников с назначенным курсом -->
+            <div id="geCard" class="hidden"></div>
+
             <div class="bg-white p-6 sm:p-8 rounded-3xl border border-indigo-100 shadow-md space-y-5">
                 <div class="flex items-center justify-between">
                     <div>
@@ -218,6 +221,7 @@
             loadMockScores();
             loadTaskCounts();
             loadSchedule();
+            loadGeCard();
         };
 
         async function loadProfile() {
@@ -747,6 +751,90 @@
                 }
                 const el = document.getElementById('count-' + key);
                 if (el) el.innerText = ok ? total : '—';
+            }
+        }
+
+        // ==========================================
+        // General English: открытые уроки и домашка
+        // Карточка появляется только у ученика, которому назначен курс GE.
+        // ==========================================
+        async function loadGeCard() {
+            const box = document.getElementById('geCard');
+            if (!box || !currentUser || currentUser.role === 'teacher' || currentUser.role === 'guest') return;
+            const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+            try {
+                const { count: nCourses, error: cErr } = await _supabase.from('ge_course_students')
+                    .select('course_id', { count: 'exact', head: true }).eq('student_id', currentUser.id);
+                if (cErr || !nCourses) return;
+
+                const { data: acc, error: aErr } = await _supabase.from('ge_lesson_access')
+                    .select('lesson_id, class_open, homework_open, updated_at').eq('student_id', currentUser.id);
+                if (aErr) throw aErr;
+                const open = (acc || []).filter(a => a.class_open || a.homework_open);
+                const ids = open.map(a => a.lesson_id);
+
+                let lessons = [], tasks = [], answers = [];
+                if (ids.length) {
+                    const [l, t, a] = await Promise.all([
+                        _supabase.from('ge_lessons').select('id, title, unit:ge_units(title, course:ge_courses(title))').in('id', ids),
+                        _supabase.from('ge_tasks').select('id, lesson_id, part, type').in('lesson_id', ids),
+                        _supabase.from('ge_answers').select('task_id, status, feedback, reviewed_at').eq('student_id', currentUser.id)
+                    ]);
+                    lessons = l.data || []; tasks = t.data || []; answers = a.data || [];
+                }
+                const ansBy = new Map(answers.map(a => [a.task_id, a]));
+                const weekAgo = Date.now() - 7 * 86400000;
+                const fresh = answers.filter(a => a.status === 'reviewed' && a.feedback && a.reviewed_at && new Date(a.reviewed_at).getTime() > weekAgo).length;
+
+                const rows = open.map(a => {
+                    const lesson = lessons.find(x => x.id === a.lesson_id);
+                    if (!lesson) return null;
+                    const parts = [['class', 'Урок', a.class_open], ['homework', 'Домашка', a.homework_open]]
+                        .filter(p => p[2])
+                        .map(([part, label]) => {
+                            const work = tasks.filter(t => t.lesson_id === lesson.id && t.part === part && t.type !== 'info');
+                            const done = work.filter(t => ansBy.has(t.id)).length;
+                            return { part, label, done, total: work.length };
+                        });
+                    const todo = parts.find(p => p.total && p.done < p.total);
+                    return { lesson, parts, todo, updated: a.updated_at || '' };
+                }).filter(Boolean)
+                  .sort((x, y) => (!!y.todo - !!x.todo) || y.updated.localeCompare(x.updated))
+                  .slice(0, 3);
+
+                const rowHtml = r => {
+                    const u = r.lesson.unit || {}, c = u.course || {};
+                    const part = (r.todo || r.parts[0] || {}).part || 'class';
+                    const chips = r.parts.map(p => {
+                        const full = p.total && p.done === p.total;
+                        return `<span class="text-[10px] font-bold px-2 py-1 rounded-lg ${full ? 'bg-emerald-50 text-emerald-700' : 'bg-indigo-50 text-indigo-600'}">${full ? '✓ ' : ''}${p.label}${p.total ? ' ' + p.done + '/' + p.total : ''}</span>`;
+                    }).join('');
+                    return `<a href="ge-lesson.html?lesson=${encodeURIComponent(r.lesson.id)}&part=${part}" class="flex items-center justify-between gap-3 p-3 rounded-2xl border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50/30 transition">
+                                <div class="min-w-0">
+                                    <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider truncate">${esc(c.title)}${u.title ? ' · ' + esc(u.title) : ''}</div>
+                                    <div class="text-sm font-bold text-slate-800 truncate">${esc(r.lesson.title)}</div>
+                                </div>
+                                <div class="flex flex-wrap justify-end gap-1.5 shrink-0">${chips}</div>
+                            </a>`;
+                };
+
+                box.className = 'bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-xs space-y-3';
+                box.innerHTML = `
+                    <div class="flex items-center justify-between gap-3">
+                        <div class="flex items-center gap-3">
+                            <div class="p-2 bg-indigo-50 text-indigo-600 rounded-xl"><i data-lucide="graduation-cap" class="w-4 h-4"></i></div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900 tracking-tight">General English</h3>
+                                <p class="text-[10px] text-gray-400 mt-0.5">Открытые уроки и домашние задания</p>
+                            </div>
+                        </div>
+                        <a href="ge-courses.html" class="text-xs font-bold text-indigo-600 hover:text-indigo-800 whitespace-nowrap">Все курсы →</a>
+                    </div>
+                    ${fresh ? `<a href="ge-courses.html" class="block text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">💬 Преподаватель оставил комментарии к вашим ответам: ${fresh}</a>` : ''}
+                    ${rows.length ? rows.map(rowHtml).join('') : '<p class="text-xs text-gray-400 py-2">Уроки откроются, когда преподаватель начнёт занятие.</p>'}`;
+                try { lucide.createIcons(); } catch (e) {}
+            } catch (err) {
+                console.error('Не удалось загрузить General English:', err);
             }
         }
 
