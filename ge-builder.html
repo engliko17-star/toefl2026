@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Конструктор уроков — General English</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="auth.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+    <style>
+        body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #f8f9fa; }
+        .ib { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; font-size: 14px; color: #64748b; flex: none; }
+        .ib:hover { background: #f1f5f9; color: #0f172a; }
+        .ib.danger:hover { background: #fef2f2; color: #dc2626; }
+        .lesson-item[aria-current="true"] { background: #eef2ff; }
+        .lesson-item[aria-current="true"] .lesson-name { color: #3730a3; }
+        .tab-btn[aria-selected="true"] { background: #fff; color: #312e81; box-shadow: 0 1px 3px rgba(15,23,42,.12); }
+        .fld { display: flex; flex-direction: column; gap: 5px; }
+        .fld > span { font-size: 13px; font-weight: 600; color: #475569; }
+        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 15px; line-height: 1.6; }
+        .help code { background: #fff; border: 1px solid #c7d2fe; border-radius: 6px; padding: 0 5px; font-size: 13px; white-space: pre-wrap; }
+        .tbtn { font-size: 13px; font-weight: 600; padding: 6px 10px; border-radius: 10px; color: #475569; background: #f8fafc; border: 1px solid #e2e8f0; }
+        .tbtn:hover { background: #f1f5f9; color: #0f172a; }
+        .tbtn.danger:hover { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
+        #editor[hidden] { display: none; }
+    </style>
+</head>
+<body class="min-h-screen text-slate-800 flex flex-col md:flex-row">
+    <div id="app-sidebar"></div>
+    <script src="nav.js"></script>
+    <div class="flex-1 min-w-0">
+    <header class="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200">
+        <div class="max-w-7xl mx-auto px-4 h-14 flex items-center gap-3">
+            <a href="ge-courses.html" class="text-sm font-semibold text-slate-500 hover:text-indigo-600 whitespace-nowrap">← Курсы</a>
+            <span class="text-slate-300">|</span>
+            <span class="font-bold text-slate-900 truncate">Конструктор уроков</span>
+            <nav class="ml-auto flex gap-2 text-sm">
+                <a href="ge-students.html" class="font-semibold px-3 py-1.5 rounded-xl hover:bg-slate-100">Ученики</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 py-5">
+        <div id="courseBar" class="bg-white border border-slate-200 rounded-3xl p-4 mb-5"><span class="text-slate-400 text-sm">Загрузка…</span></div>
+        <div class="grid lg:grid-cols-[300px_minmax(0,1fr)] gap-5">
+            <aside id="structure" class="bg-white border border-slate-200 rounded-3xl p-4 h-max lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto"></aside>
+            <section id="lessonPane"></section>
+        </div>
+    </main>
+
+    <!-- Редактор задания -->
+    <div id="editor" class="fixed inset-0 z-[60]" hidden>
+        <div class="absolute inset-0 bg-slate-900/50"></div>
+        <div class="absolute inset-0 md:inset-4 lg:inset-6 bg-slate-50 md:rounded-3xl shadow-2xl flex flex-col overflow-hidden">
+            <div class="flex items-center gap-3 px-4 md:px-6 h-14 border-b border-slate-200 bg-white flex-none">
+                <div id="edTitle" class="font-bold text-slate-900 truncate">Задание</div>
+                <div class="ml-auto flex gap-2">
+                    <button id="edCancel" type="button" class="ge-btn ge-btn-ghost">Отмена</button>
+                    <button id="edSave" type="button" class="ge-btn ge-btn-primary">Сохранить</button>
+                </div>
+            </div>
+            <div class="flex-1 overflow-y-auto">
+                <div class="grid lg:grid-cols-2 gap-5 p-4 md:p-6">
+                    <div id="edForm" class="flex flex-col gap-4 min-w-0"></div>
+                    <div class="min-w-0">
+                        <div class="lg:sticky lg:top-0">
+                            <div class="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">Предпросмотр — так увидит ученик</div>
+                            <div id="edPreview"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    </div>
+
+    <script src="ge-core.js"></script>
+    <script>
+    (async function () {
+        'use strict';
+        const esc = GE.esc;
+        const courseBar = document.getElementById('courseBar');
+        const structureEl = document.getElementById('structure');
+        const pane = document.getElementById('lessonPane');
+
+        const user = await requireAuth();
+        if (!user) return;
+        if (user.role !== 'teacher') { location.href = 'ge-courses.html'; return; }
+        const db = GE.db();
+
+        let courses = [], units = [], tasks = [];
+        let courseId = null;
+        let lessonId = GE.param('lesson') || null;
+        let part = GE.param('part') === 'homework' ? 'homework' : 'class';
+        const openPreviews = new Set();
+
+        // ---------- загрузка ----------
+        async function loadCourses() {
+            const { data, error } = await db.from('ge_courses').select('*').order('sort_order').order('created_at');
+            if (error) throw error;
+            courses = data || [];
+        }
+        async function loadStructure() {
+            units = [];
+            if (!courseId) return;
+            const { data, error } = await db.from('ge_units')
+                .select('id,title,sort_order,created_at,course_id,lessons:ge_lessons(id,title,sort_order,created_at,unit_id)')
+                .eq('course_id', courseId);
+            if (error) throw error;
+            units = (data || []).sort(GE.bySort);
+            units.forEach(u => { u.lessons = (u.lessons || []).sort(GE.bySort); });
+        }
+        async function loadTasks() {
+            tasks = [];
+            if (!lessonId) return;
+            const { data, error } = await db.from('ge_tasks').select('*').eq('lesson_id', lessonId).order('sort_order').order('created_at');
+            if (error) throw error;
+            tasks = data || [];
+        }
+        function findLesson(id) {
+            for (const u of units) {
+                const l = u.lessons.find(x => x.id === id);
+                if (l) return { lesson: l, unit: u };
+            }
+            return null;
+        }
+        function syncUrl() {
+            const u = new URL(location.href);
+            ['course', 'lesson', 'part'].forEach(k => u.searchParams.delete(k));
+            if (courseId) u.searchParams.set('course', courseId);
+            if (lessonId) { u.searchParams.set('lesson', lessonId); u.searchParams.set('part', part); }
+            history.replaceState(null, '', u);
+            try { if (courseId) localStorage.setItem('ge-builder-course', courseId); } catch (e) { /* ничего */ }
+        }
+        function err(e) { GE.ui.toast('Ошибка: ' + (e.message || e), 'error'); }
+
+        try {
+            await loadCourses();
+            if (lessonId) {
+                const { data } = await db.from('ge_lessons').select('id,unit:ge_units(course_id)').eq('id', lessonId).maybeSingle();
+                if (data && data.unit) courseId = data.unit.course_id; else lessonId = null;
+            }
+            if (!courseId) {
+                courseId = GE.param('course');
+                if (!courseId) { try { courseId = localStorage.getItem('ge-builder-course'); } catch (e) { courseId = null; } }
+            }
+            if (!courses.some(c => c.id === courseId)) courseId = courses[0] ? courses[0].id : null;
+            await loadStructure();
+            if (lessonId && !findLesson(lessonId)) lessonId = null;
+            await loadTasks();
+        } catch (e) {
+            courseBar.innerHTML = '<div class="text-red-700 text-sm">Не удалось загрузить данные: ' + esc(e.message) + '</div>';
+            return;
+        }
+
+        // =============================================================
+        // Курс
+        // =============================================================
+        function renderCourseBar() {
+            if (!courses.length) {
+                courseBar.innerHTML = '<div class="flex flex-col sm:flex-row sm:items-center gap-3">' +
+                    '<div class="flex-1"><div class="font-bold text-slate-900">Курсов пока нет</div><div class="text-sm text-slate-500">Создайте курс — например, по учебнику, с которым занимаетесь.</div></div>' +
+                    '<button type="button" data-act="course-add" class="ge-btn ge-btn-primary">+ Создать курс</button></div>';
+                return;
+            }
+            courseBar.innerHTML = '<div class="flex flex-col md:flex-row md:items-center gap-3">' +
+                '<label class="flex items-center gap-2 flex-1 min-w-0"><span class="text-sm font-semibold text-slate-500 whitespace-nowrap">Курс:</span>' +
+                    '<select id="courseSel" class="ge-input-block font-semibold" style="max-width:520px">' +
+                    courses.map(c => '<option value="' + esc(c.id) + '"' + (c.id === courseId ? ' selected' : '') + '>' + esc(c.title) + (c.level ? ' · ' + esc(c.level) : '') + '</option>').join('') +
+                    '</select></label>' +
+                '<div class="flex flex-wrap gap-2">' +
+                    '<button type="button" data-act="course-add" class="tbtn">+ Новый курс</button>' +
+                    '<button type="button" data-act="course-edit" class="tbtn">✎ Изменить</button>' +
+                    '<button type="button" data-act="course-del" class="tbtn danger">Удалить</button>' +
+                '</div></div>';
+            document.getElementById('courseSel').onchange = async e => {
+                courseId = e.target.value;
+                lessonId = null;
+                openPreviews.clear();
+                try { await loadStructure(); await loadTasks(); } catch (x) { err(x); }
+                renderAll();
+            };
+        }
+
+        courseBar.addEventListener('click', async e => {
+            const b = e.target.closest('[data-act]');
+            if (!b) return;
+            const act = b.dataset.act;
+            const c = courses.find(x => x.id === courseId);
+            if (act === 'course-add' || act === 'course-edit') {
+                const v = await GE.ui.form(act === 'course-add' ? 'Новый курс' : 'Курс', [
+                    { name: 'title', label: 'Название', value: act === 'course-edit' ? c.title : '', placeholder: 'Например: Speakout Elementary' },
+                    { name: 'level', label: 'Уровень (необязательно)', value: act === 'course-edit' ? (c.level || '') : '', placeholder: 'A2' },
+                    { name: 'description', label: 'Описание (необязательно)', type: 'textarea', value: act === 'course-edit' ? (c.description || '') : '' }
+                ]);
+                if (!v || !v.title) return;
+                const row = { title: v.title, level: v.level || null, description: v.description || null };
+                if (act === 'course-add') {
+                    row.sort_order = courses.length ? Math.max(...courses.map(x => x.sort_order || 0)) + 1 : 0;
+                    const { data, error } = await db.from('ge_courses').insert(row).select().single();
+                    if (error) return err(error);
+                    courseId = data.id;
+                    lessonId = null;
+                } else {
+                    const { error } = await db.from('ge_courses').update(row).eq('id', courseId);
+                    if (error) return err(error);
+                }
+                try { await loadCourses(); await loadStructure(); await loadTasks(); } catch (x) { err(x); }
+                renderAll();
+            }
+            if (act === 'course-del') {
+                const ok = await GE.ui.confirm('Удалить курс «' + c.title + '» целиком?\n\nУдалятся все юниты, уроки, задания и ответы учеников по этому курсу. Отменить это нельзя.', 'Удалить курс', true);
+                if (!ok) return;
+                const { error } = await db.from('ge_courses').delete().eq('id', courseId);
+                if (error) return err(error);
+                courseId = null; lessonId = null;
+                try { await loadCourses(); courseId = courses[0] ? courses[0].id : null; await loadStructure(); await loadTasks(); } catch (x) { err(x); }
+                renderAll();
+            }
+        });
+
+        // =============================================================
+        // Структура: юниты и уроки
+        // =============================================================
+        function renderStructure() {
+            if (!courseId) { structureEl.innerHTML = '<div class="text-sm text-slate-400">Сначала создайте курс.</div>'; return; }
+            structureEl.innerHTML =
+                '<div class="font-bold text-slate-900 mb-3">Юниты и уроки</div>' +
+                (units.length ? '' : '<div class="text-sm text-slate-400 mb-3">Пока пусто. Добавьте первый юнит.</div>') +
+                units.map((u, ui) =>
+                    '<div class="mb-4">' +
+                        '<div class="flex items-center gap-0.5">' +
+                            '<span class="flex-1 min-w-0 text-xs font-bold uppercase tracking-wide text-slate-500 truncate" title="' + esc(u.title) + '">' + esc(u.title) + '</span>' +
+                            '<button type="button" class="ib" title="Переименовать" data-act="unit-edit" data-id="' + u.id + '">✎</button>' +
+                            '<button type="button" class="ib" title="Выше" data-act="unit-up" data-id="' + u.id + '"' + (ui === 0 ? ' disabled style="opacity:.3"' : '') + '>↑</button>' +
+                            '<button type="button" class="ib" title="Ниже" data-act="unit-down" data-id="' + u.id + '"' + (ui === units.length - 1 ? ' disabled style="opacity:.3"' : '') + '>↓</button>' +
+                            '<button type="button" class="ib danger" title="Удалить юнит" data-act="unit-del" data-id="' + u.id + '">🗑</button>' +
+                        '</div>' +
+                        '<div class="flex flex-col mt-1">' +
+                        u.lessons.map((l, li) =>
+                            '<div class="lesson-item flex items-center gap-0.5 rounded-xl" aria-current="' + (l.id === lessonId) + '">' +
+                                '<button type="button" class="flex-1 min-w-0 text-left px-3 py-2 text-sm font-semibold lesson-name truncate hover:text-indigo-600" title="' + esc(l.title) + '" data-act="lesson-open" data-id="' + l.id + '">' + esc(l.title) + '</button>' +
+                                '<button type="button" class="ib" title="Переименовать" data-act="lesson-edit" data-id="' + l.id + '">✎</button>' +
+                                '<button type="button" class="ib" title="Выше" data-act="lesson-up" data-id="' + l.id + '"' + (li === 0 ? ' disabled style="opacity:.3"' : '') + '>↑</button>' +
+                                '<button type="button" class="ib" title="Ниже" data-act="lesson-down" data-id="' + l.id + '"' + (li === u.lessons.length - 1 ? ' disabled style="opacity:.3"' : '') + '>↓</button>' +
+                                '<button type="button" class="ib danger" title="Удалить урок" data-act="lesson-del" data-id="' + l.id + '">🗑</button>' +
+                            '</div>').join('') +
+                        '<button type="button" class="text-left px-3 py-2 text-sm font-semibold text-indigo-600 hover:text-indigo-800" data-act="lesson-add" data-id="' + u.id + '">+ урок</button>' +
+                        '</div>' +
+                    '</div>').join('') +
+                '<button type="button" class="w-full ge-btn ge-btn-ghost" data-act="unit-add">+ Юнит</button>';
+        }
+
+        async function renumber(table, list) {
+            const ups = list.map((row, k) => row.sort_order === k ? null : db.from(table).update({ sort_order: k }).eq('id', row.id)).filter(Boolean);
+            const res = await Promise.all(ups);
+            const bad = res.find(r => r.error);
+            if (bad) throw bad.error;
+            list.forEach((row, k) => { row.sort_order = k; });
+        }
+        function swap(list, i, j) { const t = list[i]; list[i] = list[j]; list[j] = t; }
+
+        structureEl.addEventListener('click', async e => {
+            const b = e.target.closest('[data-act]');
+            if (!b || b.disabled) return;
+            const act = b.dataset.act, id = b.dataset.id;
+            try {
+                if (act === 'unit-add') {
+                    const v = await GE.ui.form('Новый юнит', [{ name: 'title', label: 'Название', placeholder: 'Unit 1. Welcome' }]);
+                    if (!v || !v.title) return;
+                    const { error } = await db.from('ge_units').insert({ course_id: courseId, title: v.title, sort_order: units.length });
+                    if (error) throw error;
+                    await loadStructure();
+                }
+                if (act === 'unit-edit') {
+                    const u = units.find(x => x.id === id);
+                    const v = await GE.ui.form('Юнит', [{ name: 'title', label: 'Название', value: u.title }]);
+                    if (!v || !v.title) return;
+                    const { error } = await db.from('ge_units').update({ title: v.title }).eq('id', id);
+                    if (error) throw error;
+                    u.title = v.title;
+                }
+                if (act === 'unit-up' || act === 'unit-down') {
+                    const i = units.findIndex(x => x.id === id);
+                    swap(units, i, act === 'unit-up' ? i - 1 : i + 1);
+                    await renumber('ge_units', units);
+                }
+                if (act === 'unit-del') {
+                    const u = units.find(x => x.id === id);
+                    const ok = await GE.ui.confirm('Удалить юнит «' + u.title + '»?\n\nВместе с ним удалятся ' + u.lessons.length + ' ' + GE.plural(u.lessons.length, 'урок', 'урока', 'уроков') + ', все задания и ответы учеников.', 'Удалить', true);
+                    if (!ok) return;
+                    const { error } = await db.from('ge_units').delete().eq('id', id);
+                    if (error) throw error;
+                    if (u.lessons.some(l => l.id === lessonId)) { lessonId = null; tasks = []; }
+                    await loadStructure();
+                }
+                if (act === 'lesson-add') {
+                    const u = units.find(x => x.id === id);
+                    const v = await GE.ui.form('Новый урок в «' + u.title + '»', [{ name: 'title', label: 'Название', placeholder: '1A. Nice to meet you' }]);
+                    if (!v || !v.title) return;
+                    const { data, error } = await db.from('ge_lessons').insert({ unit_id: id, title: v.title, sort_order: u.lessons.length }).select().single();
+                    if (error) throw error;
+                    await loadStructure();
+                    lessonId = data.id; part = 'class';
+                    openPreviews.clear();
+                    await loadTasks();
+                }
+                if (act === 'lesson-open') {
+                    lessonId = id;
+                    openPreviews.clear();
+                    await loadTasks();
+                    if (window.innerWidth < 1024) setTimeout(() => pane.scrollIntoView({ behavior: 'smooth' }), 50);
+                }
+                if (act === 'lesson-edit') {
+                    const f = findLesson(id);
+                    const v = await GE.ui.form('Урок', [{ name: 'title', label: 'Название', value: f.lesson.title }]);
+                    if (!v || !v.title) return;
+                    const { error } = await db.from('ge_lessons').update({ title: v.title }).eq('id', id);
+                    if (error) throw error;
+                    f.lesson.title = v.title;
+                }
+                if (act === 'lesson-up' || act === 'lesson-down') {
+                    const f = findLesson(id);
+                    const list = f.unit.lessons;
+                    const i = list.findIndex(x => x.id === id);
+                    swap(list, i, act === 'lesson-up' ? i - 1 : i + 1);
+                    await renumber('ge_lessons', list);
+                }
+                if (act === 'lesson-del') {
+                    const f = findLesson(id);
+                    const ok = await GE.ui.confirm('Удалить урок «' + f.lesson.title + '»?\n\nУдалятся все его задания и ответы учеников.', 'Удалить урок', true);
+                    if (!ok) return;
+                    const { error } = await db.from('ge_lessons').delete().eq('id', id);
+                    if (error) throw error;
+                    if (id === lessonId) { lessonId = null; tasks = []; }
+                    await loadStructure();
+                }
+            } catch (x) { err(x); }
+            renderAll();
+        });
+
+        // =============================================================
+        // Урок: список заданий
+        // =============================================================
+        function summaryOf(t) {
+            const c = t.content || {};
+            const first = s => String(s || '').split('\n').map(x => x.trim()).find(Boolean) || '';
+            return t.instruction || first(c.text) || first(c.prompt) || first(t.passage) || '(без текста)';
+        }
+        function partTasks(p) { return tasks.filter(t => t.part === p); }
+
+        function renderLessonPane() {
+            if (!courseId) { pane.innerHTML = ''; return; }
+            const f = lessonId && findLesson(lessonId);
+            if (!f) {
+                pane.innerHTML = '<div class="bg-white border border-dashed border-slate-300 rounded-3xl p-10 text-center text-slate-500">' +
+                    (units.length ? 'Выберите урок слева или создайте новый.' : 'Начните со структуры: добавьте юнит, а в нём — урок.') + '</div>';
+                return;
+            }
+            const list = partTasks(part);
+            pane.innerHTML =
+                '<div class="bg-white border border-slate-200 rounded-3xl p-5 mb-4">' +
+                    '<div class="text-xs font-bold uppercase tracking-wide text-indigo-500">' + esc(f.unit.title) + '</div>' +
+                    '<div class="flex flex-col sm:flex-row sm:items-center gap-3 mt-1">' +
+                        '<h1 class="flex-1 text-2xl font-extrabold text-slate-900">' + esc(f.lesson.title) + '</h1>' +
+                        '<a href="ge-lesson.html?lesson=' + encodeURIComponent(lessonId) + '&part=' + part + '" target="_blank" class="tbtn text-center">Открыть урок ↗</a>' +
+                    '</div>' +
+                '</div>' +
+                '<div id="partTabs" class="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-2xl mb-4" role="tablist">' +
+                    ['class', 'homework'].map(p => '<button type="button" role="tab" data-part="' + p + '" aria-selected="' + (p === part) + '" class="tab-btn py-2.5 rounded-xl text-sm font-bold text-slate-500">' +
+                        GE.PART_LABEL[p] + ' · ' + partTasks(p).length + '</button>').join('') +
+                '</div>' +
+                '<div id="taskList" class="flex flex-col gap-3"></div>' +
+                '<button type="button" id="addTask" class="mt-4 w-full ge-btn ge-btn-primary py-3">+ Добавить задание в «' + GE.PART_LABEL[part] + '»</button>';
+
+            pane.querySelectorAll('[data-part]').forEach(b => {
+                b.onclick = () => { part = b.dataset.part; openPreviews.clear(); syncUrl(); renderLessonPane(); };
+            });
+            document.getElementById('addTask').onclick = () => openEditor(null);
+
+            const box = document.getElementById('taskList');
+            if (!list.length) box.innerHTML = '<div class="bg-white border border-dashed border-slate-300 rounded-3xl p-8 text-center text-sm text-slate-500">В этой части пока нет заданий.</div>';
+            list.forEach((t, i) => {
+                const T = GE.TYPES[t.type] || GE.TYPES.info;
+                const issues = GE.validateTask(t);
+                const media = [t.audio_path ? '🔊' : '', t.image_path ? '🖼' : '', t.video_url ? '🎬' : '', t.passage ? '📄' : ''].join(' ').trim();
+                const card = document.createElement('div');
+                card.className = 'bg-white border border-slate-200 rounded-2xl p-4';
+                card.innerHTML =
+                    '<div class="flex items-start gap-3">' +
+                        '<span class="ge-num">' + esc(t.number || '—') + '</span>' +
+                        '<div class="flex-1 min-w-0">' +
+                            '<div class="text-xs font-semibold text-slate-400">' + T.icon + ' ' + esc(T.label) + (media ? ' · ' + media : '') + '</div>' +
+                            '<div class="font-semibold text-slate-800 truncate">' + esc(summaryOf(t)) + '</div>' +
+                            (issues.length ? '<div class="text-xs text-amber-700 mt-1">⚠ ' + esc(issues[0]) + (issues.length > 1 ? ' (и ещё ' + (issues.length - 1) + ')' : '') + '</div>' : '') +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="flex flex-wrap gap-1.5 mt-3">' +
+                        '<button type="button" class="tbtn" data-t="edit">✎ Изменить</button>' +
+                        '<button type="button" class="tbtn" data-t="preview">' + (openPreviews.has(t.id) ? 'Скрыть' : '👁 Посмотреть') + '</button>' +
+                        '<button type="button" class="tbtn" data-t="up"' + (i === 0 ? ' disabled style="opacity:.4"' : '') + '>↑</button>' +
+                        '<button type="button" class="tbtn" data-t="down"' + (i === list.length - 1 ? ' disabled style="opacity:.4"' : '') + '>↓</button>' +
+                        '<button type="button" class="tbtn" data-t="copy">Копия</button>' +
+                        '<button type="button" class="tbtn" data-t="move">→ ' + (part === 'class' ? 'В домашку' : 'В урок') + '</button>' +
+                        '<button type="button" class="tbtn danger" data-t="del">Удалить</button>' +
+                    '</div>' +
+                    '<div class="tprev mt-3"' + (openPreviews.has(t.id) ? '' : ' hidden') + '></div>';
+                box.appendChild(card);
+                if (openPreviews.has(t.id)) GE.renderTask(card.querySelector('.tprev'), t, { mode: 'preview' });
+                card.addEventListener('click', async e => {
+                    const b = e.target.closest('[data-t]');
+                    if (!b || b.disabled) return;
+                    await taskAction(b.dataset.t, t, card);
+                });
+            });
+        }
+
+        async function taskAction(act, t, card) {
+            const list = partTasks(part);
+            const i = list.findIndex(x => x.id === t.id);
+            try {
+                if (act === 'edit') return openEditor(t);
+                if (act === 'preview') {
+                    if (openPreviews.has(t.id)) openPreviews.delete(t.id); else openPreviews.add(t.id);
+                    return renderLessonPane();
+                }
+                if (act === 'up' || act === 'down') {
+                    swap(list, i, act === 'up' ? i - 1 : i + 1);
+                    await renumber('ge_tasks', list);
+                }
+                if (act === 'copy') {
+                    const copy = Object.assign({}, t);
+                    ['id', 'created_at', 'updated_at'].forEach(k => delete copy[k]);
+                    copy.sort_order = (t.sort_order || 0) + 1;
+                    const { data, error } = await db.from('ge_tasks').insert(copy).select().single();
+                    if (error) throw error;
+                    list.splice(i + 1, 0, data);
+                    await renumber('ge_tasks', list);
+                    GE.ui.toast('Копия добавлена под заданием');
+                }
+                if (act === 'move') {
+                    const other = part === 'class' ? 'homework' : 'class';
+                    const { error } = await db.from('ge_tasks').update({ part: other, sort_order: partTasks(other).length }).eq('id', t.id);
+                    if (error) throw error;
+                    GE.ui.toast('Перенесено в «' + GE.PART_LABEL[other] + '»');
+                }
+                if (act === 'del') {
+                    const ok = await GE.ui.confirm('Удалить задание' + (t.number ? ' ' + t.number : '') + '?\n\nОтветы учеников на него тоже удалятся.', 'Удалить', true);
+                    if (!ok) return;
+                    const { error } = await db.from('ge_tasks').delete().eq('id', t.id);
+                    if (error) throw error;
+                }
+                await loadTasks();
+            } catch (x) { err(x); }
+            renderLessonPane();
+        }
+
+        // =============================================================
+        // Редактор задания
+        // =============================================================
+        const editor = document.getElementById('editor');
+        const form = document.getElementById('edForm');
+        const previewEl = document.getElementById('edPreview');
+        let draft = null, snapshot = '', previewTimer = null;
+
+        const CONTENT_KEYS = {
+            gaps: ['text'], drag_words: ['text', 'extra'], match: ['text', 'extra'], order: ['mode', 'text'],
+            mcq: ['text'], open: ['prompt', 'min_words'], speaking: ['prompt', 'max_seconds'], info: []
+        };
+        function cleanContent(type, c) {
+            const out = {};
+            (CONTENT_KEYS[type] || []).forEach(k => {
+                let v = c[k];
+                if (k === 'min_words' || k === 'max_seconds') { v = Number(v) || 0; if (!v) return; }
+                if (k === 'mode') v = v === 'lines' ? 'lines' : 'words';
+                if (v !== undefined && v !== '') out[k] = v;
+            });
+            return out;
+        }
+        function nextNumber(list) {
+            const last = list.slice().reverse().find(t => t.number);
+            if (!last) return list.length ? '' : '1';
+            const m = String(last.number).match(/^(.*?)(\d+)([a-zа-я]?)$/i);
+            if (!m) return '';
+            if (m[3]) return m[1] + m[2] + String.fromCharCode(m[3].charCodeAt(0) + 1);
+            return m[1] + (Number(m[2]) + 1);
+        }
+        function draftTask() {
+            return {
+                id: draft.id || 'draft-preview', type: draft.type, number: draft.number, instruction: draft.instruction,
+                passage: draft.passage, audio_path: draft.audio_path, image_path: draft.image_path, video_url: draft.video_url,
+                content: cleanContent(draft.type, draft.content)
+            };
+        }
+        function fileLabel(path) {
+            if (!path) return '';
+            return path.split('/').pop().replace(/^\d{10,}-/, '');
+        }
+
+        function openEditor(task) {
+            const f = findLesson(lessonId);
+            if (!f) return;
+            draft = task ? {
+                id: task.id, part: task.part, type: task.type, number: task.number || '', instruction: task.instruction || '',
+                passage: task.passage || '', audio_path: task.audio_path || null, image_path: task.image_path || null,
+                video_url: task.video_url || '', content: Object.assign({}, task.content || {})
+            } : {
+                id: null, part: part, type: 'gaps', number: nextNumber(partTasks(part)), instruction: '',
+                passage: '', audio_path: null, image_path: null, video_url: '', content: {}
+            };
+            snapshot = JSON.stringify(draft);
+            document.getElementById('edTitle').textContent = (task ? 'Задание ' + (task.number || '') : 'Новое задание') + ' · ' + f.lesson.title;
+            buildForm();
+            editor.hidden = false;
+            document.body.style.overflow = 'hidden';
+        }
+        async function closeEditor(force) {
+            if (!force && draft && JSON.stringify(draft) !== snapshot) {
+                const ok = await GE.ui.confirm('Закрыть без сохранения? Изменения пропадут.', 'Закрыть', true);
+                if (!ok) return;
+            }
+            const api = previewEl.__geApi;
+            if (api && api.destroy) api.destroy();
+            editor.hidden = true;
+            document.body.style.overflow = '';
+            draft = null;
+        }
+        document.getElementById('edCancel').onclick = () => closeEditor(false);
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && !editor.hidden && !document.querySelector('.ge-modal-back')) closeEditor(false);
+        });
+        window.addEventListener('beforeunload', e => {
+            if (draft && JSON.stringify(draft) !== snapshot) { e.preventDefault(); e.returnValue = ''; }
+        });
+
+        function typeFieldsHtml(type) {
+            const ta = (id, label, rows, ph) => '<label class="fld"><span>' + label + '</span><textarea id="' + id + '" rows="' + rows + '" class="ge-input-block mono" placeholder="' + esc(ph || '') + '"></textarea></label>';
+            const inp = (id, label, ph, t) => '<label class="fld"><span>' + label + '</span><input id="' + id + '" type="' + (t || 'text') + '" class="ge-input-block" placeholder="' + esc(ph || '') + '"></label>';
+            switch (type) {
+                case 'gaps': return ta('fText', 'Текст с пропусками', 9, 'She {is} a teacher. They {live|lives} in Rome.');
+                case 'drag_words': return ta('fText', 'Текст с пропусками', 8, 'I {usually} get up at 7.') + inp('fExtra', 'Лишние слова (через запятую, необязательно)', 'always, sometimes');
+                case 'match': return ta('fText', 'Пары — каждая с новой строки', 9, 'big = small') + inp('fExtra', 'Лишние варианты справа (через запятую, необязательно)', 'tall');
+                case 'order': return '<div class="fld"><span>Что расставлять</span><div class="flex flex-wrap gap-4 text-sm">' +
+                        '<label class="flex items-center gap-2"><input type="radio" name="fMode" value="words"> Слова в предложениях</label>' +
+                        '<label class="flex items-center gap-2"><input type="radio" name="fMode" value="lines"> Строки по порядку</label></div></div>' +
+                    ta('fText', 'В правильном порядке, каждое с новой строки', 8, 'I always drink coffee in the morning.');
+                case 'mcq': return ta('fText', 'Вопросы и варианты', 12, 'Where does Anna work?\n*In a hospital\nIn a school');
+                case 'open': return ta('fPrompt', 'Задание для ученика (необязательно, если всё сказано выше)', 3, 'Write about your typical morning.') + inp('fMin', 'Минимум слов (необязательно)', '30', 'number');
+                case 'speaking': return ta('fPrompt', 'Что нужно сказать', 3, 'Describe your favourite place.') + inp('fMax', 'Максимальная длина записи, секунд', '120', 'number');
+                default: return '<div class="text-sm text-slate-500">Заполните «Текст для чтения» и/или прикрепите аудио, картинку или видео ниже.</div>';
+            }
+        }
+
+        function buildForm() {
+            const T = GE.TYPES[draft.type];
+            const hasMedia = !!(draft.passage || draft.audio_path || draft.image_path || draft.video_url) || draft.type === 'info';
+            form.innerHTML =
+                '<div class="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col gap-4">' +
+                    '<div class="grid grid-cols-2 sm:grid-cols-[minmax(0,1fr)_110px_140px] gap-3">' +
+                        '<label class="fld col-span-2 sm:col-span-1"><span>Тип задания</span><select id="fType" class="ge-input-block">' +
+                            GE.TYPE_ORDER.map(k => '<option value="' + k + '"' + (k === draft.type ? ' selected' : '') + '>' + GE.TYPES[k].icon + ' ' + esc(GE.TYPES[k].label) + '</option>').join('') +
+                        '</select></label>' +
+                        '<label class="fld"><span>Номер</span><input id="fNumber" class="ge-input-block" placeholder="1.2"></label>' +
+                        '<label class="fld"><span>Часть</span><select id="fPart" class="ge-input-block"><option value="class">Урок</option><option value="homework">Домашка</option></select></label>' +
+                    '</div>' +
+                    '<label class="fld"><span>Формулировка задания</span><textarea id="fInstr" rows="2" class="ge-input-block" placeholder="Complete the sentences with the correct form of the verb."></textarea></label>' +
+                '</div>' +
+                '<div class="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col gap-3">' +
+                    '<div class="help text-sm text-slate-700 bg-indigo-50 border border-indigo-100 rounded-xl p-3 leading-relaxed">' + T.help +
+                        (draft.type !== 'info' ? '<div class="mt-2"><button type="button" id="fExample" class="text-indigo-700 font-semibold hover:underline">Вставить пример</button></div>' : '') +
+                    '</div>' +
+                    typeFieldsHtml(draft.type) +
+                    '<div id="fIssues"></div>' +
+                '</div>' +
+                '<details class="bg-white border border-slate-200 rounded-2xl p-4"' + (hasMedia ? ' open' : '') + '>' +
+                    '<summary class="font-semibold cursor-pointer text-slate-800">Текст для чтения, аудио, картинка, видео</summary>' +
+                    '<div class="flex flex-col gap-4 mt-4">' +
+                        '<label class="fld"><span>Текст для чтения (можно выделять **жирным**)</span><textarea id="fPassage" rows="6" class="ge-input-block"></textarea></label>' +
+                        fileBlock('audio', 'Аудио', 'audio/*') +
+                        fileBlock('image', 'Картинка', 'image/*') +
+                        '<label class="fld"><span>Видео — ссылка на YouTube</span><input id="fVideo" class="ge-input-block" placeholder="https://youtu.be/…"></label>' +
+                    '</div>' +
+                '</details>';
+
+            const $ = id => document.getElementById(id);
+            $('fNumber').value = draft.number;
+            $('fPart').value = draft.part;
+            $('fInstr').value = draft.instruction;
+            $('fPassage').value = draft.passage;
+            $('fVideo').value = draft.video_url;
+            const c = draft.content;
+            if ($('fText')) $('fText').value = c.text || '';
+            if ($('fExtra')) $('fExtra').value = c.extra || '';
+            if ($('fPrompt')) $('fPrompt').value = c.prompt || '';
+            if ($('fMin')) $('fMin').value = c.min_words || '';
+            if ($('fMax')) $('fMax').value = c.max_seconds || '';
+            form.querySelectorAll('input[name="fMode"]').forEach(r => { r.checked = r.value === (c.mode === 'lines' ? 'lines' : 'words'); });
+
+            $('fType').onchange = e => { draft.type = e.target.value; buildForm(); };
+            const bind = (id, fn) => { const n = $(id); if (n) n.addEventListener('input', () => { fn(n.value); schedulePreview(); }); };
+            bind('fNumber', v => { draft.number = v; });
+            bind('fInstr', v => { draft.instruction = v; });
+            bind('fPassage', v => { draft.passage = v; });
+            bind('fVideo', v => { draft.video_url = v; });
+            bind('fText', v => { draft.content.text = v; });
+            bind('fExtra', v => { draft.content.extra = v; });
+            bind('fPrompt', v => { draft.content.prompt = v; });
+            bind('fMin', v => { draft.content.min_words = v; });
+            bind('fMax', v => { draft.content.max_seconds = v; });
+            $('fPart').onchange = e => { draft.part = e.target.value; };
+            form.querySelectorAll('input[name="fMode"]').forEach(r => r.addEventListener('change', () => { draft.content.mode = r.value; schedulePreview(); }));
+            const ex = $('fExample');
+            if (ex) ex.onclick = async () => {
+                const filled = (CONTENT_KEYS[draft.type] || []).some(k => k !== 'mode' && draft.content[k]);
+                if (filled && !(await GE.ui.confirm('Заменить текущий текст задания примером?', 'Заменить'))) return;
+                Object.assign(draft.content, GE.TYPES[draft.type].example);
+                buildForm();
+            };
+            ['audio', 'image'].forEach(kind => bindFile(kind));
+            renderPreview();
+        }
+
+        function fileBlock(kind, label, accept) {
+            return '<div class="fld"><span>' + label + '</span>' +
+                '<div id="' + kind + 'Box" class="flex flex-wrap items-center gap-2"></div>' +
+                '<input id="' + kind + 'File" type="file" accept="' + accept + '" class="hidden"></div>';
+        }
+        function bindFile(kind) {
+            const box = document.getElementById(kind + 'Box');
+            const input = document.getElementById(kind + 'File');
+            const key = kind + '_path';
+            function draw(state) {
+                const path = draft[key];
+                box.innerHTML = (path ? '<span class="text-sm font-semibold text-slate-700 truncate max-w-[260px]" title="' + esc(fileLabel(path)) + '">' + (kind === 'audio' ? '🔊 ' : '🖼 ') + esc(fileLabel(path)) + '</span>' : '') +
+                    '<button type="button" class="tbtn" data-f="pick">' + (path ? 'Заменить' : 'Загрузить файл') + '</button>' +
+                    (path ? '<button type="button" class="tbtn danger" data-f="remove">Убрать</button>' : '') +
+                    (state ? '<span class="text-xs text-slate-500">' + esc(state) + '</span>' : '');
+                box.querySelector('[data-f="pick"]').onclick = () => input.click();
+                const rm = box.querySelector('[data-f="remove"]');
+                if (rm) rm.onclick = () => { draft[key] = null; draw(); schedulePreview(); };
+            }
+            input.onchange = async () => {
+                const file = input.files && input.files[0];
+                input.value = '';
+                if (!file) return;
+                if (file.size > 50 * 1024 * 1024) { GE.ui.toast('Файл больше 50 МБ — сожмите его или разделите.', 'error'); return; }
+                draw('Загружаю…');
+                const path = 'media/' + courseId + '/' + lessonId + '/' + Date.now() + '-' + GE.safeName(file.name);
+                try {
+                    await GE.uploadFile(path, file);
+                    if (!draft) return;
+                    draft[key] = path;
+                    draw();
+                    schedulePreview();
+                } catch (e) {
+                    draw();
+                    GE.ui.toast('Не загрузилось: ' + (e.message || e), 'error');
+                }
+            };
+            draw();
+        }
+
+        function schedulePreview() {
+            clearTimeout(previewTimer);
+            previewTimer = setTimeout(renderPreview, 250);
+        }
+        function renderPreview() {
+            if (!draft) return;
+            const t = draftTask();
+            GE.renderTask(previewEl, t, { mode: 'preview' });
+            const issues = GE.validateTask(t);
+            const box = document.getElementById('fIssues');
+            if (box) box.innerHTML = issues.length ? '<div class="ge-warn">' + issues.map(esc).join('<br>') + '</div>' : '';
+        }
+
+        document.getElementById('edSave').onclick = async () => {
+            if (!draft) return;
+            const saveBtn = document.getElementById('edSave');
+            const t = draftTask();
+            const issues = GE.validateTask(t);
+            if (issues.length && !(await GE.ui.confirm('В задании есть замечания:\n• ' + issues.join('\n• ') + '\n\nВсё равно сохранить?', 'Сохранить'))) return;
+            const row = {
+                lesson_id: lessonId,
+                part: draft.part,
+                number: draft.number.trim() || null,
+                type: draft.type,
+                instruction: draft.instruction.trim() || null,
+                passage: draft.passage.trim() ? draft.passage : null,
+                audio_path: draft.audio_path || null,
+                image_path: draft.image_path || null,
+                video_url: draft.video_url.trim() || null,
+                content: t.content
+            };
+            saveBtn.disabled = true;
+            try {
+                if (draft.id) {
+                    const { error } = await db.from('ge_tasks').update(row).eq('id', draft.id);
+                    if (error) throw error;
+                } else {
+                    row.sort_order = partTasks(draft.part).length;
+                    const { error } = await db.from('ge_tasks').insert(row);
+                    if (error) throw error;
+                }
+                part = draft.part;
+                await closeEditor(true);
+                await loadTasks();
+                syncUrl();
+                renderLessonPane();
+                GE.ui.toast('Задание сохранено');
+            } catch (e) {
+                err(e);
+            } finally {
+                saveBtn.disabled = false;
+            }
+        };
+
+        function renderAll() {
+            syncUrl();
+            renderCourseBar();
+            renderStructure();
+            renderLessonPane();
+        }
+        renderAll();
+    })();
+    </script>
+</body>
+</html>
