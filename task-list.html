@@ -66,14 +66,41 @@
         let currentGroupResponses = {};
         let currentUserId = null;
 
+        // Балл эссе в базе бывает в двух видах: «4.5» и «4.5/6.0» (так сохранялись
+        // оценки раньше). «0/6.0» — заглушка старой практики, а не оценка.
+        function essayScoreOf(r) {
+            if (!r || r.score === null || r.score === undefined) return null;
+            const s = String(r.score).trim();
+            if (!s || /^0\s*\/\s*6(\.0+)?$/.test(s)) return null;
+            const m = s.match(/^(\d+(?:\.\d+)?)(?:\s*\/\s*6(?:\.0+)?)?$/);
+            return m ? parseFloat(m[1]) : null;
+        }
         // Эссе считается проверенным, когда есть балл преподавателя или его правки.
-        // «0/6.0» — заглушка, которую сохраняла старая версия практики, это не оценка.
+        // Та же проверка стоит в базе: проверенное эссе ученица не может удалить.
         function isEssayGraded(r) {
-            if (!r) return false;
-            if (r.correction || r.teacher_correction) return true;
-            const raw = r.score;
-            if (raw === null || raw === undefined || raw === '' || String(raw).includes('/')) return false;
-            return !isNaN(parseFloat(raw));
+            if (!r || taskType === 'sentence') return false;
+            const filled = v => String(v || '').trim() !== '';
+            return filled(r.correction) || filled(r.teacher_correction) || essayScoreOf(r) !== null;
+        }
+
+        function resetButtonHTML(groupId, groupResponses, completedStyle) {
+            // Работа проверена целиком — сбросить нельзя: замок с пояснением
+            if (groupResponses.length && groupResponses.every(isEssayGraded)) {
+                return `<button onclick="explainLockedReset()" class="w-12 flex items-center justify-center bg-gray-50 text-gray-400 hover:bg-gray-100 transition py-3 rounded-2xl shrink-0 border border-gray-200" title="Reviewed by your teacher — can't be reset">
+                    <i data-lucide="lock" class="w-4 h-4"></i>
+                </button>`;
+            }
+            return completedStyle
+                ? `<button onclick="resetGroup('${groupId}')" class="w-12 flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-100 transition py-3 rounded-2xl shrink-0 border border-rose-100" title="Reset Entire Test">
+                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                </button>`
+                : `<button onclick="resetGroup('${groupId}')" class="w-12 flex items-center justify-center bg-gray-50 text-gray-400 hover:bg-gray-100 transition py-3 rounded-2xl shrink-0 border border-gray-200" title="Reset Entire Test">
+                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                </button>`;
+        }
+
+        function explainLockedReset() {
+            alert("Your teacher has already reviewed this work, so it can't be reset.\n\nYour answer, the score and the teacher's feedback are kept — open Review Results to see them.");
         }
 
         async function loadTasksAndProgress() {
@@ -174,8 +201,8 @@
                                     const [earned, max] = scoreStr.split('/').map(Number);
                                     if (!isNaN(earned) && !isNaN(max)) { totalEarned += earned; totalMax += max; hasScore = true; }
                                 }
-                            } else if (scoreStr && !scoreStr.includes('/') && !isNaN(parseFloat(scoreStr))) {
-                                totalEarned += parseFloat(scoreStr);
+                            } else if (essayScoreOf(resp) !== null) {
+                                totalEarned += essayScoreOf(resp);
                                 totalMax += 6;
                                 hasScore = true;
                             }
@@ -215,9 +242,7 @@
                                 <a href="writing-practice.html?type=${taskType}&id=${encodeURIComponent(firstTask.id)}" class="flex-1 flex items-center justify-center space-x-2 bg-[#edfdf4] text-emerald-700 hover:bg-[#dcfce7] transition py-3 rounded-2xl font-bold text-sm">
                                     <span>Review Results</span> <i data-lucide="eye" class="w-4 h-4"></i>
                                 </a>
-                                <button onclick="resetGroup('${groupId}')" class="w-12 flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-100 transition py-3 rounded-2xl shrink-0 border border-rose-100" title="Reset Entire Test">
-                                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
-                                </button>
+                                ${resetButtonHTML(groupId, groupResponses, true)}
                             </div>
                         `;
                     } else if (isPartiallyCompleted) {
@@ -248,9 +273,7 @@
                                 <a href="writing-practice.html?type=${taskType}&id=${encodeURIComponent(firstUncompletedTask.id)}" class="flex-1 flex items-center justify-center space-x-2 bg-blue-50 text-blue-700 hover:bg-blue-100 transition py-3 rounded-2xl font-bold text-sm">
                                     <span>Resume Test</span> <i data-lucide="play" class="w-4 h-4"></i>
                                 </a>
-                                <button onclick="resetGroup('${groupId}')" class="w-12 flex items-center justify-center bg-gray-50 text-gray-400 hover:bg-gray-100 transition py-3 rounded-2xl shrink-0 border border-gray-200" title="Reset Entire Test">
-                                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
-                                </button>
+                                ${resetButtonHTML(groupId, groupResponses, false)}
                             </div>
                         `;
                     } else {
@@ -303,11 +326,13 @@
             const taskIds = currentTestGroups[groupId];
             if (!taskIds || taskIds.length === 0 || !currentUserId || resetBusy) return;
 
-            // Проверенную преподавателем работу сброс удаляет вместе с проверкой —
-            // предупреждаем об этом отдельно
-            const graded = taskType !== 'sentence' && (currentGroupResponses[groupId] || []).some(isEssayGraded);
-            const msg = graded
-                ? "Your teacher has already reviewed this work.\n\nResetting will permanently delete your answer AND the teacher's feedback and score. Continue?"
+            // Проверенные преподавателем ответы не удаляются (это правило базы):
+            // сбрасываются только непроверенные
+            const responses = currentGroupResponses[groupId] || [];
+            const graded = responses.filter(isEssayGraded);
+            if (responses.length && graded.length === responses.length) { explainLockedReset(); return; }
+            const msg = graded.length
+                ? "Answers your teacher has already reviewed will be kept.\nOnly the answers that haven't been reviewed yet will be reset. Continue?"
                 : "Are you sure you want to reset your progress for this entire test?";
             if (!confirm(msg)) return;
 
