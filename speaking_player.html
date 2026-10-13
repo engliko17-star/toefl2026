@@ -621,11 +621,18 @@
             }
         }
 
-        function finish() {
+        async function finish() {
             if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
             practiceRunning = false;
             
             if (currentAttemptId) {
+                // Отметка «набор закончен» (раньше все попытки навсегда оставались
+                // in_progress). Не критично: если не дошла, записи всё равно сохранены.
+                try {
+                    await _supabase.from('speaking_attempts')
+                        .update({ status: 'completed', completed_at: new Date().toISOString() })
+                        .eq('id', currentAttemptId);
+                } catch (e) { console.warn('Отметка о завершении не сохранилась:', e); }
                 const id = encodeURIComponent(currentAttemptId);
                 if (taskType === 'interview') {
                     window.location.href = `interview_results.html?attempt_id=${id}&type=${taskType}`;
