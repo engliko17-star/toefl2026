@@ -99,6 +99,28 @@
                 </button>`;
         }
 
+        // Supabase отдаёт не больше 1000 строк за один запрос — всё, что дальше,
+        // молча обрезается. Поэтому грузим порциями по 1000, пока не придёт неполная.
+        // buildQuery должен возвращать новый запрос с .order(...) — без сортировки
+        // порции могут пересекаться.
+        const PAGE_SIZE = 1000;
+        async function fetchAllRows(buildQuery) {
+            const rows = [];
+            for (let from = 0; ; from += PAGE_SIZE) {
+                const { data, error } = await buildQuery().range(from, from + PAGE_SIZE - 1);
+                if (error) throw error;
+                rows.push(...(data || []));
+                if (!data || data.length < PAGE_SIZE) break;
+            }
+            return rows;
+        }
+
+        // Номер набора реального TOEFL берём из названия («072», «069 16.06.2026»)
+        function realSetNumber(task) {
+            const n = parseInt(String(task.title || '').trim(), 10);
+            return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER;
+        }
+
         function explainLockedReset() {
             alert("Your teacher has already reviewed this work, so it can't be reset.\n\nYour answer, the score and the teacher's feedback are kept — open Review Results to see them.");
         }
@@ -115,21 +137,21 @@
                 CV.init({ user, reload: loadTasksAndProgress });
 
                 // Получаем все вопросы (исключая задания, помеченные только для моков)
-                const { data: allTasks, error: tasksErr } = await db.from('writing_tasks')
+                const allTasks = await fetchAllRows(() => db.from('writing_tasks')
                     .select('*')
                     .ilike('type', taskType)
                     .or('is_mock_only.eq.false,is_mock_only.is.null')
-                    .order('id', { ascending: true });
-                if (tasksErr) throw tasksErr;
+                    .order('id', { ascending: true }));
 
                 // Скрытые глазиком задания видит только преподаватель
                 const tasks = CV.visibleFor(allTasks, user);
 
                 // Сначала новые: если на задание несколько ответов, берётся последний
-                const { data: responsesData, error: respErr } = await db.from('student_responses').select('*')
-                    .eq('user_id', userId).ilike('task_type', taskType).order('created_at', { ascending: false });
-                if (respErr) throw respErr;
-                const responses = responsesData || [];
+                // Тоже порциями: у активной ученицы ответов на Build a Sentence бывает больше 1000
+                const responses = await fetchAllRows(() => db.from('student_responses').select('*')
+                    .eq('user_id', userId).ilike('task_type', taskType)
+                    .order('created_at', { ascending: false })
+                    .order('id', { ascending: false }));
 
                 if (!tasks || tasks.length === 0) {
                     container.className = "flex justify-center items-center py-20 w-full col-span-full";
@@ -152,11 +174,21 @@
                 currentGroupResponses = {};
 
                 let groupIndex = 1;
-                // Номер без test_id считаем только по видимым ученикам наборам,
-                // чтобы у вас и у учеников один и тот же набор был под одним номером
+                // Номер считаем по порядку карточек, а не по test_id: у реальных наборов
+                // TOEFL Build a Sentence, Email и Academic Discussion получают test_id подряд
+                // (например, 193 и 194), поэтому номера по test_id шли с пропусками.
+                // Считаем только видимые ученикам наборы, чтобы у вас и у учеников
+                // один и тот же набор был под одним номером.
                 let visibleIndex = 0;
 
-                Object.keys(testGroups).forEach((groupId) => {
+                // Порядок: сначала обычные наборы (как раньше, по id),
+                // потом реальные TOEFL по номеру набора (050, 051, …)
+                const groupOrder = Object.keys(testGroups);
+                const regularGroups = groupOrder.filter(g => !testGroups[g][0].is_real_toefl);
+                const realGroups = groupOrder.filter(g => testGroups[g][0].is_real_toefl)
+                    .sort((a, b) => realSetNumber(testGroups[a][0]) - realSetNumber(testGroups[b][0]));
+
+                [...regularGroups, ...realGroups].forEach((groupId) => {
                     const groupTasks = testGroups[groupId];
                     const firstTask = groupTasks[0];
                     const totalQuestions = groupTasks.length;
@@ -164,9 +196,7 @@
                     // и открывает набор целиком
                     const isHiddenGroup = groupTasks.some(t => t.is_hidden === true);
                     if (!isHiddenGroup) visibleIndex++;
-                    const testNumberLabel = firstTask.test_id
-                        ? `Test #${firstTask.test_id}`
-                        : (isHiddenGroup ? 'Draft' : `Test #${visibleIndex}`);
+                    const testNumberLabel = isHiddenGroup ? 'Draft' : `Test #${visibleIndex}`;
                     
                     // Сохраняем все ID этой группы, чтобы кнопка Reset могла удалить их все разом
                     currentTestGroups[groupId] = groupTasks.map(t => t.id);
@@ -183,7 +213,13 @@
                     let progressCircleHTML = '';
                     let statusLabelHTML = '';
 
-                    const cardTitle = firstTask.test_id ? `Practice Set ${firstTask.test_id}` : firstTask.title;
+                    // У реальных TOEFL показываем название набора («072», «069 16.06.2026»),
+                    // у обычных наборов с test_id — порядковый номер, у одиночных заданий — их название
+                    const cardTitle = firstTask.is_real_toefl
+                        ? (firstTask.title || `Practice Set ${visibleIndex}`)
+                        : firstTask.test_id
+                            ? (isHiddenGroup ? 'Practice Set (draft)' : `Practice Set ${visibleIndex}`)
+                            : firstTask.title;
 
                     if (isFullyCompleted) {
                         statusLabelHTML = `<span class="text-[11px] font-bold text-emerald-600 flex items-center"><i data-lucide="check-circle" class="w-3.5 h-3.5 mr-1"></i> Completed</span>`;
