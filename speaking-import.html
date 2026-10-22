@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Импорт Speaking</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; }
+    .drop.is-over { border-color: #6366f1; background: #eef2ff; }
+    audio { height: 34px; max-width: 100%; }
+    .thumb { width: 72px; height: 68px; object-fit: contain; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; }
+    .thumb-lg { width: 120px; height: 112px; }
+    textarea, input[type=text], input[type=number], select { outline: none; }
+    textarea:focus, input:focus, select:focus { box-shadow: 0 0 0 2px #c7d2fe; border-color: #818cf8; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+
+  <header class="bg-white border-b border-slate-200">
+    <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
+      <div>
+        <h1 class="text-xl font-semibold text-slate-900">Импорт Speaking</h1>
+        <p class="text-sm text-slate-500">Listen &amp; Repeat и Interview из ZIP → Storage → speaking_tests / speaking_questions</p>
+      </div>
+      <div class="flex items-center gap-3 text-sm">
+        <span id="who" class="text-slate-500"></span>
+        <button id="logout" class="hidden px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50">Выйти</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 py-6 space-y-6">
+
+    <!-- access gate: loading / login / error -->
+    <div id="gate" class="bg-white rounded-2xl border border-slate-200 p-6">
+      <p class="text-slate-500">Проверяю доступ…</p>
+    </div>
+
+    <section id="app" class="hidden space-y-6">
+
+      <details class="bg-white rounded-2xl border border-slate-200 p-5 text-sm">
+        <summary class="cursor-pointer font-medium text-slate-700">Как это работает</summary>
+        <ol class="list-decimal ml-5 mt-3 space-y-1 text-slate-600">
+          <li>Перетащите ZIP из нарезки (можно несколько сразу). Внутри: <code>110_Speaking_LR_01.mp3</code>, <code>…_LR_01.png</code>, <code>manifest.json</code>.</li>
+          <li>Проверьте названия, время на ответ, вставьте тексты (можно списком).</li>
+          <li>«Загрузить на платформу»: файлы уходят в бакеты <b>OFFICIAL L&amp;R</b> / <b>OFFICIAL INTERVIEW</b> (папка = номер сета), затем сет и вопросы создаются одной транзакцией.</li>
+          <li>Повторная загрузка тех же файлов их перезапишет; сет с тем же названием второй раз не создастся.</li>
+        </ol>
+      </details>
+
+      <label id="drop" class="drop block bg-white rounded-2xl border-2 border-dashed border-slate-300 p-10 text-center cursor-pointer transition">
+        <input id="zipInput" type="file" accept=".zip,application/zip" multiple class="hidden">
+        <div class="text-lg font-medium text-slate-700">Перетащите ZIP сюда</div>
+        <div class="text-sm text-slate-500 mt-1">или нажмите, чтобы выбрать файлы</div>
+      </label>
+
+      <div id="bulkBar" class="hidden flex flex-wrap items-center justify-between gap-3 bg-indigo-50 border border-indigo-100 rounded-2xl px-5 py-3">
+        <span id="bulkInfo" class="text-sm text-indigo-900"></span>
+        <button id="importAll" class="px-4 py-2 rounded-xl bg-indigo-600 text-white font-medium hover:bg-indigo-700 disabled:opacity-50">Загрузить всё</button>
+      </div>
+
+      <div id="sets" class="space-y-6"></div>
+    </section>
+  </main>
+
+<script>
+// ─── settings ──────────────────────────────────────────────────────────────
+const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';   // тот же ключ, что в остальных страницах платформы
+
+const BUCKETS       = { LR: 'OFFICIAL L&R', INT: 'OFFICIAL INTERVIEW' };
+const SECTION_LABEL = { LR: 'Listen & Repeat', INT: 'Interview' };
+const TOTAL         = { LR: 7, INT: 4 };
+const DEFAULT_TYPES = { LR: 'listen_repeat', INT: 'interview' };   // уточняются по уже существующим сетам
+const MIME = { mp3: 'audio/mpeg', m4a: 'audio/mp4', wav: 'audio/wav', mp4: 'video/mp4',
+               png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' };
+const lrTime = n => (n <= 2 ? 8 : n <= 5 ? 10 : 12);   // ETS: 1–2 короткие, 3–5 средние, 6–7 длинные
+
+// ─── helpers ───────────────────────────────────────────────────────────────
+const $ = s => document.querySelector(s);
+function el(tag, props = {}, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (v === undefined || v === null || v === false) continue;
+    if (k === 'class') n.className = v;
+    else if (k === 'text') n.textContent = v;
+    else if (k === 'value') n.value = v;
+    else if (k === 'checked') n.checked = !!v;
+    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k, v === true ? '' : v);
+  }
+  for (const c of kids.flat()) if (c !== null && c !== undefined && c !== false)
+    n.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  return n;
+}
+const ext = name => (name.split('.').pop() || '').toLowerCase();
+const isImage = name => (MIME[ext(name)] || '').startsWith('image/');
+const norm = s => (s || '').trim().toLowerCase();
+async function pool(items, size, fn) {
+  let i = 0;
+  const workers = Array.from({ length: Math.min(size, items.length) }, async () => {
+    while (i < items.length) { const item = items[i++]; await fn(item); }
+  });
+  await Promise.all(workers);
+}
+function friendly(msg) {
+  msg = String(msg || '');
+  if (/row-level security|Unauthorized|not allowed|403/i.test(msg))
+    return 'Нет прав на загрузку в Storage. Выполните один раз speaking_import_setup.sql в SQL Editor. (' + msg + ')';
+  if (/Could not find the function|import_speaking_set/i.test(msg) && /function/i.test(msg))
+    return 'На базе нет функции import_speaking_set. Выполните один раз speaking_import_setup.sql в SQL Editor. (' + msg + ')';
+  return msg;
+}
+
+// ─── supabase client + access ──────────────────────────────────────────────
+let sb = null;
+let existing = [];          // [{title, type}] уже на платформе
+const knownTypes = new Set();
+const sets = [];            // загруженные архивы
+
+function getClient() {
+  if (window.__SB_MOCK__) return window.__SB_MOCK__;   // для тестов
+  if (!window.supabase) throw new Error('Не загрузилась библиотека Supabase — проверьте интернет и обновите страницу.');
+  if (!SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.startsWith('ВСТАВЬТЕ'))
+    throw new Error('В начале файла speaking-import.html не вставлен SUPABASE_ANON_KEY.');
+  return window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+}
+
+function gate(kind, text) {
+  const g = $('#gate');
+  g.replaceChildren(el('p', { class: kind === 'error' ? 'text-rose-600' : 'text-slate-500', text }));
+  g.classList.remove('hidden'); $('#app').classList.add('hidden');
+}
+
+function showLogin(errText) {
+  const email = el('input', { type: 'email', placeholder: 'Email', class: 'w-full px-3 py-2 rounded-lg border border-slate-200', autocomplete: 'username' });
+  const pass = el('input', { type: 'password', placeholder: 'Пароль', class: 'w-full px-3 py-2 rounded-lg border border-slate-200', autocomplete: 'current-password' });
+  const msg = el('p', { class: 'text-sm text-rose-600', text: errText || '' });
+  const btn = el('button', { class: 'px-4 py-2 rounded-xl bg-indigo-600 text-white font-medium hover:bg-indigo-700', text: 'Войти' });
+  const form = el('form', { class: 'max-w-sm space-y-3', onsubmit: async e => {
+    e.preventDefault(); btn.disabled = true; msg.textContent = '';
+    const { data, error } = await sb.auth.signInWithPassword({ email: email.value.trim(), password: pass.value });
+    btn.disabled = false;
+    if (error) { msg.textContent = error.message; return; }
+    afterLogin(data.user);
+  } }, el('h2', { class: 'font-semibold text-slate-900', text: 'Вход для преподавателя' }), email, pass, btn, msg);
+  $('#gate').replaceChildren(form);
+}
+
+async function afterLogin(user) {
+  gate('info', 'Проверяю роль…');
+  const { data: prof, error } = await sb.from('profiles').select('role').eq('id', user.id).maybeSingle();
+  if (error) return gate('error', 'Не удалось проверить роль: ' + error.message);
+  if (!prof || prof.role !== 'teacher') return gate('error', 'Эта страница доступна только преподавателю.');
+  $('#who').textContent = user.email || '';
+  $('#logout').classList.remove('hidden');
+  await loadExisting();
+  $('#gate').classList.add('hidden');
+  $('#app').classList.remove('hidden');
+}
+
+async function loadExisting() {
+  const { data, error } = await sb.from('speaking_tests').select('title,type');
+  if (!error && Array.isArray(data)) {
+    existing = data.map(r => ({ title: r.title, type: r.type }));
+    data.forEach(r => r.type && knownTypes.add(r.type));
+  }
+  DEFAULT_TYPES.LR = [...knownTypes].find(t => /repeat/i.test(t)) || DEFAULT_TYPES.LR;
+  DEFAULT_TYPES.INT = [...knownTypes].find(t => /interview/i.test(t)) || DEFAULT_TYPES.INT;
+  knownTypes.add(DEFAULT_TYPES.LR); knownTypes.add(DEFAULT_TYPES.INT);
+}
+const isDuplicate = (title, type) => existing.some(e => norm(e.title) === norm(title) && e.type === type);
+
+// ─── reading a ZIP ─────────────────────────────────────────────────────────
+const NAME_RE = /^(.*?)_(LR|INT)_(\d{1,2})(_intro)?\.([a-z0-9]+)$/i;
+
+async function readZip(file) {
+  const zip = await JSZip.loadAsync(file);
+  const files = {};
+  zip.forEach((path, entry) => {
+    if (entry.dir || path.includes('__MACOSX')) return;
+    const base = path.split('/').pop();
+    if (!base || base.startsWith('.')) return;
+    files[base] = entry;
+  });
+  let manifest = null;
+  if (files['manifest.json']) {
+    try { manifest = JSON.parse(await files['manifest.json'].async('string')); } catch (e) { manifest = null; }
+  }
+  const set = manifest && Array.isArray(manifest.sections) ? fromManifest(manifest) : inferFromNames(files);
+  if (!set.sections.length) throw new Error('Не нашла файлов вида 110_Speaking_LR_01.mp3');
+  set.files = files;
+  set.zipName = file.name;
+  for (const sec of set.sections) {
+    if (!sec.title) sec.title = `${SECTION_LABEL[sec.code]} ${set.set}`;
+    sec.type = DEFAULT_TYPES[sec.code];
+    sec.isReal = true;
+    sec.status = 'ready';
+    const need = [sec.intro?.audio, sec.intro?.image, ...sec.questions.flatMap(q => [q.audio, q.image])].filter(Boolean);
+    sec.absent = need.filter(n => !files[n]);
+    sec.noAudio = sec.questions.filter(q => !q.audio).map(q => q.n);
+  }
+  return set;
+}
+
+function fromManifest(m) {
+  return {
+    set: String(m.set || ''),
+    sections: m.sections.filter(s => BUCKETS[s.code]).map(s => ({
+      code: s.code,
+      title: s.title || '',
+      description: s.description || '',
+      intro: s.intro || null,
+      questions: (s.questions || []).map(q => ({ n: q.n, audio: q.audio, image: q.image,
+        time_limit: q.time_limit || (s.code === 'LR' ? lrTime(q.n) : 45), transcript: q.transcript || '' }))
+        .sort((a, b) => a.n - b.n),
+      missing: s.missing || [],
+    })),
+  };
+}
+
+function inferFromNames(files) {
+  const secs = {};
+  let prefix = '';
+  for (const base of Object.keys(files)) {
+    const m = base.match(NAME_RE);
+    if (!m || !MIME[m[5].toLowerCase()]) continue;
+    prefix = prefix || m[1];
+    const code = m[2].toUpperCase(), n = parseInt(m[3], 10), slot = isImage(base) ? 'image' : 'audio';
+    const s = secs[code] || (secs[code] = { code, title: '', description: '', intro: null, qmap: {} });
+    const target = (m[4] || n === 0) ? (s.intro || (s.intro = {}))
+      : (s.qmap[n] || (s.qmap[n] = { n, time_limit: code === 'LR' ? lrTime(n) : 45, transcript: '' }));
+    if (!target[slot] || ext(base) === 'mp3') target[slot] = base;   // mp3 важнее mp4
+  }
+  const sections = ['LR', 'INT'].filter(c => secs[c]).map(c => {
+    const s = secs[c];
+    s.questions = Object.values(s.qmap).sort((a, b) => a.n - b.n);
+    s.missing = Array.from({ length: TOTAL[c] }, (_, i) => i + 1).filter(n => !s.qmap[n]);
+    delete s.qmap;
+    return s;
+  });
+  return { set: (prefix.match(/\d+/) || [prefix])[0], sections };
+}
+
+async function previewUrl(set, name) {
+  if (!name || !set.files[name]) return null;
+  set.urls = set.urls || {};
+  if (!set.urls[name]) {
+    const blob = await set.files[name].async('blob');
+    set.urls[name] = URL.createObjectURL(new Blob([blob], { type: MIME[ext(name)] || '' }));
+  }
+  return set.urls[name];
+}
+
+// ─── rendering ─────────────────────────────────────────────────────────────
+function mediaCell(set, name, kind, big) {
+  const box = el('div', { class: 'shrink-0' });
+  if (!name) { box.append(el('span', { class: 'text-xs text-slate-400', text: kind === 'image' ? 'нет картинки' : 'нет аудио' })); return box; }
+  previewUrl(set, name).then(url => {
+    if (!url) { box.append(el('span', { class: 'text-xs text-rose-600', text: 'нет в архиве' })); return; }
+    box.append(kind === 'image'
+      ? el('img', { src: url, class: 'thumb' + (big ? ' thumb-lg' : ''), alt: name, title: name })
+      : el('audio', { src: url, controls: true, preload: 'none' }));
+  });
+  return box;
+}
+
+function renderSet(set) {
+  const card = el('article', { class: 'bg-white rounded-2xl border border-slate-200 overflow-hidden' });
+  const head = el('div', { class: 'flex flex-wrap items-center justify-between gap-2 px-5 py-4 border-b border-slate-100 bg-slate-50/60' },
+    el('div', {},
+      el('div', { class: 'font-semibold text-slate-900', text: `Сет ${set.set}` }),
+      el('div', { class: 'text-xs text-slate-500', text: set.zipName })),
+    el('button', { class: 'text-sm text-slate-500 hover:text-rose-600', text: 'Убрать', onclick: () => {
+      sets.splice(sets.indexOf(set), 1); card.remove(); updateBulk(); } }));
+  card.append(head);
+  set.sections.forEach(sec => card.append(renderSection(set, sec)));
+  return card;
+}
+
+function renderSection(set, sec) {
+  const wrap = el('div', { class: 'px-5 py-5 border-b border-slate-100 last:border-b-0 space-y-4' });
+  const badge = el('span', { class: 'px-2.5 py-1 rounded-full text-xs font-semibold ' +
+    (sec.code === 'LR' ? 'bg-sky-100 text-sky-800' : 'bg-indigo-100 text-indigo-800'), text: SECTION_LABEL[sec.code] });
+
+  // fields
+  const title = el('input', { type: 'text', value: sec.title, class: 'w-full px-3 py-2 rounded-lg border border-slate-200',
+    oninput: e => { sec.title = e.target.value; refresh(); } });
+  const typeSel = el('select', { class: 'w-full px-3 py-2 rounded-lg border border-slate-200 bg-white',
+    onchange: e => { sec.type = e.target.value; refresh(); } },
+    [...knownTypes].map(t => el('option', { value: t, text: t, selected: t === sec.type })));
+  const desc = el('textarea', { rows: 2, class: 'w-full px-3 py-2 rounded-lg border border-slate-200 text-sm',
+    oninput: e => { sec.description = e.target.value; } });
+  desc.value = sec.description;
+  const real = el('input', { type: 'checkbox', checked: sec.isReal, class: 'h-4 w-4 accent-indigo-600',
+    onchange: e => { sec.isReal = e.target.checked; } });
+
+  const fields = el('div', { class: 'grid gap-3 md:grid-cols-3' },
+    el('label', { class: 'md:col-span-2 text-sm space-y-1' }, el('span', { class: 'text-slate-500', text: 'Название' }), title),
+    el('label', { class: 'text-sm space-y-1' }, el('span', { class: 'text-slate-500', text: 'Тип (speaking_tests.type)' }), typeSel),
+    el('label', { class: 'md:col-span-3 text-sm space-y-1' }, el('span', { class: 'text-slate-500', text: 'Описание / сценарий' }), desc),
+    el('label', { class: 'md:col-span-3 flex items-center gap-2 text-sm text-slate-700' }, real,
+      'Официальный TOEFL (is_real_toefl)', el('span', { class: 'text-slate-400', text: ` · бакет: ${BUCKETS[sec.code]} / ${set.set}/` })));
+
+  // intro
+  const intro = sec.intro ? el('div', { class: 'flex flex-wrap items-center gap-4 p-3 rounded-xl bg-slate-50' },
+    el('span', { class: 'text-sm font-medium text-slate-600 w-16', text: 'Интро' }),
+    mediaCell(set, sec.intro.image, 'image', true), mediaCell(set, sec.intro.audio, 'audio')) : null;
+
+  // questions
+  const rows = sec.questions.map(q => {
+    const time = el('input', { type: 'number', min: 1, max: 120, value: q.time_limit,
+      class: 'w-16 px-2 py-1.5 rounded-lg border border-slate-200 text-sm',
+      oninput: e => { q.time_limit = parseInt(e.target.value, 10) || ''; refresh(); } });
+    const tr = el('textarea', { rows: sec.code === 'LR' ? 1 : 3, placeholder: 'Текст (transcript)',
+      class: 'w-full px-3 py-2 rounded-lg border border-slate-200 text-sm',
+      oninput: e => { q.transcript = e.target.value; refresh(); } });
+    tr.value = q.transcript || '';
+    q._tr = tr;
+    return el('div', { class: 'flex flex-col md:flex-row md:items-center gap-3 py-3 border-t border-slate-100' },
+      el('div', { class: 'flex flex-wrap items-center gap-3 shrink-0' },
+        el('span', { class: 'shrink-0 w-7 h-7 rounded-full bg-slate-100 text-slate-700 text-sm font-semibold grid place-items-center', text: q.n }),
+        mediaCell(set, q.image, 'image'),
+        mediaCell(set, q.audio, 'audio')),
+      el('label', { class: 'flex items-center gap-1 text-xs text-slate-500 shrink-0' }, time, 'сек'),
+      el('div', { class: 'flex-1 min-w-0' }, tr));
+  });
+
+  // bulk transcripts
+  const bulk = el('textarea', { rows: 3, placeholder: `Вставьте тексты, по одному на строку (${sec.questions.length} шт.)`,
+    class: 'w-full px-3 py-2 rounded-lg border border-slate-200 text-sm' });
+  const bulkMsg = el('span', { class: 'text-xs text-slate-500' });
+  const bulkBox = el('details', { class: 'text-sm' },
+    el('summary', { class: 'cursor-pointer text-indigo-700', text: 'Вставить тексты списком' }),
+    el('div', { class: 'mt-2 space-y-2' }, bulk,
+      el('div', { class: 'flex items-center gap-3' },
+        el('button', { class: 'px-3 py-1.5 rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-50', text: 'Разложить по вопросам',
+          onclick: () => {
+            const lines = bulk.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+            sec.questions.forEach((q, i) => { if (lines[i] !== undefined) { q.transcript = lines[i]; q._tr.value = lines[i]; } });
+            bulkMsg.textContent = lines.length === sec.questions.length ? 'Готово.'
+              : `Строк ${lines.length}, вопросов ${sec.questions.length} — проверьте соответствие.`;
+            refresh();
+          } }), bulkMsg)));
+
+  // status + action
+  const notes = el('div', { class: 'space-y-1 text-sm' });
+  const status = el('div', { class: 'text-sm' });
+  const btn = el('button', { class: 'px-4 py-2 rounded-xl bg-indigo-600 text-white font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed',
+    text: 'Загрузить на платформу', onclick: () => runImport(set, sec) });
+  const footer = el('div', { class: 'flex flex-wrap items-center justify-between gap-3 pt-2' }, status, btn);
+
+  sec.ui = { wrap, btn, status, notes,
+    inputs: [title, typeSel, desc, real, bulk, ...rows.flatMap(r => [...r.querySelectorAll('input,textarea')])] };
+
+  function refresh() {
+    if (sec.status === 'done') { notes.replaceChildren(); updateBulk(); return; }
+    const n = [];
+    const blocked = blockers(sec);
+    blocked.forEach(t => n.push(el('p', { class: 'text-rose-600', text: '⛔ ' + t })));
+    if (sec.missing && sec.missing.length)
+      n.push(el('p', { class: 'text-amber-700', text: `⚠ В записи нет вопроса ${sec.missing.join(', ')} — сет загрузится из ${sec.questions.length} вопросов (номера сохранятся).` }));
+    const empty = sec.questions.filter(q => !(q.transcript || '').trim()).length;
+    if (empty) n.push(el('p', { class: 'text-amber-700', text: `⚠ Без текста: ${empty} из ${sec.questions.length}. Можно загрузить и дописать позже.` }));
+    notes.replaceChildren(...n);
+    if (sec.status === 'ready') btn.disabled = blocked.length > 0;
+    updateBulk();
+  }
+  sec.refresh = refresh;
+
+  wrap.append(el('div', { class: 'flex items-center gap-3' }, badge,
+      el('span', { class: 'text-sm text-slate-500', text: `${sec.questions.length} вопр.` })),
+    fields, intro, bulkBox, el('div', {}, rows), notes, footer);
+  refresh();
+  return wrap;
+}
+
+function blockers(sec) {
+  const b = [];
+  if (!sec.title.trim()) b.push('Нужно название.');
+  else if (isDuplicate(sec.title, sec.type)) b.push(`Сет «${sec.title.trim()}» (${sec.type}) уже есть на платформе.`);
+  if (!sec.questions.length) b.push('Нет ни одного вопроса.');
+  if (sec.noAudio.length) b.push(`Нет аудио у вопроса ${sec.noAudio.join(', ')}.`);
+  if (sec.absent.length) b.push(`В архиве не хватает файлов: ${sec.absent.join(', ')}.`);
+  if (sec.questions.some(q => !(q.time_limit > 0))) b.push('Укажите время на ответ у всех вопросов.');
+  return b;
+}
+
+// ─── import ────────────────────────────────────────────────────────────────
+async function runImport(set, sec, { quiet = false } = {}) {
+  if (sec.status !== 'ready' || blockers(sec).length) return false;
+  const empty = sec.questions.filter(q => !(q.transcript || '').trim()).length;
+  if (empty && !quiet && !window.confirm(`У ${empty} вопросов нет текста. Загрузить всё равно?`)) return false;
+
+  const { btn, status, inputs } = sec.ui;
+  sec.status = 'uploading';
+  btn.disabled = true;
+  inputs.forEach(i => (i.disabled = true));
+  const say = (t, cls = 'text-slate-600') => { status.className = 'text-sm ' + cls; status.textContent = t; };
+
+  try {
+    const bucket = BUCKETS[sec.code];
+    const names = [...new Set([sec.intro?.audio, sec.intro?.image, ...sec.questions.flatMap(q => [q.audio, q.image])].filter(Boolean))];
+    const urls = {};
+    let done = 0;
+    say(`Загружаю файлы 0/${names.length}…`);
+    await pool(names, 4, async name => {
+      const blob = await set.files[name].async('blob');
+      const path = `${set.set}/${name}`;
+      const { error } = await sb.storage.from(bucket).upload(path, blob,
+        { upsert: true, contentType: MIME[ext(name)] || 'application/octet-stream', cacheControl: '3600' });
+      if (error) throw new Error(`${name}: ${error.message}`);
+      urls[name] = sb.storage.from(bucket).getPublicUrl(path).data.publicUrl;
+      say(`Загружаю файлы ${++done}/${names.length}…`);
+    });
+
+    say('Создаю сет и вопросы…');
+    const p_test = {
+      title: sec.title.trim(), type: sec.type, description: (sec.description || '').trim(),
+      is_real_toefl: !!sec.isReal,
+      intro_audio_url: urls[sec.intro?.audio] || null, intro_image_url: urls[sec.intro?.image] || null,
+    };
+    const p_questions = sec.questions.map(q => ({
+      order_num: q.n, media_url: urls[q.image] || null, audio_prompt_url: urls[q.audio],
+      transcript: (q.transcript || '').trim(), time_limit: Number(q.time_limit),
+    }));
+    const { data, error } = await sb.rpc('import_speaking_set', { p_test, p_questions });
+    if (error) throw new Error(error.message);
+
+    existing.push({ title: p_test.title, type: p_test.type });
+    sec.status = 'done';
+    sec.ui.wrap.classList.add('bg-emerald-50/40');
+    say(`✓ Готово: «${p_test.title}», ${p_questions.length} вопр. (id ${data})`, 'text-emerald-700 font-medium');
+    sec.ui.btn.textContent = 'Загружено';
+    sets.forEach(s => s.sections.forEach(x => x.refresh && x.refresh()));
+    return true;
+  } catch (e) {
+    sec.status = 'ready';
+    inputs.forEach(i => (i.disabled = false));
+    btn.disabled = false;
+    say('Ошибка: ' + friendly(e.message), 'text-rose-600');
+    return false;
+  } finally {
+    updateBulk();
+  }
+}
+
+function pending() { return sets.flatMap(s => s.sections.map(sec => [s, sec])).filter(([, sec]) => sec.status === 'ready'); }
+function updateBulk() {
+  const p = pending();
+  const ok = p.filter(([, sec]) => !blockers(sec).length);
+  $('#bulkBar').classList.toggle('hidden', p.length < 2);
+  $('#bulkInfo').textContent = `Готово к загрузке: ${ok.length} из ${p.length}`;
+  $('#importAll').disabled = ok.length === 0;
+}
+$('#importAll').addEventListener('click', async () => {
+  const todo = pending().filter(([, sec]) => !blockers(sec).length);
+  const noText = todo.reduce((a, [, sec]) => a + sec.questions.filter(q => !(q.transcript || '').trim()).length, 0);
+  if (noText && !window.confirm(`У ${noText} вопросов нет текста. Загрузить всё равно?`)) return;
+  $('#importAll').disabled = true;
+  for (const [set, sec] of todo) await runImport(set, sec, { quiet: true });
+  updateBulk();
+});
+
+// ─── files in ──────────────────────────────────────────────────────────────
+async function addFiles(fileList) {
+  const files = [...fileList];   // copy: the input is cleared right after selection
+  for (const file of files) {
+    if (!/\.zip$/i.test(file.name)) continue;
+    const holder = el('div', { class: 'bg-white rounded-2xl border border-slate-200 p-5 text-sm text-slate-500', text: `Читаю ${file.name}…` });
+    $('#sets').prepend(holder);
+    try {
+      const set = await readZip(file);
+      sets.push(set);
+      holder.replaceWith(renderSet(set));
+    } catch (e) {
+      holder.className = 'bg-white rounded-2xl border border-rose-200 p-5 text-sm text-rose-600';
+      holder.textContent = `${file.name}: ${e.message}`;
+    }
+  }
+  updateBulk();
+}
+const drop = $('#drop');
+['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('is-over'); }));
+['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('is-over'); }));
+drop.addEventListener('drop', e => addFiles(e.dataTransfer.files));
+$('#zipInput').addEventListener('change', e => { addFiles(e.target.files); e.target.value = ''; });
+$('#logout').addEventListener('click', async () => { await sb.auth.signOut(); location.reload(); });
+
+// ─── start ─────────────────────────────────────────────────────────────────
+(async function init() {
+  try { sb = getClient(); } catch (e) { return gate('error', e.message); }
+  const { data } = await sb.auth.getSession();
+  if (!data || !data.session) return showLogin();
+  afterLogin(data.session.user);
+})();
+</script>
+</body>
+</html>
