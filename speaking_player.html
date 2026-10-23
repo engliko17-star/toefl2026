@@ -7,9 +7,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    
+
     <script src="auth.js"></script>
-    
+
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8f9fa; }
@@ -31,11 +31,15 @@
     </div>
 
     <!-- Directions — как на реальном TOEFL: сценарий показывается ОДИН раз перед
-         всем набором Listen & Repeat, а не разбросан по отдельным вопросам. -->
+         всем набором (Listen & Repeat или Interview), а не разбросан по отдельным вопросам.
+         Если у набора есть интро-картинка/аудио (speaking_tests.intro_image_url /
+         intro_audio_url) — они показываются и проигрываются здесь же. -->
     <div id="directionsOverlay" class="hidden fixed inset-0 bg-white z-50 flex-col items-center justify-center p-6 text-center">
         <div class="max-w-lg w-full">
             <span class="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-3 inline-block">Directions</span>
-            <div class="bg-slate-50 border border-slate-100 rounded-2xl p-6 text-left text-sm text-slate-700 leading-relaxed mb-8" id="directionsText"></div>
+            <img id="directionsImage" class="hidden mx-auto mb-5 max-h-56 rounded-2xl border border-slate-100" src="" alt="">
+            <div class="bg-slate-50 border border-slate-100 rounded-2xl p-6 text-left text-sm text-slate-700 leading-relaxed mb-5" id="directionsText"></div>
+            <audio id="directionsAudio" class="hidden mx-auto mb-8 w-full max-w-sm" controls preload="auto"></audio>
             <button id="directionsBeginBtn" class="bg-slate-900 hover:bg-indigo-600 transition text-white px-8 py-3.5 rounded-xl font-bold flex items-center justify-center shadow-md mx-auto cursor-pointer">
                 Begin <i data-lucide="arrow-right" class="w-4 h-4 ml-2"></i>
             </button>
@@ -54,7 +58,7 @@
         <div class="w-full max-w-md mt-6 mb-auto aspect-video sm:aspect-square bg-black border border-gray-200 rounded-[2rem] overflow-hidden shadow-lg flex items-center justify-center relative group cursor-pointer" id="mediaContainer">
             <video id="taskMedia" class="w-full h-full object-cover hidden" playsinline preload="auto"></video>
             <img id="taskImage" class="w-full h-full object-cover hidden" src="" alt="Task Image">
-            
+
             <div id="playOverlay" class="absolute inset-0 bg-black/70 flex flex-col items-center justify-center text-white hidden backdrop-blur-sm transition">
                 <i data-lucide="play-circle" class="w-16 h-16 mb-3 text-white/90 group-hover:scale-110 transition-transform"></i>
                 <span class="font-bold text-sm tracking-wide">Tap to play media</span>
@@ -69,7 +73,7 @@
                 </div>
                 <div id="timerDisplay" class="text-5xl font-mono font-black text-slate-800 tabular-nums">00:00</div>
             </div>
-            
+
             <div class="w-full bg-gray-100 h-2 rounded-full mt-6 overflow-hidden">
                 <div id="timeProgressBar" class="h-full bg-indigo-600 w-0 transition-all duration-1000 ease-linear"></div>
             </div>
@@ -96,7 +100,7 @@
 
     <script>
         lucide.createIcons();
-        
+
         let currentUser = null;
         let questions = [];
         let currentIndex = 0;
@@ -108,7 +112,15 @@
         let currentAttemptId = null;
         let audioCtx = null;
         let recordingMimeType = '';
-        let testScenario = ''; // описание/сценарий сета Listen & Repeat, из speaking_tests.description
+        let testScenario = ''; // описание/сценарий сета, из speaking_tests.description
+        let testIntroAudio = ''; // speaking_tests.intro_audio_url — озвучка сценария (если есть)
+        let testIntroImage = ''; // speaking_tests.intro_image_url — картинка к сценарию (если есть)
+
+        // Картинка в media_url (а не видео): у интервью вопрос тогда играет из audio_prompt_url,
+        // как в Listen & Repeat. Старые интервью с mp4 в media_url работают как раньше.
+        function isImageUrl(u) {
+            return /\.(png|jpe?g|webp|gif|avif)(\?|#|$)/i.test(String(u || ''));
+        }
         let testId = null;
         let recordingStarting = false;   // запись уже запускается (ждём микрофон)
         let practiceRunning = false;     // идёт запись набора — предупреждаем при уходе
@@ -173,7 +185,7 @@
         async function init() {
             try {
                 if (typeof requireAuth !== 'function') throw new Error("auth.js script not loaded properly.");
-                
+
                 currentUser = await requireAuth();
                 if (!currentUser) return;
 
@@ -199,6 +211,8 @@
                 if (!testMeta) throw new Error("This practice set is not available.");
                 if (testMeta.type === 'interview' || testMeta.type === 'listen_repeat') taskType = testMeta.type;
                 testScenario = testMeta.description ? String(testMeta.description).trim() : '';
+                testIntroAudio = testMeta.intro_audio_url || '';
+                testIntroImage = testMeta.intro_image_url || '';
                 const doneLink2 = document.getElementById('doneLink');
                 if (doneLink2) doneLink2.href = (taskType === 'interview') ? 'interview.html' : 'listen_repeat.html';
                 // Попытка теперь создаётся по кнопке Start, а не при открытии
@@ -209,20 +223,20 @@
                     .from('speaking_questions')
                     .select('*')
                     .eq('test_id', testId)
-                    .order('order_num', { ascending: true }); 
+                    .order('order_num', { ascending: true });
 
                 if (error) throw error;
                 if (!data || data.length === 0) throw new Error("No questions found for this test in the database.");
 
                 questions = data;
-                
+
                 document.getElementById('totalTasks').innerText = questions.length;
                 document.getElementById('taskInstruction').innerText = taskType === 'interview' ? 'Interview Practice' : 'Listen and repeat';
 
                 document.getElementById('overlayTitle').innerText = "Ready to start";
                 document.getElementById('overlayDesc').innerText = "Make sure you are in a quiet place and your microphone is working.";
                 document.getElementById('startBtn').classList.remove('hidden');
-                
+
             } catch (err) {
                 console.error("Initialization error:", err);
                 document.getElementById('overlayTitle').innerText = "Oops!";
@@ -274,10 +288,12 @@
                 }
                 currentAttemptId = attemptData.id;
                 practiceRunning = true;
-                
+
                 document.getElementById('startOverlay').classList.add('hidden');
 
-                if (taskType === 'listen_repeat' && testScenario) {
+                // Экран Directions — если у набора есть сценарий или озвученное интро
+                // (раньше только у Listen & Repeat; старые интервью без описания — как раньше)
+                if (testScenario || testIntroAudio) {
                     showDirectionsScreen();
                 } else {
                     document.getElementById('playerUI').classList.remove('hidden');
@@ -287,7 +303,7 @@
             } catch (err) {
                 console.error("Media access error:", err);
                 startBtn.disabled = false;
-                
+
                 let details = "";
                 if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
                     details = `Доступ к микрофону заблокирован браузером.
@@ -312,11 +328,29 @@
 
         function showDirectionsScreen() {
             const overlay = document.getElementById('directionsOverlay');
-            document.getElementById('directionsText').innerText = testScenario;
+            const textBox = document.getElementById('directionsText');
+            const introImg = document.getElementById('directionsImage');
+            const introAudio = document.getElementById('directionsAudio');
+            textBox.innerText = testScenario;
+            textBox.classList.toggle('hidden', !testScenario);
+            if (testIntroImage) {
+                introImg.src = testIntroImage;
+                introImg.classList.remove('hidden');
+            }
             overlay.classList.remove('hidden');
             overlay.classList.add('flex');
 
+            // Озвучка сценария: пробуем включить сразу; если браузер не дал —
+            // у плеера есть кнопка ▶, а Begin доступна в любой момент
+            if (testIntroAudio) {
+                introAudio.src = testIntroAudio;
+                introAudio.classList.remove('hidden');
+                const p = introAudio.play();
+                if (p !== undefined) p.catch(e => console.warn('Интро не запустилось автоматически:', e));
+            }
+
             document.getElementById('directionsBeginBtn').onclick = () => {
+                introAudio.pause();
                 overlay.classList.add('hidden');
                 overlay.classList.remove('flex');
                 document.getElementById('playerUI').classList.remove('hidden');
@@ -330,22 +364,22 @@
                 // На iOS AudioContext засыпает — будим его синхронно,
                 // resume() тут не нужно ждать: бип всё равно отыграет.
                 if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-                
+
                 const oscillator = audioCtx.createOscillator();
                 const gainNode = audioCtx.createGain();
-                
+
                 oscillator.type = 'sine';
-                oscillator.frequency.setValueAtTime(800, audioCtx.currentTime); 
-                
-                gainNode.gain.setValueAtTime(0.8, audioCtx.currentTime); 
+                oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
+
+                gainNode.gain.setValueAtTime(0.8, audioCtx.currentTime);
                 gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.4);
-                
+
                 oscillator.connect(gainNode);
                 gainNode.connect(audioCtx.destination);
-                
+
                 oscillator.start();
                 oscillator.stop(audioCtx.currentTime + 0.4);
-                
+
                 setTimeout(resolve, 400);
             });
         }
@@ -353,7 +387,7 @@
         function loadQuestion(i) {
             currentIndex = i;
             const q = questions[i];
-            
+
             document.getElementById('currentTaskNum').innerText = i + 1;
             resetUI();
 
@@ -362,13 +396,15 @@
             const audio = document.getElementById('taskAudio');
             const overlay = document.getElementById('playOverlay');
             const mediaContainer = document.getElementById('mediaContainer');
-            
+
             video.classList.add('hidden');
             img.classList.add('hidden');
             overlay.classList.add('hidden');
             mediaContainer.onclick = null;
-            
-            if (taskType === 'interview') {
+
+            // Интервью с видео (mp4 в media_url) — как раньше. Интервью с картинкой в media_url
+            // идёт по второй ветке: картинка + audio_prompt_url, как Listen & Repeat.
+            if (taskType === 'interview' && !isImageUrl(q.media_url)) {
                 if (!q.media_url) {
                     alert("Ошибка: В базе данных не заполнена ссылка на видео (media_url) для этого вопроса!");
                     return;
@@ -377,9 +413,9 @@
                 video.src = q.media_url;
                 video.load();
                 video.classList.remove('hidden');
-                
+
                 setStatus('Listening to Question...', 'bg-sky-100 text-sky-700 border-sky-200');
-                
+
                 video.onerror = (e) => {
                     console.error("Video load error:", e);
                     alert("Ошибка загрузки видеофайла по ссылке:\n" + q.media_url + "\n\nПроверьте доступность файла в Supabase Storage.");
@@ -390,14 +426,14 @@
                     await playBeep();
                     await startRecording(q.time_limit || 45);
                 };
-                
+
                 const playPromise = video.play();
                 if (playPromise !== undefined) {
                     playPromise.catch(e => {
                         console.error("Video play error:", e);
                         setStatus('Waiting for you to start', 'bg-amber-100 text-amber-700');
                         overlay.classList.remove('hidden');
-                        
+
                         mediaContainer.onclick = () => {
                             overlay.classList.add('hidden');
                             setStatus('Listening to Question...', 'bg-sky-100 text-sky-700 border-sky-200');
@@ -407,11 +443,14 @@
                 }
 
             } else {
+                const listenLabel = taskType === 'interview' ? 'Listening to Question...' : 'Listening to Phrase...';
+                const defaultLimit = taskType === 'interview' ? 45 : 8;
+
                 if (q.media_url) {
                     img.src = q.media_url;
                     img.classList.remove('hidden');
                 }
-                
+
                 if (q.audio_prompt_url) {
                     audio.src = q.audio_prompt_url;
                     audio.load();
@@ -420,8 +459,8 @@
                     return;
                 }
 
-                setStatus('Listening to Phrase...', 'bg-sky-100 text-sky-700 border-sky-200');
-                
+                setStatus(listenLabel, 'bg-sky-100 text-sky-700 border-sky-200');
+
                 audio.onerror = (e) => {
                     console.error("Audio load error:", e);
                     alert("Ошибка загрузки аудио по ссылке:\n" + q.audio_prompt_url);
@@ -430,7 +469,7 @@
                 audio.onended = async () => {
                     setStatus('Get Ready...', 'bg-amber-100 text-amber-700 border-amber-200');
                     await playBeep();
-                    await startRecording(q.time_limit || 8);
+                    await startRecording(q.time_limit || defaultLimit);
                 };
 
                 const playPromise = audio.play();
@@ -439,10 +478,10 @@
                         console.error("Audio play error:", e);
                         setStatus('Waiting for you to start', 'bg-amber-100 text-amber-700');
                         overlay.classList.remove('hidden');
-                        
+
                         mediaContainer.onclick = () => {
                             overlay.classList.add('hidden');
-                            setStatus('Listening to Phrase...', 'bg-sky-100 text-sky-700 border-sky-200');
+                            setStatus(listenLabel, 'bg-sky-100 text-sky-700 border-sky-200');
                             audio.play().catch(err => alert("Не удалось проиграть аудио: " + err.message));
                         };
                     });
@@ -493,10 +532,10 @@
                 return;
             }
 
-            
+
             document.getElementById('micIcon').classList.remove('bg-gray-100', 'text-slate-400');
-            document.getElementById('micIcon').classList.add('bg-transparent', 'text-white'); 
-            
+            document.getElementById('micIcon').classList.add('bg-transparent', 'text-white');
+
             audioChunks = [];
 
             try {
@@ -524,26 +563,26 @@
                 if (e.data.size > 0) audioChunks.push(e.data);
             };
             mediaRecorder.start();
-            
+
             let time = limit;
             const progress = document.getElementById('timeProgressBar');
             const display = document.getElementById('timerDisplay');
-            
+
             progress.style.transitionDuration = '1s';
-            
+
             const updateDisplay = () => {
                 display.innerText = `00:${time < 10 ? '0'+time : time}`;
                 progress.style.width = `${((limit - time) / limit) * 100}%`;
             };
-            
+
             updateDisplay();
 
             timerInterval = setInterval(() => {
                 time--;
                 updateDisplay();
-                if (time <= 0) { 
-                    clearInterval(timerInterval); 
-                    stopRecording(); 
+                if (time <= 0) {
+                    clearInterval(timerInterval);
+                    stopRecording();
                 }
             }, 1000);
         }
@@ -552,7 +591,7 @@
             if (mediaRecorder && mediaRecorder.state !== 'inactive') {
                 mediaRecorder.stop();
                 setStatus('Saving to Cloud...', 'bg-amber-100 text-amber-700 border-amber-200');
-                
+
                 document.getElementById('micIcon').classList.remove('bg-transparent', 'text-white');
                 document.getElementById('micIcon').classList.add('bg-amber-100', 'text-amber-500');
 
@@ -624,7 +663,7 @@
         async function finish() {
             if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
             practiceRunning = false;
-            
+
             if (currentAttemptId) {
                 // Отметка «набор закончен» (раньше все попытки навсегда оставались
                 // in_progress). Не критично: если не дошла, записи всё равно сохранены.
