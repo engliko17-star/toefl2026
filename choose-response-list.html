@@ -67,12 +67,26 @@
         // База отдаёт не больше 1000 строк за раз: когда вопросов станет больше,
         // часть наборов просто пропала бы из списка. Читаем порциями.
         async function fetchAllQuestionSets() {
+            // is_real_toefl (этикетка TOEFL) добавляет listening_official_setup.sql. Пока его
+            // не запустили, запрос с этой колонкой падает (42703) — тогда читаем без неё.
+            try {
+                return await fetchQuestionPages('set_number, is_real_toefl');
+            } catch (error) {
+                if (error && (error.code === '42703' || /is_real_toefl/.test(error.message || ''))) {
+                    console.warn('[listening_questions] нет колонки is_real_toefl — этикетки TOEFL не показываются');
+                    return fetchQuestionPages('set_number');
+                }
+                throw error;
+            }
+        }
+
+        async function fetchQuestionPages(columns) {
             const PAGE = 1000;
             let all = [];
             for (let from = 0; ; from += PAGE) {
                 const { data, error } = await supabaseClient
                     .from('listening_questions')
-                    .select('set_number')
+                    .select(columns)
                     .or('is_mock_only.eq.false,is_mock_only.is.null')
                     .order('id', { ascending: true })
                     .range(from, from + PAGE - 1);
@@ -81,6 +95,9 @@
                 if (!data || data.length < PAGE) return all;
             }
         }
+
+        // Лента TOEFL в углу — как в Reading, Writing и Speaking: набор с настоящего экзамена
+        const REAL_TOEFL_RIBBON = `<div class="absolute top-[15px] right-[-38px] w-[150px] rotate-45 bg-violet-600 text-white text-[9px] font-extrabold tracking-[0.15em] text-center py-1 shadow-sm z-10 pointer-events-none">TOEFL</div>`;
 
         // Самая свежая попытка из нескольких строк по одному набору
         function rowTime(r) { return Date.parse(r.completed_at || r.updated_at || r.created_at || '') || 0; }
@@ -111,11 +128,13 @@
                 const questionsData = await fetchAllQuestionSets();
 
                 const setCounts = {};
+                const setIsToefl = {};   // набор TOEFL, только если помечены все его вопросы
                 if (questionsData && questionsData.length > 0) {
                     questionsData.forEach(q => {
                         const sn = q.set_number;
                         if (sn) {
                             setCounts[sn] = (setCounts[sn] || 0) + 1;
+                            setIsToefl[sn] = (setIsToefl[sn] !== false) && q.is_real_toefl === true;
                         }
                     });
                 }
@@ -165,6 +184,10 @@
                 availableSets.forEach(i => {
                     const userResult = resultMap[i];
                     const qCount = setCounts[i] || 0;
+                    const isRealToefl = setIsToefl[i] === true;
+                    const ribbon = isRealToefl ? REAL_TOEFL_RIBBON : '';
+                    // отступ справа, чтобы процент / «Ready» не уходили под ленту
+                    const headerPad = isRealToefl ? 'pr-12' : '';
                     let cardHtml = '';
 
                     if (userResult) {
@@ -173,8 +196,9 @@
                         
                         cardHtml = `
                             <div class="bg-white rounded-2xl p-5 border border-purple-100 shadow-xs flex flex-col justify-between relative overflow-hidden group border-t-4 border-t-purple-500">
+                                ${ribbon}
                                 <div>
-                                    <div class="flex justify-between items-start mb-3">
+                                    <div class="flex justify-between items-start mb-3 ${headerPad}">
                                         <h3 class="font-bold text-slate-800 text-sm">Practice Set #${i}</h3>
                                         <span class="text-[11px] font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-md">${pct}% Accuracy</span>
                                     </div>
@@ -194,8 +218,9 @@
                     } else {
                         cardHtml = `
                             <div class="bg-white rounded-2xl p-5 border border-gray-100 shadow-xs flex flex-col justify-between relative overflow-hidden group hover:shadow-md transition duration-200">
+                                ${ribbon}
                                 <div>
-                                    <div class="flex justify-between items-start mb-3">
+                                    <div class="flex justify-between items-start mb-3 ${headerPad}">
                                         <h3 class="font-bold text-slate-800 text-sm">Practice Set #${i}</h3>
                                         <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Ready</span>
                                     </div>
