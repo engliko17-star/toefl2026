@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Импорт Listening (TOEFL)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="auth.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background: #f8fafc; }
+        .opt-row { cursor: pointer; }
+        .opt-row input { accent-color: #059669; }
+        .opt-row.is-correct { background: #ecfdf5; border-color: #6ee7b7; }
+        .drop-active { border-color: #6366f1 !important; background: #eef2ff !important; }
+        audio { height: 36px; }
+        details > summary { cursor: pointer; list-style: none; }
+        details > summary::-webkit-details-marker { display: none; }
+    </style>
+</head>
+<body class="text-slate-800 min-h-screen">
+
+<header class="bg-white border-b border-slate-200">
+    <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
+        <div>
+            <a href="teacher-board.html" class="text-sm font-semibold text-slate-400 hover:text-slate-700">← Teacher board</a>
+            <h1 class="text-xl font-extrabold text-slate-900 mt-1">Импорт Listening</h1>
+            <p class="text-sm text-slate-500">Официальные задания TOEFL из zip: аудио, картинки, вопросы и ответы</p>
+        </div>
+        <span class="shrink-0 text-xs font-bold uppercase tracking-widest bg-amber-100 text-amber-800 border border-amber-200 rounded-full px-3 py-1">TOEFL</span>
+    </div>
+</header>
+
+<main class="max-w-5xl mx-auto px-4 py-6 space-y-6">
+
+    <div id="gate" class="bg-white rounded-2xl border border-slate-200 p-6 text-slate-500">Проверяю доступ…</div>
+
+    <section id="app" class="space-y-6 hidden">
+
+        <!-- 1. Файл -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-6">
+            <h2 class="font-bold text-slate-900 mb-3">1. Архив набора</h2>
+            <label id="drop" class="block border-2 border-dashed border-slate-300 rounded-2xl p-8 text-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/40 transition">
+                <input id="fileInput" type="file" accept=".zip" class="hidden">
+                <div class="font-semibold text-slate-700">Перетащите zip сюда или нажмите, чтобы выбрать</div>
+                <div class="text-sm text-slate-400 mt-1">Например, listening_099.zip</div>
+            </label>
+            <div id="fileErrors" class="hidden mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800"></div>
+        </div>
+
+        <!-- 2. Проверка содержимого -->
+        <div id="previewBox" class="hidden space-y-6">
+            <div class="bg-white rounded-2xl border border-slate-200 p-6">
+                <h2 class="font-bold text-slate-900 mb-1">2. Проверьте набор</h2>
+                <p class="text-sm text-slate-500 mb-4">Правильный ответ отмечен зелёным. Чтобы поменять, нажмите на другой вариант.</p>
+                <div id="summary" class="grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
+                <label class="mt-5 flex items-start gap-3 text-sm text-slate-600">
+                    <input id="mockOnly" type="checkbox" class="mt-0.5 w-4 h-4 accent-indigo-600">
+                    <span><b>Только для мок-тестов.</b> Если отметить, задания не появятся в разделе практики (is_mock_only = true). По умолчанию задания идут в практику.</span>
+                </label>
+            </div>
+
+            <div>
+                <h3 class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Listen and Choose a Response</h3>
+                <div id="crList" class="space-y-3"></div>
+            </div>
+
+            <div>
+                <h3 class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Conversations, Announcements, Academic Talks</h3>
+                <div id="passageList" class="space-y-4"></div>
+            </div>
+
+            <!-- 3. Импорт -->
+            <div id="importPanel" class="bg-white rounded-2xl border border-slate-200 p-6 sm:sticky sm:bottom-4 shadow-lg">
+                <div class="flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
+                    <div>
+                        <h2 class="font-bold text-slate-900">3. Загрузка в базу</h2>
+                        <p class="text-sm text-slate-500">Файлы попадут в хранилище <code class="text-xs bg-slate-100 rounded px-1">OFFICIAL LISTENING</code>, задания — в базу с пометкой TOEFL. Повторный импорт того же архива ничего не задвоит.</p>
+                    </div>
+                    <button id="importBtn" class="shrink-0 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-bold rounded-xl px-6 py-3 transition">Импортировать</button>
+                </div>
+                <div id="progressWrap" class="hidden mt-4">
+                    <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden"><div id="progressBar" class="h-full bg-indigo-600 w-0 transition-all"></div></div>
+                </div>
+                <ol id="log" class="hidden mt-4 space-y-1 text-sm font-mono max-h-72 overflow-y-auto"></ol>
+                <div id="result" class="hidden mt-4"></div>
+            </div>
+        </div>
+    </section>
+</main>
+
+<script>
+(function () {
+    'use strict';
+
+    // ---------- Настройки ----------
+    const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';            // нужен, только если на странице не подключён auth.js
+    const BUCKET = 'OFFICIAL LISTENING';
+    const MANIFEST_FORMAT = 'toefl-listening-import/v1';
+    const TASK_TYPES = { conversation: 'Conversation', announcement: 'Announcement', academic: 'Academic Talk' };
+    const LETTERS = 'ABCDEFGH';
+
+    // ---------- Состояние ----------
+    let db = null;
+    let zip = null;
+    let manifest = null;
+    const blobUrls = [];
+    const changed = new Set();   // ключи вопросов, где учитель поменял ответ
+
+    const $ = (id) => document.getElementById(id);
+
+    function esc(s) {
+        return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // Пояснения хранятся как HTML (b/span/br с классами) — пропускаем только эти теги.
+    function safeHtml(html) {
+        const doc = new DOMParser().parseFromString('<div>' + String(html ?? '') + '</div>', 'text/html');
+        const ALLOWED = new Set(['B', 'STRONG', 'I', 'EM', 'SPAN', 'BR']);
+        (function walk(node) {
+            [...node.childNodes].forEach(ch => {
+                if (ch.nodeType === 1) {
+                    if (!ALLOWED.has(ch.tagName)) { ch.replaceWith(document.createTextNode(ch.textContent)); return; }
+                    [...ch.attributes].forEach(a => { if (a.name !== 'class') ch.removeAttribute(a.name); });
+                    walk(ch);
+                } else if (ch.nodeType !== 3) {
+                    ch.remove();
+                }
+            });
+        })(doc.body.firstChild);
+        return doc.body.firstChild.innerHTML;
+    }
+
+    function resolveClient() {
+        try { if (typeof _supabase !== 'undefined' && _supabase && _supabase.from) return _supabase; } catch (e) { /* нет auth.js */ }
+        if (window.supabaseClient && window.supabaseClient.from) return window.supabaseClient;
+        if (SUPABASE_ANON_KEY && window.supabase && window.supabase.createClient) return window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        return null;
+    }
+
+    // ---------- Доступ: только учитель ----------
+    async function gate() {
+        db = resolveClient();
+        if (!db) {
+            $('gate').innerHTML = '<b class="text-rose-700">Не найден клиент Supabase.</b> Подключите auth.js на этой странице или впишите SUPABASE_ANON_KEY в настройках скрипта.';
+            return;
+        }
+        let role = null;
+        if (typeof requireAuth === 'function') {
+            const user = await requireAuth();
+            if (!user) return;                      // auth.js сам перенаправит на вход
+            role = user.role || null;
+        }
+        if (!role) {
+            const { data: { session } } = await db.auth.getSession();
+            if (!session) { $('gate').textContent = 'Войдите на сайт под учительским аккаунтом.'; return; }
+            const { data: prof } = await db.from('profiles').select('role').eq('id', session.user.id).maybeSingle();
+            role = prof && prof.role;
+        }
+        if (role !== 'teacher') {
+            $('gate').innerHTML = '<b class="text-rose-700">Страница доступна только преподавателю.</b>';
+            return;
+        }
+        $('gate').classList.add('hidden');
+        $('app').classList.remove('hidden');
+    }
+
+    // ---------- Чтение архива ----------
+    function contentType(path) {
+        const ext = path.split('.').pop().toLowerCase();
+        return { mp3: 'audio/mpeg', m4a: 'audio/mp4', wav: 'audio/wav', ogg: 'audio/ogg', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' }[ext] || 'application/octet-stream';
+    }
+
+    function validate(m, z) {
+        const errs = [];
+        const need = (cond, msg) => { if (!cond) errs.push(msg); };
+        need(m && m.format === MANIFEST_FORMAT, `manifest.json: format должен быть «${MANIFEST_FORMAT}»`);
+        if (!m) return errs;
+        need(/^[\w-]{1,40}$/.test(m.set_code || ''), 'manifest.json: set_code пустой или с недопустимыми символами');
+        need(Array.isArray(m.choose_response), 'manifest.json: нет списка choose_response');
+        need(Array.isArray(m.passages), 'manifest.json: нет списка passages');
+        const hasFile = (p) => p && z.file(p);
+        const checkOptions = (where, options, correct) => {
+            need(Array.isArray(options) && options.length >= 2 && options.every(o => typeof o === 'string' && o.trim()), `${where}: варианты ответа пустые`);
+            need(Number.isInteger(correct) && Array.isArray(options) && correct >= 0 && correct < options.length, `${where}: правильный ответ вне диапазона`);
+        };
+        (m.choose_response || []).forEach((it, i) => {
+            const w = `Choose a Response ${it.key || i + 1}`;
+            need(hasFile(it.audio), `${w}: в архиве нет аудио ${it.audio}`);
+            need(!it.image || hasFile(it.image), `${w}: в архиве нет картинки ${it.image}`);
+            checkOptions(w, it.options, it.correct_answer);
+        });
+        (m.passages || []).forEach((p, i) => {
+            const w = `${p.title || 'Passage'} (${p.key || i + 1})`;
+            need(TASK_TYPES[p.task_type], `${w}: неизвестный task_type «${p.task_type}»`);
+            need(p.title && p.title.trim(), `${w}: нет заголовка`);
+            need(hasFile(p.audio), `${w}: в архиве нет аудио ${p.audio}`);
+            need(!p.image || hasFile(p.image), `${w}: в архиве нет картинки ${p.image}`);
+            need(Array.isArray(p.questions) && p.questions.length, `${w}: нет вопросов`);
+            (p.questions || []).forEach((q, j) => {
+                need(q.text && q.text.trim(), `${w}, вопрос ${j + 1}: нет текста`);
+                checkOptions(`${w}, вопрос ${j + 1}`, q.options, q.correct_index);
+            });
+        });
+        const keys = [...(m.choose_response || []), ...(m.passages || [])].map(x => x.audio);
+        need(new Set(keys).size === keys.length, 'manifest.json: одно и то же аудио указано дважды');
+        return errs;
+    }
+
+    async function blobUrl(path) {
+        const ab = await zip.file(path).async('arraybuffer');
+        const url = URL.createObjectURL(new Blob([ab], { type: contentType(path) }));
+        blobUrls.push(url);
+        return url;
+    }
+
+    async function onFile(file) {
+        blobUrls.splice(0).forEach(u => URL.revokeObjectURL(u));
+        changed.clear();
+        $('fileErrors').classList.add('hidden');
+        $('previewBox').classList.add('hidden');
+        resetImportPanel();
+        try {
+            zip = await JSZip.loadAsync(file);
+        } catch (e) {
+            return showFileErrors(['Не получилось открыть архив: ' + e.message]);
+        }
+        const mf = zip.file('manifest.json');
+        if (!mf) return showFileErrors(['В архиве нет manifest.json']);
+        try {
+            manifest = JSON.parse(await mf.async('string'));
+        } catch (e) {
+            return showFileErrors(['manifest.json не читается: ' + e.message]);
+        }
+        const errs = validate(manifest, zip);
+        if (errs.length) return showFileErrors(errs);
+        await renderPreview();
+    }
+
+    function showFileErrors(list) {
+        $('fileErrors').innerHTML = '<b>Архив не подходит:</b><ul class="list-disc ml-5 mt-2 space-y-1">' + list.map(e => `<li>${esc(e)}</li>`).join('') + '</ul>';
+        $('fileErrors').classList.remove('hidden');
+    }
+
+    // ---------- Предпросмотр ----------
+    function optionsHtml(groupKey, options, correct) {
+        return options.map((o, k) => `
+            <label class="opt-row flex items-start gap-3 border border-slate-200 rounded-xl px-3 py-2 text-sm ${k === correct ? 'is-correct' : ''}">
+                <input type="radio" name="${esc(groupKey)}" value="${k}" data-key="${esc(groupKey)}" class="mt-0.5 w-4 h-4" ${k === correct ? 'checked' : ''}>
+                <span><b class="text-slate-400 mr-1">${LETTERS[k]}</b>${esc(o)}</span>
+            </label>`).join('');
+    }
+
+    function explanationHtml(groupKey, html) {
+        if (!html) return '';
+        return `<details class="mt-2 text-sm"><summary class="text-indigo-600 font-semibold">Пояснение</summary>
+                <div class="mt-2 text-slate-600 leading-relaxed">${safeHtml(html)}</div>
+                <div class="hidden mt-1 text-xs font-semibold text-amber-700" data-stale="${esc(groupKey)}">Ответ изменён вручную, пояснение написано для прежнего ответа.</div></details>`;
+    }
+
+    async function renderPreview() {
+        const m = manifest;
+        const nQ = m.choose_response.length + m.passages.reduce((s, p) => s + p.questions.length, 0);
+        const byType = (t) => m.passages.filter(p => p.task_type === t).length;
+        $('summary').innerHTML = [
+            ['Набор', m.set_code + (m.test_date ? ` · ${m.test_date.split('-').reverse().join('.')}` : '')],
+            ['Choose a Response', m.choose_response.length],
+            ['Conv / Ann / Talks', `${byType('conversation')} / ${byType('announcement')} / ${byType('academic')}`],
+            ['Всего вопросов', nQ],
+        ].map(([k, v]) => `<div class="rounded-xl bg-slate-50 border border-slate-100 p-3"><div class="text-xs text-slate-400 font-semibold">${esc(k)}</div><div class="font-extrabold text-slate-900 mt-0.5">${esc(v)}</div></div>`).join('');
+
+        const cr = [];
+        for (const it of m.choose_response) {
+            const key = `cr:${it.key}`;
+            cr.push(`
+            <article class="bg-white rounded-2xl border border-slate-200 p-4 flex flex-col sm:flex-row gap-4">
+                ${it.image ? `<img src="${await blobUrl(it.image)}" alt="" class="w-20 h-24 object-contain rounded-lg bg-slate-50 shrink-0">` : ''}
+                <div class="flex-1 min-w-0">
+                    <div class="flex flex-wrap items-center gap-2 mb-2">
+                        <span class="text-xs font-bold text-slate-400">${it.module ? `Module ${esc(it.module)} · ` : ''}#${esc(it.number ?? '')}</span>
+                        <span class="font-semibold text-slate-900">${esc(it.transcript || '(без текста)')}</span>
+                    </div>
+                    <audio controls preload="none" src="${await blobUrl(it.audio)}" class="w-full max-w-sm mb-3"></audio>
+                    <div class="grid sm:grid-cols-2 gap-2">${optionsHtml(key, it.options, it.correct_answer)}</div>
+                    ${explanationHtml(key, it.explanation)}
+                </div>
+            </article>`);
+        }
+        $('crList').innerHTML = cr.join('');
+
+        const ps = [];
+        for (const p of m.passages) {
+            const qs = p.questions.map((q, j) => {
+                const key = `p:${p.key}:${j}`;
+                return `<div class="border-t border-slate-100 pt-3 mt-3">
+                    <div class="text-sm font-semibold text-slate-900 mb-2">${q.number ? `<span class="text-slate-400 mr-1">Q${esc(q.number)}</span>` : ''}${esc(q.text)} ${q.type ? `<span class="ml-1 text-xs font-bold text-indigo-500">${esc(q.type)}</span>` : ''}</div>
+                    <div class="grid gap-2">${optionsHtml(key, q.options, q.correct_index)}</div>
+                    ${explanationHtml(key, q.explanation)}
+                </div>`;
+            }).join('');
+            ps.push(`
+            <article class="bg-white rounded-2xl border border-slate-200 p-4">
+                <div class="flex flex-col sm:flex-row gap-4">
+                    ${p.image ? `<img src="${await blobUrl(p.image)}" alt="" class="w-24 h-28 object-contain rounded-lg bg-slate-50 shrink-0">` : ''}
+                    <div class="flex-1 min-w-0">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="text-xs font-bold uppercase tracking-wide bg-indigo-50 text-indigo-700 rounded-full px-2 py-0.5">${esc(TASK_TYPES[p.task_type])}</span>
+                            ${p.module ? `<span class="text-xs font-bold text-slate-400">Module ${esc(p.module)}</span>` : ''}
+                        </div>
+                        <div class="font-bold text-slate-900 mt-1">${esc(p.title)}</div>
+                        <audio controls preload="none" src="${await blobUrl(p.audio)}" class="w-full max-w-md mt-2"></audio>
+                        <details class="mt-2 text-sm"><summary class="text-indigo-600 font-semibold">Транскрипт</summary>
+                            <div class="mt-2 whitespace-pre-line text-slate-600 leading-relaxed">${esc(p.transcript || '')}</div></details>
+                    </div>
+                </div>
+                ${qs}
+            </article>`);
+        }
+        $('passageList').innerHTML = ps.join('');
+        $('previewBox').classList.remove('hidden');
+    }
+
+    function onAnswerChange(e) {
+        const input = e.target;
+        if (!input.matches('input[type=radio][data-key]')) return;
+        const key = input.dataset.key;
+        const val = Number(input.value);
+        const parts = key.split(':');
+        let original;
+        if (parts[0] === 'cr') {
+            const it = manifest.choose_response.find(x => x.key === parts[1]);
+            original = it._original ?? it.correct_answer;
+            it._original = original;
+            it.correct_answer = val;
+        } else {
+            const q = manifest.passages.find(x => x.key === parts[1]).questions[Number(parts[2])];
+            original = q._original ?? q.correct_index;
+            q._original = original;
+            q.correct_index = val;
+        }
+        if (val === original) changed.delete(key); else changed.add(key);
+        document.querySelectorAll(`input[data-key="${CSS.escape(key)}"]`).forEach(r => r.closest('.opt-row').classList.toggle('is-correct', r.checked));
+        const stale = document.querySelector(`[data-stale="${CSS.escape(key)}"]`);
+        if (stale) stale.classList.toggle('hidden', val === original);
+    }
+
+    // ---------- Импорт ----------
+    function resetImportPanel() {
+        $('log').innerHTML = ''; $('log').classList.add('hidden');
+        $('result').innerHTML = ''; $('result').classList.add('hidden');
+        $('progressWrap').classList.add('hidden'); $('progressBar').style.width = '0';
+        $('importBtn').disabled = false;
+    }
+
+    function log(text, kind) {
+        const icon = { ok: '✓', err: '✗', info: '·', warn: '!' }[kind || 'info'];
+        const color = { ok: 'text-emerald-700', err: 'text-rose-700', info: 'text-slate-500', warn: 'text-amber-700' }[kind || 'info'];
+        const li = document.createElement('li');
+        li.className = color;
+        li.textContent = `${icon} ${text}`;
+        $('log').appendChild(li);
+        $('log').classList.remove('hidden');
+        $('log').scrollTop = $('log').scrollHeight;
+    }
+
+    function progress(done, total) {
+        $('progressWrap').classList.remove('hidden');
+        $('progressBar').style.width = `${Math.round(done / total * 100)}%`;
+    }
+
+    function fail(step, error, hint) {
+        const msg = (error && (error.message || error.error_description || error.error)) || String(error);
+        const e = new Error(`${step}: ${msg}${hint ? ` — ${hint}` : ''}`);
+        e.handled = true;
+        throw e;
+    }
+
+    const storagePath = (zipPath) => `${manifest.set_code}/${zipPath.split('/').pop()}`;
+    const publicUrl = (zipPath) => db.storage.from(BUCKET).getPublicUrl(storagePath(zipPath)).data.publicUrl;
+
+    async function selectAll(table, columns) {
+        const out = [];
+        for (let from = 0; ; from += 1000) {
+            const { data, error } = await db.from(table).select(columns).order(columns.split(',')[0]).range(from, from + 999);
+            if (error) fail(`Чтение ${table}`, error);
+            out.push(...data);
+            if (data.length < 1000) return out;
+        }
+    }
+
+    async function preflight() {
+        for (const t of ['listening_questions', 'listening_tests']) {
+            const { error } = await db.from(t).select('id,is_real_toefl').limit(1);
+            if (error) {
+                const noColumn = /is_real_toefl/.test(error.message || '') || error.code === '42703';
+                fail(`Проверка ${t}`, error, noColumn ? 'сначала выполните listening_official_setup.sql в SQL Editor' : '');
+            }
+        }
+        const { error } = await db.storage.from(BUCKET).list(manifest.set_code, { limit: 1 });
+        if (error) fail('Проверка хранилища', error, 'выполните listening_official_setup.sql: он создаёт бакет OFFICIAL LISTENING и права учителя');
+        log('База и хранилище готовы, колонка is_real_toefl на месте', 'ok');
+    }
+
+    async function uploadFiles() {
+        const paths = [];
+        manifest.choose_response.forEach(it => { paths.push(it.audio); if (it.image) paths.push(it.image); });
+        manifest.passages.forEach(p => { paths.push(p.audio); if (p.image) paths.push(p.image); });
+        const unique = [...new Set(paths)];
+        let done = 0;
+        for (const p of unique) {
+            const blob = new Blob([await zip.file(p).async('arraybuffer')], { type: contentType(p) });
+            const { error } = await db.storage.from(BUCKET).upload(storagePath(p), blob, { upsert: true, contentType: contentType(p), cacheControl: '31536000' });
+            if (error) fail(`Загрузка файла ${p}`, error, 'проверьте права на бакет (listening_official_setup.sql)');
+            progress(++done, unique.length);
+        }
+        log(`Файлы загружены в хранилище: ${unique.length}`, 'ok');
+    }
+
+    async function insertChooseResponse(isMockOnly) {
+        const items = manifest.choose_response;
+        if (!items.length) return null;
+        const urls = items.map(it => publicUrl(it.audio));
+        const { data: existing, error } = await db.from('listening_questions').select('id,set_number,audio_url').in('audio_url', urls);
+        if (error) fail('Проверка дублей Choose a Response', error);
+        const have = new Set(existing.map(r => r.audio_url));
+        const todo = items.filter(it => !have.has(publicUrl(it.audio)));
+        let setNumber;
+        if (existing.length) {
+            setNumber = existing[0].set_number;
+            log(`Choose a Response: ${existing.length} уже в базе (набор №${setNumber}), пропускаю их`, 'warn');
+        } else {
+            const { data: last, error: e2 } = await db.from('listening_questions').select('set_number').order('set_number', { ascending: false }).limit(1);
+            if (e2) fail('Номер набора', e2);
+            setNumber = ((last[0] && last[0].set_number) || 0) + 1;
+        }
+        if (!todo.length) return { setNumber, inserted: 0, total: items.length };
+
+        const rows = todo.map(it => ({
+            set_number: setNumber,
+            audio_url: publicUrl(it.audio),
+            speaker_image: it.image ? publicUrl(it.image) : null,
+            transcript: it.transcript || null,
+            options: it.options,
+            correct_answer: it.correct_answer,
+            explanation: it.explanation || null,
+            is_mock_only: isMockOnly,
+            is_real_toefl: true,
+        }));
+        let res = await db.from('listening_questions').insert(rows).select('id,audio_url');
+        if (res.error && /null value in column "id"/i.test(res.error.message || '')) {
+            // id без автонумерации — считаем сами
+            const all = await selectAll('listening_questions', 'id');
+            let next = all.reduce((mx, r) => Math.max(mx, Number(r.id) || 0), 0) + 1;
+            rows.forEach(r => { r.id = next++; });
+            res = await db.from('listening_questions').insert(rows).select('id,audio_url');
+        }
+        if (res.error) fail('Запись Choose a Response', res.error);
+        if (!res.data || res.data.length !== rows.length) {
+            fail('Запись Choose a Response', `записано ${res.data ? res.data.length : 0} из ${rows.length}`, 'вставку блокируют права (RLS): выполните listening_official_setup.sql');
+        }
+        log(`Choose a Response: набор №${setNumber}, добавлено ${rows.length}`, 'ok');
+        return { setNumber, inserted: rows.length, total: items.length };
+    }
+
+    async function insertPassages(isMockOnly) {
+        const items = manifest.passages;
+        if (!items.length) return null;
+        const urls = items.map(p => publicUrl(p.audio));
+        const { data: existing, error } = await db.from('listening_tests').select('id,audio_url').in('audio_url', urls);
+        if (error) fail('Проверка дублей', error);
+        const have = new Set(existing.map(r => r.audio_url));
+        if (existing.length) log(`Conversations/Announcements/Talks: ${existing.length} уже в базе, пропускаю их`, 'warn');
+        const todo = items.filter(p => !have.has(publicUrl(p.audio)));
+        if (!todo.length) return { ids: existing.map(r => r.id), inserted: 0 };
+
+        // id в listening_tests — текст с номером; продолжаем нумерацию
+        const all = await selectAll('listening_tests', 'id');
+        let next = all.reduce((mx, r) => (/^\d+$/.test(r.id) ? Math.max(mx, Number(r.id)) : mx), 0) + 1;
+        const rows = todo.map(p => ({
+            id: String(next++),
+            task_type: p.task_type,
+            title: p.title,
+            audio_url: publicUrl(p.audio),
+            image_url: p.image ? publicUrl(p.image) : null,
+            transcript: p.transcript || null,
+            questions: p.questions.map(q => ({
+                text: q.text,
+                type: q.type || null,
+                options: q.options,
+                explanation: q.explanation || null,
+                correct_index: q.correct_index,
+            })),
+            is_mock_only: isMockOnly,
+            is_real_toefl: true,
+        }));
+        const res = await db.from('listening_tests').insert(rows).select('id,audio_url');
+        if (res.error) fail('Запись заданий', res.error, /duplicate key/i.test(res.error.message || '') ? 'кто-то добавил задание одновременно, запустите импорт ещё раз' : '');
+        if (!res.data || res.data.length !== rows.length) {
+            fail('Запись заданий', `записано ${res.data ? res.data.length : 0} из ${rows.length}`, 'вставку блокируют права (RLS): выполните listening_official_setup.sql');
+        }
+        log(`Conversations/Announcements/Talks: добавлено ${rows.length} (id ${rows[0].id}–${rows[rows.length - 1].id})`, 'ok');
+        return { ids: rows.map(r => r.id), inserted: rows.length };
+    }
+
+    async function verify() {
+        const crUrls = manifest.choose_response.map(it => publicUrl(it.audio));
+        const pUrls = manifest.passages.map(p => publicUrl(p.audio));
+        const problems = [];
+        if (crUrls.length) {
+            const { data, error } = await db.from('listening_questions').select('id,audio_url,is_real_toefl,correct_answer').in('audio_url', crUrls);
+            if (error) fail('Проверка записи', error);
+            if (data.length !== crUrls.length) problems.push(`Choose a Response в базе ${data.length} из ${crUrls.length}`);
+            if (data.some(r => r.is_real_toefl !== true)) problems.push('не у всех Choose a Response стоит пометка TOEFL');
+            const byUrl = Object.fromEntries(data.map(r => [r.audio_url, r]));
+            manifest.choose_response.forEach(it => {
+                const r = byUrl[publicUrl(it.audio)];
+                // строка была в базе ещё до импорта: её не перезаписываем, только предупреждаем
+                if (r && r.correct_answer !== it.correct_answer) log(`${it.key}: в базе уже стоит ответ ${LETTERS[r.correct_answer]}, а в архиве ${LETTERS[it.correct_answer]}; строку не трогаю`, 'warn');
+            });
+        }
+        if (pUrls.length) {
+            const { data, error } = await db.from('listening_tests').select('id,audio_url,is_real_toefl,questions').in('audio_url', pUrls);
+            if (error) fail('Проверка записи', error);
+            if (data.length !== pUrls.length) problems.push(`заданий с аудио в базе ${data.length} из ${pUrls.length}`);
+            if (data.some(r => r.is_real_toefl !== true)) problems.push('не у всех заданий стоит пометка TOEFL');
+            const byUrl = Object.fromEntries(data.map(r => [r.audio_url, r]));
+            manifest.passages.forEach(p => {
+                const r = byUrl[publicUrl(p.audio)];
+                if (r && (r.questions || []).length !== p.questions.length) problems.push(`${p.key}: в базе ${r.questions.length} вопросов вместо ${p.questions.length}`);
+            });
+        }
+        // аудио реально открывается по публичной ссылке
+        const probe = crUrls[0] || pUrls[0];
+        if (probe) {
+            try {
+                const r = await fetch(probe, { method: 'HEAD', cache: 'no-store' });
+                if (!r.ok) problems.push(`аудио не открывается по ссылке (HTTP ${r.status}): бакет должен быть public`);
+            } catch (e) { log('Не удалось проверить ссылку на аудио: ' + e.message, 'warn'); }
+        }
+        return problems;
+    }
+
+    async function runImport() {
+        if (!manifest) return;
+        resetImportPanel();
+        $('importBtn').disabled = true;
+        $('importPanel').classList.remove('sm:sticky');   // журнал длинный, не закрываем им список
+        const isMockOnly = $('mockOnly').checked;
+        if (changed.size) log(`Ответы изменены вручную: ${changed.size}`, 'warn');
+        try {
+            await preflight();
+            await uploadFiles();
+            const cr = await insertChooseResponse(isMockOnly);
+            const ps = await insertPassages(isMockOnly);
+            const problems = await verify();
+            if (problems.length) {
+                problems.forEach(p => log(p, 'err'));
+                showResult(false, problems);
+            } else {
+                log('Проверка: всё на месте, пометка TOEFL стоит у всех заданий', 'ok');
+                showResult(true, [], cr, ps);
+            }
+        } catch (e) {
+            log(e.handled ? e.message : `Неожиданная ошибка: ${e.message}`, 'err');
+            showResult(false, [e.message]);
+        } finally {
+            $('importBtn').disabled = false;
+        }
+    }
+
+    function showResult(ok, problems, cr, ps) {
+        const folder = `${encodeURIComponent(BUCKET)}/${manifest.set_code}/`;
+        const sql =
+`-- проверка набора ${manifest.set_code}
+select set_number, count(*) as items, bool_and(is_real_toefl) as toefl
+from listening_questions where audio_url like '%/${folder}%' group by set_number;
+
+select id, task_type, title, is_real_toefl, jsonb_array_length(questions) as questions
+from listening_tests where audio_url like '%/${folder}%' order by id::int;`;
+        $('result').innerHTML = ok
+            ? `<div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                 <div class="font-bold text-base mb-1">Готово</div>
+                 ${cr ? `<div>Choose a Response: набор №${esc(cr.setNumber)} (${esc(cr.total)} заданий${cr.inserted < cr.total ? `, новых ${esc(cr.inserted)}` : ''})</div>` : ''}
+                 ${ps ? `<div>Conversations, Announcements, Talks: ${ps.inserted ? `id ${esc(ps.ids[0])}–${esc(ps.ids[ps.ids.length - 1])}` : 'уже были в базе'}</div>` : ''}
+                 <div class="mt-1">Все задания помечены как TOEFL.</div>
+                 <details class="mt-3"><summary class="font-semibold text-emerald-800">SQL для проверки в Supabase</summary>
+                   <pre class="mt-2 text-xs bg-white border border-emerald-100 rounded-lg p-3 overflow-x-auto">${esc(sql)}</pre></details>
+               </div>`
+            : `<div class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+                 <div class="font-bold text-base mb-1">Импорт не завершён</div>
+                 <ul class="list-disc ml-5 space-y-1">${problems.map(p => `<li>${esc(p)}</li>`).join('')}</ul>
+                 <div class="mt-2">Исправьте причину и нажмите «Импортировать» ещё раз: уже записанное не задвоится.</div>
+               </div>`;
+        $('result').classList.remove('hidden');
+    }
+
+    // ---------- События ----------
+    document.addEventListener('DOMContentLoaded', () => {
+        const drop = $('drop');
+        $('fileInput').addEventListener('change', (e) => { if (e.target.files[0]) onFile(e.target.files[0]); });
+        ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('drop-active'); }));
+        ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('drop-active'); }));
+        drop.addEventListener('drop', (e) => { const f = e.dataTransfer.files[0]; if (f) onFile(f); });
+        $('previewBox').addEventListener('change', onAnswerChange);
+        $('importBtn').addEventListener('click', runImport);
+        gate().catch(e => { $('gate').textContent = 'Ошибка проверки доступа: ' + e.message; });
+    });
+})();
+</script>
+</body>
+</html>
