@@ -66,6 +66,12 @@ const PAGE_SECTIONS = {
     'writing-articles.html':        'writing',
     'article-write-an-email.html':  'writing',
     'article-email-tone.html':      'writing',
+    'article-email-anatomy.html':   'writing',
+    'article-email-opening.html':   'writing',
+    'article-email-details.html':   'writing',
+    'article-email-politeness.html': 'writing',
+    'article-email-closing.html':   'writing',
+    'article-email-practice.html':  'writing',
 
     // --- Speaking ---
     'speaking.html':    'speaking',
