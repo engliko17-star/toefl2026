@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Task Anatomy — Write an Email</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="auth.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+
+        details > summary { list-style: none; }
+        details > summary::-webkit-details-marker { display: none; }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+
+        .tbl th { background-color: #f8fafc; font-weight: 600; color: #475569; padding: 10px 14px; text-align: left; border-bottom: 2px solid #e2e8f0; font-size: 13px; }
+        .tbl td { padding: 10px 14px; border-bottom: 1px solid #f1f5f9; vertical-align: top; color: #334155; font-size: 14px; }
+        .tbl tr:last-child td { border-bottom: none; }
+
+        .bad { text-decoration: line-through; text-decoration-color: #f43f5e; color: #9f1239; }
+        .email-paper { white-space: pre-line; }
+        mark.tone { background: #e0e7ff; color: #3730a3; padding: 0 3px; border-radius: 4px; }
+        mark.tone-f { background: #dcfce7; color: #166534; padding: 0 3px; border-radius: 4px; }
+
+
+        /* Responsive tables: stack rows on phones */
+        @media (max-width: 640px) {
+            .rtable { min-width: 0 !important; }
+            .rtable thead { display: none; }
+            .rtable, .rtable tbody, .rtable tr, .rtable td { display: block; width: 100% !important; }
+            .rtable tr { border-bottom: 1px solid #e2e8f0; padding: 8px 0; }
+            .rtable tr:last-child { border-bottom: none; }
+            .rtable td { border: none !important; padding: 3px 14px !important; }
+            .rtable td[data-label]::before { content: attr(data-label); display: block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #94a3b8; margin-bottom: 1px; }
+        }
+
+        /* Exercise engine */
+        .opt-btn { width: 100%; text-align: left; border: 1.5px solid #e2e8f0; background: #fff; border-radius: 10px; padding: 10px 14px; font-size: 14px; color: #1e293b; transition: all .15s; white-space: pre-line; }
+        .opt-btn:hover:not(:disabled) { border-color: #a5b4fc; background: #f5f7ff; }
+        .opt-btn:disabled { cursor: default; }
+        .opt-correct { border-color: #10b981 !important; background: #ecfdf5 !important; color: #065f46 !important; }
+        .opt-wrong { border-color: #f43f5e !important; background: #fff1f2 !important; color: #9f1239 !important; }
+        .opt-dim { opacity: .55; }
+
+        .sort-zone { min-height: 72px; }
+        .chip { display: inline-flex; align-items: center; gap: 6px; border: 1.5px solid #cbd5e1; background: #fff; border-radius: 14px; padding: 7px 13px; text-align: left; font-size: 13.5px; color: #1e293b; cursor: grab; user-select: none; margin: 4px; touch-action: manipulation; }
+        .chip.selected { border-color: #6366f1; box-shadow: 0 0 0 3px #e0e7ff; }
+        .chip.ok { border-color: #10b981; background: #ecfdf5; color: #065f46; }
+        .chip.no { border-color: #f43f5e; background: #fff1f2; color: #9f1239; }
+        .sortable-ghost { opacity: .4; }
+
+        .spot-line { display: block; width: 100%; text-align: left; border: 1.5px dashed transparent; border-radius: 8px; padding: 6px 10px; font-size: 14.5px; color: #1e293b; transition: all .15s; }
+        .spot-line:hover:not(.done) { border-color: #a5b4fc; background: #f8faff; }
+        .spot-line.hit { border-style: solid; border-color: #f43f5e; background: #fff1f2; }
+        .spot-line.fine { border-style: solid; border-color: #a7f3d0; background: #f0fdf4; }
+            mark.hl-amber { background: #fef3c7; color: #92400e; padding: 0 3px; border-radius: 4px; }
+        mark.hl-rose { background: #ffe4e6; color: #9f1239; padding: 0 3px; border-radius: 4px; }
+        mark.hl-sky { background: #e0f2fe; color: #075985; padding: 0 3px; border-radius: 4px; }
+</style>
+</head>
+<body class="bg-[#fafafa] text-slate-800 min-h-screen flex flex-col md:flex-row antialiased leading-relaxed">
+    <!-- Sidebar Navigation -->
+    <aside class="hidden md:flex flex-col w-64 bg-white border-r border-gray-100 px-4 py-6 h-screen sticky top-0 shrink-0">
+        <div class="font-bold text-2xl tracking-tighter mb-8 px-2 flex items-center space-x-2">
+            <span>TOEFL</span><span class="w-1.5 h-1.5 bg-indigo-600 rounded-full mt-2"></span>
+        </div>
+        <nav class="flex-1 space-y-1">
+            <a href="index.html" class="flex items-center space-x-3 p-3 rounded-xl text-gray-400 hover:bg-gray-50 hover:text-slate-700 transition">
+                <i data-lucide="home" class="w-5 h-5"></i><span class="text-sm font-medium">Dashboard</span>
+            </a>
+            <a href="vocabulary.html" class="flex items-center space-x-3 p-3 rounded-xl text-gray-400 hover:bg-gray-50 hover:text-slate-700 transition">
+                <i data-lucide="book-open" class="w-5 h-5"></i><span class="text-sm font-medium">Vocabulary</span>
+            </a>
+            <div class="pt-6 pb-2 px-3 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Practice</div>
+            <a href="reading.html" class="flex items-center space-x-3 p-3 rounded-xl text-gray-400 hover:bg-gray-50 hover:text-slate-700 transition">
+                <i data-lucide="book-text" class="w-5 h-5"></i><span class="text-sm">Reading</span>
+            </a>
+            <a href="listening.html" class="flex items-center space-x-3 p-3 rounded-xl text-gray-400 hover:bg-gray-50 hover:text-slate-700 transition">
+                <i data-lucide="headphones" class="w-5 h-5"></i><span class="text-sm">Listening</span>
+            </a>
+            <a href="writing.html" class="flex items-center space-x-3 p-3 rounded-xl bg-slate-900 text-white font-medium shadow-sm">
+                <i data-lucide="pen-tool" class="w-5 h-5"></i><span class="text-sm">Writing</span>
+            </a>
+            <a href="speaking.html" class="flex items-center space-x-3 p-3 rounded-xl text-gray-400 hover:bg-gray-50 hover:text-slate-700 transition">
+                <i data-lucide="mic" class="w-5 h-5"></i><span class="text-sm">Speaking</span>
+            </a>
+            <a href="tests.html" class="flex items-center space-x-3 p-3 rounded-xl text-gray-400 hover:bg-gray-50 hover:text-slate-700 transition">
+                <i data-lucide="file-check" class="w-5 h-5"></i><span class="text-sm">Mock Tests</span>
+            </a>
+        </nav>
+    </aside>
+
+
+    <!-- Main Content Area -->
+    <main class="flex-1 p-5 sm:p-10 lg:p-16 overflow-y-auto pb-28 md:pb-16 max-w-[900px] mx-auto w-full min-w-0">
+
+        <!-- Breadcrumbs -->
+        <div class="flex flex-wrap items-center text-[12px] font-medium text-gray-400 mb-6 gap-x-2 gap-y-1">
+            <a href="writing-articles.html" class="hover:text-slate-700 transition flex items-center">
+                <i data-lucide="arrow-left" class="w-4 h-4 mr-1.5"></i> Back to Guides
+            </a>
+            <span class="text-gray-300">/</span>
+            <a href="article-write-an-email.html" class="hover:text-slate-700 transition uppercase">Write an Email</a>
+            <span class="text-gray-300">/</span>
+            <span class="text-indigo-600 font-bold uppercase">Task Anatomy</span>
+        </div>
+
+        <!-- Course strip -->
+        <div class="mb-8 bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
+            <div class="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-3 flex items-center"><i data-lucide="graduation-cap" class="w-4 h-4 mr-1.5"></i>Курс Write an Email</div>
+            <div class="flex flex-wrap gap-2 text-[12px]">
+                <span class="px-3 py-1.5 rounded-full bg-indigo-600 text-white font-semibold">1 · Анатомия задания</span>
+                <a href="article-email-tone.html" class="px-3 py-1.5 rounded-full bg-gray-50 text-slate-600 border border-gray-200 hover:border-indigo-300 hover:text-indigo-700 transition">2 · Адресат и тон</a>
+                <a href="article-email-opening.html" class="px-3 py-1.5 rounded-full bg-gray-50 text-slate-600 border border-gray-200 hover:border-indigo-300 hover:text-indigo-700 transition">3 · Первая фраза</a>
+                <a href="article-email-details.html" class="px-3 py-1.5 rounded-full bg-gray-50 text-slate-600 border border-gray-200 hover:border-indigo-300 hover:text-indigo-700 transition">4 · Детали</a>
+                <a href="article-email-politeness.html" class="px-3 py-1.5 rounded-full bg-gray-50 text-slate-600 border border-gray-200 hover:border-indigo-300 hover:text-indigo-700 transition">5 · Вежливость и сэндвич</a>
+                <a href="article-email-closing.html" class="px-3 py-1.5 rounded-full bg-gray-50 text-slate-600 border border-gray-200 hover:border-indigo-300 hover:text-indigo-700 transition">6 · Концовка и проверка</a>
+                <a href="article-email-practice.html" class="px-3 py-1.5 rounded-full bg-gray-50 text-slate-600 border border-gray-200 hover:border-indigo-300 hover:text-indigo-700 transition">7 · Практикум</a>
+            </div>
+        </div>
+
+        <!-- Header -->
+        <h1 class="text-[32px] sm:text-[40px] font-extrabold text-slate-900 mb-2 tracking-tight leading-tight">Task Anatomy</h1>
+        <p class="text-[17px] text-slate-500 mb-8">Как устроено задание и само письмо</p>
+
+        <div class="space-y-6 text-[15px] sm:text-[16px] text-slate-700 leading-relaxed">
+
+            <p>
+                Это первый урок курса. Здесь разбираем, из чего состоит задание Write an Email, как его оценивают, как читать легенду и как разложить письмо по абзацам. Следующие уроки разбирают каждую часть письма подробно.
+            </p>
+
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div class="bg-white border border-gray-200 rounded-xl p-4 text-center">
+                    <div class="text-2xl font-black text-indigo-600">7</div>
+                    <div class="text-[13px] text-slate-500">минут на чтение и письмо</div>
+                </div>
+                <div class="bg-white border border-gray-200 rounded-xl p-4 text-center">
+                    <div class="text-2xl font-black text-indigo-600">3</div>
+                    <div class="text-[13px] text-slate-500">пункта, которые нужно раскрыть</div>
+                </div>
+                <div class="bg-white border border-gray-200 rounded-xl p-4 text-center">
+                    <div class="text-2xl font-black text-indigo-600">0–5</div>
+                    <div class="text-[13px] text-slate-500">шкала оценки письма</div>
+                </div>
+                <div class="bg-white border border-gray-200 rounded-xl p-4 text-center">
+                    <div class="text-2xl font-black text-rose-500">0</div>
+                    <div class="text-[13px] text-slate-500">проверок орфографии</div>
+                </div>
+            </div>
+
+            <!-- ============ 1. Format ============ -->
+            <h2 class="text-sm font-bold text-sky-600 mt-12 mb-4 uppercase tracking-wider">1. Что вы видите на экране</h2>
+
+            <ul class="space-y-3">
+                <li class="flex"><i data-lucide="file-text" class="w-5 h-5 text-indigo-500 mr-3 mt-0.5 shrink-0"></i><span><strong>Легенда</strong> — короткая ситуация из учёбы или повседневной жизни: что случилось, кто вы, кому пишете.</span></li>
+                <li class="flex"><i data-lucide="list-checks" class="w-5 h-5 text-indigo-500 mr-3 mt-0.5 shrink-0"></i><span><strong>Три пункта</strong> после фразы <em>In your email, do the following</em>. Это обязательный план письма.</span></li>
+                <li class="flex"><i data-lucide="at-sign" class="w-5 h-5 text-indigo-500 mr-3 mt-0.5 shrink-0"></i><span><strong>Поля To: и Subject:</strong> уже заполнены. Приветствие берём из To:.</span></li>
+                <li class="flex"><i data-lucide="type" class="w-5 h-5 text-indigo-500 mr-3 mt-0.5 shrink-0"></i><span><strong>Окно для ответа</strong> со счётчиком слов. Кнопки Cut / Paste / Undo / Redo есть, <strong>проверки орфографии нет</strong>.</span></li>
+                <li class="flex"><i data-lucide="message-square" class="w-5 h-5 text-indigo-500 mr-3 mt-0.5 shrink-0"></i><span>Фраза <em>Write as much as you can and in complete sentences</em>: полные предложения, а не список.</span></li>
+            </ul>
+
+            <!-- ============ 2. Scoring ============ -->
+            <h2 class="text-sm font-bold text-sky-600 mt-12 mb-4 uppercase tracking-wider">2. Как оценивают — по-русски</h2>
+
+            <p>Письмо получает оценку от 0 до 5, а потом вместе с другими заданиями секции переводится в итоговый балл Writing. Полная англоязычная шкала — в статье <a href="article-write-an-email.html" class="text-indigo-600 underline underline-offset-2">Write an Email</a>. Вот что она значит на практике:</p>
+
+            <div class="overflow-x-auto rounded-xl border border-gray-200 shadow-sm bg-white">
+                <table class="w-full sm:min-w-[600px] text-[14px] rtable">
+                    <thead class="bg-[#313374] text-white"><tr><th class="p-3 text-center w-16">Балл</th><th class="p-3 text-left">Что видит проверяющий</th></tr></thead>
+                    <tbody class="divide-y divide-gray-100">
+                        <tr class="bg-indigo-50/40"><td data-label="Балл" class="p-3 text-center font-black text-2xl text-[#313374]">5</td><td data-label="Что видит проверяющий" class="p-3">Все три пункта раскрыты, у каждого есть конкретные детали. Предложения разнообразные, слова точные. Тон и оформление подходят адресату. Ошибок почти нет.</td></tr>
+                        <tr><td data-label="Балл" class="p-3 text-center font-black text-2xl text-[#313374]">4</td><td data-label="Что видит проверяющий" class="p-3">Письмо понятное, детали есть, тон в основном уместный. Ошибок немного, и они не мешают понять смысл.</td></tr>
+                        <tr class="bg-indigo-50/40"><td data-label="Балл" class="p-3 text-center font-black text-2xl text-[#313374]">3</td><td data-label="Что видит проверяющий" class="p-3">Задача в целом выполнена, но какие-то пункты раскрыты наполовину. Словарь средний, ошибки заметны.</td></tr>
+                        <tr><td data-label="Балл" class="p-3 text-center font-black text-2xl text-[#313374]">2</td><td data-label="Что видит проверяющий" class="p-3">Деталей мало или они не по теме, ошибки накапливаются, читать трудно.</td></tr>
+                        <tr class="bg-indigo-50/40"><td data-label="Балл" class="p-3 text-center font-black text-2xl text-[#313374]">1</td><td data-label="Что видит проверяющий" class="p-3">Обрывки фраз, связный текст почти весь взят из задания.</td></tr>
+                        <tr><td data-label="Балл" class="p-3 text-center font-black text-2xl text-gray-400">0</td><td data-label="Что видит проверяющий" class="p-3">Пусто, не по теме, не по-английски или целиком скопировано из задания.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p class="font-semibold text-slate-800 mt-6">Четыре вещи, за которые дают баллы:</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div class="bg-white border border-gray-200 rounded-xl p-4"><div class="font-bold text-slate-900 mb-1 flex items-center"><i data-lucide="check-square" class="w-4 h-4 text-indigo-500 mr-2"></i>Выполнение задачи</div><p class="text-[14px] text-slate-600">Все три пункта, ни одного пропущенного. Подробнее — ниже в этом уроке.</p></div>
+                <div class="bg-white border border-gray-200 rounded-xl p-4"><div class="font-bold text-slate-900 mb-1 flex items-center"><i data-lucide="zoom-in" class="w-4 h-4 text-indigo-500 mr-2"></i>Детали (elaboration)</div><p class="text-[14px] text-slate-600">Конкретика вместо общих фраз. Урок 4.</p></div>
+                <div class="bg-white border border-gray-200 rounded-xl p-4"><div class="font-bold text-slate-900 mb-1 flex items-center"><i data-lucide="users" class="w-4 h-4 text-indigo-500 mr-2"></i>Social conventions</div><p class="text-[14px] text-slate-600">Тон, вежливость, оформление. Уроки 2, 3, 5, 6.</p></div>
+                <div class="bg-white border border-gray-200 rounded-xl p-4"><div class="font-bold text-slate-900 mb-1 flex items-center"><i data-lucide="spell-check" class="w-4 h-4 text-indigo-500 mr-2"></i>Язык</div><p class="text-[14px] text-slate-600">Разнообразие конструкций и точность: грамматика, слова, орфография. Урок 6 и статьи по грамматике.</p></div>
+            </div>
+
+            <!-- ============ 3. Reading the prompt ============ -->
+            <h2 class="text-sm font-bold text-sky-600 mt-12 mb-4 uppercase tracking-wider">3. Как читать легенду</h2>
+
+            <p>В каждой легенде есть одни и те же части. Найдите их до того, как начнёте писать:</p>
+
+            <div class="bg-slate-50 p-5 sm:p-6 rounded-xl border border-slate-200 text-[15px] leading-loose">
+                <p class="text-slate-700 mb-4">
+                    <mark class="tone">You recently joined a new yoga class at your local community center.</mark>
+                    <mark class="tone-f">The instructor, Mr. Davis,</mark> <mark class="tone">has been very welcoming and helpful.</mark>
+                    <mark class="hl-amber">However, you find the class schedule inconvenient and would prefer if the classes were held at a different time that fits better with your daily routine.</mark>
+                </p>
+                <p class="font-bold mb-2">Write an email to <mark class="tone-f">Mr. Davis</mark>. In your email, do the following:</p>
+                <ul class="list-disc pl-6 space-y-1 text-slate-700">
+                    <li><mark class="hl-rose">Thank</mark> him for his support and guidance in the yoga class.</li>
+                    <li><mark class="hl-rose">Explain</mark> why the current class schedule is inconvenient for you.</li>
+                    <li><mark class="hl-rose">Suggest</mark> alternative times that would work better for you and possibly other participants.</li>
+                </ul>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[14px]">
+                <div class="flex items-start bg-white border border-gray-200 rounded-xl p-3"><mark class="tone mr-2 shrink-0">&nbsp;&nbsp;</mark><span><strong>Контекст:</strong> кто вы и что произошло. Отсюда берём факты, но <strong>пересказываем своими словами</strong>.</span></div>
+                <div class="flex items-start bg-white border border-gray-200 rounded-xl p-3"><mark class="tone-f mr-2 shrink-0">&nbsp;&nbsp;</mark><span><strong>Адресат:</strong> кто он вам и какой нужен тон. Инструктор, который был к вам добр, — вежливо и тепло.</span></div>
+                <div class="flex items-start bg-white border border-gray-200 rounded-xl p-3"><mark class="hl-amber mr-2 shrink-0">&nbsp;&nbsp;</mark><span><strong>Проблема или повод:</strong> зачем вообще письмо. Здесь — неудобное расписание.</span></div>
+                <div class="flex items-start bg-white border border-gray-200 rounded-xl p-3"><mark class="hl-rose mr-2 shrink-0">&nbsp;&nbsp;</mark><span><strong>Глаголы пунктов:</strong> что именно сделать в каждом абзаце.</span></div>
+            </div>
+
+            <!-- ============ 4. Bullet verbs ============ -->
+            <h2 class="text-sm font-bold text-sky-600 mt-12 mb-4 uppercase tracking-wider">4. Глагол пункта = задание для абзаца</h2>
+
+            <p>В 50 реальных заданиях из нашей базы чаще всего встречаются <strong>explain</strong> (38 раз), <strong>describe</strong> (35), <strong>suggest</strong> (23), <strong>ask</strong> (16) и <strong>request</strong> (11). У каждого глагола своя работа:</p>
+
+            <div class="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+                <table class="tbl w-full sm:min-w-[640px] rtable">
+                    <thead><tr><th class="w-28">Глагол</th><th>Что сделать</th><th>Как может звучать</th></tr></thead>
+                    <tbody>
+                        <tr><td data-label="Глагол" class="font-bold text-indigo-700">describe</td><td data-label="Что сделать">Описать <strong>что</strong>: что произошло, как выглядит, где, когда.</td><td data-label="Как может звучать">The left panel was cracked, and two shelves were scratched.</td></tr>
+                        <tr><td data-label="Глагол" class="font-bold text-indigo-700">explain</td><td data-label="Что сделать">Объяснить <strong>почему</strong> или <strong>как это влияет</strong>: причина, последствия.</td><td data-label="Как может звучать">Because of this, I have arrived late twice and missed the warm-up.</td></tr>
+                        <tr><td data-label="Глагол" class="font-bold text-indigo-700">suggest</td><td data-label="Что сделать">Предложить <strong>конкретную</strong> идею и объяснить, чем она поможет.</td><td data-label="Как может звучать">Would it be possible to move the class to 6:30 p.m.?</td></tr>
+                        <tr><td data-label="Глагол" class="font-bold text-indigo-700">ask / inquire</td><td data-label="Что сделать">Задать <strong>вопрос</strong> — с вопросительным знаком.</td><td data-label="Как может звучать">Could you tell me whether group discounts are available?</td></tr>
+                        <tr><td data-label="Глагол" class="font-bold text-indigo-700">request</td><td data-label="Что сделать">Чётко <strong>попросить</strong> о действии.</td><td data-label="Как может звучать">I would appreciate it if you could send a replacement.</td></tr>
+                        <tr><td data-label="Глагол" class="font-bold text-indigo-700">thank</td><td data-label="Что сделать">Поблагодарить <strong>за что-то конкретное</strong>.</td><td data-label="Как может звучать">Thank you for showing easier versions of each pose.</td></tr>
+                        <tr><td data-label="Глагол" class="font-bold text-indigo-700">mention</td><td data-label="Что сделать">Упомянуть — коротко, но с деталью.</td><td data-label="Как может звучать">I really enjoy the breathing exercises at the end.</td></tr>
+                        <tr><td data-label="Глагол" class="font-bold text-indigo-700">invite / offer</td><td data-label="Что сделать">Пригласить или предложить помощь.</td><td data-label="Как может звучать">Would you like to join me on Saturday? · I'd be happy to help.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="flex items-start p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-slate-700">
+                <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-500 mr-3 mt-0.5 shrink-0"></i>
+                <div><strong class="text-amber-800 block mb-1">Describe ≠ explain</strong>Если первый пункт просит <em>describe the issues</em>, а второй — <em>explain how they affect your studies</em>, не повторяйте во втором абзаце список проблем. Второй абзац отвечает на вопрос «и что из этого?».</div>
+            </div>
+
+            <div class="flex items-start p-4 bg-rose-50 border border-rose-200 rounded-xl text-sm text-slate-700">
+                <i data-lucide="split" class="w-5 h-5 text-rose-500 mr-3 mt-0.5 shrink-0"></i>
+                <div><strong class="text-rose-800 block mb-1">Пункт из двух частей</strong><em>Ask for her notes <u>and explain why you need them</u></em>, <em>Request permission to miss class <u>and suggest ways to make up</u></em>. Вторую половину пропускают чаще всего. Перед письмом подчеркните каждое <em>and</em> в пунктах.</div>
+            </div>
+
+            <!-- ============ 5. Skeleton ============ -->
+            <h2 class="text-sm font-bold text-sky-600 mt-12 mb-4 uppercase tracking-wider">5. Скелет письма</h2>
+
+            <p>Письмо почти всегда собирается из одних и тех же блоков. Три пункта — это три абзаца в том же порядке, что в задании: проверяющему легко найти каждый.</p>
+
+            <div class="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-4 items-start">
+                <div class="space-y-2 text-[13.5px]">
+                    <div class="rounded-lg px-3 py-2 bg-slate-100 font-semibold text-slate-700">Приветствие <span class="font-normal text-slate-500">· урок 2</span></div>
+                    <div class="rounded-lg px-3 py-2 bg-sky-100 font-semibold text-sky-800">Первая фраза: зачем пишу <span class="font-normal text-sky-700">· урок 3</span></div>
+                    <div class="rounded-lg px-3 py-2 bg-indigo-100 font-semibold text-indigo-800">Абзац 1 = пункт 1 <span class="font-normal text-indigo-700">· урок 4</span></div>
+                    <div class="rounded-lg px-3 py-2 bg-indigo-100 font-semibold text-indigo-800">Абзац 2 = пункт 2</div>
+                    <div class="rounded-lg px-3 py-2 bg-indigo-100 font-semibold text-indigo-800">Абзац 3 = пункт 3</div>
+                    <div class="rounded-lg px-3 py-2 bg-emerald-100 font-semibold text-emerald-800">Финальная фраза <span class="font-normal text-emerald-700">· урок 6</span></div>
+                    <div class="rounded-lg px-3 py-2 bg-slate-100 font-semibold text-slate-700">Подпись + имя</div>
+                </div>
+                <div class="rounded-xl overflow-hidden border border-emerald-100 bg-white">
+                    <div class="bg-emerald-50 text-emerald-900 font-bold py-2.5 px-4 text-[13px] border-b border-emerald-100 flex items-center"><i data-lucide="check-circle" class="w-4 h-4 mr-2"></i>Образец: письмо Mr. Davis</div>
+                    <div class="p-5 text-[14.5px] text-slate-700 leading-relaxed email-paper"><span class="bg-slate-100 rounded px-1">Dear Mr. Davis,</span>
+
+<span class="bg-indigo-50 rounded px-1">Thank you for making me feel so welcome in your Tuesday yoga class. As a complete beginner, I was nervous at first, but your clear instructions and the way you show easier versions of each pose have helped me feel more confident after only three sessions.</span>
+
+<span class="bg-sky-100 rounded px-1">I'm writing because the current schedule is difficult for me.</span> <span class="bg-indigo-50 rounded px-1">The class starts at 5:30 p.m., but my last lecture ends at 5:15, and it takes me almost thirty minutes to get to the community center. As a result, I have arrived late twice and missed the warm-up.</span>
+
+<span class="bg-indigo-50 rounded px-1">Would it be possible to move the class to 6:30 p.m. or to add a Saturday morning session? I have spoken with two other students who also study until five, and they said a later time would suit them better as well.</span>
+
+<span class="bg-emerald-50 rounded px-1">Thank you for considering this.</span>
+
+<span class="bg-slate-100 rounded px-1">Best regards,
+Anna Petrova</span></div>
+                    <div class="bg-indigo-50/40 border-t border-indigo-100 p-4 text-[13.5px] text-slate-700">Первый пункт — благодарность, поэтому письмо начинается прямо с неё, а «зачем пишу» появляется перед проблемой. Так бывает: формула скелета гибкая, главное — все три пункта по порядку.</div>
+                </div>
+            </div>
+
+            <div class="flex items-start p-4 bg-sky-50 border border-sky-200 rounded-xl text-[14px] text-slate-700">
+                <i data-lucide="bar-chart-3" class="w-5 h-5 text-sky-500 mr-3 mt-0.5 shrink-0"></i>
+                <div><strong class="text-sky-800 block mb-1">Сколько писать?</strong>Мы сравнили объём писем наших учеников с их оценками. Медиана — около <strong>105 слов</strong> и у тех, кто получил 2,5, и у тех, кто получил 5. Объём сам по себе ничего не решает. Решают конкретные детали, тон и точность. Ориентир — <strong>100–150 слов</strong>, по 2–3 предложения на пункт.</div>
+            </div>
+
+            <!-- ============ 6. 7-minute plan ============ -->
+            <h2 class="text-sm font-bold text-sky-600 mt-12 mb-4 uppercase tracking-wider">6. План на 7 минут</h2>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div class="bg-white border-t-4 border-sky-400 border-x border-b border-gray-200 rounded-xl p-4">
+                    <div class="text-[12px] font-bold text-sky-600 mb-1">0:00 – 1:00</div>
+                    <div class="font-bold text-slate-900 mb-2">Прочитать и спланировать</div>
+                    <ul class="text-[14px] text-slate-600 space-y-1 list-disc pl-4"><li>Кому пишу и какой тон</li><li>Подчеркнуть глаголы и каждое <em>and</em></li><li>2–3 ключевых слова на каждый пункт</li></ul>
+                </div>
+                <div class="bg-white border-t-4 border-indigo-500 border-x border-b border-gray-200 rounded-xl p-4">
+                    <div class="text-[12px] font-bold text-indigo-600 mb-1">1:00 – 6:00</div>
+                    <div class="font-bold text-slate-900 mb-2">Писать</div>
+                    <ul class="text-[14px] text-slate-600 space-y-1 list-disc pl-4"><li>Сразу приветствие и подпись — чтобы не забыть</li><li>Пункты по порядку</li><li>Не застревать на одном слове</li></ul>
+                </div>
+                <div class="bg-white border-t-4 border-emerald-500 border-x border-b border-gray-200 rounded-xl p-4">
+                    <div class="text-[12px] font-bold text-emerald-600 mb-1">6:00 – 7:00</div>
+                    <div class="font-bold text-slate-900 mb-2">Проверить</div>
+                    <ul class="text-[14px] text-slate-600 space-y-1 list-disc pl-4"><li>Все 3 пункта на месте?</li><li>Имя адресата без опечаток?</li><li><em>Could you…?</em> с вопросительным знаком?</li></ul>
+                </div>
+            </div>
+
+            <div class="flex items-start p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-slate-700">
+                <i data-lucide="lightbulb" class="w-5 h-5 text-amber-500 mr-3 mt-0.5 shrink-0"></i>
+                <div><strong class="text-amber-800 block mb-1">Время кончается?</strong>Допишите хотя бы одно предложение к пропущенному пункту и короткую концовку. Пропущенный пункт стоит дороже, чем недописанная деталь.</div>
+            </div>
+
+            <!-- ============ 7. Don't copy ============ -->
+            <h2 class="text-sm font-bold text-sky-600 mt-12 mb-4 uppercase tracking-wider">7. Не копируйте задание</h2>
+
+            <p>Из легенды можно брать факты, но не готовые фразы. Если связный текст в основном взят из задания, это признак низких баллов, а письмо, целиком скопированное из задания, получает 0. Пересказ своими словами — ещё и готовая деталь:</p>
+
+            <div class="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+                <table class="tbl w-full sm:min-w-[600px] rtable">
+                    <thead><tr><th>В задании</th><th>Своими словами</th></tr></thead>
+                    <tbody>
+                        <tr><td data-label="В задании" class="text-rose-700">the service was poor</td><td data-label="Своими словами" class="text-emerald-700">we waited almost forty minutes before anyone took our order</td></tr>
+                        <tr><td data-label="В задании" class="text-rose-700">you found the workshop very helpful</td><td data-label="Своими словами" class="text-emerald-700">the workshop was one of the most useful events I've attended this semester</td></tr>
+                        <tr><td data-label="В задании" class="text-rose-700">the internet connection is very slow and often disconnects</td><td data-label="Своими словами" class="text-emerald-700">pages take almost a minute to load, and I lose the connection several times an hour</td></tr>
+                        <tr><td data-label="В задании" class="text-rose-700">you accidentally damaged the book</td><td data-label="Своими словами" class="text-emerald-700">I spilled coffee on it, and several pages are now stained</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- ============ Common mistakes ============ -->
+            <h2 class="text-sm font-bold text-sky-600 mt-12 mb-4 uppercase tracking-wider">Частые ошибки наших студентов</h2>
+
+            <p>Мы посмотрели <strong>387 разборов</strong> писем наших учеников. Вот что встречается в замечаниях чаще всего:</p>
+
+            <div class="bg-white border border-gray-200 rounded-xl p-5 space-y-3 text-[14px]">
+                <div><div class="flex justify-between mb-1"><span>Орфография и опечатки</span><span class="font-semibold">39%</span></div><div class="h-2 bg-slate-100 rounded-full"><div class="h-2 bg-rose-400 rounded-full" style="width:39%"></div></div></div>
+                <div><div class="flex justify-between mb-1"><span>Артикли</span><span class="font-semibold">30%</span></div><div class="h-2 bg-slate-100 rounded-full"><div class="h-2 bg-rose-400 rounded-full" style="width:30%"></div></div></div>
+                <div><div class="flex justify-between mb-1"><span>Тон и регистр</span><span class="font-semibold">29%</span></div><div class="h-2 bg-slate-100 rounded-full"><div class="h-2 bg-amber-400 rounded-full" style="width:29%"></div></div></div>
+                <div><div class="flex justify-between mb-1"><span>Фразы, скопированные из задания</span><span class="font-semibold">11%</span></div><div class="h-2 bg-slate-100 rounded-full"><div class="h-2 bg-amber-400 rounded-full" style="width:11%"></div></div></div>
+                <div><div class="flex justify-between mb-1"><span>Пункт задания пропущен или раскрыт наполовину</span><span class="font-semibold">11%</span></div><div class="h-2 bg-slate-100 rounded-full"><div class="h-2 bg-amber-400 rounded-full" style="width:11%"></div></div></div>
+                <div><div class="flex justify-between mb-1"><span>Общие фразы вместо деталей</span><span class="font-semibold">9%</span></div><div class="h-2 bg-slate-100 rounded-full"><div class="h-2 bg-amber-400 rounded-full" style="width:9%"></div></div></div>
+            </div>
+
+            <div class="space-y-3">
+                <details class="group bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden" open>
+                    <summary class="flex items-center p-4 sm:p-5 cursor-pointer hover:bg-slate-50 transition">
+                        <i data-lucide="chevron-right" class="w-5 h-5 mr-3 text-rose-500 transition-transform duration-200 group-open:rotate-90 shrink-0"></i>
+                        <h3 class="font-bold text-slate-800 text-[16px]">Пропущенная половина пункта</h3>
+                    </summary>
+                    <div class="px-5 pb-5 pt-1 text-[14.5px] text-slate-700 space-y-2">
+                        <p>Типичные замечания из разборов: «не назвала саму оценку, а в задании чётко сказано: назовите неверную оценку»; «в условии просили указать детали печати — забыла»; «задание требовало сначала спросить, можно ли сохранить исходную дату, а ты сразу перешла к переносу».</p>
+                        <p class="bg-slate-50 rounded-lg p-3">Перед тем как писать, превратите каждый пункт в чек-лист: <em>Request permission to miss class</em> ☐ <em>and suggest ways to make up</em> ☐.</p>
+                    </div>
+                </details>
+                <details class="group bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                    <summary class="flex items-center p-4 sm:p-5 cursor-pointer hover:bg-slate-50 transition">
+                        <i data-lucide="chevron-right" class="w-5 h-5 mr-3 text-rose-500 transition-transform duration-200 group-open:rotate-90 shrink-0"></i>
+                        <h3 class="font-bold text-slate-800 text-[16px]">Списанные куски легенды</h3>
+                    </summary>
+                    <div class="px-5 pb-5 pt-1 text-[14.5px] text-slate-700 space-y-2">
+                        <p>Фразы вроде <span class="bad">several members caught the flu and our preparation is behind schedule</span> или <span class="bad">a critical lab session has been moved to the same time</span> были переписаны из задания почти слово в слово. Проверяющий видит это сразу.</p>
+                        <p class="bg-slate-50 rounded-lg p-3">Перескажите: <span class="text-emerald-700">two of our teammates are sick with the flu, so we have only finished half of the slides</span>.</p>
+                    </div>
+                </details>
+            </div>
+
+            <!-- ============ Review ============ -->
+            <h2 class="text-sm font-bold text-sky-600 mt-12 mb-4 uppercase tracking-wider">Review: шпаргалка</h2>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[14px]">
+                <div class="bg-white border border-gray-200 rounded-xl p-4"><div class="font-bold text-indigo-800 mb-2">Перед письмом (1 минута)</div><ol class="list-decimal pl-5 space-y-1"><li>Кому пишу и какой тон?</li><li>Глаголы пунктов и все <em>and</em></li><li>2–3 ключевых слова на пункт</li></ol></div>
+                <div class="bg-white border border-gray-200 rounded-xl p-4"><div class="font-bold text-indigo-800 mb-2">Скелет</div><p>Приветствие → зачем пишу → 3 абзаца по пунктам → финальная фраза → подпись + имя</p></div>
+                <div class="bg-white border border-gray-200 rounded-xl p-4"><div class="font-bold text-indigo-800 mb-2">Объём</div><p>100–150 слов, по 2–3 предложения на пункт. Длина не заменяет детали.</p></div>
+                <div class="bg-white border border-gray-200 rounded-xl p-4"><div class="font-bold text-indigo-800 mb-2">Язык</div><p>Факты из легенды — да, её фразы — нет. Пересказывайте и добавляйте конкретику.</p></div>
+            </div>
+
+            <!-- ============ Practice ============ -->
+            <h2 class="text-sm font-bold text-sky-600 mt-14 mb-4 uppercase tracking-wider">Interactive Practice</h2>
+            <p>Все пункты и ситуации — из реальных заданий TOEFL.</p>
+
+            <section class="bg-white border border-gray-200 rounded-2xl p-5 sm:p-6 shadow-sm">
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+                    <h3 class="font-bold text-indigo-800 text-lg">A. Что требует пункт?</h3>
+                    <span class="text-[12px] font-semibold text-slate-500 bg-slate-100 rounded-full px-3 py-1" id="score-verbs"></span>
+                </div>
+                <p class="text-[14px] text-slate-500 mb-4">Выберите, что должно быть в абзаце для этого пункта.</p>
+                <div id="ex-verbs" class="space-y-5"></div>
+            </section>
+
+            <section class="bg-white border border-gray-200 rounded-2xl p-5 sm:p-6 shadow-sm">
+                <h3 class="font-bold text-indigo-800 text-lg mb-1">B. Соберите письмо</h3>
+                <p class="text-[14px] text-slate-500 mb-4">Расставьте части письма по порядку: перетащите или используйте стрелки.</p>
+                <div id="ex-order" class="space-y-8"></div>
+            </section>
+
+            <section class="bg-white border border-gray-200 rounded-2xl p-5 sm:p-6 shadow-sm">
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+                    <h3 class="font-bold text-indigo-800 text-lg">C. Какой пункт пропущен?</h3>
+                    <span class="text-[12px] font-semibold text-slate-500 bg-slate-100 rounded-full px-3 py-1" id="score-missing"></span>
+                </div>
+                <p class="text-[14px] text-slate-500 mb-4">Прочитайте задание и письмо. Чего в письме не хватает?</p>
+                <div id="ex-missing" class="space-y-5"></div>
+            </section>
+
+            <section class="bg-white border border-gray-200 rounded-2xl p-5 sm:p-6 shadow-sm">
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+                    <h3 class="font-bold text-indigo-800 text-lg">D. Своими словами</h3>
+                    <span class="text-[12px] font-semibold text-slate-500 bg-slate-100 rounded-full px-3 py-1" id="score-para"></span>
+                </div>
+                <p class="text-[14px] text-slate-500 mb-4">Выберите лучший пересказ фразы из задания.</p>
+                <div id="ex-para" class="space-y-5"></div>
+            </section>
+
+            <section class="bg-white border border-gray-200 rounded-2xl p-5 sm:p-6 shadow-sm">
+                <h3 class="font-bold text-indigo-800 text-lg mb-1">E. План за одну минуту</h3>
+                <p class="text-[14px] text-slate-500 mb-4">Засеките минуту и запишите по 2–3 ключевых слова на каждый пункт. Потом сравните с образцом плана и письма.</p>
+                <div class="bg-slate-50 p-4 sm:p-5 rounded-xl border border-slate-200 text-[14.5px] mb-4">
+                    <p class="text-slate-700 mb-3">You recently purchased a piece of furniture for your dorm room from an online store called 'Home Comforts.' When the item arrived, you discovered that it was damaged during shipping. You are disappointed because you were looking forward to using the new furniture. You need to contact customer service to resolve the issue.</p>
+                    <p class="font-bold mb-2">Write an email to Ms. Brown. In your email, do the following:</p>
+                    <ul class="list-disc pl-6 space-y-1 text-slate-700"><li>Describe the item you purchased and the damage it sustained.</li><li>Explain why you are disappointed with the situation.</li><li>Request a replacement or a refund for the damaged item.</li></ul>
+                </div>
+                <div id="ex-plan" class="space-y-8"></div>
+            </section>
+
+        </div>
+
+        <!-- Lesson pager -->
+        <div class="mt-14 flex flex-col sm:flex-row gap-3">
+            <a href="article-write-an-email.html" class="group flex-1 bg-white border border-gray-200 rounded-2xl p-4 hover:border-indigo-300 hover:shadow-sm transition"><div class="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1">← Обзор задания</div><div class="font-bold text-slate-800 group-hover:text-indigo-700">Write an Email</div></a>
+            <a href="article-email-tone.html" class="group flex-1 bg-indigo-600 border border-indigo-600 rounded-2xl p-4 hover:bg-indigo-700 transition text-right"><div class="text-[11px] font-bold uppercase tracking-wider text-indigo-200 mb-1">Урок 2 →</div><div class="font-bold text-white">Адресат и тон</div></a>
+        </div>
+    </main>
+    <!-- Mobile Navigation Bar -->
+    <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex justify-around py-3 z-40 pb-safe">
+        <a href="index.html" class="flex flex-col items-center text-gray-400 hover:text-slate-800 transition">
+            <i data-lucide="home" class="w-6 h-6"></i><span class="text-[10px] mt-1 font-medium">Home</span>
+        </a>
+        <a href="vocabulary.html" class="flex flex-col items-center text-gray-400 hover:text-slate-800 transition">
+            <i data-lucide="book-open" class="w-6 h-6"></i><span class="text-[10px] mt-1 font-medium">Vocab</span>
+        </a>
+        <a href="reading.html" class="flex flex-col items-center text-gray-400 hover:text-slate-800 transition">
+            <i data-lucide="book-text" class="w-6 h-6"></i><span class="text-[10px] mt-1 font-medium">Reading</span>
+        </a>
+        <a href="writing.html" class="flex flex-col items-center text-slate-900">
+            <i data-lucide="pen-tool" class="w-6 h-6"></i><span class="text-[10px] mt-1 font-bold">Writing</span>
+        </a>
+    </nav>
+
+
+    <script>
+    /* ================= Email Course exercise engine ================= */
+    function safeCreateIcons() {
+        try { if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons(); } catch (e) { console.warn('icons skipped', e); }
+    }
+    function el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; }
+    function shuffle(a) { const b = a.slice(); for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; }
+    function promptBox(ctx) { return ctx ? '<div class="bg-slate-50 border border-slate-200 rounded-lg p-3 text-[13.5px] text-slate-600 mb-3 email-paper">' + ctx + '</div>' : ''; }
+    function verdict(ok) { return '<strong>' + (ok ? 'Верно. ' : 'Не совсем. ') + '</strong>'; }
+    function fbClass(ok) { return 'mt-3 text-[14px] rounded-lg p-3 ' + (ok ? 'bg-emerald-50 text-emerald-900' : 'bg-rose-50 text-rose-900'); }
+    function smallBtn(label, primary) {
+        const b = el('button', primary
+            ? 'text-[14px] font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg px-4 py-2'
+            : 'text-[14px] font-semibold text-indigo-700 bg-white border border-indigo-200 rounded-lg px-4 py-2 hover:bg-indigo-50', label);
+        b.type = 'button'; return b;
+    }
+    function fillSkeleton(tpl, chosen) {
+        return tpl.replace(/\{(\w+)\}/g, (m, k) => chosen[k] !== undefined ? chosen[k] : m)
+                  .replace(/\[\[(.+?)\]\]/g, '<span class="text-gray-400">[$1]</span>');
+    }
+
+    /* ---------- Multiple choice ---------- */
+    function renderMC(containerId, scoreId, data) {
+        const box = document.getElementById(containerId); if (!box) return;
+        box.innerHTML = '';
+        let answered = 0, correct = 0;
+        const scoreEl = scoreId ? document.getElementById(scoreId) : null;
+        const upd = () => { if (scoreEl) scoreEl.textContent = 'Верно: ' + correct + ' / ' + data.length; };
+        upd();
+        data.forEach((item, idx) => {
+            const card = el('div', 'border-t border-gray-100 pt-5 first:border-0 first:pt-0');
+            card.innerHTML = '<div class="text-[12px] font-bold text-indigo-500 mb-2">' + (idx + 1) + ' / ' + data.length + '</div>'
+                + promptBox(item.ctx)
+                + (item.q ? '<p class="font-semibold text-slate-800 text-[15px] mb-3">' + item.q + '</p>' : '');
+            const long = item.options.some(o => o.length > 55);
+            const opts = el('div', 'grid grid-cols-1 ' + (long ? '' : 'sm:grid-cols-2 ') + 'gap-2');
+            const order = item.fixed ? item.options.map((o, i) => i) : shuffle(item.options.map((o, i) => i));
+            const expl = el('div', 'hidden');
+            order.forEach(i => {
+                const b = el('button', 'opt-btn'); b.type = 'button'; b.textContent = item.options[i]; b.dataset.i = i;
+                b.addEventListener('click', () => {
+                    if (b.disabled) return;
+                    opts.querySelectorAll('button').forEach(x => { x.disabled = true; if (+x.dataset.i === item.answer) x.classList.add('opt-correct'); else if (x !== b) x.classList.add('opt-dim'); });
+                    const ok = i === item.answer;
+                    if (!ok) b.classList.add('opt-wrong');
+                    answered++; if (ok) correct++; upd();
+                    expl.className = fbClass(ok);
+                    expl.innerHTML = verdict(ok) + item.expl;
+                    if (answered === data.length) {
+                        const done = el('div', 'mt-5 flex flex-wrap items-center gap-3 bg-indigo-50 border border-indigo-100 rounded-xl p-4 text-[14px]');
+                        done.innerHTML = '<span class="font-semibold text-indigo-900">Итог: ' + correct + ' из ' + data.length + '</span>';
+                        const again = el('button', 'ml-auto text-[13px] font-semibold text-indigo-700 bg-white border border-indigo-200 rounded-lg px-3 py-1.5 hover:bg-indigo-50', 'Пройти заново');
+                        again.type = 'button'; again.addEventListener('click', () => renderMC(containerId, scoreId, data));
+                        done.appendChild(again); box.appendChild(done);
+                    }
+                });
+                opts.appendChild(b);
+            });
+            card.appendChild(opts); card.appendChild(expl);
+            box.appendChild(card);
+        });
+    }
+
+    /* ---------- Sort into columns (SortableJS + tap fallback) ---------- */
+    function renderSort(containerId, cfg) {
+        const box = document.getElementById(containerId); if (!box) return;
+        box.innerHTML = '';
+        const pool = el('div', 'sort-zone rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 p-2 mb-4');
+        pool.dataset.col = 'pool';
+        shuffle(cfg.items).forEach(it => { const c = el('span', 'chip'); c.textContent = it.t; c.dataset.c = it.c; pool.appendChild(c); });
+        box.appendChild(pool);
+        const grid = el('div', 'grid grid-cols-1 ' + (cfg.cols.length === 3 ? 'md:grid-cols-3' : 'sm:grid-cols-2') + ' gap-3');
+        const zones = [pool];
+        let selected = null;
+        const result = el('div', 'hidden');
+        const zoneByKey = {};
+        const moveBar = el('div', 'hidden fixed left-3 right-3 bottom-20 md:left-auto md:right-8 md:bottom-8 z-50 bg-white border border-indigo-200 shadow-xl rounded-xl p-2 flex-wrap gap-2 items-center justify-center');
+        moveBar.appendChild(el('span', 'text-[12px] text-slate-500 px-1', 'Переместить в:'));
+        function showBar(on) { moveBar.classList.toggle('hidden', !on); moveBar.classList.toggle('flex', on); }
+        function clearMarks() { box.querySelectorAll('.chip').forEach(c => c.classList.remove('ok', 'no')); result.className = 'hidden'; }
+        function moveSelected(zone) { if (!selected) return; zone.appendChild(selected); selected.classList.remove('selected'); selected = null; showBar(false); clearMarks(); }
+        cfg.cols.forEach(col => {
+            const wrap = el('div', 'rounded-xl border-2 border-' + col.tone + '-200 bg-' + col.tone + '-50/40 p-3');
+            wrap.innerHTML = '<div class="font-bold text-' + col.tone + '-800 text-[14px] mb-2 flex items-center">' + (col.icon ? '<i data-lucide="' + col.icon + '" class="w-4 h-4 mr-1.5"></i>' : '') + col.label + '</div>';
+            const z = el('div', 'sort-zone rounded-lg'); z.dataset.col = col.key; zoneByKey[col.key] = z;
+            const mb = el('button', 'text-[13px] font-semibold text-' + col.tone + '-800 bg-' + col.tone + '-50 border border-' + col.tone + '-200 rounded-lg px-3 py-1.5', col.label); mb.type = 'button';
+            mb.addEventListener('click', () => moveSelected(z)); moveBar.appendChild(mb);
+            wrap.appendChild(z); grid.appendChild(wrap); zones.push(z);
+            wrap.addEventListener('click', e => { if (e.target.closest('.chip')) return; moveSelected(z); });
+        });
+        box.appendChild(moveBar);
+        box.appendChild(grid);
+        box.addEventListener('click', e => {
+            const chip = e.target.closest('.chip'); if (!chip || !box.contains(chip)) return;
+            if (selected === chip) { chip.classList.remove('selected'); selected = null; showBar(false); return; }
+            if (selected) selected.classList.remove('selected');
+            selected = chip; chip.classList.add('selected'); showBar(true);
+        });
+        pool.addEventListener('click', e => { if (e.target.closest('.chip')) return; moveSelected(pool); });
+        if (typeof Sortable !== 'undefined') {
+            zones.forEach(z => Sortable.create(z, { group: containerId, animation: 150, ghostClass: 'sortable-ghost', delay: 120, delayOnTouchOnly: true, onEnd: clearMarks }));
+        }
+        const bar = el('div', 'mt-4 flex flex-wrap gap-2');
+        const check = smallBtn('Проверить', true), reset = smallBtn('Начать заново');
+        bar.appendChild(check); bar.appendChild(reset); box.appendChild(bar); box.appendChild(result);
+        check.addEventListener('click', () => {
+            let ok = 0, placed = 0;
+            box.querySelectorAll('.chip').forEach(c => {
+                c.classList.remove('ok', 'no');
+                const col = c.parentElement.dataset.col;
+                if (col === 'pool') return;
+                placed++;
+                if (col === c.dataset.c) { c.classList.add('ok'); ok++; } else c.classList.add('no');
+            });
+            const total = cfg.items.length;
+            let msg = 'Верно: ' + ok + ' из ' + total + '.';
+            if (placed < total) msg += ' Ещё не распределено: ' + (total - placed) + '.';
+            if (ok < total && placed > 0) msg += ' Красные фразы стоят не в той колонке.';
+            if (ok === total) msg = '<strong>Отлично, всё верно!</strong> ' + (cfg.doneMsg || '');
+            result.className = 'mt-3 text-[14px] rounded-lg p-3 ' + (ok === total ? 'bg-emerald-50 text-emerald-900' : 'bg-slate-50 text-slate-700');
+            result.innerHTML = msg;
+        });
+        reset.addEventListener('click', () => renderSort(containerId, cfg));
+        safeCreateIcons();
+    }
+
+    /* ---------- Spot the line (tone problems, errors, irrelevant sentences) ---------- */
+    function renderSpot(containerId, emails, opts) {
+        opts = opts || {};
+        const box = document.getElementById(containerId); if (!box) return;
+        box.innerHTML = '';
+        emails.forEach(email => {
+            const need = email.lines.filter(l => l.bad).length;
+            let found = 0;
+            const card = el('div', 'rounded-xl border border-gray-200 overflow-hidden');
+            const head = el('div', 'bg-slate-50 border-b border-gray-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2');
+            head.innerHTML = '<span class="font-semibold text-[13.5px] text-slate-700">' + email.title + '</span>';
+            const counter = el('span', 'text-[12px] font-semibold text-slate-500 bg-white border border-gray-200 rounded-full px-3 py-0.5');
+            const upd = () => { counter.textContent = (opts.counter || 'Найдено') + ': ' + found + ' из ' + need; };
+            upd(); head.appendChild(counter); card.appendChild(head);
+            const body = el('div', 'p-3 space-y-1');
+            email.lines.forEach(line => {
+                const b = el('button', 'spot-line email-paper'); b.type = 'button'; b.textContent = line.t;
+                const note = el('div', 'hidden');
+                b.addEventListener('click', () => {
+                    if (b.classList.contains('done')) return;
+                    if (line.bad) {
+                        b.classList.add('hit', 'done'); found++; upd();
+                        note.className = 'text-[13.5px] rounded-lg p-3 mx-2 mb-2 bg-rose-50 text-rose-900';
+                        note.innerHTML = line.why + (line.fix ? '<div class="mt-1.5 text-emerald-800"><strong>Лучше:</strong> ' + line.fix + '</div>' : '');
+                        if (found === need) body.appendChild(el('div', 'text-[13.5px] font-semibold text-emerald-700 px-2 pt-2', '✓ ' + (opts.done || 'Все проблемные фразы найдены.')));
+                    } else {
+                        b.classList.add('fine');
+                        setTimeout(() => b.classList.remove('fine'), 900);
+                        note.className = 'text-[13px] rounded-lg px-3 py-1.5 mx-2 mb-2 bg-emerald-50 text-emerald-800';
+                        note.textContent = opts.fine || 'Здесь всё в порядке.';
+                        setTimeout(() => { note.className = 'hidden'; }, 1600);
+                    }
+                });
+                body.appendChild(b); body.appendChild(note);
+            });
+            card.appendChild(body);
+            box.appendChild(card);
+        });
+    }
+
+    /* ---------- Open writing task with a model answer ---------- */
+    function renderOpen(containerId, items) {
+        const box = document.getElementById(containerId); if (!box) return;
+        box.innerHTML = '';
+        items.forEach((it, idx) => {
+            const card = el('div', '');
+            card.innerHTML = '<div class="text-[12px] font-bold text-indigo-500 mb-2">' + (idx + 1) + '. ' + it.label + '</div>'
+                + (it.from ? '<div class="' + (it.fromTone === 'neutral' ? 'bg-slate-50 border-slate-200' : 'bg-rose-50/60 border-rose-100') + ' border rounded-lg p-3 text-[14px] text-slate-700 email-paper mb-2">' + it.from + '</div>' : '')
+                + '<p class="text-[14px] text-slate-600 mb-2">' + it.task + '</p>';
+            const ta = el('textarea', 'w-full border border-gray-300 rounded-lg p-3 text-[14.5px] focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400');
+            ta.style.minHeight = (it.rows || 7) * 24 + 'px';
+            ta.placeholder = it.placeholder || 'Ваш вариант…';
+            const wc = el('div', 'text-[12px] text-gray-400 mt-1', 'Слов: 0');
+            ta.addEventListener('input', () => { wc.textContent = 'Слов: ' + (ta.value.trim().match(/\S+/g) || []).length; });
+            const btn = smallBtn('Показать образец', true); btn.classList.add('mt-3');
+            const model = el('div', 'hidden mt-3 rounded-lg overflow-hidden border border-emerald-100');
+            model.innerHTML = '<div class="bg-emerald-50 text-emerald-900 font-bold py-2.5 px-4 text-[13px] border-b border-emerald-100">' + (it.modelLabel || 'Образец') + '</div>'
+                + '<div class="bg-white p-4 text-[14.5px] text-slate-700 leading-relaxed email-paper">' + it.model + '</div>'
+                + (it.check ? '<div class="bg-indigo-50/40 p-4 text-[13.5px] text-slate-700 border-t border-indigo-100"><div class="font-semibold text-indigo-800 mb-1">Сверьтесь:</div><ul class="list-disc pl-5 space-y-0.5">' + it.check.map(c => '<li>' + c + '</li>').join('') + '</ul></div>' : '');
+            btn.addEventListener('click', () => { model.classList.toggle('hidden'); btn.textContent = model.classList.contains('hidden') ? 'Показать образец' : 'Скрыть образец'; });
+            card.appendChild(ta); card.appendChild(wc); card.appendChild(btn); card.appendChild(model);
+            box.appendChild(card);
+        });
+    }
+
+    /* ---------- Put parts in the right order ---------- */
+    function renderOrder(containerId, items) {
+        const box = document.getElementById(containerId); if (!box) return;
+        box.innerHTML = '';
+        items.forEach((it, idx) => {
+            const card = el('div', '');
+            card.innerHTML = '<div class="text-[12px] font-bold text-indigo-500 mb-2">' + (idx + 1) + '. ' + it.title + '</div>' + promptBox(it.ctx);
+            const list = el('div', 'space-y-2');
+            const rows = it.parts.map((p, i) => ({ t: p, i }));
+            let order = shuffle(rows);
+            if (order.every((r, k) => r.i === k)) order = order.slice(1).concat(order[0]);
+            const result = el('div', 'hidden');
+            function draw() {
+                list.innerHTML = '';
+                order.forEach((r, k) => {
+                    const row = el('div', 'order-row flex items-start gap-2 bg-white border-2 border-slate-200 rounded-lg p-2.5');
+                    row.dataset.i = r.i;
+                    const txt = el('div', 'flex-1 text-[14px] text-slate-700 email-paper'); txt.textContent = r.t;
+                    const ctl = el('div', 'flex flex-col gap-1 shrink-0');
+                    const up = el('button', 'w-8 h-7 rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 text-[13px]', '▲'); up.type = 'button';
+                    const dn = el('button', 'w-8 h-7 rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 text-[13px]', '▼'); dn.type = 'button';
+                    up.disabled = k === 0; dn.disabled = k === order.length - 1;
+                    if (up.disabled) up.classList.add('opacity-30'); if (dn.disabled) dn.classList.add('opacity-30');
+                    up.addEventListener('click', () => { if (k > 0) { [order[k - 1], order[k]] = [order[k], order[k - 1]]; result.className = 'hidden'; draw(); } });
+                    dn.addEventListener('click', () => { if (k < order.length - 1) { [order[k + 1], order[k]] = [order[k], order[k + 1]]; result.className = 'hidden'; draw(); } });
+                    ctl.appendChild(up); ctl.appendChild(dn);
+                    row.appendChild(txt); row.appendChild(ctl);
+                    list.appendChild(row);
+                });
+            }
+            draw();
+            if (typeof Sortable !== 'undefined') {
+                Sortable.create(list, { animation: 150, ghostClass: 'sortable-ghost', delay: 150, delayOnTouchOnly: true, handle: '.email-paper',
+                    onEnd: () => { const ids = [...list.children].map(c => +c.dataset.i); order = ids.map(i => rows[i]); result.className = 'hidden'; draw(); } });
+            }
+            const bar = el('div', 'mt-3 flex flex-wrap gap-2');
+            const check = smallBtn('Проверить', true), again = smallBtn('Перемешать');
+            bar.appendChild(check); bar.appendChild(again);
+            check.addEventListener('click', () => {
+                let ok = 0;
+                [...list.children].forEach((row, k) => {
+                    const good = +row.dataset.i === k; if (good) ok++;
+                    row.classList.remove('border-slate-200', 'border-emerald-400', 'border-rose-400', 'bg-emerald-50', 'bg-rose-50');
+                    row.classList.add(good ? 'border-emerald-400' : 'border-rose-400', good ? 'bg-emerald-50' : 'bg-rose-50');
+                });
+                const all = ok === rows.length;
+                result.className = fbClass(all);
+                result.innerHTML = all ? '<strong>Всё на своих местах.</strong> ' + (it.expl || '') : 'На своём месте: ' + ok + ' из ' + rows.length + '. Красные блоки нужно переставить.';
+            });
+            again.addEventListener('click', () => { order = shuffle(rows); result.className = 'hidden'; draw(); });
+            card.appendChild(list); card.appendChild(bar); card.appendChild(result);
+            box.appendChild(card);
+        });
+    }
+
+    /* ---------- Step-by-step email builder (with optional timed writing) ---------- */
+    function renderBuilder(containerId, B) {
+        const box = document.getElementById(containerId); if (!box) return;
+        box.innerHTML = '';
+        box.innerHTML = '<div class="bg-slate-50 p-4 sm:p-5 rounded-xl border border-slate-200 text-[14.5px] mb-5">'
+            + '<p class="text-slate-700 mb-3">' + B.ctx + '</p>'
+            + '<p class="font-bold mb-2">Write an email to ' + B.to + '. In your email, do the following:</p>'
+            + '<ul class="list-disc pl-6 space-y-1 text-slate-700">' + B.bullets.map(b => '<li>' + b + '</li>').join('') + '</ul>'
+            + '<p class="text-slate-500 text-[13px] mt-3">Write as much as you can and in complete sentences.</p></div>';
+
+        if (B.write) {
+            const wrap = el('details', 'group mb-5 border border-indigo-100 rounded-xl bg-indigo-50/30 overflow-hidden');
+            wrap.innerHTML = '<summary class="flex items-center px-4 py-3 cursor-pointer text-[14px] font-semibold text-indigo-800"><i data-lucide="timer" class="w-4 h-4 mr-2"></i>Сначала напишите сами за 7 минут</summary>';
+            const inner = el('div', 'px-4 pb-4');
+            const meta = el('div', 'text-[13px] text-slate-600 mb-2', '<b>To:</b> ' + B.to + (B.subject ? ' &nbsp; <b>Subject:</b> ' + B.subject : ''));
+            const ta = el('textarea', 'w-full border border-gray-300 rounded-lg p-3 text-[14.5px] bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200');
+            ta.style.minHeight = '220px'; ta.placeholder = 'Ваше письмо…';
+            const row = el('div', 'flex flex-wrap items-center gap-3 mt-2 text-[13px]');
+            const wc = el('span', 'text-gray-500', 'Слов: 0');
+            const tm = el('span', 'font-mono font-semibold text-slate-700', '07:00');
+            const start = smallBtn('Запустить таймер');
+            let left = 420, timer = null;
+            const show = () => { tm.textContent = String(Math.floor(left / 60)).padStart(2, '0') + ':' + String(left % 60).padStart(2, '0'); };
+            start.addEventListener('click', () => {
+                if (timer) { clearInterval(timer); timer = null; start.textContent = 'Продолжить'; return; }
+                start.textContent = 'Пауза';
+                timer = setInterval(() => { left--; show(); if (left <= 0) { clearInterval(timer); timer = null; tm.textContent = 'Время вышло'; tm.classList.add('text-rose-600'); start.disabled = true; } }, 1000);
+            });
+            ta.addEventListener('input', () => { wc.textContent = 'Слов: ' + (ta.value.trim().match(/\S+/g) || []).length; });
+            row.appendChild(start); row.appendChild(tm); row.appendChild(wc);
+            inner.appendChild(meta); inner.appendChild(ta); inner.appendChild(row);
+            wrap.appendChild(inner); box.appendChild(wrap);
+        }
+
+        const stepsWrap = el('div', 'space-y-4'); box.appendChild(stepsWrap);
+        const chosen = {}; let score = 0;
+        function showStep(n) {
+            if (n >= B.steps.length) return finish();
+            const s = B.steps[n];
+            const card = el('div', 'border border-gray-200 rounded-xl p-4 bg-white');
+            card.innerHTML = '<div class="text-[12px] font-bold text-indigo-500 mb-2">Шаг ' + (n + 1) + ' из ' + B.steps.length + ' · ' + s.q + '</div>';
+            const opts = el('div', 'grid grid-cols-1 gap-2');
+            const expl = el('div', 'hidden');
+            (s.fixed ? s.options.map((o, i) => i) : shuffle(s.options.map((o, i) => i))).forEach(i => {
+                const b = el('button', 'opt-btn'); b.type = 'button'; b.textContent = s.options[i]; b.dataset.i = i;
+                b.addEventListener('click', () => {
+                    if (b.disabled) return;
+                    opts.querySelectorAll('button').forEach(x => { x.disabled = true; if (+x.dataset.i === s.answer) x.classList.add('opt-correct'); else if (x !== b) x.classList.add('opt-dim'); });
+                    const ok = i === s.answer; if (!ok) b.classList.add('opt-wrong'); else score++;
+                    chosen[s.key] = s.options[s.answer];
+                    expl.className = fbClass(ok);
+                    expl.innerHTML = verdict(ok) + s.expl;
+                    setTimeout(() => showStep(n + 1), 350);
+                });
+                opts.appendChild(b);
+            });
+            card.appendChild(opts); card.appendChild(expl);
+            stepsWrap.appendChild(card);
+        }
+        function finish() {
+            const fin = el('div', 'mt-6 space-y-4');
+            fin.innerHTML = '<div class="bg-indigo-50 border border-indigo-100 rounded-xl p-4 text-[14px] text-indigo-900"><strong>С первого раза: ' + score + ' из ' + B.steps.length + '.</strong> ' + (B.after || 'Вот каркас вашего письма — серые места допишите сами.') + '</div>'
+                + '<div class="rounded-xl overflow-hidden border border-gray-200"><div class="bg-slate-50 font-bold py-2.5 px-4 text-[13px] border-b border-gray-200 text-slate-700">Ваш каркас</div>'
+                + '<div class="bg-white p-4 text-[14.5px] text-slate-700 leading-relaxed email-paper">' + fillSkeleton(B.skeleton, chosen) + '</div></div>';
+            const btn = smallBtn('Показать образцовое письмо', true);
+            const model = el('div', 'hidden rounded-xl overflow-hidden border border-emerald-100');
+            model.innerHTML = '<div class="bg-emerald-50 text-emerald-900 font-bold py-2.5 px-4 text-[13px] border-b border-emerald-100 flex items-center"><i data-lucide="check-circle" class="w-4 h-4 mr-2"></i>Sample High-Level Response</div>'
+                + '<div class="bg-white p-5 text-[14.5px] text-slate-700 leading-relaxed email-paper">' + B.model + '</div>'
+                + '<div class="bg-[#313374] text-white font-bold py-2 px-4 text-[13px]">Почему это работает</div>'
+                + '<div class="bg-indigo-50/30 p-4 text-[14px] text-slate-700"><ul class="list-disc pl-5 space-y-1">' + B.notes.map(n => '<li>' + n + '</li>').join('') + '</ul></div>';
+            btn.addEventListener('click', () => { model.classList.toggle('hidden'); btn.textContent = model.classList.contains('hidden') ? 'Показать образцовое письмо' : 'Скрыть образец'; safeCreateIcons(); });
+            const again = smallBtn('Собрать заново'); again.addEventListener('click', () => renderBuilder(containerId, B));
+            const bar = el('div', 'flex flex-wrap gap-2'); bar.appendChild(btn); bar.appendChild(again);
+            fin.appendChild(bar); fin.appendChild(model);
+            stepsWrap.appendChild(fin);
+        }
+        showStep(0);
+        safeCreateIcons();
+    }
+
+    /* ================= Lesson 1 data ================= */
+    const VERBS_DATA = [
+        { ctx: "<b>Describe</b> the issues you have encountered in the apartment.",
+          options: ["Какие именно проблемы: что сломано, где и с какого времени", "Почему эти проблемы мешают учиться", "Просьбу всё починить", "Жалобу на то, какой арендодатель безответственный"], answer: 0,
+          expl: "<em>Describe</em> — это «что»: факты, детали, время. Влияние на учёбу — работа следующего пункта (<em>explain</em>), а оценка арендодателя не нужна вообще." },
+        { ctx: "<b>Explain</b> how conditions negatively affect your studies.",
+          options: ["Связь проблемы с учёбой: из-за шума не сплю, опаздываю со сдачей работ", "Ещё раз перечислить все проблемы", "Предложить решение", "Описать, как выглядит квартира"], answer: 0,
+          expl: "<em>Explain</em> отвечает на вопрос «и что из этого?». Повтор списка проблем — частая ошибка: абзац есть, а пункт не раскрыт." },
+        { ctx: "<b>Suggest</b> ways that the hotel could make a guest's stay more peaceful.",
+          options: ["1–2 конкретные идеи и чем они помогут: например, ковёр в коридоре, чтобы шаги не были слышны", "Написать, что отель в целом плохой", "Попросить компенсацию", "Ещё раз описать шум"], answer: 0,
+          expl: "<em>Suggest</em> = конкретное предложение + польза. «Сделайте что-нибудь» — не предложение." },
+        { ctx: "<b>Thank</b> her for organizing the workshop <b>and mention</b> what exactly you found most helpful.",
+          options: ["Благодарность и одну конкретную часть воркшопа, которая помогла больше всего", "Только благодарность", "Только то, что было полезно", "Благодарность всем организаторам сразу"], answer: 0,
+          expl: "Пункт из двух частей. Без «что именно» он раскрыт наполовину, даже если благодарность очень красивая." },
+        { ctx: "<b>Ask</b> for her recommendations about restaurants and activities.",
+          options: ["Вопросы: Could you recommend…? — и что вам нравится, чтобы совет был точнее", "Рассказ о том, где вы уже были", "Ваши рекомендации ей", "Предложение встретиться"], answer: 0,
+          expl: "<em>Ask</em> — это вопрос с вопросительным знаком. Немного контекста (что вы любите) делает его естественнее." },
+        { ctx: "<b>Request</b> a replacement or a refund for the damaged item.",
+          options: ["Чёткую вежливую просьбу о замене или возврате денег", "Угрозу оставить плохой отзыв", "Подробное описание повреждения", "Вопрос о том, как работает доставка"], answer: 0,
+          expl: "<em>Request</em> — ясная просьба через <em>Could you…? / I would appreciate it if…</em>. Угрозы на экзамене не нужны никогда." }
+    ];
+
+    const ORDER_DATA = [
+        { title: "Письмо инструктору (официальное)",
+          parts: [
+            "Dear Mr. Davis,",
+            "Thank you for making me feel so welcome in your Tuesday yoga class. Your clear instructions have helped me feel more confident after only three sessions.",
+            "I'm writing because the current schedule is difficult for me. The class starts at 5:30 p.m., but my last lecture ends at 5:15, so I have arrived late twice.",
+            "Would it be possible to move the class to 6:30 p.m. or to add a Saturday morning session? Two other students told me a later time would suit them as well.",
+            "Thank you for considering this.",
+            "Best regards,\nAnna Petrova"
+          ],
+          expl: "Приветствие → пункт 1 (благодарность) → пункт 2 (почему неудобно) → пункт 3 (предложение) → финальная фраза → подпись." },
+        { title: "Письмо другу (неофициальное)",
+          parts: [
+            "Hi Alex,",
+            "Guess what? Last weekend I found an amazing park just fifteen minutes from campus.",
+            "It's called Willow Creek Park, and it has a quiet trail along a river with small wooden bridges. From the hill at the end of the trail, you can see the whole city.",
+            "Would you like to come with me this Saturday? We could meet at the main gate at 9:00 a.m. and walk the full loop, which takes about two hours.",
+            "Just make sure you wear comfortable shoes, because the trail gets muddy near the river. You might also want to bring a water bottle and a snack.",
+            "Let me know if Saturday works for you!\n\nBest,\nAnna"
+          ],
+          expl: "Даже в письме другу работает тот же скелет: зачем пишу → описание парка → приглашение → что взять → финал." }
+    ];
+
+    const MISSING_DATA = [
+        { ctx: "<b>Task:</b> 1) Describe the issue with the internet connection. 2) Explain how this problem is affecting your studies. 3) Request that the internet connection be improved as soon as possible.\n\n<b>Email:</b>\nDear Mr. Evans,\n\nI am writing about the internet connection in Building C. For the past two weeks, the Wi-Fi has been extremely slow in the evenings, and it disconnects every ten or fifteen minutes.\n\nCould you please ask the IT team to check the router on the third floor? I would really appreciate it if the problem could be fixed before final exams begin.\n\nThank you for your help.\n\nBest regards,\nAnna Petrova",
+          options: ["Пункт 1: описание проблемы", "Пункт 2: как это мешает учиться", "Пункт 3: просьба", "Ничего, всё на месте"], answer: 1, fixed: true,
+          expl: "Нет ни слова о том, как медленный интернет мешает учиться: онлайн-лекции, загрузка заданий, дедлайны. Это целый пропущенный пункт." },
+        { ctx: "<b>Task:</b> 1) Explain why you missed the class. 2) Ask for her notes and explain why you need them. 3) Suggest what you could do for her in return.\n\n<b>Email:</b>\nHi Jessica,\n\nI missed Monday's lecture because I had a dentist appointment that I couldn't move. Could you send me your notes from that class? In return, I'd be happy to share my summary of chapter five, which I finished yesterday.\n\nThanks a lot!\n\nBest,\nAnna",
+          options: ["Пункт 1: почему пропустила", "Вторая половина пункта 2: зачем нужны конспекты", "Пункт 3: что взамен", "Ничего, всё на месте"], answer: 1, fixed: true,
+          expl: "Просьба есть, но нет объяснения, зачем конспекты нужны (например, quiz на следующей неделе). Вторая половина пункта — самое частое место потери баллов." },
+        { ctx: "<b>Task:</b> 1) Inform Dr. Lee about the opportunity, including conference topic and location. 2) Request permission to miss class and suggest ways to make up for missed classes. 3) Ask for suggestions on how to prepare for the conference.\n\n<b>Email:</b>\nDear Dr. Lee,\n\nI am pleased to tell you that I have been selected to represent our university at the International Student Conference on Renewable Energy in Lisbon from May 12 to 14.\n\nBecause of this, I will miss your Wednesday seminar on May 13. Would it be possible for me to be excused that day? I could submit the weekly problem set before I leave and come to your office hours the following Monday to go over the material I missed.\n\nThank you for your understanding.\n\nBest regards,\nAnna Petrova",
+          options: ["Пункт 1: тема и место", "Пункт 2: разрешение и как наверстать", "Пункт 3: просьба о совете, как подготовиться", "Ничего, всё на месте"], answer: 2, fixed: true,
+          expl: "Нет вопроса о подготовке к конференции. Например: <em>Could you suggest how I can make my presentation clear for an international audience?</em>" },
+        { ctx: "<b>Task:</b> 1) Mention what you enjoy about the fitness class. 2) Describe the difficulty you are having with certain exercises. 3) Ask for advice to address the difficulty you are having.\n\n<b>Email:</b>\nDear Ms. Miller,\n\nI really enjoy your Thursday fitness class, especially the music and the way you explain each exercise before we start.\n\nHowever, I have been having trouble with planks and push-ups. After about ten seconds, my lower back starts to hurt, and I have to stop while everyone else continues.\n\nCould you suggest an easier version of these exercises or something I can practice at home to build up my strength?\n\nThank you for your help.\n\nBest regards,\nAnna",
+          options: ["Пункт 1: что нравится", "Пункт 2: в чём трудность", "Пункт 3: просьба о совете", "Ничего, всё на месте"], answer: 3, fixed: true,
+          expl: "Все три пункта на месте и по порядку: что нравится → трудность с деталями → вопрос-просьба." }
+    ];
+
+    const PARA_DATA = [
+        { ctx: "В задании: <i>the service was poor</i>",
+          options: ["We waited almost forty minutes before anyone took our order.", "The service was poor.", "The service was very, very poor.", "The service was not good, it was poor."], answer: 0,
+          expl: "Лучший пересказ одновременно и деталь: вместо оценки — факт. Последний вариант ещё и с comma splice." },
+        { ctx: "В задании: <i>you found the workshop extremely informative</i>",
+          options: ["I learned more in those two hours than in a month of reading about the topic.", "I found the workshop extremely informative.", "The workshop was extremely informative for me.", "Workshop was informative."], answer: 0,
+          expl: "Варианты 2 и 3 — почти дословная копия. Своя формулировка показывает словарь и звучит искренне." },
+        { ctx: "В задании: <i>the internet connection is very slow and often disconnects</i>",
+          options: ["Pages take almost a minute to load, and I lose the connection several times an hour.", "The internet connection is very slow and often disconnects.", "Internet is slow and disconnects often.", "The connection has some problems."], answer: 0,
+          expl: "Последний вариант — уже не копия, но слишком общий. Нужна конкретика: сколько, как часто." },
+        { ctx: "В задании: <i>you accidentally damaged the book</i>",
+          options: ["I spilled coffee on it, and several pages are now stained and stuck together.", "I accidentally damaged the book.", "The book was damaged by me accidentally.", "Something happened with the book."], answer: 0,
+          expl: "Пункт задания всё равно попросит описать, что случилось, — так что пересказ сразу закрывает часть работы." }
+    ];
+
+    const PLAN_DATA = [
+        { label: "Ваш план за минуту",
+          task: "Запишите 2–3 ключевых слова на каждый пункт: <b>1) describe</b> · <b>2) explain</b> · <b>3) request</b>.",
+          rows: 5,
+          placeholder: "1) …\n2) …\n3) …",
+          modelLabel: "Образец плана и письма",
+          model: "<b>План:</b>\n1) bookshelf, oak, 5 shelves, order #48213, arrived Monday — side panel cracked, 2 shelves scratched, screws missing\n2) needed it before midterms — textbooks on the floor and desk, hard to study\n3) replacement next week or full refund; can send photos\n\n<b>Письмо:</b>\nDear Ms. Brown,\n\nI am writing about a bookshelf I ordered from Home Comforts (order #48213), which arrived on Monday.\n\nWhen I opened the box, I found that the left side panel was cracked from top to bottom and two of the five shelves were badly scratched. Several screws were also missing, so I could not assemble it at all.\n\nI was really looking forward to using this bookshelf. My dorm room is very small, and I planned to finally get my textbooks off the floor before midterm exams. Right now, my desk is covered with books, and it is difficult to study there.\n\nCould you please send me a replacement by next week? If that is not possible, I would appreciate a full refund. I would be happy to send photos of the damage if you need them.\n\nThank you for your help.\n\nSincerely,\nAnna Petrova",
+          check: ["У каждого пункта свой абзац", "Номер заказа, дата, конкретные повреждения — придумывать можно", "Разочарование объяснено через последствия, а не эмоции", "Просьба вопросом + запасной вариант + предложение прислать фото"] }
+    ];
+
+    function initLesson() {
+        renderMC('ex-verbs', 'score-verbs', VERBS_DATA);
+        renderOrder('ex-order', ORDER_DATA);
+        renderMC('ex-missing', 'score-missing', MISSING_DATA);
+        renderMC('ex-para', 'score-para', PARA_DATA);
+        renderOpen('ex-plan', PLAN_DATA);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        safeCreateIcons();
+        initLesson();
+        safeCreateIcons();
+    });
+
+    // Проверка входа и доступа к разделу Writing (как на writing-articles.html)
+    (async () => { if (typeof requireAuth === 'function') await requireAuth(); })();
+    </script>
+</body>
+</html>
