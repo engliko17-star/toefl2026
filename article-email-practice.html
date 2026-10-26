@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Practice Lab — Write an Email</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="auth.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+
+        details > summary { list-style: none; }
+        details > summary::-webkit-details-marker { display: none; }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+
+        .tbl th { background-color: #f8fafc; font-weight: 600; color: #475569; padding: 10px 14px; text-align: left; border-bottom: 2px solid #e2e8f0; font-size: 13px; }
+        .tbl td { padding: 10px 14px; border-bottom: 1px solid #f1f5f9; vertical-align: top; color: #334155; font-size: 14px; }
+        .tbl tr:last-child td { border-bottom: none; }
+
+        .bad { text-decoration: line-through; text-decoration-color: #f43f5e; color: #9f1239; }
+        .email-paper { white-space: pre-line; }
+        mark.tone { background: #e0e7ff; color: #3730a3; padding: 0 3px; border-radius: 4px; }
+        mark.tone-f { background: #dcfce7; color: #166534; padding: 0 3px; border-radius: 4px; }
+
+
+        /* Responsive tables: stack rows on phones */
+        @media (max-width: 640px) {
+            .rtable { min-width: 0 !important; }
+            .rtable thead { display: none; }
+            .rtable, .rtable tbody, .rtable tr, .rtable td { display: block; width: 100% !important; }
+            .rtable tr { border-bottom: 1px solid #e2e8f0; padding: 8px 0; }
+            .rtable tr:last-child { border-bottom: none; }
+            .rtable td { border: none !important; padding: 3px 14px !important; }
+            .rtable td[data-label]::before { content: attr(data-label); display: block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #94a3b8; margin-bottom: 1px; }
+        }
+
+        /* Exercise engine */
+        .opt-btn { width: 100%; text-align: left; border: 1.5px solid #e2e8f0; background: #fff; border-radius: 10px; padding: 10px 14px; font-size: 14px; color: #1e293b; transition: all .15s; white-space: pre-line; }
+        .opt-btn:hover:not(:disabled) { border-color: #a5b4fc; background: #f5f7ff; }
+        .opt-btn:disabled { cursor: default; }
+        .opt-correct { border-color: #10b981 !important; background: #ecfdf5 !important; color: #065f46 !important; }
+        .opt-wrong { border-color: #f43f5e !important; background: #fff1f2 !important; color: #9f1239 !important; }
+        .opt-dim { opacity: .55; }
+
+        .sort-zone { min-height: 72px; }
+        .chip { display: inline-flex; align-items: center; gap: 6px; border: 1.5px solid #cbd5e1; background: #fff; border-radius: 14px; padding: 7px 13px; text-align: left; font-size: 13.5px; color: #1e293b; cursor: grab; user-select: none; margin: 4px; touch-action: manipulation; }
+        .chip.selected { border-color: #6366f1; box-shadow: 0 0 0 3px #e0e7ff; }
+        .chip.ok { border-color: #10b981; background: #ecfdf5; color: #065f46; }
+        .chip.no { border-color: #f43f5e; background: #fff1f2; color: #9f1239; }
+        .sortable-ghost { opacity: .4; }
+
+        .spot-line { display: block; width: 100%; text-align: left; border: 1.5px dashed transparent; border-radius: 8px; padding: 6px 10px; font-size: 14.5px; color: #1e293b; transition: all .15s; }
+        .spot-line:hover:not(.done) { border-color: #a5b4fc; background: #f8faff; }
+        .spot-line.hit { border-style: solid; border-color: #f43f5e; background: #fff1f2; }
+        .spot-line.fine { border-style: solid; border-color: #a7f3d0; background: #f0fdf4; }
+            mark.hl-amber { background: #fef3c7; color: #92400e; padding: 0 3px; border-radius: 4px; }
+        mark.hl-rose { background: #ffe4e6; color: #9f1239; padding: 0 3px; border-radius: 4px; }
+        mark.hl-sky { background: #e0f2fe; color: #075985; padding: 0 3px; border-radius: 4px; }
+</style>
+</head>
+<body class="bg-[#fafafa] text-slate-800 min-h-screen flex flex-col md:flex-row antialiased leading-relaxed">
+    <!-- Sidebar Navigation -->
+    <aside class="hidden md:flex flex-col w-64 bg-white border-r border-gray-100 px-4 py-6 h-screen sticky top-0 shrink-0">
+        <div class="font-bold text-2xl tracking-tighter mb-8 px-2 flex items-center space-x-2">
+            <span>TOEFL</span><span class="w-1.5 h-1.5 bg-indigo-600 rounded-full mt-2"></span>
+        </div>
+        <nav class="flex-1 space-y-1">
+            <a href="index.html" class="flex items-center space-x-3 p-3 rounded-xl text-gray-400 hover:bg-gray-50 hover:text-slate-700 transition">
+                <i data-lucide="home" class="w-5 h-5"></i><span class="text-sm font-medium">Dashboard</span>
+            </a>
+            <a href="vocabulary.html" class="flex items-center space-x-3 p-3 rounded-xl text-gray-400 hover:bg-gray-50 hover:text-slate-700 transition">
+                <i data-lucide="book-open" class="w-5 h-5"></i><span class="text-sm font-medium">Vocabulary</span>
+            </a>
+            <div class="pt-6 pb-2 px-3 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Practice</div>
+            <a href="reading.html" class="flex items-center space-x-3 p-3 rounded-xl text-gray-400 hover:bg-gray-50 hover:text-slate-700 transition">
+                <i data-lucide="book-text" class="w-5 h-5"></i><span class="text-sm">Reading</span>
+            </a>
+            <a href="listening.html" class="flex items-center space-x-3 p-3 rounded-xl text-gray-400 hover:bg-gray-50 hover:text-slate-700 transition">
+                <i data-lucide="headphones" class="w-5 h-5"></i><span class="text-sm">Listening</span>
+            </a>
+            <a href="writing.html" class="flex items-center space-x-3 p-3 rounded-xl bg-slate-900 text-white font-medium shadow-sm">
+                <i data-lucide="pen-tool" class="w-5 h-5"></i><span class="text-sm">Writing</span>
+            </a>
+            <a href="speaking.html" class="flex items-center space-x-3 p-3 rounded-xl text-gray-400 hover:bg-gray-50 hover:text-slate-700 transition">
+                <i data-lucide="mic" class="w-5 h-5"></i><span class="text-sm">Speaking</span>
+            </a>
+            <a href="tests.html" class="flex items-center space-x-3 p-3 rounded-xl text-gray-400 hover:bg-gray-50 hover:text-slate-700 transition">
+                <i data-lucide="file-check" class="w-5 h-5"></i><span class="text-sm">Mock Tests</span>
+            </a>
+        </nav>
+    </aside>
+
+
+    <!-- Main Content Area -->
+    <main class="flex-1 p-5 sm:p-10 lg:p-16 overflow-y-auto pb-28 md:pb-16 max-w-[900px] mx-auto w-full min-w-0">
+
+        <!-- Breadcrumbs -->
+        <div class="flex flex-wrap items-center text-[12px] font-medium text-gray-400 mb-6 gap-x-2 gap-y-1">
+            <a href="writing-articles.html" class="hover:text-slate-700 transition flex items-center">
+                <i data-lucide="arrow-left" class="w-4 h-4 mr-1.5"></i> Back to Guides
+            </a>
+            <span class="text-gray-300">/</span>
+            <a href="article-write-an-email.html" class="hover:text-slate-700 transition uppercase">Write an Email</a>
+            <span class="text-gray-300">/</span>
+            <span class="text-indigo-600 font-bold uppercase">Practice Lab</span>
+        </div>
+
+        <!-- Course strip -->
+        <div class="mb-8 bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
+            <div class="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-3 flex items-center"><i data-lucide="graduation-cap" class="w-4 h-4 mr-1.5"></i>Курс Write an Email</div>
+            <div class="flex flex-wrap gap-2 text-[12px]">
+                <a href="article-email-anatomy.html" class="px-3 py-1.5 rounded-full bg-gray-50 text-slate-600 border border-gray-200 hover:border-indigo-300 hover:text-indigo-700 transition">1 · Анатомия задания</a>
+                <a href="article-email-tone.html" class="px-3 py-1.5 rounded-full bg-gray-50 text-slate-600 border border-gray-200 hover:border-indigo-300 hover:text-indigo-700 transition">2 · Адресат и тон</a>
+                <a href="article-email-opening.html" class="px-3 py-1.5 rounded-full bg-gray-50 text-slate-600 border border-gray-200 hover:border-indigo-300 hover:text-indigo-700 transition">3 · Первая фраза</a>
+                <a href="article-email-details.html" class="px-3 py-1.5 rounded-full bg-gray-50 text-slate-600 border border-gray-200 hover:border-indigo-300 hover:text-indigo-700 transition">4 · Детали</a>
+                <a href="article-email-politeness.html" class="px-3 py-1.5 rounded-full bg-gray-50 text-slate-600 border border-gray-200 hover:border-indigo-300 hover:text-indigo-700 transition">5 · Вежливость и сэндвич</a>
+                <a href="article-email-closing.html" class="px-3 py-1.5 rounded-full bg-gray-50 text-slate-600 border border-gray-200 hover:border-indigo-300 hover:text-indigo-700 transition">6 · Концовка и проверка</a>
+                <span class="px-3 py-1.5 rounded-full bg-indigo-600 text-white font-semibold">7 · Практикум</span>
+            </div>
+        </div>
+
+        <!-- Header -->
+        <h1 class="text-[32px] sm:text-[40px] font-extrabold text-slate-900 mb-2 tracking-tight leading-tight">Practice Lab</h1>
+        <p class="text-[17px] text-slate-500 mb-8">Практикум: 10 реальных заданий с образцовыми письмами</p>
+
+        <div class="space-y-6 text-[15px] sm:text-[16px] text-slate-700 leading-relaxed">
+
+            <p>
+                Здесь собираем всё из курса в настоящие письма. Все десять ситуаций взяты из реальных заданий TOEFL, которые попадались нашим ученикам. Они покрывают основные типы писем: жалобу, отзыв с критикой, благодарность, просьбу, извинение, запрос, письма другу и группе.
+            </p>
+
+            <h2 class="text-sm font-bold text-sky-600 mt-10 mb-4 uppercase tracking-wider">Как работать с заданием</h2>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div class="bg-white border-t-4 border-sky-400 border-x border-b border-gray-200 rounded-xl p-4">
+                    <div class="text-[12px] font-bold text-sky-600 mb-1">Шаг 1</div>
+                    <div class="font-bold text-slate-900 mb-1">Напишите сами за 7 минут</div>
+                    <p class="text-[14px] text-slate-600">Откройте блок «Сначала напишите сами», запустите таймер и пишите как на экзамене.</p>
+                </div>
+                <div class="bg-white border-t-4 border-indigo-500 border-x border-b border-gray-200 rounded-xl p-4">
+                    <div class="text-[12px] font-bold text-indigo-600 mb-1">Шаг 2</div>
+                    <div class="font-bold text-slate-900 mb-1">Соберите письмо по шагам</div>
+                    <p class="text-[14px] text-slate-600">Выберите лучший вариант для каждой части. После каждого выбора — объяснение.</p>
+                </div>
+                <div class="bg-white border-t-4 border-emerald-500 border-x border-b border-gray-200 rounded-xl p-4">
+                    <div class="text-[12px] font-bold text-emerald-600 mb-1">Шаг 3</div>
+                    <div class="font-bold text-slate-900 mb-1">Сравните с образцом</div>
+                    <p class="text-[14px] text-slate-600">Откройте образцовое письмо и разбор. Найдите в своём письме, чего не хватило.</p>
+                </div>
+            </div>
+
+            <div class="flex items-start p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-slate-700">
+                <i data-lucide="lightbulb" class="w-5 h-5 text-amber-500 mr-3 mt-0.5 shrink-0"></i>
+                <div><strong class="text-amber-800 block mb-1">Проверьте своё письмо по чек-листу</strong>Три пункта и их половинки · приветствие по To: · первая фраза с целью · детали в каждом абзаце · никаких наездов · финальная фраза · подпись, запятая, имя · Could you…? с вопросительным знаком.</div>
+            </div>
+
+            <h2 class="text-sm font-bold text-sky-600 mt-10 mb-4 uppercase tracking-wider">Задания</h2>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <a href="#sit-1" class="flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-indigo-300 transition"><span class="w-7 h-7 rounded-full bg-indigo-50 text-indigo-700 font-bold text-[13px] flex items-center justify-center shrink-0">1</span><span class="text-[14px]"><span class="font-semibold text-slate-800">Сломанная техника</span><br><span class="text-slate-500 text-[12.5px]">Жалоба в магазин · To: Ms. Parker</span></span></a>
+                <a href="#sit-2" class="flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-indigo-300 transition"><span class="w-7 h-7 rounded-full bg-indigo-50 text-indigo-700 font-bold text-[13px] flex items-center justify-center shrink-0">2</span><span class="text-[14px]"><span class="font-semibold text-slate-800">Медленный интернет</span><br><span class="text-slate-500 text-[12.5px]">Проблема в общежитии · To: Mr. Evans</span></span></a>
+                <a href="#sit-3" class="flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-indigo-300 transition"><span class="w-7 h-7 rounded-full bg-indigo-50 text-indigo-700 font-bold text-[13px] flex items-center justify-center shrink-0">3</span><span class="text-[14px]"><span class="font-semibold text-slate-800">Неудачный торт</span><br><span class="text-slate-500 text-[12.5px]">Отзыв с критикой · сэндвич · To: Ms. Lopez</span></span></a>
+                <a href="#sit-4" class="flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-indigo-300 transition"><span class="w-7 h-7 rounded-full bg-indigo-50 text-indigo-700 font-bold text-[13px] flex items-center justify-center shrink-0">4</span><span class="text-[14px]"><span class="font-semibold text-slate-800">Полезный воркшоп</span><br><span class="text-slate-500 text-[12.5px]">Благодарность + предложение · To: Ms. Clark</span></span></a>
+                <a href="#sit-5" class="flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-indigo-300 transition"><span class="w-7 h-7 rounded-full bg-indigo-50 text-indigo-700 font-bold text-[13px] flex items-center justify-center shrink-0">5</span><span class="text-[14px]"><span class="font-semibold text-slate-800">Пропуск ради конференции</span><br><span class="text-slate-500 text-[12.5px]">Просьба к преподавателю · To: Dr. Lee</span></span></a>
+                <a href="#sit-6" class="flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-indigo-300 transition"><span class="w-7 h-7 rounded-full bg-indigo-50 text-indigo-700 font-bold text-[13px] flex items-center justify-center shrink-0">6</span><span class="text-[14px]"><span class="font-semibold text-slate-800">Испорченная книга</span><br><span class="text-slate-500 text-[12.5px]">Извинение · To: Mr. Anderson</span></span></a>
+                <a href="#sit-7" class="flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-indigo-300 transition"><span class="w-7 h-7 rounded-full bg-indigo-50 text-indigo-700 font-bold text-[13px] flex items-center justify-center shrink-0">7</span><span class="text-[14px]"><span class="font-semibold text-slate-800">Благотворительная ярмарка</span><br><span class="text-slate-500 text-[12.5px]">Подруге: планы · To: Jasmine</span></span></a>
+                <a href="#sit-8" class="flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-indigo-300 transition"><span class="w-7 h-7 rounded-full bg-indigo-50 text-indigo-700 font-bold text-[13px] flex items-center justify-center shrink-0">8</span><span class="text-[14px]"><span class="font-semibold text-slate-800">Отличная работа в проекте</span><br><span class="text-slate-500 text-[12.5px]">Однокурснице: спасибо · To: Lisa</span></span></a>
+                <a href="#sit-9" class="flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-indigo-300 transition"><span class="w-7 h-7 rounded-full bg-indigo-50 text-indigo-700 font-bold text-[13px] flex items-center justify-center shrink-0">9</span><span class="text-[14px]"><span class="font-semibold text-slate-800">Бронирование для группы</span><br><span class="text-slate-500 text-[12.5px]">Запрос в отель · To: Mr. Carter</span></span></a>
+                <a href="#sit-10" class="flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-indigo-300 transition"><span class="w-7 h-7 rounded-full bg-indigo-50 text-indigo-700 font-bold text-[13px] flex items-center justify-center shrink-0">10</span><span class="text-[14px]"><span class="font-semibold text-slate-800">Учебная встреча перед экзаменом</span><br><span class="text-slate-500 text-[12.5px]">Группе · To: Chemistry Class</span></span></a>
+            </div>
+
+            <div class="space-y-4 mt-6">
+            <details id="sit-1" class="group bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden scroll-mt-6" open>
+                <summary class="flex items-center justify-between gap-3 p-5 cursor-pointer hover:bg-slate-50 transition">
+                    <div class="flex items-center min-w-0">
+                        <i data-lucide="chevron-right" class="w-5 h-5 mr-3 text-indigo-500 transition-transform duration-200 group-open:rotate-90 shrink-0"></i>
+                        <div class="min-w-0">
+                            <div class="text-[11px] font-bold uppercase tracking-wider text-indigo-500">Задание 1 · Жалоба в магазин</div>
+                            <div class="font-bold text-slate-900 text-[16px]">Сломанная техника</div>
+                        </div>
+                    </div>
+                    <span class="text-[11px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded shrink-0 hidden sm:inline">Человек с титулом</span>
+                </summary>
+                <div class="px-4 sm:px-6 pb-6 pt-1 border-t border-gray-100">
+                    <div id="bld-1" class="builder-host pt-4"></div>
+                </div>
+            </details>
+            <details id="sit-2" class="group bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden scroll-mt-6">
+                <summary class="flex items-center justify-between gap-3 p-5 cursor-pointer hover:bg-slate-50 transition">
+                    <div class="flex items-center min-w-0">
+                        <i data-lucide="chevron-right" class="w-5 h-5 mr-3 text-indigo-500 transition-transform duration-200 group-open:rotate-90 shrink-0"></i>
+                        <div class="min-w-0">
+                            <div class="text-[11px] font-bold uppercase tracking-wider text-indigo-500">Задание 2 · Проблема в общежитии</div>
+                            <div class="font-bold text-slate-900 text-[16px]">Медленный интернет</div>
+                        </div>
+                    </div>
+                    <span class="text-[11px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded shrink-0 hidden sm:inline">Человек с титулом</span>
+                </summary>
+                <div class="px-4 sm:px-6 pb-6 pt-1 border-t border-gray-100">
+                    <div id="bld-2" class="builder-host pt-4"></div>
+                </div>
+            </details>
+            <details id="sit-3" class="group bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden scroll-mt-6">
+                <summary class="flex items-center justify-between gap-3 p-5 cursor-pointer hover:bg-slate-50 transition">
+                    <div class="flex items-center min-w-0">
+                        <i data-lucide="chevron-right" class="w-5 h-5 mr-3 text-indigo-500 transition-transform duration-200 group-open:rotate-90 shrink-0"></i>
+                        <div class="min-w-0">
+                            <div class="text-[11px] font-bold uppercase tracking-wider text-indigo-500">Задание 3 · Отзыв с критикой · сэндвич</div>
+                            <div class="font-bold text-slate-900 text-[16px]">Неудачный торт</div>
+                        </div>
+                    </div>
+                    <span class="text-[11px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded shrink-0 hidden sm:inline">Человек с титулом</span>
+                </summary>
+                <div class="px-4 sm:px-6 pb-6 pt-1 border-t border-gray-100">
+                    <div id="bld-3" class="builder-host pt-4"></div>
+                </div>
+            </details>
+            <details id="sit-4" class="group bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden scroll-mt-6">
+                <summary class="flex items-center justify-between gap-3 p-5 cursor-pointer hover:bg-slate-50 transition">
+                    <div class="flex items-center min-w-0">
+                        <i data-lucide="chevron-right" class="w-5 h-5 mr-3 text-indigo-500 transition-transform duration-200 group-open:rotate-90 shrink-0"></i>
+                        <div class="min-w-0">
+                            <div class="text-[11px] font-bold uppercase tracking-wider text-indigo-500">Задание 4 · Благодарность + предложение</div>
+                            <div class="font-bold text-slate-900 text-[16px]">Полезный воркшоп</div>
+                        </div>
+                    </div>
+                    <span class="text-[11px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded shrink-0 hidden sm:inline">Человек с титулом</span>
+                </summary>
+                <div class="px-4 sm:px-6 pb-6 pt-1 border-t border-gray-100">
+                    <div id="bld-4" class="builder-host pt-4"></div>
+                </div>
+            </details>
+            <details id="sit-5" class="group bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden scroll-mt-6">
+                <summary class="flex items-center justify-between gap-3 p-5 cursor-pointer hover:bg-slate-50 transition">
+                    <div class="flex items-center min-w-0">
+                        <i data-lucide="chevron-right" class="w-5 h-5 mr-3 text-indigo-500 transition-transform duration-200 group-open:rotate-90 shrink-0"></i>
+                        <div class="min-w-0">
+                            <div class="text-[11px] font-bold uppercase tracking-wider text-indigo-500">Задание 5 · Просьба к преподавателю</div>
+                            <div class="font-bold text-slate-900 text-[16px]">Пропуск ради конференции</div>
+                        </div>
+                    </div>
+                    <span class="text-[11px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded shrink-0 hidden sm:inline">Человек с титулом</span>
+                </summary>
+                <div class="px-4 sm:px-6 pb-6 pt-1 border-t border-gray-100">
+                    <div id="bld-5" class="builder-host pt-4"></div>
+                </div>
+            </details>
+            <details id="sit-6" class="group bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden scroll-mt-6">
+                <summary class="flex items-center justify-between gap-3 p-5 cursor-pointer hover:bg-slate-50 transition">
+                    <div class="flex items-center min-w-0">
+                        <i data-lucide="chevron-right" class="w-5 h-5 mr-3 text-indigo-500 transition-transform duration-200 group-open:rotate-90 shrink-0"></i>
+                        <div class="min-w-0">
+                            <div class="text-[11px] font-bold uppercase tracking-wider text-indigo-500">Задание 6 · Извинение</div>
+                            <div class="font-bold text-slate-900 text-[16px]">Испорченная книга</div>
+                        </div>
+                    </div>
+                    <span class="text-[11px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded shrink-0 hidden sm:inline">Человек с титулом</span>
+                </summary>
+                <div class="px-4 sm:px-6 pb-6 pt-1 border-t border-gray-100">
+                    <div id="bld-6" class="builder-host pt-4"></div>
+                </div>
+            </details>
+            <details id="sit-7" class="group bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden scroll-mt-6">
+                <summary class="flex items-center justify-between gap-3 p-5 cursor-pointer hover:bg-slate-50 transition">
+                    <div class="flex items-center min-w-0">
+                        <i data-lucide="chevron-right" class="w-5 h-5 mr-3 text-indigo-500 transition-transform duration-200 group-open:rotate-90 shrink-0"></i>
+                        <div class="min-w-0">
+                            <div class="text-[11px] font-bold uppercase tracking-wider text-indigo-500">Задание 7 · Подруге: планы</div>
+                            <div class="font-bold text-slate-900 text-[16px]">Благотворительная ярмарка</div>
+                        </div>
+                    </div>
+                    <span class="text-[11px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded shrink-0 hidden sm:inline">Друг</span>
+                </summary>
+                <div class="px-4 sm:px-6 pb-6 pt-1 border-t border-gray-100">
+                    <div id="bld-7" class="builder-host pt-4"></div>
+                </div>
+            </details>
+            <details id="sit-8" class="group bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden scroll-mt-6">
+                <summary class="flex items-center justify-between gap-3 p-5 cursor-pointer hover:bg-slate-50 transition">
+                    <div class="flex items-center min-w-0">
+                        <i data-lucide="chevron-right" class="w-5 h-5 mr-3 text-indigo-500 transition-transform duration-200 group-open:rotate-90 shrink-0"></i>
+                        <div class="min-w-0">
+                            <div class="text-[11px] font-bold uppercase tracking-wider text-indigo-500">Задание 8 · Однокурснице: спасибо</div>
+                            <div class="font-bold text-slate-900 text-[16px]">Отличная работа в проекте</div>
+                        </div>
+                    </div>
+                    <span class="text-[11px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded shrink-0 hidden sm:inline">Друг</span>
+                </summary>
+                <div class="px-4 sm:px-6 pb-6 pt-1 border-t border-gray-100">
+                    <div id="bld-8" class="builder-host pt-4"></div>
+                </div>
+            </details>
+            <details id="sit-9" class="group bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden scroll-mt-6">
+                <summary class="flex items-center justify-between gap-3 p-5 cursor-pointer hover:bg-slate-50 transition">
+                    <div class="flex items-center min-w-0">
+                        <i data-lucide="chevron-right" class="w-5 h-5 mr-3 text-indigo-500 transition-transform duration-200 group-open:rotate-90 shrink-0"></i>
+                        <div class="min-w-0">
+                            <div class="text-[11px] font-bold uppercase tracking-wider text-indigo-500">Задание 9 · Запрос в отель</div>
+                            <div class="font-bold text-slate-900 text-[16px]">Бронирование для группы</div>
+                        </div>
+                    </div>
+                    <span class="text-[11px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded shrink-0 hidden sm:inline">Человек с титулом</span>
+                </summary>
+                <div class="px-4 sm:px-6 pb-6 pt-1 border-t border-gray-100">
+                    <div id="bld-9" class="builder-host pt-4"></div>
+                </div>
+            </details>
+            <details id="sit-10" class="group bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden scroll-mt-6">
+                <summary class="flex items-center justify-between gap-3 p-5 cursor-pointer hover:bg-slate-50 transition">
+                    <div class="flex items-center min-w-0">
+                        <i data-lucide="chevron-right" class="w-5 h-5 mr-3 text-indigo-500 transition-transform duration-200 group-open:rotate-90 shrink-0"></i>
+                        <div class="min-w-0">
+                            <div class="text-[11px] font-bold uppercase tracking-wider text-indigo-500">Задание 10 · Группе</div>
+                            <div class="font-bold text-slate-900 text-[16px]">Учебная встреча перед экзаменом</div>
+                        </div>
+                    </div>
+                    <span class="text-[11px] font-bold uppercase tracking-wider bg-sky-50 text-sky-700 border border-sky-100 px-2 py-0.5 rounded shrink-0 hidden sm:inline">Группа</span>
+                </summary>
+                <div class="px-4 sm:px-6 pb-6 pt-1 border-t border-gray-100">
+                    <div id="bld-10" class="builder-host pt-4"></div>
+                </div>
+            </details>
+            </div>
+
+            <div class="flex items-start p-4 bg-indigo-50/60 border border-indigo-100 rounded-xl text-sm text-slate-700 mt-8">
+                <i data-lucide="pen-tool" class="w-5 h-5 text-indigo-500 mr-3 mt-0.5 shrink-0"></i>
+                <div><strong class="text-indigo-800 block mb-1">Что дальше</strong>Больше реальных заданий — в разделе <a href="task-list.html" class="text-indigo-600 underline underline-offset-2">Writing Practice</a>. Пишите письмо за 7 минут и проверяйте его по чек-листу из урока 6.</div>
+            </div>
+
+        </div>
+
+        <!-- Lesson pager -->
+        <div class="mt-14 flex flex-col sm:flex-row gap-3">
+            <a href="article-email-closing.html" class="group flex-1 bg-white border border-gray-200 rounded-2xl p-4 hover:border-indigo-300 hover:shadow-sm transition"><div class="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1">← Урок 6</div><div class="font-bold text-slate-800 group-hover:text-indigo-700">Концовка и проверка</div></a>
+            <a href="writing-articles.html" class="group flex-1 bg-indigo-600 border border-indigo-600 rounded-2xl p-4 hover:bg-indigo-700 transition text-right"><div class="text-[11px] font-bold uppercase tracking-wider text-indigo-200 mb-1">Курс пройден →</div><div class="font-bold text-white">Ко всем гайдам</div></a>
+        </div>
+    </main>
+    <!-- Mobile Navigation Bar -->
+    <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex justify-around py-3 z-40 pb-safe">
+        <a href="index.html" class="flex flex-col items-center text-gray-400 hover:text-slate-800 transition">
+            <i data-lucide="home" class="w-6 h-6"></i><span class="text-[10px] mt-1 font-medium">Home</span>
+        </a>
+        <a href="vocabulary.html" class="flex flex-col items-center text-gray-400 hover:text-slate-800 transition">
+            <i data-lucide="book-open" class="w-6 h-6"></i><span class="text-[10px] mt-1 font-medium">Vocab</span>
+        </a>
+        <a href="reading.html" class="flex flex-col items-center text-gray-400 hover:text-slate-800 transition">
+            <i data-lucide="book-text" class="w-6 h-6"></i><span class="text-[10px] mt-1 font-medium">Reading</span>
+        </a>
+        <a href="writing.html" class="flex flex-col items-center text-slate-900">
+            <i data-lucide="pen-tool" class="w-6 h-6"></i><span class="text-[10px] mt-1 font-bold">Writing</span>
+        </a>
+    </nav>
+
+
+    <script>
+    /* ================= Email Course exercise engine ================= */
+    function safeCreateIcons() {
+        try { if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons(); } catch (e) { console.warn('icons skipped', e); }
+    }
+    function el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; }
+    function shuffle(a) { const b = a.slice(); for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; }
+    function promptBox(ctx) { return ctx ? '<div class="bg-slate-50 border border-slate-200 rounded-lg p-3 text-[13.5px] text-slate-600 mb-3 email-paper">' + ctx + '</div>' : ''; }
+    function verdict(ok) { return '<strong>' + (ok ? 'Верно. ' : 'Не совсем. ') + '</strong>'; }
+    function fbClass(ok) { return 'mt-3 text-[14px] rounded-lg p-3 ' + (ok ? 'bg-emerald-50 text-emerald-900' : 'bg-rose-50 text-rose-900'); }
+    function smallBtn(label, primary) {
+        const b = el('button', primary
+            ? 'text-[14px] font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg px-4 py-2'
+            : 'text-[14px] font-semibold text-indigo-700 bg-white border border-indigo-200 rounded-lg px-4 py-2 hover:bg-indigo-50', label);
+        b.type = 'button'; return b;
+    }
+    function fillSkeleton(tpl, chosen) {
+        return tpl.replace(/\{(\w+)\}/g, (m, k) => chosen[k] !== undefined ? chosen[k] : m)
+                  .replace(/\[\[(.+?)\]\]/g, '<span class="text-gray-400">[$1]</span>');
+    }
+
+    /* ---------- Multiple choice ---------- */
+    function renderMC(containerId, scoreId, data) {
+        const box = document.getElementById(containerId); if (!box) return;
+        box.innerHTML = '';
+        let answered = 0, correct = 0;
+        const scoreEl = scoreId ? document.getElementById(scoreId) : null;
+        const upd = () => { if (scoreEl) scoreEl.textContent = 'Верно: ' + correct + ' / ' + data.length; };
+        upd();
+        data.forEach((item, idx) => {
+            const card = el('div', 'border-t border-gray-100 pt-5 first:border-0 first:pt-0');
+            card.innerHTML = '<div class="text-[12px] font-bold text-indigo-500 mb-2">' + (idx + 1) + ' / ' + data.length + '</div>'
+                + promptBox(item.ctx)
+                + (item.q ? '<p class="font-semibold text-slate-800 text-[15px] mb-3">' + item.q + '</p>' : '');
+            const long = item.options.some(o => o.length > 55);
+            const opts = el('div', 'grid grid-cols-1 ' + (long ? '' : 'sm:grid-cols-2 ') + 'gap-2');
+            const order = item.fixed ? item.options.map((o, i) => i) : shuffle(item.options.map((o, i) => i));
+            const expl = el('div', 'hidden');
+            order.forEach(i => {
+                const b = el('button', 'opt-btn'); b.type = 'button'; b.textContent = item.options[i]; b.dataset.i = i;
+                b.addEventListener('click', () => {
+                    if (b.disabled) return;
+                    opts.querySelectorAll('button').forEach(x => { x.disabled = true; if (+x.dataset.i === item.answer) x.classList.add('opt-correct'); else if (x !== b) x.classList.add('opt-dim'); });
+                    const ok = i === item.answer;
+                    if (!ok) b.classList.add('opt-wrong');
+                    answered++; if (ok) correct++; upd();
+                    expl.className = fbClass(ok);
+                    expl.innerHTML = verdict(ok) + item.expl;
+                    if (answered === data.length) {
+                        const done = el('div', 'mt-5 flex flex-wrap items-center gap-3 bg-indigo-50 border border-indigo-100 rounded-xl p-4 text-[14px]');
+                        done.innerHTML = '<span class="font-semibold text-indigo-900">Итог: ' + correct + ' из ' + data.length + '</span>';
+                        const again = el('button', 'ml-auto text-[13px] font-semibold text-indigo-700 bg-white border border-indigo-200 rounded-lg px-3 py-1.5 hover:bg-indigo-50', 'Пройти заново');
+                        again.type = 'button'; again.addEventListener('click', () => renderMC(containerId, scoreId, data));
+                        done.appendChild(again); box.appendChild(done);
+                    }
+                });
+                opts.appendChild(b);
+            });
+            card.appendChild(opts); card.appendChild(expl);
+            box.appendChild(card);
+        });
+    }
+
+    /* ---------- Sort into columns (SortableJS + tap fallback) ---------- */
+    function renderSort(containerId, cfg) {
+        const box = document.getElementById(containerId); if (!box) return;
+        box.innerHTML = '';
+        const pool = el('div', 'sort-zone rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 p-2 mb-4');
+        pool.dataset.col = 'pool';
+        shuffle(cfg.items).forEach(it => { const c = el('span', 'chip'); c.textContent = it.t; c.dataset.c = it.c; pool.appendChild(c); });
+        box.appendChild(pool);
+        const grid = el('div', 'grid grid-cols-1 ' + (cfg.cols.length === 3 ? 'md:grid-cols-3' : 'sm:grid-cols-2') + ' gap-3');
+        const zones = [pool];
+        let selected = null;
+        const result = el('div', 'hidden');
+        const zoneByKey = {};
+        const moveBar = el('div', 'hidden fixed left-3 right-3 bottom-20 md:left-auto md:right-8 md:bottom-8 z-50 bg-white border border-indigo-200 shadow-xl rounded-xl p-2 flex-wrap gap-2 items-center justify-center');
+        moveBar.appendChild(el('span', 'text-[12px] text-slate-500 px-1', 'Переместить в:'));
+        function showBar(on) { moveBar.classList.toggle('hidden', !on); moveBar.classList.toggle('flex', on); }
+        function clearMarks() { box.querySelectorAll('.chip').forEach(c => c.classList.remove('ok', 'no')); result.className = 'hidden'; }
+        function moveSelected(zone) { if (!selected) return; zone.appendChild(selected); selected.classList.remove('selected'); selected = null; showBar(false); clearMarks(); }
+        cfg.cols.forEach(col => {
+            const wrap = el('div', 'rounded-xl border-2 border-' + col.tone + '-200 bg-' + col.tone + '-50/40 p-3');
+            wrap.innerHTML = '<div class="font-bold text-' + col.tone + '-800 text-[14px] mb-2 flex items-center">' + (col.icon ? '<i data-lucide="' + col.icon + '" class="w-4 h-4 mr-1.5"></i>' : '') + col.label + '</div>';
+            const z = el('div', 'sort-zone rounded-lg'); z.dataset.col = col.key; zoneByKey[col.key] = z;
+            const mb = el('button', 'text-[13px] font-semibold text-' + col.tone + '-800 bg-' + col.tone + '-50 border border-' + col.tone + '-200 rounded-lg px-3 py-1.5', col.label); mb.type = 'button';
+            mb.addEventListener('click', () => moveSelected(z)); moveBar.appendChild(mb);
+            wrap.appendChild(z); grid.appendChild(wrap); zones.push(z);
+            wrap.addEventListener('click', e => { if (e.target.closest('.chip')) return; moveSelected(z); });
+        });
+        box.appendChild(moveBar);
+        box.appendChild(grid);
+        box.addEventListener('click', e => {
+            const chip = e.target.closest('.chip'); if (!chip || !box.contains(chip)) return;
+            if (selected === chip) { chip.classList.remove('selected'); selected = null; showBar(false); return; }
+            if (selected) selected.classList.remove('selected');
+            selected = chip; chip.classList.add('selected'); showBar(true);
+        });
+        pool.addEventListener('click', e => { if (e.target.closest('.chip')) return; moveSelected(pool); });
+        if (typeof Sortable !== 'undefined') {
+            zones.forEach(z => Sortable.create(z, { group: containerId, animation: 150, ghostClass: 'sortable-ghost', delay: 120, delayOnTouchOnly: true, onEnd: clearMarks }));
+        }
+        const bar = el('div', 'mt-4 flex flex-wrap gap-2');
+        const check = smallBtn('Проверить', true), reset = smallBtn('Начать заново');
+        bar.appendChild(check); bar.appendChild(reset); box.appendChild(bar); box.appendChild(result);
+        check.addEventListener('click', () => {
+            let ok = 0, placed = 0;
+            box.querySelectorAll('.chip').forEach(c => {
+                c.classList.remove('ok', 'no');
+                const col = c.parentElement.dataset.col;
+                if (col === 'pool') return;
+                placed++;
+                if (col === c.dataset.c) { c.classList.add('ok'); ok++; } else c.classList.add('no');
+            });
+            const total = cfg.items.length;
+            let msg = 'Верно: ' + ok + ' из ' + total + '.';
+            if (placed < total) msg += ' Ещё не распределено: ' + (total - placed) + '.';
+            if (ok < total && placed > 0) msg += ' Красные фразы стоят не в той колонке.';
+            if (ok === total) msg = '<strong>Отлично, всё верно!</strong> ' + (cfg.doneMsg || '');
+            result.className = 'mt-3 text-[14px] rounded-lg p-3 ' + (ok === total ? 'bg-emerald-50 text-emerald-900' : 'bg-slate-50 text-slate-700');
+            result.innerHTML = msg;
+        });
+        reset.addEventListener('click', () => renderSort(containerId, cfg));
+        safeCreateIcons();
+    }
+
+    /* ---------- Spot the line (tone problems, errors, irrelevant sentences) ---------- */
+    function renderSpot(containerId, emails, opts) {
+        opts = opts || {};
+        const box = document.getElementById(containerId); if (!box) return;
+        box.innerHTML = '';
+        emails.forEach(email => {
+            const need = email.lines.filter(l => l.bad).length;
+            let found = 0;
+            const card = el('div', 'rounded-xl border border-gray-200 overflow-hidden');
+            const head = el('div', 'bg-slate-50 border-b border-gray-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2');
+            head.innerHTML = '<span class="font-semibold text-[13.5px] text-slate-700">' + email.title + '</span>';
+            const counter = el('span', 'text-[12px] font-semibold text-slate-500 bg-white border border-gray-200 rounded-full px-3 py-0.5');
+            const upd = () => { counter.textContent = (opts.counter || 'Найдено') + ': ' + found + ' из ' + need; };
+            upd(); head.appendChild(counter); card.appendChild(head);
+            const body = el('div', 'p-3 space-y-1');
+            email.lines.forEach(line => {
+                const b = el('button', 'spot-line email-paper'); b.type = 'button'; b.textContent = line.t;
+                const note = el('div', 'hidden');
+                b.addEventListener('click', () => {
+                    if (b.classList.contains('done')) return;
+                    if (line.bad) {
+                        b.classList.add('hit', 'done'); found++; upd();
+                        note.className = 'text-[13.5px] rounded-lg p-3 mx-2 mb-2 bg-rose-50 text-rose-900';
+                        note.innerHTML = line.why + (line.fix ? '<div class="mt-1.5 text-emerald-800"><strong>Лучше:</strong> ' + line.fix + '</div>' : '');
+                        if (found === need) body.appendChild(el('div', 'text-[13.5px] font-semibold text-emerald-700 px-2 pt-2', '✓ ' + (opts.done || 'Все проблемные фразы найдены.')));
+                    } else {
+                        b.classList.add('fine');
+                        setTimeout(() => b.classList.remove('fine'), 900);
+                        note.className = 'text-[13px] rounded-lg px-3 py-1.5 mx-2 mb-2 bg-emerald-50 text-emerald-800';
+                        note.textContent = opts.fine || 'Здесь всё в порядке.';
+                        setTimeout(() => { note.className = 'hidden'; }, 1600);
+                    }
+                });
+                body.appendChild(b); body.appendChild(note);
+            });
+            card.appendChild(body);
+            box.appendChild(card);
+        });
+    }
+
+    /* ---------- Open writing task with a model answer ---------- */
+    function renderOpen(containerId, items) {
+        const box = document.getElementById(containerId); if (!box) return;
+        box.innerHTML = '';
+        items.forEach((it, idx) => {
+            const card = el('div', '');
+            card.innerHTML = '<div class="text-[12px] font-bold text-indigo-500 mb-2">' + (idx + 1) + '. ' + it.label + '</div>'
+                + (it.from ? '<div class="' + (it.fromTone === 'neutral' ? 'bg-slate-50 border-slate-200' : 'bg-rose-50/60 border-rose-100') + ' border rounded-lg p-3 text-[14px] text-slate-700 email-paper mb-2">' + it.from + '</div>' : '')
+                + '<p class="text-[14px] text-slate-600 mb-2">' + it.task + '</p>';
+            const ta = el('textarea', 'w-full border border-gray-300 rounded-lg p-3 text-[14.5px] focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400');
+            ta.style.minHeight = (it.rows || 7) * 24 + 'px';
+            ta.placeholder = it.placeholder || 'Ваш вариант…';
+            const wc = el('div', 'text-[12px] text-gray-400 mt-1', 'Слов: 0');
+            ta.addEventListener('input', () => { wc.textContent = 'Слов: ' + (ta.value.trim().match(/\S+/g) || []).length; });
+            const btn = smallBtn('Показать образец', true); btn.classList.add('mt-3');
+            const model = el('div', 'hidden mt-3 rounded-lg overflow-hidden border border-emerald-100');
+            model.innerHTML = '<div class="bg-emerald-50 text-emerald-900 font-bold py-2.5 px-4 text-[13px] border-b border-emerald-100">' + (it.modelLabel || 'Образец') + '</div>'
+                + '<div class="bg-white p-4 text-[14.5px] text-slate-700 leading-relaxed email-paper">' + it.model + '</div>'
+                + (it.check ? '<div class="bg-indigo-50/40 p-4 text-[13.5px] text-slate-700 border-t border-indigo-100"><div class="font-semibold text-indigo-800 mb-1">Сверьтесь:</div><ul class="list-disc pl-5 space-y-0.5">' + it.check.map(c => '<li>' + c + '</li>').join('') + '</ul></div>' : '');
+            btn.addEventListener('click', () => { model.classList.toggle('hidden'); btn.textContent = model.classList.contains('hidden') ? 'Показать образец' : 'Скрыть образец'; });
+            card.appendChild(ta); card.appendChild(wc); card.appendChild(btn); card.appendChild(model);
+            box.appendChild(card);
+        });
+    }
+
+    /* ---------- Put parts in the right order ---------- */
+    function renderOrder(containerId, items) {
+        const box = document.getElementById(containerId); if (!box) return;
+        box.innerHTML = '';
+        items.forEach((it, idx) => {
+            const card = el('div', '');
+            card.innerHTML = '<div class="text-[12px] font-bold text-indigo-500 mb-2">' + (idx + 1) + '. ' + it.title + '</div>' + promptBox(it.ctx);
+            const list = el('div', 'space-y-2');
+            const rows = it.parts.map((p, i) => ({ t: p, i }));
+            let order = shuffle(rows);
+            if (order.every((r, k) => r.i === k)) order = order.slice(1).concat(order[0]);
+            const result = el('div', 'hidden');
+            function draw() {
+                list.innerHTML = '';
+                order.forEach((r, k) => {
+                    const row = el('div', 'order-row flex items-start gap-2 bg-white border-2 border-slate-200 rounded-lg p-2.5');
+                    row.dataset.i = r.i;
+                    const txt = el('div', 'flex-1 text-[14px] text-slate-700 email-paper'); txt.textContent = r.t;
+                    const ctl = el('div', 'flex flex-col gap-1 shrink-0');
+                    const up = el('button', 'w-8 h-7 rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 text-[13px]', '▲'); up.type = 'button';
+                    const dn = el('button', 'w-8 h-7 rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 text-[13px]', '▼'); dn.type = 'button';
+                    up.disabled = k === 0; dn.disabled = k === order.length - 1;
+                    if (up.disabled) up.classList.add('opacity-30'); if (dn.disabled) dn.classList.add('opacity-30');
+                    up.addEventListener('click', () => { if (k > 0) { [order[k - 1], order[k]] = [order[k], order[k - 1]]; result.className = 'hidden'; draw(); } });
+                    dn.addEventListener('click', () => { if (k < order.length - 1) { [order[k + 1], order[k]] = [order[k], order[k + 1]]; result.className = 'hidden'; draw(); } });
+                    ctl.appendChild(up); ctl.appendChild(dn);
+                    row.appendChild(txt); row.appendChild(ctl);
+                    list.appendChild(row);
+                });
+            }
+            draw();
+            if (typeof Sortable !== 'undefined') {
+                Sortable.create(list, { animation: 150, ghostClass: 'sortable-ghost', delay: 150, delayOnTouchOnly: true, handle: '.email-paper',
+                    onEnd: () => { const ids = [...list.children].map(c => +c.dataset.i); order = ids.map(i => rows[i]); result.className = 'hidden'; draw(); } });
+            }
+            const bar = el('div', 'mt-3 flex flex-wrap gap-2');
+            const check = smallBtn('Проверить', true), again = smallBtn('Перемешать');
+            bar.appendChild(check); bar.appendChild(again);
+            check.addEventListener('click', () => {
+                let ok = 0;
+                [...list.children].forEach((row, k) => {
+                    const good = +row.dataset.i === k; if (good) ok++;
+                    row.classList.remove('border-slate-200', 'border-emerald-400', 'border-rose-400', 'bg-emerald-50', 'bg-rose-50');
+                    row.classList.add(good ? 'border-emerald-400' : 'border-rose-400', good ? 'bg-emerald-50' : 'bg-rose-50');
+                });
+                const all = ok === rows.length;
+                result.className = fbClass(all);
+                result.innerHTML = all ? '<strong>Всё на своих местах.</strong> ' + (it.expl || '') : 'На своём месте: ' + ok + ' из ' + rows.length + '. Красные блоки нужно переставить.';
+            });
+            again.addEventListener('click', () => { order = shuffle(rows); result.className = 'hidden'; draw(); });
+            card.appendChild(list); card.appendChild(bar); card.appendChild(result);
+            box.appendChild(card);
+        });
+    }
+
+    /* ---------- Step-by-step email builder (with optional timed writing) ---------- */
+    function renderBuilder(containerId, B) {
+        const box = document.getElementById(containerId); if (!box) return;
+        box.innerHTML = '';
+        box.innerHTML = '<div class="bg-slate-50 p-4 sm:p-5 rounded-xl border border-slate-200 text-[14.5px] mb-5">'
+            + '<p class="text-slate-700 mb-3">' + B.ctx + '</p>'
+            + '<p class="font-bold mb-2">Write an email to ' + B.to + '. In your email, do the following:</p>'
+            + '<ul class="list-disc pl-6 space-y-1 text-slate-700">' + B.bullets.map(b => '<li>' + b + '</li>').join('') + '</ul>'
+            + '<p class="text-slate-500 text-[13px] mt-3">Write as much as you can and in complete sentences.</p></div>';
+
+        if (B.write) {
+            const wrap = el('details', 'group mb-5 border border-indigo-100 rounded-xl bg-indigo-50/30 overflow-hidden');
+            wrap.innerHTML = '<summary class="flex items-center px-4 py-3 cursor-pointer text-[14px] font-semibold text-indigo-800"><i data-lucide="timer" class="w-4 h-4 mr-2"></i>Сначала напишите сами за 7 минут</summary>';
+            const inner = el('div', 'px-4 pb-4');
+            const meta = el('div', 'text-[13px] text-slate-600 mb-2', '<b>To:</b> ' + B.to + (B.subject ? ' &nbsp; <b>Subject:</b> ' + B.subject : ''));
+            const ta = el('textarea', 'w-full border border-gray-300 rounded-lg p-3 text-[14.5px] bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200');
+            ta.style.minHeight = '220px'; ta.placeholder = 'Ваше письмо…';
+            const row = el('div', 'flex flex-wrap items-center gap-3 mt-2 text-[13px]');
+            const wc = el('span', 'text-gray-500', 'Слов: 0');
+            const tm = el('span', 'font-mono font-semibold text-slate-700', '07:00');
+            const start = smallBtn('Запустить таймер');
+            let left = 420, timer = null;
+            const show = () => { tm.textContent = String(Math.floor(left / 60)).padStart(2, '0') + ':' + String(left % 60).padStart(2, '0'); };
+            start.addEventListener('click', () => {
+                if (timer) { clearInterval(timer); timer = null; start.textContent = 'Продолжить'; return; }
+                start.textContent = 'Пауза';
+                timer = setInterval(() => { left--; show(); if (left <= 0) { clearInterval(timer); timer = null; tm.textContent = 'Время вышло'; tm.classList.add('text-rose-600'); start.disabled = true; } }, 1000);
+            });
+            ta.addEventListener('input', () => { wc.textContent = 'Слов: ' + (ta.value.trim().match(/\S+/g) || []).length; });
+            row.appendChild(start); row.appendChild(tm); row.appendChild(wc);
+            inner.appendChild(meta); inner.appendChild(ta); inner.appendChild(row);
+            wrap.appendChild(inner); box.appendChild(wrap);
+        }
+
+        const stepsWrap = el('div', 'space-y-4'); box.appendChild(stepsWrap);
+        const chosen = {}; let score = 0;
+        function showStep(n) {
+            if (n >= B.steps.length) return finish();
+            const s = B.steps[n];
+            const card = el('div', 'border border-gray-200 rounded-xl p-4 bg-white');
+            card.innerHTML = '<div class="text-[12px] font-bold text-indigo-500 mb-2">Шаг ' + (n + 1) + ' из ' + B.steps.length + ' · ' + s.q + '</div>';
+            const opts = el('div', 'grid grid-cols-1 gap-2');
+            const expl = el('div', 'hidden');
+            (s.fixed ? s.options.map((o, i) => i) : shuffle(s.options.map((o, i) => i))).forEach(i => {
+                const b = el('button', 'opt-btn'); b.type = 'button'; b.textContent = s.options[i]; b.dataset.i = i;
+                b.addEventListener('click', () => {
+                    if (b.disabled) return;
+                    opts.querySelectorAll('button').forEach(x => { x.disabled = true; if (+x.dataset.i === s.answer) x.classList.add('opt-correct'); else if (x !== b) x.classList.add('opt-dim'); });
+                    const ok = i === s.answer; if (!ok) b.classList.add('opt-wrong'); else score++;
+                    chosen[s.key] = s.options[s.answer];
+                    expl.className = fbClass(ok);
+                    expl.innerHTML = verdict(ok) + s.expl;
+                    setTimeout(() => showStep(n + 1), 350);
+                });
+                opts.appendChild(b);
+            });
+            card.appendChild(opts); card.appendChild(expl);
+            stepsWrap.appendChild(card);
+        }
+        function finish() {
+            const fin = el('div', 'mt-6 space-y-4');
+            fin.innerHTML = '<div class="bg-indigo-50 border border-indigo-100 rounded-xl p-4 text-[14px] text-indigo-900"><strong>С первого раза: ' + score + ' из ' + B.steps.length + '.</strong> ' + (B.after || 'Вот каркас вашего письма — серые места допишите сами.') + '</div>'
+                + '<div class="rounded-xl overflow-hidden border border-gray-200"><div class="bg-slate-50 font-bold py-2.5 px-4 text-[13px] border-b border-gray-200 text-slate-700">Ваш каркас</div>'
+                + '<div class="bg-white p-4 text-[14.5px] text-slate-700 leading-relaxed email-paper">' + fillSkeleton(B.skeleton, chosen) + '</div></div>';
+            const btn = smallBtn('Показать образцовое письмо', true);
+            const model = el('div', 'hidden rounded-xl overflow-hidden border border-emerald-100');
+            model.innerHTML = '<div class="bg-emerald-50 text-emerald-900 font-bold py-2.5 px-4 text-[13px] border-b border-emerald-100 flex items-center"><i data-lucide="check-circle" class="w-4 h-4 mr-2"></i>Sample High-Level Response</div>'
+                + '<div class="bg-white p-5 text-[14.5px] text-slate-700 leading-relaxed email-paper">' + B.model + '</div>'
+                + '<div class="bg-[#313374] text-white font-bold py-2 px-4 text-[13px]">Почему это работает</div>'
+                + '<div class="bg-indigo-50/30 p-4 text-[14px] text-slate-700"><ul class="list-disc pl-5 space-y-1">' + B.notes.map(n => '<li>' + n + '</li>').join('') + '</ul></div>';
+            btn.addEventListener('click', () => { model.classList.toggle('hidden'); btn.textContent = model.classList.contains('hidden') ? 'Показать образцовое письмо' : 'Скрыть образец'; safeCreateIcons(); });
+            const again = smallBtn('Собрать заново'); again.addEventListener('click', () => renderBuilder(containerId, B));
+            const bar = el('div', 'flex flex-wrap gap-2'); bar.appendChild(btn); bar.appendChild(again);
+            fin.appendChild(bar); fin.appendChild(model);
+            stepsWrap.appendChild(fin);
+        }
+        showStep(0);
+        safeCreateIcons();
+    }
+
+    /* ================= Lesson 7 data ================= */
+    const CLOSE_SIGN_NOTE = "Подпись с запятой и имя с новой строки.";
+
+    const PRACTICE = [
+        { type: "Жалоба в магазин", level: "Человек с титулом", title: "Сломанная техника",
+          B: {
+            ctx: "You recently purchased a new kitchen appliance from a store called 'Home Essentials.' After using it for a few days, you noticed some problems with it. You want to inform the customer service representative, Ms. Parker, about the issue.",
+            to: "Ms. Parker", subject: "Problem with my kitchen appliance", write: true,
+            bullets: ["Describe the issue you are experiencing with the kitchen appliance.", "Explain why this issue is problematic for you.", "Request a replacement or repair for the appliance."],
+            steps: [
+                { key: "greet", q: "Приветствие", options: ["Dear Ms. Parker,", "Hi Parker,", "Dear Home Essentials,", "Hey there!"], answer: 0, expl: "Есть имя с титулом — Ms. + фамилия." },
+                { key: "open", q: "Первая фраза", options: ["I am writing about a problem with the TechPro 3000 blender I bought at Home Essentials on March 3.", "I recently purchased a new kitchen appliance from a store called Home Essentials.", "Your blender is broken.", "Actually, I have a complaint."], answer: 0, expl: "Повод и цель с конкретикой. Второй вариант — копия задания." },
+                { key: "p1", q: "Пункт 1: в чём проблема", options: ["After only four days, the motor started making a loud grinding noise, and now it stops after about ten seconds, even with soft fruit.", "It doesn't work properly.", "It is the worst blender I have ever bought!!!", "I chose it because it was on sale."], answer: 0, expl: "Симптомы с числами вместо общих слов и эмоций." },
+                { key: "p2", q: "Пункт 2: почему это проблема для вас", options: ["This is a problem because I make a smoothie every morning before my 8 a.m. lectures, and without it I often skip breakfast.", "This is problematic for me.", "This ruined my whole week, and I'm furious.", "My roommate also has a blender."], answer: 0, expl: "Последствия через вашу жизнь. «Problematic for me» просто повторяет пункт." },
+                { key: "p3", q: "Пункт 3: просьба", options: ["Could you please arrange a replacement? If that is not possible, I would appreciate a repair under the warranty.", "Replace it now.", "I want a new one or my money back, otherwise I'll leave a bad review.", "Maybe you can do something."], answer: 0, expl: "Вопрос + запасной вариант. Без приказов и угроз." },
+                { key: "close", q: "Концовка", options: ["Thank you for your help.\n\nSincerely,\nAnna Petrova", "Waiting for your answer!\nAnna", "Bye.", "Love,\nAnna"], answer: 0, expl: CLOSE_SIGN_NOTE }
+            ],
+            skeleton: "{greet}\n\n{open}\n\n{p1} [[что вы уже пробовали]]\n\n{p2}\n\n{p3} [[чек, готовность принести товар]]\n\n{close}",
+            model: "Dear Ms. Parker,\n\nI am writing about a problem with the TechPro 3000 blender I bought at Home Essentials on March 3.\n\nAfter only four days of use, the motor started making a loud grinding noise, and now it stops completely after about ten seconds, even with soft fruit. I have checked that the jar is attached correctly and tried a different socket, but nothing has changed.\n\nThis is a real problem for me because I make a smoothie every morning before my 8 a.m. lectures. Without the blender, I often end up skipping breakfast on my busiest days.\n\nCould you please arrange a replacement? If a new blender is not available, I would appreciate it if you could have this one repaired under the warranty. I still have the receipt and can bring the blender to the store.\n\nThank you for your help.\n\nSincerely,\nAnna Petrova",
+            notes: ["Название, дата покупки и симптомы придуманы — так и нужно.", "Пункт 2 объясняет последствия через вашу жизнь, а не через эмоции.", "Просьба вопросом + запасной вариант + готовность помочь (чек, принести товар).", "Деловой тон от Dear до Sincerely."]
+          } },
+        { type: "Проблема в общежитии", level: "Человек с титулом", title: "Медленный интернет",
+          B: {
+            ctx: "You are a university student living in a dormitory. Recently, you have noticed that the internet connection in your dormitory is very slow and often disconnects. This issue is making it difficult for you to complete your assignments and attend online classes. You want to report this problem to the dormitory manager, Mr. Evans, and request a solution.",
+            to: "Mr. Evans", subject: "Internet connection problem", write: true,
+            bullets: ["Describe the issue with the internet connection.", "Explain how this problem is affecting your studies.", "Request that the internet connection be improved as soon as possible."],
+            steps: [
+                { key: "greet", q: "Приветствие", options: ["Dear Mr. Evans,", "Hi Evans,", "Dear Sir or Madam,", "Hello dormitory!"], answer: 0, expl: "Имя известно — используем его." },
+                { key: "open", q: "Первая фраза", options: ["I am writing to let you know about a problem with the internet connection on the third floor of Building C.", "Recently, I have noticed that the internet connection in my dormitory is very slow and often disconnects.", "The internet is terrible.", "My name is Anna, and I live in the dormitory."], answer: 0, expl: "Повод, место и цель. Второй вариант — копия задания." },
+                { key: "p1", q: "Пункт 1: в чём проблема", options: ["For the past two weeks, pages have taken almost a minute to load in the evenings, and the connection drops every ten to fifteen minutes.", "The internet is slow and it disconnects.", "It is the slowest internet in the world!", "I use the internet for many things."], answer: 0, expl: "Числа делают проблему реальной." },
+                { key: "p2", q: "Пункт 2: как это мешает учиться", options: ["Two of my courses are online, and last Tuesday the connection dropped during a timed quiz, so I lost ten minutes.", "It affects my studies a lot.", "Because of you, my grades are going down.", "Studying is very important for students."], answer: 0, expl: "Мини-история — лучшее доказательство. Без обвинений." },
+                { key: "p3", q: "Пункт 3: просьба", options: ["Would it be possible to ask the IT team to check the router on our floor before final exams begin?", "Fix it as soon as possible.", "You must improve the internet immediately.", "I hope something will change one day."], answer: 0, expl: "Конкретная просьба со сроком, вопросом." },
+                { key: "close", q: "Концовка", options: ["Thank you for your help.\n\nBest regards,\nAnna Petrova", "I will be waiting for your answer.\nAnna", "That's all.", "Cheers,\nAnna"], answer: 0, expl: CLOSE_SIGN_NOTE }
+            ],
+            skeleton: "{greet}\n\n{open}\n\n{p1} [[соседи тоже заметили]]\n\n{p2} [[дедлайны, загрузка заданий]]\n\n{p3}\n\n{close}",
+            model: "Dear Mr. Evans,\n\nI am writing to let you know about a problem with the internet connection on the third floor of Building C.\n\nFor the past two weeks, the Wi-Fi has been extremely slow in the evenings. Web pages often take almost a minute to load, and the connection drops every ten to fifteen minutes. Several of my neighbors have noticed the same problem.\n\nThis is making my studies very difficult. Two of my courses are fully online, and last Tuesday the connection dropped in the middle of a timed quiz, so I lost ten minutes. I also have trouble uploading assignments before midnight deadlines.\n\nWould it be possible to ask the IT team to check the router on our floor or install an additional access point? I would really appreciate it if this could be fixed before final exams begin on May 5.\n\nThank you for your help.\n\nBest regards,\nAnna Petrova",
+            notes: ["Первая фраза называет проблему и место, не копируя задание.", "Числа: минута на загрузку, каждые 10–15 минут.", "Мини-история с квизом доказывает влияние на учёбу.", "Просьба конкретная: что проверить и к какому сроку."]
+          } },
+        { type: "Отзыв с критикой", level: "Человек с титулом", title: "Неудачный торт",
+          B: {
+            ctx: "You are a regular customer at a local bakery and have always enjoyed their products. Recently, you bought a cake for your favorite professor, but it did not meet your expectations. You want to provide feedback to the bakery owner, Ms. Lopez, and suggest improvements.",
+            to: "Ms. Lopez", subject: "Feedback on my recent order", write: true,
+            bullets: ["Explain what you usually enjoy about their products.", "Describe the issues you had with your recent cake purchase.", "Suggest how they could improve the quality of their cakes."],
+            steps: [
+                { key: "greet", q: "Приветствие", options: ["Dear Ms. Lopez,", "Hi Lopez!", "Dear bakery,", "Hey,"], answer: 0, expl: "Ms. + фамилия." },
+                { key: "bread1", q: "Хлеб: что обычно нравится", options: ["I have been a regular customer for almost two years, and I usually love your products, especially the cinnamon rolls, which are always fresh and soft.", "Your bakery is okay.", "You have the best bakery on the planet!", "I don't usually eat sweets."], answer: 0, expl: "Конкретный и честный плюс, без лести." },
+                { key: "problem", q: "Начинка: что было не так", options: ["However, the chocolate cake I ordered last Friday was quite dry, the cream tasted a bit sour, and the writing on top was smudged.", "The cake was a disaster, and I was embarrassed in front of everyone!!!", "Your baker clearly doesn't care about quality.", "The cake was not so good, but whatever."], answer: 0, expl: "Три факта и смягчители (<em>quite, a bit</em>). Без оценки пекаря." },
+                { key: "suggest", q: "Начинка: предложение", options: ["It might help to check special-order cakes just before customers collect them and to keep them refrigerated until then.", "Hire a better baker.", "You should improve your cakes.", "If this happens again, I will stop coming."], answer: 0, expl: "Конкретные идеи со смягчителем." },
+                { key: "bread2", q: "Хлеб: финал", options: ["Thank you for reading my feedback. I'm sure I'll be back for more cinnamon rolls soon!", "Never again.", "Please reply quickly.", "Goodbye."], answer: 0, expl: "Тёплый финал показывает, что вы остаётесь клиентом." },
+                { key: "sign", q: "Подпись", options: ["Best regards,\nAnna Petrova", "Love,\nAnna", "Best regards.", "XOXO"], answer: 0, expl: CLOSE_SIGN_NOTE }
+            ],
+            skeleton: "{greet}\n\n{bread1}\n\n{problem} [[для кого был торт]]\n\n{suggest}\n\n{bread2}\n\n{sign}",
+            model: "Dear Ms. Lopez,\n\nI have been a regular customer at Sweet Crumbs for almost two years, and I wanted to share some feedback about a recent order. I usually love your products, especially the cinnamon rolls, which are always fresh and soft.\n\nLast Friday, however, I ordered a chocolate cake for my professor's retirement party, and unfortunately it was not as good as I had hoped. The sponge was quite dry, the cream tasted a bit sour, and the writing on top was smudged when I picked it up.\n\nIt might help to check special-order cakes just before customers collect them and to keep them in the refrigerator until then. Perhaps you could also offer a small tasting for larger orders.\n\nThank you for reading my feedback. I am sure I will be back for more cinnamon rolls soon!\n\nBest regards,\nAnna Petrova",
+            notes: ["Сэндвич: что нравится → что было не так → предложения → тёплый финал.", "Смягчители <em>quite, a bit, unfortunately</em> делают критику спокойной.", "Ни слова о пекаре — только о торте.", "Два конкретных предложения вместо «improve your cakes»."]
+          } },
+        { type: "Благодарность + предложение", level: "Человек с титулом", title: "Полезный воркшоп",
+          B: {
+            ctx: "You major in marketing. You recently attended a workshop on digital marketing that was recommended by your professor. You found the workshop extremely informative and believe it greatly benefits your studies. You want to thank the organizer, Ms. Clark, and suggest that similar workshops be held more frequently.",
+            to: "Ms. Clark", subject: "Thank you for the workshop", write: true,
+            bullets: ["Thank her for organizing the workshop and mention what you found most valuable about it.", "Explain how the workshop benefits your studies.", "Suggest that similar workshops be organized more frequently."],
+            steps: [
+                { key: "greet", q: "Приветствие", options: ["Dear Ms. Clark,", "Hi Clark,", "Dear Organizer,", "Hey!"], answer: 0, expl: "Ms. + фамилия." },
+                { key: "p1", q: "Пункт 1: благодарность + самое ценное", options: ["Thank you so much for organizing last Friday's digital marketing workshop. The most valuable part for me was the hands-on session on social media analytics.", "Thank you for everything.", "I major in marketing, and I recently attended a workshop on digital marketing that was recommended by my professor.", "The workshop was nice."], answer: 0, expl: "Когда первый пункт — благодарность, письмо начинается с неё. И сразу «что именно»." },
+                { key: "p2", q: "Пункт 2: польза для учёбы", options: ["It has already helped with my group project for my Consumer Behavior course: we are planning an online campaign for a local café, and now I know how to measure the results.", "It benefits my studies greatly.", "Marketing is a very important subject nowadays.", "I study a lot every day."], answer: 0, expl: "Конкретный курс и проект показывают пользу." },
+                { key: "p3", q: "Пункт 3: предложение", options: ["It would be wonderful if similar workshops were held more often, perhaps once a month — several classmates have already asked about the next one.", "You must organize more workshops.", "More workshops, please!!!", "Maybe there could be more, I don't know."], answer: 0, expl: "Предложение с частотой и причиной." },
+                { key: "close", q: "Финальная фраза", options: ["Thank you again for a wonderful event.", "That's all I wanted to say.", "Waiting for the next workshop!", "In conclusion, the workshop was good."], answer: 0, expl: "Короткая благодарность ещё раз — естественный финал." },
+                { key: "sign", q: "Подпись", options: ["Best regards,\nAnna Petrova", "Cheers,\nAnna", "Sincerely.", "Bye!"], answer: 0, expl: CLOSE_SIGN_NOTE }
+            ],
+            skeleton: "{greet}\n\n{p1} [[что вы делали на этой части]]\n\n{p2}\n\n{p3}\n\n{close}\n\n{sign}",
+            model: "Dear Ms. Clark,\n\nThank you so much for organizing last Friday's workshop on digital marketing. The most valuable part for me was the hands-on session on social media analytics, where we analyzed a real campaign and found out why some posts got ten times more engagement than others.\n\nThe workshop has already helped me with my studies. This semester, I am working on a group project for my Consumer Behavior course, and we need to plan an online campaign for a local café. Thanks to your session, I now know how to set clear goals and measure the results instead of just guessing.\n\nI think it would be wonderful if similar workshops were held more often, perhaps once a month. Many of my classmates who missed this one have already asked me when the next session will be.\n\nThank you again for a wonderful event.\n\nBest regards,\nAnna Petrova",
+            notes: ["Благодарность сразу с конкретикой: какая часть и что именно вы делали.", "Польза для учёбы через реальный курс и проект.", "Предложение с частотой (once a month) и аргументом (одногруппники спрашивают).", "Тёплый, но деловой тон."]
+          } },
+        { type: "Просьба к преподавателю", level: "Человек с титулом", title: "Пропуск ради конференции",
+          B: {
+            ctx: "You have been selected to represent your university at an international conference. You need to inform your professor, Dr. Lee, about this opportunity and request permission to miss class during the conference.",
+            to: "Dr. Lee", subject: "Conference and missed class", write: true,
+            bullets: ["Inform Dr. Lee about the opportunity, including conference topic and location.", "Request permission to miss class and suggest ways to make up for missed classes.", "Ask for suggestions on how to prepare for the conference."],
+            steps: [
+                { key: "greet", q: "Приветствие", options: ["Dear Dr. Lee,", "Hi Lee!", "Dear Professor,", "Hello Dr. Lee!!"], answer: 0, expl: "Dr. + фамилия, без восклицаний." },
+                { key: "p1", q: "Пункт 1: тема и место", options: ["I am pleased to let you know that I have been selected to represent our university at the International Student Conference on Renewable Energy in Lisbon from May 12 to 14.", "I have been selected to represent my university at an international conference.", "Guess what?! I'm going to a conference!", "There is a conference soon."], answer: 0, expl: "Пункт прямо просит тему и место — их нужно назвать." },
+                { key: "p2", q: "Пункт 2: разрешение + как наверстать", options: ["Would it be possible for me to be excused from Wednesday's seminar? I could submit the problem set before I leave and come to your office hours the following Monday.", "I will not come to class on Wednesday.", "I need you to excuse me from class.", "Can I skip class?"], answer: 0, expl: "Обе половины пункта: просьба и план, как наверстать." },
+                { key: "p3", q: "Пункт 3: просьба о совете", options: ["Since this will be my first international conference, I would be grateful for any advice on preparing my presentation.", "Give me some advice.", "I don't know anything about conferences, help!", "What should I do?"], answer: 0, expl: "Вежливая просьба с причиной." },
+                { key: "close", q: "Финальная фраза", options: ["Thank you for your time and support.", "Waiting for your permission.", "That's all.", "Thanks a bunch!"], answer: 0, expl: "Благодарность за время и поддержку." },
+                { key: "sign", q: "Подпись", options: ["Best regards,\nAnna Petrova", "Cheers,\nAnna", "Love,\nAnna", "Best regards."], answer: 0, expl: CLOSE_SIGN_NOTE }
+            ],
+            skeleton: "{greet}\n\n{p1} [[что вы будете представлять]]\n\n{p2}\n\n{p3} [[конкретный вопрос]]\n\n{close}\n\n{sign}",
+            model: "Dear Dr. Lee,\n\nI am pleased to let you know that I have been selected to represent our university at the International Student Conference on Renewable Energy in Lisbon from May 12 to 14. I will be presenting our team's research on low-cost solar panels for rural schools.\n\nBecause of the conference, I will miss your Environmental Science seminar on Wednesday, May 13. Would it be possible for me to be excused that day? I could submit the weekly problem set before I leave and come to your office hours the following Monday to go over the material I missed.\n\nSince this will be my first international conference, I would also be grateful for any advice on preparing my presentation. Are there any common mistakes I should avoid when presenting to an international audience?\n\nThank you for your time and support.\n\nBest regards,\nAnna Petrova",
+            notes: ["Тема, место и даты — всё, что просил пункт 1.", "Пункт 2 раскрыт полностью: просьба + конкретный план, как наверстать.", "Пункт 3 заканчивается настоящим вопросом.", "Уважительный тон без лишних извинений."]
+          } },
+        { type: "Извинение", level: "Человек с титулом", title: "Испорченная книга",
+          B: {
+            ctx: "You are a student who recently borrowed a book from the university library. Unfortunately, you accidentally damaged the book. You want to inform the librarian, Mr. Anderson, about the incident and inquire about the steps you need to take to resolve the situation.",
+            to: "Mr. Anderson", subject: "Damaged library book", write: true,
+            bullets: ["Describe the incident that caused the book damage and the extent of the damage to the book.", "Explain your concern about the consequences for damaging the book.", "Ask about the steps you should take to resolve the situation."],
+            steps: [
+                { key: "greet", q: "Приветствие", options: ["Dear Mr. Anderson,", "Hi Anderson,", "Dear Library,", "Hey!"], answer: 0, expl: "Mr. + фамилия." },
+                { key: "open", q: "Первая фраза", options: ["I am writing to let you know that I accidentally damaged a library book, and I would like to ask what I should do.", "Unfortunately, something bad happened.", "You are a student who recently borrowed a book from the university library.", "It's not my fault, but the book is damaged."], answer: 0, expl: "Сразу признаём, что случилось, и говорим, чего хотим." },
+                { key: "p1", q: "Пункт 1: что случилось и насколько серьёзно", options: ["Last Thursday, someone bumped into my table in the café and knocked my coffee over the book. About twenty pages are stained, and several are stuck together.", "The book got damaged.", "The book is completely destroyed, it's a nightmare!", "It was a book about microbiology."], answer: 0, expl: "Обе части пункта: как это произошло и насколько повреждена книга." },
+                { key: "p2", q: "Пункт 2: что вас беспокоит", options: ["I am a little worried because I need to borrow more books for my final project, and I don't want my account to be blocked.", "I am worried about consequences.", "I hope you won't punish me too much.", "Libraries have many rules."], answer: 0, expl: "Конкретное беспокойство, спокойным тоном." },
+                { key: "p3", q: "Пункт 3: вопрос о дальнейших шагах", options: ["Could you please let me know what steps I should take? I would be happy to pay for a replacement copy.", "Tell me what to do.", "I will not pay for it.", "Maybe we can forget about it?"], answer: 0, expl: "Вопрос + готовность исправить — это и есть хорошее извинение." },
+                { key: "close", q: "Концовка", options: ["Thank you for your understanding.\n\nBest regards,\nAnna Petrova", "Thanks in advance for not charging me.\nAnna", "Bye!", "Waiting for your answer.\nAnna"], answer: 0, expl: "Извинение заканчивается благодарностью за понимание." }
+            ],
+            skeleton: "{greet}\n\n{open}\n\n{p1}\n\n[[извинение]] {p2}\n\n{p3}\n\n{close}",
+            model: "Dear Mr. Anderson,\n\nI am writing to let you know that I accidentally damaged a library book, and I would like to ask what I should do to resolve the situation.\n\nLast Thursday, I was reading Introduction to Microbiology in the student café when someone bumped into my table and knocked my coffee over the book. About twenty pages are now stained, and several of them have stuck together, although the text is still readable.\n\nI am very sorry about this. I am also a little worried about the consequences, because I need to borrow more books for my final project, and I don't want my library account to be blocked.\n\nCould you please let me know what steps I should take? I would be happy to pay for a replacement copy or to buy a new one myself if that is easier.\n\nThank you for your understanding.\n\nBest regards,\nAnna Petrova",
+            notes: ["Формула извинения: признать → объяснить без оправданий → предложить исправить.", "Пункт 1 раскрыт полностью: как случилось + насколько повреждено.", "Беспокойство конкретное и спокойное.", "Предложение заплатить показывает ответственность."]
+          } },
+        { type: "Подруге: планы", level: "Друг", title: "Благотворительная ярмарка",
+          B: {
+            ctx: "You and your friend, Jasmine, are planning to host a fundraising event for a local children's hospital. You have some ideas for activities and entertainment to include in the event, but you need Jasmine's input to finalize the plans. You also want to discuss the best time to meet and organize the details.",
+            to: "Jasmine", subject: "Fundraiser ideas", write: true,
+            bullets: ["Describe the ideas you have for the fundraising event.", "Explain why you think these activities will be successful.", "Suggest a time to meet and discuss the plans in more detail."],
+            steps: [
+                { key: "greet", q: "Приветствие", options: ["Hi Jasmine,", "Dear Ms. Jasmine,", "Dear Sir or Madam,", "Jasmine!!!"], answer: 0, expl: "Подруге — Hi + имя." },
+                { key: "open", q: "Первая фраза", options: ["I've been thinking about our fundraiser for the children's hospital, and I have a few ideas I'd love to run by you!", "I am writing to inform you about my ideas regarding the fundraising event.", "You and I are planning to host a fundraising event for a local children's hospital.", "Ideas."], answer: 0, expl: "Живо и по-дружески. Второй вариант звучит как служебная записка." },
+                { key: "p1", q: "Пункт 1: идеи", options: ["We could hold a mini fair in the student center with a bake sale, face painting, and a used-book stall, and finish with a short talent show.", "We can do some activities and entertainment.", "We will do the best event ever!!!", "Last year I went to a fair in another city."], answer: 0, expl: "Конкретные идеи вместо слов из задания." },
+                { key: "p2", q: "Пункт 2: почему сработает", options: ["They're cheap to organize and fun for both students and families, and people love donating to support their friends in a talent show.", "They will be successful because they are good.", "Everyone will definitely love them, trust me.", "Hospitals need money."], answer: 0, expl: "Причины: дёшево, весело, люди охотно жертвуют." },
+                { key: "p3", q: "Пункт 3: когда встретиться", options: ["Are you free on Thursday after 4:00? We could meet at the café next to the library.", "Let's meet sometime.", "You have to meet me on Thursday.", "Tell me when you're free, I'm always busy."], answer: 0, expl: "Конкретное время и место — вопросом." },
+                { key: "close", q: "Концовка", options: ["Can't wait to hear what you think!\n\nBest,\nAnna", "I look forward to your prompt reply.\n\nSincerely,\nAnna Petrova", "Bye.", "Waiting for your answer.\nAnna"], answer: 0, expl: "Подруге — тепло и коротко." }
+            ],
+            skeleton: "{greet}\n\n{open}\n\n{p1}\n\n{p2}\n\n{p3} [[запасной вариант времени]]\n\n{close}",
+            model: "Hi Jasmine,\n\nI've been thinking about our fundraiser for the children's hospital, and I have a few ideas I'd love to run by you!\n\nFirst, we could hold a mini fair in the student center with a bake sale, face painting, and a used-book stall. In the evening, we could finish with a short talent show where students perform and the audience votes by donating a dollar per vote.\n\nI think these activities will work well because they're cheap to organize and fun for both students and families. The talent show could also bring in a lot of money, since people love supporting their friends.\n\nAre you free on Thursday after 4:00? We could meet at the café next to the library and make a list of everything we need. If Thursday doesn't work, Saturday morning is fine with me too.\n\nCan't wait to hear what you think!\n\nBest,\nAnna",
+            notes: ["Дружеский тон: сокращения, <em>run by you</em>, один восклицательный знак в начале и один в конце.", "Идеи конкретные, их легко представить.", "Пункт 2 — настоящие причины, а не «it will be great».", "Время, место и запасной вариант."]
+          } },
+        { type: "Однокурснице: спасибо", level: "Друг", title: "Отличная работа в проекте",
+          B: {
+            ctx: "You are a student who recently participated in a group project for your marketing class. One of your group members, Lisa, did an excellent job on part of the project.",
+            to: "Lisa", subject: "Thank you!", write: true,
+            bullets: ["Thank her for her excellent contribution to the group project.", "Explain what part of Lisa's contribution you appreciated most and how her efforts helped the team succeed.", "Suggest working together on future projects and ask for her opinion."],
+            steps: [
+                { key: "greet", q: "Приветствие", options: ["Hi Lisa,", "Dear Ms. Lisa,", "Dear Group Member,", "Lisa."], answer: 0, expl: "Однокурснице — Hi + имя." },
+                { key: "p1", q: "Пункт 1: благодарность", options: ["I just wanted to say a big thank you for all your work on our marketing project. We got an A, and I honestly think it wouldn't have happened without you!", "Thank you for your contribution to the group project.", "I am writing to express my gratitude regarding your participation.", "Thanks."], answer: 0, expl: "Искренне и с результатом. Второй вариант почти копирует задание, третий слишком официален." },
+                { key: "p2", q: "Пункт 2: что именно и как помогло", options: ["What I appreciated most was the customer survey you designed: you sent it to over a hundred students and turned the results into clear charts, which became the strongest part of our presentation.", "Your part was very good and helpful.", "You did more than the others, who were pretty useless.", "Marketing projects are always hard."], answer: 0, expl: "Обе части пункта. И никаких наездов на остальных участников." },
+                { key: "p3", q: "Пункт 3: предложение + вопрос", options: ["We have another group project in the Advertising course next semester. Would you like to be in a group with me? What do you think?", "We should work together again.", "You must join my group next time.", "Maybe one day we will work together, who knows."], answer: 0, expl: "Конкретное предложение и вопрос о её мнении — пункт этого требует." },
+                { key: "close", q: "Концовка", options: ["Thanks again, and enjoy your break!\n\nBest,\nAnna", "I look forward to hearing from you.\n\nSincerely,\nAnna Petrova", "That's all.", "Kind regards."], answer: 0, expl: "Тёплый дружеский финал." }
+            ],
+            skeleton: "{greet}\n\n{p1}\n\n{p2} [[что сказал преподаватель]]\n\n{p3}\n\n{close}",
+            model: "Hi Lisa,\n\nI just wanted to say a big thank you for all your work on our marketing project. We got an A, and I honestly think it wouldn't have happened without you!\n\nWhat I appreciated most was the customer survey you designed. You wrote clear questions, sent the survey to over a hundred students, and turned the results into those simple charts. They became the strongest part of our presentation, and Professor Wilson even said our data was the best in the class.\n\nI really enjoyed working with you, and I'd love to team up again. We have another group project in the Advertising course next semester. Would you like to be in a group with me? What do you think?\n\nThanks again, and enjoy your break!\n\nBest,\nAnna",
+            notes: ["Похвала конкретная: опрос, сто студентов, графики, слова преподавателя.", "Пункт 2 показывает и вклад, и результат для команды.", "Пункт 3 заканчивается вопросом — как просит задание.", "Ни слова о других участниках: благодарим одного, не принижая остальных."]
+          } },
+        { type: "Запрос в отель", level: "Человек с титулом", title: "Бронирование для группы",
+          B: {
+            ctx: "You are planning a trip with your classmates to a popular tourist destination during your semester break. You need to book accommodations and ensure the hotel can meet your group's needs. You want to contact the hotel to confirm these details.",
+            to: "Mr. Carter", subject: "Group booking inquiry", write: true,
+            bullets: ["Explain the purpose of your trip and the number of people in your group.", "Explain your group's specific requirements.", "Request the hotel send any additional information needed."],
+            steps: [
+                { key: "greet", q: "Приветствие", options: ["Dear Mr. Carter,", "Hi Carter!", "Dear Hotel,", "Hey there,"], answer: 0, expl: "Mr. + фамилия." },
+                { key: "open", q: "Первая фраза", options: ["I am writing to inquire about accommodation for a group of university students during our semester break.", "We want to book rooms.", "You are a hotel, and we are students.", "I am planning a trip with my classmates to a popular tourist destination during my semester break."], answer: 0, expl: "<em>Inquire about</em> — точная формула запроса. Последний вариант — копия задания." },
+                { key: "p1", q: "Пункт 1: цель и сколько человек", options: ["Our geography class is planning a study trip to visit the national marine park. There will be eighteen students and two professors, from March 15 to 19.", "We are many people coming for a trip.", "It will be a really fun trip, we are so excited!", "Geography is my favorite subject."], answer: 0, expl: "Цель, точное число людей и даты." },
+                { key: "p2", q: "Пункт 2: требования", options: ["Most students would like to share rooms in groups of three or four. Two of them are vegetarian, and we will need a meeting room for about two hours each evening.", "We have some special needs.", "You must give us the best rooms.", "We are not very demanding people."], answer: 0, expl: "Конкретные требования, на которые отель может ответить." },
+                { key: "p3", q: "Пункт 3: просьба об информации", options: ["Could you please send me information about your group rates, availability, and the booking process?", "Send all information.", "I want the information immediately.", "Is there information?"], answer: 0, expl: "Вежливый вопрос с перечнем того, что нужно." },
+                { key: "close", q: "Концовка", options: ["Thank you for your help.\n\nSincerely,\nAnna Petrova", "Waiting for your reply.\nAnna", "See you soon!\nAnna", "Bye."], answer: 0, expl: "Деловой финал и подпись." }
+            ],
+            skeleton: "{greet}\n\n{open}\n\n{p1}\n\n{p2} [[ещё одно требование]]\n\n{p3}\n\n{close}",
+            model: "Dear Mr. Carter,\n\nI am writing to inquire about accommodation for a group of university students at the Harbor View Hotel during our semester break.\n\nOur geography class is planning a study trip to Seaport to visit the national marine park and the old lighthouse. There will be eighteen students and two professors, and we would like to stay from March 15 to 19.\n\nWe have a few specific requirements. Most students would prefer to share rooms in groups of three or four, but the professors will need two single rooms. Two of our students are vegetarian, so we would also like to know whether your breakfast can accommodate them. Finally, we will need a meeting room for about two hours each evening to discuss the day's fieldwork.\n\nCould you please send me information about your group rates, availability, and the booking process?\n\nThank you for your help.\n\nSincerely,\nAnna Petrova",
+            notes: ["Название отеля, города, числа и даты придуманы.", "Требования конкретные: комнаты, питание, переговорная.", "Пункт 3 — вопрос со списком того, что нужно прислать.", "Формальный тон — уровень 3–4."]
+          } },
+        { type: "Группе", level: "Группа", title: "Учебная встреча перед экзаменом",
+          B: {
+            ctx: "The final exam in your chemistry class is coming soon. You want to organize a study session with your classmates to prepare for the exam. You need to invite your classmates and also provide some ideas about how to make the study session effective.",
+            to: "Chemistry Class", subject: "Study session for the final", write: true,
+            bullets: ["Invite them to join the study session.", "Suggest a time and place for the meeting.", "Provide some suggestions for an effective study session."],
+            steps: [
+                { key: "greet", q: "Приветствие", options: ["Hi everyone,", "Dear Sir or Madam,", "Dear Chemistry Class Members,", "Hey guys!!!"], answer: 0, expl: "Группе равных — Hi everyone." },
+                { key: "p1", q: "Пункт 1: приглашение", options: ["Our chemistry final is only two weeks away, so I'm organizing a group study session, and I'd love for you all to join!", "The final exam in our chemistry class is coming soon.", "I hereby invite you to a study session.", "Study session. Join."], answer: 0, expl: "Повод + приглашение. Второй вариант — копия задания, третий — канцелярит." },
+                { key: "p2", q: "Пункт 2: время и место", options: ["How about meeting this Thursday from 6:00 to 8:00 p.m. in Room 214 of the science library? It has a big whiteboard.", "Let's meet sometime somewhere.", "You have to come on Thursday at 6.", "I am free on Thursday."], answer: 0, expl: "Конкретное время и место — в форме предложения, а не приказа." },
+                { key: "p3", q: "Пункт 3: идеи для эффективной встречи", options: ["Each of us could prepare a one-page summary of one chapter, and we could finish with a timed practice test from last year's exam.", "We should study effectively.", "Don't be late and don't waste my time.", "Chemistry is very difficult."], answer: 0, expl: "Конкретный план вместо общих слов." },
+                { key: "close", q: "Концовка", options: ["Let me know if you can make it!\n\nBest,\nAnna", "I look forward to your prompt reply.\n\nSincerely,\nAnna Petrova", "That's all.", "Waiting for everyone's answer!!!"], answer: 0, expl: "Дружеский финал для одногруппников." }
+            ],
+            skeleton: "{greet}\n\n{p1} [[почему вместе лучше]]\n\n{p2}\n\n{p3}\n\n{close}",
+            model: "Hi everyone,\n\nOur chemistry final is only two weeks away, so I'm organizing a group study session, and I'd love for you all to join! Studying together is a great way to explain difficult reactions to each other and spot gaps in our notes.\n\nHow about meeting this Thursday from 6:00 to 8:00 p.m. in Room 214 of the science library? It has a big whiteboard, and we can book it for free.\n\nTo make the session really useful, I have a few ideas. Each of us could choose one chapter and prepare a one-page summary with two or three practice problems. We could spend the first hour going through the summaries and the second hour doing a timed practice test from last year's exam. Please also bring your questions from the lab reports.\n\nLet me know if you can make it!\n\nBest,\nAnna",
+            notes: ["Приглашение с причиной: зачем учиться вместе.", "Время, место и деталь (доска, бесплатно).", "Идеи — конкретный план встречи по часам.", "Дружеский тон без сленга."]
+          } }
+    ];
+
+    function initLesson() {
+        PRACTICE.forEach((p, i) => renderBuilder('bld-' + (i + 1), p.B));
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        safeCreateIcons();
+        initLesson();
+        safeCreateIcons();
+    });
+
+    // Проверка входа и доступа к разделу Writing (как на writing-articles.html)
+    (async () => { if (typeof requireAuth === 'function') await requireAuth(); })();
+    </script>
+</body>
+</html>
