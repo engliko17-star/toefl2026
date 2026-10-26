@@ -64,6 +64,8 @@ const PAGE_SECTIONS = {
     'mini-mock-writing-list.html':  'writing',
     'sentence-practice.html':       'writing',
     'writing-articles.html':        'writing',
+    'article-write-an-email.html':  'writing',
+    'article-email-tone.html':      'writing',
 
     // --- Speaking ---
     'speaking.html':    'speaking',
