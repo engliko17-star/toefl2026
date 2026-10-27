@@ -735,7 +735,8 @@ const S = {
   coll: { sort: 'alpha', seed: Math.random(), filter: 'all', hideDefs: false, level: 'all' },
   wordCtx: [], wordIdx: 0,
   route: { tab: 'home', sub: null, arg: null },
-  hmSel: null
+  hmSel: null,
+  inflight: new Map()           // norm(word) → строка, которая ещё пишется в базу
 };
 
 /* =====================================================================
@@ -795,6 +796,94 @@ function ring(pct, size, stroke, color, track, inner) {
 }
 
 /* =====================================================================
+   НЕОТПРАВЛЕННЫЕ ОТВЕТЫ. Каждый ответ сначала записывается в память
+   браузера (отдельно для каждой ученицы), потом уходит в базу и только
+   после подтверждения стирается. Пропала связь или закрыли вкладку на
+   середине — ответ уйдёт при следующем открытии словаря или когда
+   вернётся интернет. Этот блок одинаковый в vocabulary.html и review.html —
+   меняя его, меняйте в обоих файлах.
+   ===================================================================== */
+const PENDING_PREFIX = 'vocabPending_v1:';
+let pendLastT = 0;
+function readPending(uid) { try { return JSON.parse(localStorage.getItem(PENDING_PREFIX + uid) || '{}') || {}; } catch (e) { return {}; } }
+function writePending(uid, p) {
+  try { if (Object.keys(p).length) localStorage.setItem(PENDING_PREFIX + uid, JSON.stringify(p)); else localStorage.removeItem(PENDING_PREFIX + uid); } catch (e) {}
+}
+function pendingCount(uid) { return Object.keys(readPending(uid)).length; }
+// Добавить ответ в очередь. Поля одного слова сливаются: в базу уходит итоговое состояние.
+function addPending(uid, word, fields) {
+  const p = readPending(uid), k = norm(word), old = p[k];
+  const t = pendLastT = Math.max(Date.now(), pendLastT + 1);
+  p[k] = { word: (old && old.word) || word, fields: Object.assign({}, old ? old.fields : {}, fields), t };
+  writePending(uid, p);
+  return p[k];
+}
+function dropPending(uid, word, t) {
+  const p = readPending(uid), k = norm(word);
+  if (p[k] && p[k].t <= t) { delete p[k]; writePending(uid, p); }
+}
+// Записи одного слова уходят строго по очереди — иначе ответ и «Отменить»
+// могли прийти в базу в обратном порядке.
+const wordChains = new Map();
+function chainFor(k, fn) {
+  const p = (wordChains.get(k) || Promise.resolve()).then(fn, fn);
+  wordChains.set(k, p.catch(() => {}));
+  return p;
+}
+async function sendProgress(uid, word, fields) {
+  try {
+    const { data, error } = await sb.from('user_word_progress')
+      .upsert(Object.assign({ user_id: uid, word }, fields), { onConflict: 'user_id,word' }).select('word');
+    if (error) return error;
+    // «Успешно», но строки нет — значит, запись не прошла по правам доступа
+    if (!data || !data.length) return { message: 'база не вернула запись', code: 'NOROW' };
+    return null;
+  } catch (e) { return e; }
+}
+// Сбой связи (у таких ошибок нет кода базы) — ответ стоит отправить позже.
+// Отказ самой базы (права, ограничения) повторять бессмысленно: такой ответ
+// убираем из очереди, чтобы он не задерживал остальные.
+function isNetErr(e) { return !e || !e.code; }
+// Отправить всё, что накопилось. Возвращает, сколько ответов ещё не ушло.
+let flushRun = null;
+function flushPending(uid) {
+  if (!uid) return Promise.resolve(0);
+  if (flushRun) return flushRun;
+  flushRun = (async () => {
+    const keys = Object.keys(readPending(uid));
+    for (let i = 0; i < keys.length; i++) {
+      const ok = await chainFor(keys[i], async () => {
+        const e = readPending(uid)[keys[i]];
+        if (!e) return true;
+        // Если на другом устройстве слово повторили позже — старый ответ не нужен
+        try {
+          const { data: row, error } = await sb.from('user_word_progress').select('last_reviewed_at')
+            .eq('user_id', uid).eq('word', e.word).maybeSingle();
+          if (error) return false;
+          if (row && row.last_reviewed_at && Date.parse(row.last_reviewed_at) > e.t) { dropPending(uid, e.word, e.t); return true; }
+        } catch (er) { return false; }
+        const err = await sendProgress(uid, e.word, e.fields);
+        if (err && isNetErr(err)) return false;
+        if (err) console.error('Ответ отклонён базой и убран из очереди:', e.word, err);
+        dropPending(uid, e.word, e.t);
+        return true;
+      });
+      if (!ok) break;   // нет связи — остальное отправим в следующий раз
+    }
+    return pendingCount(uid);
+  })().finally(() => { flushRun = null; });
+  return flushRun;
+}
+// Наложить неотправленные ответы на загруженный из базы прогресс
+function overlayPending(uid, apply) {
+  const p = readPending(uid);
+  Object.keys(p).forEach(k => apply(k, p[k]));
+}
+function withTimeout(promise, ms) {
+  return Promise.race([promise, new Promise(r => setTimeout(() => r('timeout'), ms))]);
+}
+
+/* =====================================================================
    ЗАГРУЗКА ДАННЫХ
    ===================================================================== */
 async function getUser() {
@@ -832,7 +921,9 @@ async function loadWords() {
   const PAGE = 1000; let rows = [], from = 0;
   while (true) {
     const { data, error } = await sb.from('words').select('*').order('id', { ascending: true }).range(from, from + PAGE - 1);
-    if (error) { console.error('Ошибка загрузки слов:', error); if (!rows.length) throw error; break; }
+    // Раньше сбой на второй тысяче слов молча давал половину словаря — и он
+    // ещё 30 минут лежал в копии, а прогресс по пропавшим словам «исчезал».
+    if (error) { console.error('Ошибка загрузки слов:', error); throw error; }
     rows = rows.concat(data || []);
     if (!data || data.length < PAGE) break;
     from += PAGE; if (from > 100000) break;
@@ -846,7 +937,9 @@ async function loadProgress() {
     const { data, error } = await sb.from('user_word_progress')
       .select('word, correct_count, box, due_at, first_seen_at, lapses, manually_marked, last_result, last_reviewed_at')
       .eq('user_id', S.user.id).order('word', { ascending: true }).range(from, from + PAGE - 1);
-    if (error) { console.error('Ошибка загрузки прогресса:', error); break; }
+    // Не загрузили — не притворяемся, что всё «новое»: иначе «Уже знаю» и
+    // «Учить» работали бы поверх неизвестного прогресса.
+    if (error) { console.error('Ошибка загрузки прогресса:', error); throw error; }
     rows = rows.concat(data || []);
     if (!data || data.length < PAGE) break;
     from += PAGE; if (from > 100000) break;
@@ -859,10 +952,13 @@ async function loadProgress() {
     if (prev && (prev.box || 0) >= (r.box || 0)) return;
     S.progress.set(k, r);
   });
+  // ответы из тренировки, которые ещё не дошли до базы, и изменения «в пути»
+  overlayPending(S.user.id, (k, e) => { S.progress.set(k, Object.assign({}, S.progress.get(k) || { word: e.word }, e.fields)); });
+  S.inflight.forEach((row, k) => S.progress.set(k, row));
 }
 async function loadLists() {
   const { data, error } = await sb.from('user_vocabulary').select('word, list_name').eq('user_id', S.user.id);
-  if (error) { console.error('Ошибка загрузки списков:', error); return; }
+  if (error) { console.error('Ошибка загрузки списков:', error); throw error; }
   const lists = { [FAVORITES]: [] };
   (data || []).forEach(r => {
     if (!lists[r.list_name]) lists[r.list_name] = [];
@@ -874,11 +970,14 @@ async function loadLists() {
 }
 async function loadSettings() {
   let res = await sb.from('profiles').select('vocab_daily_goal, vocab_mode, vocab_prefs').eq('id', S.user.id).maybeSingle();
-  if (res.error) {
+  if (res.error && /vocab_prefs/.test(res.error.message || '')) {
     // колонки vocab_prefs ещё нет (SQL не запущен) — работаем по-старому
     S.prefsColumn = false;
     res = await sb.from('profiles').select('vocab_daily_goal, vocab_mode').eq('id', S.user.id).maybeSingle();
   }
+  // Сбой связи: раньше подставлялись настройки по умолчанию, и первое же
+  // нажатие в настройках записывало их в базу поверх настоящих («Что учу» пропадало).
+  if (res.error) throw res.error;
   const d = res.data || {};
   S.settings.dailyGoal = d.vocab_daily_goal || 10;
   S.settings.mode = d.vocab_mode || 'auto';
@@ -1061,16 +1160,28 @@ async function writeProgress(word, fields, prevSnap) {
   const k = norm(word);
   const row = Object.assign({ word: word }, prog(word) || {}, fields);
   S.progress.set(k, row);
+  S.inflight.set(k, row);
   afterChange();
-  const payload = { user_id: S.user.id, word: (prevSnap && prevSnap.word) || word };
+  const payload = { user_id: S.user.id, word: (prevSnap && prevSnap.word) || row.word || word };
   PROGRESS_FIELDS.forEach(f => { if (f in row) payload[f] = row[f] === undefined ? null : row[f]; });
-  const { data, error } = await sb.from('user_word_progress').upsert(payload, { onConflict: 'user_id,word' }).select('word, box');
-  // Проверяем, что строка действительно записалась (раньше база могла
-  // ответить «успешно», а записи не оказывалось — из-за прав доступа).
-  if (error || !data || !data.length) {
-    if (prevSnap) S.progress.set(k, prevSnap); else S.progress.delete(k);
+  // Двойное касание «знаю / сбросить» — два запроса. Отправляем по очереди,
+  // иначе в базе мог остаться не последний, а первый.
+  const err = await chainFor(k, async () => {
+    try {
+      const { data, error } = await sb.from('user_word_progress').upsert(payload, { onConflict: 'user_id,word' }).select('word, box');
+      // Проверяем, что строка действительно записалась (раньше база могла
+      // ответить «успешно», а записи не оказывалось — из-за прав доступа).
+      if (error) return error;
+      if (!data || !data.length) return { message: 'база не вернула запись' };
+      return null;
+    } catch (e) { return e; }
+  });
+  if (S.inflight.get(k) === row) S.inflight.delete(k);
+  if (err) {
+    // откатываем, только если поверх не было нового нажатия
+    if (S.progress.get(k) === row) { if (prevSnap) S.progress.set(k, prevSnap); else S.progress.delete(k); }
     afterChange();
-    toast('Не сохранилось: ' + (error ? (error.message || error.code) : 'база не вернула запись'));
+    toast('Не сохранилось: ' + (err.message || err.code || 'нет связи'));
     return false;
   }
   return true;
@@ -1101,24 +1212,32 @@ async function restoreProgress(word, snap) {
   }
 }
 
+// Ответ базы на изменение списка: ошибка или «ничего не изменилось» (права)
+async function listCall(q) {
+  try { const { data, error } = await q; if (error) return error.message || error.code; return data && data.length ? null : 'база не изменила запись'; }
+  catch (e) { return e.message || 'нет связи'; }
+}
 async function addToList(word, list) {
   if (!S.lists[list]) S.lists[list] = [];
   if (S.lists[list].includes(word)) return true;
   S.lists[list].push(word); afterChange();
-  const { error } = await sb.from('user_vocabulary').upsert([{ user_id: S.user.id, word: word, list_name: list }], { onConflict: 'user_id,word,list_name' });
-  if (error) { S.lists[list] = S.lists[list].filter(x => x !== word); afterChange(); toast('Не удалось добавить: ' + error.message); return false; }
+  const err = await chainFor('list|' + list + '|' + norm(word), () =>
+    listCall(sb.from('user_vocabulary').upsert([{ user_id: S.user.id, word: word, list_name: list }], { onConflict: 'user_id,word,list_name' }).select('word')));
+  if (err) { S.lists[list] = (S.lists[list] || []).filter(x => x !== word); afterChange(); toast('Не удалось добавить: ' + err); return false; }
   return true;
 }
 async function removeFromList(word, list) {
   const before = (S.lists[list] || []).slice();
   S.lists[list] = before.filter(x => x !== word); afterChange();
-  const { error } = await sb.from('user_vocabulary').delete().eq('user_id', S.user.id).eq('word', word).eq('list_name', list);
-  if (error) { S.lists[list] = before; afterChange(); toast('Не удалось убрать: ' + error.message); return false; }
+  const err = await chainFor('list|' + list + '|' + norm(word), () =>
+    listCall(sb.from('user_vocabulary').delete().eq('user_id', S.user.id).eq('word', word).eq('list_name', list).select('word')));
+  if (err) { if (!S.lists[list].includes(word)) S.lists[list].push(word); afterChange(); toast('Не удалось убрать: ' + err); return false; }
   return true;
 }
 async function deleteList(name) {
-  const { error } = await sb.from('user_vocabulary').delete().eq('user_id', S.user.id).eq('list_name', name);
-  if (error) { toast('Не удалось удалить список: ' + error.message); return; }
+  const hadWords = (S.lists[name] || []).length > 0;
+  const err = hadWords ? await listCall(sb.from('user_vocabulary').delete().eq('user_id', S.user.id).eq('list_name', name).select('word')) : null;
+  if (err) { toast('Не удалось удалить список: ' + err); return; }
   delete S.lists[name];
   if (Array.isArray(S.prefs.sources)) setSources(S.prefs.sources.filter(k => k !== 'list:' + name));
   toast(`Список «${name}» удалён`);
@@ -1904,7 +2023,7 @@ function renderBrowseSheet(entry, st) {
 function launch(kind, list, extra) {
   if (!list.length) { toast('Нет подходящих слов'); return; }
   const cfg = Object.assign({
-    v: 2, kind,
+    v: 2, kind, uid: S.user.id,
     words: list.map(w => w.word),
     mode: kind === 'browse' ? 'browse' : S.settings.mode,
     modes: kind === 'browse' || kind === 'learn' ? undefined : getReviewModes(),
@@ -2387,7 +2506,8 @@ function skeleton() {
     <div class="skeleton" style="height:190px;margin-bottom:10px"></div><div class="skeleton" style="height:130px;margin-bottom:12px"></div><div class="skeleton" style="height:80px"></div></div>`;
 }
 function fatal(msg) {
-  $('#view').innerHTML = `<div class="fatal card"><b style="font-size:18px">${esc(msg)}</b><p class="muted" style="margin:8px 0 16px">Обновите страницу или вернитесь на платформу.</p><a class="btn btn-primary" href="${PLATFORM_HOME_URL}">На платформу</a></div>`;
+  const v = $('#view'); if (!v) return;   // экран «аккаунт на проверке» уже заменил страницу
+  v.innerHTML = `<div class="fatal card"><b style="font-size:18px">${esc(msg)}</b><p class="muted" style="margin:8px 0 16px">Проверьте интернет и обновите страницу. Ваш прогресс не потерян.</p><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="btn btn-primary" type="button" onclick="location.reload()">Обновить</button><a class="btn btn-soft" href="${PLATFORM_HOME_URL}">На платформу</a></div></div>`;
 }
 async function boot() {
   applyDyslexia();
@@ -2396,6 +2516,7 @@ async function boot() {
   if (!S.user) { fatal('Войдите в аккаунт, чтобы учить слова'); return; }
   const cached = readWordsCache();
   if (cached) setWords(cached);
+  await withTimeout(flushPending(S.user.id).catch(() => 0), 6000);
   try {
     await Promise.all([cached ? Promise.resolve() : loadWords(), loadProgress(), loadLists(), loadSettings(), loadActivity()]);
   } catch (e) { console.error(e); fatal('Не удалось загрузить словарь'); return; }
@@ -2411,10 +2532,15 @@ async function boot() {
   if (cached) loadWords().then(rerender).catch(() => {});   // тихо обновляем копию словаря
 }
 // Вернулись на вкладку (или из повторения через «назад») — данные могли устареть
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && S.ready) Promise.all([loadProgress(), loadActivity()]).then(rerender);
-});
-window.addEventListener('pageshow', e => { if (e.persisted && S.ready) Promise.all([loadProgress(), loadActivity()]).then(rerender); });
+function refreshFromDb() {
+  flushPending(S.user.id).catch(() => 0)
+    .then(() => Promise.all([loadProgress(), loadActivity()]))
+    .then(rerender)
+    .catch(e => console.warn('Не удалось обновить прогресс:', e && e.message));   // остаёмся на том, что уже загружено
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.ready) refreshFromDb(); });
+window.addEventListener('pageshow', e => { if (e.persisted && S.ready) refreshFromDb(); });
+window.addEventListener('online', () => { if (S.ready) refreshFromDb(); });
 // Масштабирование пальцами отключено, как в обычном приложении (iOS Safari
 // игнорирует запрет в meta viewport, поэтому дублируем его здесь).
 try { history.scrollRestoration = 'manual'; } catch (e) {}
