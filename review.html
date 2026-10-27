@@ -315,6 +315,94 @@ function lev(a, b) {
 }
 
 /* =====================================================================
+   НЕОТПРАВЛЕННЫЕ ОТВЕТЫ. Каждый ответ сначала записывается в память
+   браузера (отдельно для каждой ученицы), потом уходит в базу и только
+   после подтверждения стирается. Пропала связь или закрыли вкладку на
+   середине — ответ уйдёт при следующем открытии словаря или когда
+   вернётся интернет. Этот блок одинаковый в vocabulary.html и review.html —
+   меняя его, меняйте в обоих файлах.
+   ===================================================================== */
+const PENDING_PREFIX = 'vocabPending_v1:';
+let pendLastT = 0;
+function readPending(uid) { try { return JSON.parse(localStorage.getItem(PENDING_PREFIX + uid) || '{}') || {}; } catch (e) { return {}; } }
+function writePending(uid, p) {
+  try { if (Object.keys(p).length) localStorage.setItem(PENDING_PREFIX + uid, JSON.stringify(p)); else localStorage.removeItem(PENDING_PREFIX + uid); } catch (e) {}
+}
+function pendingCount(uid) { return Object.keys(readPending(uid)).length; }
+// Добавить ответ в очередь. Поля одного слова сливаются: в базу уходит итоговое состояние.
+function addPending(uid, word, fields) {
+  const p = readPending(uid), k = norm(word), old = p[k];
+  const t = pendLastT = Math.max(Date.now(), pendLastT + 1);
+  p[k] = { word: (old && old.word) || word, fields: Object.assign({}, old ? old.fields : {}, fields), t };
+  writePending(uid, p);
+  return p[k];
+}
+function dropPending(uid, word, t) {
+  const p = readPending(uid), k = norm(word);
+  if (p[k] && p[k].t <= t) { delete p[k]; writePending(uid, p); }
+}
+// Записи одного слова уходят строго по очереди — иначе ответ и «Отменить»
+// могли прийти в базу в обратном порядке.
+const wordChains = new Map();
+function chainFor(k, fn) {
+  const p = (wordChains.get(k) || Promise.resolve()).then(fn, fn);
+  wordChains.set(k, p.catch(() => {}));
+  return p;
+}
+async function sendProgress(uid, word, fields) {
+  try {
+    const { data, error } = await sb.from('user_word_progress')
+      .upsert(Object.assign({ user_id: uid, word }, fields), { onConflict: 'user_id,word' }).select('word');
+    if (error) return error;
+    // «Успешно», но строки нет — значит, запись не прошла по правам доступа
+    if (!data || !data.length) return { message: 'база не вернула запись', code: 'NOROW' };
+    return null;
+  } catch (e) { return e; }
+}
+// Сбой связи (у таких ошибок нет кода базы) — ответ стоит отправить позже.
+// Отказ самой базы (права, ограничения) повторять бессмысленно: такой ответ
+// убираем из очереди, чтобы он не задерживал остальные.
+function isNetErr(e) { return !e || !e.code; }
+// Отправить всё, что накопилось. Возвращает, сколько ответов ещё не ушло.
+let flushRun = null;
+function flushPending(uid) {
+  if (!uid) return Promise.resolve(0);
+  if (flushRun) return flushRun;
+  flushRun = (async () => {
+    const keys = Object.keys(readPending(uid));
+    for (let i = 0; i < keys.length; i++) {
+      const ok = await chainFor(keys[i], async () => {
+        const e = readPending(uid)[keys[i]];
+        if (!e) return true;
+        // Если на другом устройстве слово повторили позже — старый ответ не нужен
+        try {
+          const { data: row, error } = await sb.from('user_word_progress').select('last_reviewed_at')
+            .eq('user_id', uid).eq('word', e.word).maybeSingle();
+          if (error) return false;
+          if (row && row.last_reviewed_at && Date.parse(row.last_reviewed_at) > e.t) { dropPending(uid, e.word, e.t); return true; }
+        } catch (er) { return false; }
+        const err = await sendProgress(uid, e.word, e.fields);
+        if (err && isNetErr(err)) return false;
+        if (err) console.error('Ответ отклонён базой и убран из очереди:', e.word, err);
+        dropPending(uid, e.word, e.t);
+        return true;
+      });
+      if (!ok) break;   // нет связи — остальное отправим в следующий раз
+    }
+    return pendingCount(uid);
+  })().finally(() => { flushRun = null; });
+  return flushRun;
+}
+// Наложить неотправленные ответы на загруженный из базы прогресс
+function overlayPending(uid, apply) {
+  const p = readPending(uid);
+  Object.keys(p).forEach(k => apply(k, p[k]));
+}
+function withTimeout(promise, ms) {
+  return Promise.race([promise, new Promise(r => setTimeout(() => r('timeout'), ms))]);
+}
+
+/* =====================================================================
    СОСТОЯНИЕ СЕССИИ
    ===================================================================== */
 let user = null, cfg = null;
@@ -358,8 +446,10 @@ async function getUser() {
   const { data } = await sb.auth.getSession();
   return data && data.session ? data.session.user : null;
 }
-function fail(msg) {
-  $('#loader').innerHTML = `<b style="color:var(--ink);font-size:17px">${esc(msg)}</b><a class="btn btn-primary btn-sm" href="vocabulary.html#home">К словам</a>`;
+function fail(msg, retry) {
+  $('#loader').innerHTML = `<b style="color:var(--ink);font-size:17px">${esc(msg)}</b>` +
+    (retry ? `<button class="btn btn-primary btn-sm" type="button" onclick="location.reload()">Повторить</button><a class="btn btn-soft btn-sm" href="vocabulary.html#home">К словам</a>`
+           : `<a class="btn btn-primary btn-sm" href="vocabulary.html#home">К словам</a>`);
 }
 async function loadProgress() {
   const PAGE = 1000; let rows = [], from = 0;
@@ -367,13 +457,17 @@ async function loadProgress() {
     const { data, error } = await sb.from('user_word_progress')
       .select('word, correct_count, manually_marked, box, due_at, lapses, first_seen_at, last_result, last_reviewed_at')
       .eq('user_id', user.id).order('word', { ascending: true }).range(from, from + PAGE - 1);
-    if (error) { console.error('Ошибка загрузки прогресса:', error); break; }
+    // Раньше при сбое связи прогресс молча оставался пустым: выученные слова
+    // считались новыми, и «Учить» записывало их заново с первой ступени.
+    if (error) { console.error('Ошибка загрузки прогресса:', error); throw error; }
     rows = rows.concat(data || []);
     if (!data || data.length < PAGE) break;
     from += PAGE; if (from > 100000) break;
   }
   srs = {};
   rows.forEach(r => { const k = norm(r.word), p = srs[k]; if (p && (p.box || 0) >= (r.box || 0)) return; srs[k] = r; });
+  // ответы, которые ещё не дошли до базы, важнее того, что в базе
+  overlayPending(user.id, (k, e) => { srs[k] = Object.assign({}, srs[k] || { word: e.word }, e.fields); });
 }
 async function fetchWordsByNames(names) {
   const uniq = Array.from(new Set(names.filter(Boolean)));
@@ -436,7 +530,8 @@ async function boot() {
   user = await getUser();
   if (!user) { fail('Войдите в аккаунт'); return; }
   try { cfg = JSON.parse(localStorage.getItem('reviewSettings') || 'null'); } catch (e) { cfg = null; }
-  if (!cfg) { fail('Тренировка не выбрана'); return; }
+  // Тренировку выбирала другая ученица на этом же устройстве — не берём её слова
+  if (!cfg || (cfg.uid && cfg.uid !== user.id)) { fail('Тренировка не выбрана'); return; }
   // Пролистывание: «просто смотреть» (карточки без оценки) или с упражнениями, но без зачёта
   const bm = Array.isArray(cfg.modes) ? cfg.modes : null;
   isBrowse = cfg.kind === 'browse' ? (!bm || bm.includes('view')) : cfg.mode === 'browse';
@@ -444,13 +539,21 @@ async function boot() {
   isPractice = cfg.kind === 'hard' || (cfg.kind === 'browse' && !isBrowse);
   noRequeue = cfg.kind === 'browse';
 
-  await loadProgress();
+  await withTimeout(flushPending(user.id).catch(() => 0), 6000);
+  try { await loadProgress(); }
+  catch (e) { fail('Не удалось загрузить ваш прогресс. Проверьте интернет и попробуйте ещё раз.', true); return; }
   let base = Array.isArray(cfg.words) ? await fetchWordsByNames(cfg.words) : await legacySelect();
   if (base === null) { if (!$('#loader a')) fail('Не удалось загрузить слова'); return; }
 
   if (cfg.v && (cfg.kind === 'learn' || cfg.kind === 'review' || cfg.kind === 'hard')) {
     if (isLearn) base = base.filter(w => !box(w) && !manual(w));          // за это время могли выучить на другом устройстве
     else base = base.filter(w => box(w) > 0 && box(w) < SRS_MASTERED_BOX && !manual(w));
+    // Повторение — только то, чему пора. Иначе после обновления страницы те же
+    // слова засчитывались ещё раз и перескакивали ступени.
+    if (cfg.kind === 'review') {
+      const now = Date.now() + 60000;
+      base = base.filter(w => { const p = srs[norm(w.word)]; return !p.due_at || Date.parse(p.due_at) <= now; });
+    }
   }
   if (!base.length) { fail(isLearn ? 'Новых слов не осталось' : 'Сейчас нечего повторять 🎉'); return; }
 
@@ -945,16 +1048,41 @@ function recordWordProgress(w, ok, inc) {
   srs[k] = Object.assign({}, prev, { word: prev.word || w.word, box: b, due_at, lapses, correct_count: cc, last_result: ok, last_reviewed_at: now }, isFirst ? { first_seen_at: now } : {});
   writeRow(prev.word || w.word, Object.assign({ correct_count: cc, box: b, due_at, lapses, last_result: ok, last_reviewed_at: now }, isFirst ? { first_seen_at: now } : {}));
 }
+let unsavedWarnAt = 0;
 function writeRow(word, fields) {
-  return sb.from('user_word_progress').upsert(Object.assign({ user_id: user.id, word }, fields), { onConflict: 'user_id,word' })
-    .then(({ error }) => { if (error) { console.error('Ошибка сохранения прогресса:', error); toast('Ответ не сохранился — проверьте интернет'); } });
+  const k = norm(word);
+  addPending(user.id, word, fields);           // сначала в память — не пропадёт при закрытии вкладки
+  return chainFor(k, async () => {
+    const e = readPending(user.id)[k];
+    if (!e) return true;                        // уже отправлено вместе с очередью
+    const err = await sendProgress(user.id, e.word, e.fields);
+    if (err && !isNetErr(err)) {
+      console.error('Ответ отклонён базой:', err);
+      dropPending(user.id, e.word, e.t);
+      toast('Ответ не сохранился: ' + (err.message || err.code));
+      return false;
+    }
+    if (err) {
+      console.error('Ошибка сохранения прогресса:', err);
+      if (Date.now() - unsavedWarnAt > 20000) { unsavedWarnAt = Date.now(); toast('Нет связи — ответы сохранятся, когда появится интернет'); }
+      return false;
+    }
+    dropPending(user.id, e.word, e.t);
+    return true;
+  });
 }
+window.addEventListener('online', () => { if (user) flushPending(user.id); });
 // Календарь активности: одна строка на день, счётчики растут на сервере
 let actDisabled = false;
 function logAct(d) {
   if (actDisabled || !user) return;
   sb.rpc('log_vocab_activity', { p_day: dayKey(new Date()), p_reviews: d.reviews || 0, p_learned: d.learned || 0, p_correct: d.correct || 0, p_wrong: d.wrong || 0 })
-    .then(({ error }) => { if (error) { actDisabled = true; console.info('log_vocab_activity недоступна (SQL не запущен?):', error.message); } });
+    .then(({ error }) => {
+      if (!error) return;
+      if (error.code === 'PGRST202' || /could not find the function|does not exist/i.test(error.message || '')) {
+        actDisabled = true; console.info('log_vocab_activity недоступна (SQL не запущен?):', error.message);
+      } else console.warn('log_vocab_activity:', error.message);
+    }, () => {});
 }
 
 /* --- «Отменить» для случайного свайпа --- */
@@ -1015,9 +1143,14 @@ async function finish() {
       <span style="color:${x.first ? 'var(--mint)' : 'var(--amber)'}">${x.first ? ic('check', 20) : ic('repeat', 20)}</span><b>${esc(x.w.word)}</b>
       <small style="color:${x.first ? 'var(--mint-ink)' : 'var(--amber-ink)'}">${x.first ? 'с первого раза' : (x.tries - 1) + ' ' + plural(x.tries - 1, 'повтор', 'повтора', 'повторов')}</small></div>`).join('');
   const back = 'vocabulary.html' + (cfg.returnTo && cfg.returnTo.startsWith('#') ? cfg.returnTo : '#home');
-  R.innerHTML = `<div class="res-hero">${hero}</div>${stats}<div id="streakSlot"></div>
+  R.innerHTML = `<div class="res-hero">${hero}</div>${stats}<div id="pendSlot"></div><div id="streakSlot"></div>
     ${rows ? `<div class="res-sec">Слова тренировки</div><div class="res-list">${rows}</div>` : ''}
-    <a class="btn btn-primary" href="${back}" style="margin-top:6px">Готово</a>`;
+    <a class="btn btn-primary" href="${esc(back)}" style="margin-top:6px">Готово</a>`;
+  if (!isBrowse && answeredAny) {
+    const left = await withTimeout(flushPending(user.id).catch(() => pendingCount(user.id)), 8000);
+    const n = typeof left === 'number' ? left : pendingCount(user.id);
+    if (n > 0) $('#pendSlot').innerHTML = `<div class="streak-box" style="background:var(--surface-2);color:var(--ink-2);margin-bottom:10px">${ic('repeat', 22)}<div>${n} ${plural(n, 'ответ ещё не сохранился', 'ответа ещё не сохранились', 'ответов ещё не сохранились')}<div style="font-weight:600;font-size:13px;opacity:.85">Нет связи с базой. Ответы в памяти телефона — отправим сами, когда появится интернет.</div></div></div>`;
+  }
   if (!isBrowse && answeredAny) {
     const n = await fetchStreak();
     if (n) $('#streakSlot').innerHTML = `<div class="streak-box">${ic('flame', 26)}<div>${n} ${plural(n, 'день', 'дня', 'дней')} подряд<div style="font-weight:600;font-size:13px;opacity:.85">Сегодня засчитано — до завтра!</div></div></div>`;
@@ -1111,7 +1244,7 @@ function askExit() {
   if (!answeredAny || isBrowse) { leave(); return; }
   const wrap = document.createElement('div');
   wrap.className = 'sheet-wrap';
-  wrap.innerHTML = `<div class="sheet-backdrop"></div><div class="sheet" role="dialog"><h3>Закончить сейчас?</h3><p style="color:var(--muted);margin-bottom:16px">Ответы уже сохранены — оставшиеся слова никуда не денутся.</p>
+  wrap.innerHTML = `<div class="sheet-backdrop"></div><div class="sheet" role="dialog"><h3>Закончить сейчас?</h3><p style="color:var(--muted);margin-bottom:16px">${pendingCount(user.id) ? 'Часть ответов ещё не дошла до базы из-за связи — они в памяти телефона и отправятся сами.' : 'Ответы уже сохранены.'} Оставшиеся слова никуда не денутся.</p>
     <div style="display:grid;gap:10px"><button class="btn btn-primary" data-x="stay">Продолжить</button><button class="btn btn-soft" data-x="leave">Выйти</button></div></div>`;
   document.body.appendChild(wrap);
   openSheetEl = wrap;
