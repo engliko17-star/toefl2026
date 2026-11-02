@@ -31,6 +31,9 @@
             </div>
         </div>
 
+        <!-- Фильтр по темам (только Email и Academic Discussion; появляется, когда у заданий есть темы) -->
+        <div id="topicFilter" class="hidden flex-wrap gap-2 mb-6" role="group" aria-label="Filter by topic"></div>
+
         <div id="tasksContainer" class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div class="h-44 bg-white border border-gray-100 rounded-3xl p-6 animate-pulse space-y-4">
                 <div class="flex justify-between"><div class="h-4 w-16 bg-gray-200 rounded"></div><div class="h-8 w-8 bg-gray-200 rounded-full"></div></div>
@@ -125,6 +128,94 @@
             alert("Your teacher has already reviewed this work, so it can't be reset.\n\nYour answer, the score and the teacher's feedback are kept — open Review Results to see them.");
         }
 
+        // Иконки — необязательная часть: если библиотека не загрузилась,
+        // список заданий всё равно показывается (раньше падал целиком)
+        function safeIcons() {
+            try { if (window.lucide) lucide.createIcons(); } catch (e) { /* без иконок */ }
+        }
+
+        function tlEsc(s) {
+            return String(s === null || s === undefined ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        // ---------- ФИЛЬТР ПО ТЕМАМ (Email и Academic Discussion) ----------
+        // Тема хранится в writing_tasks.topic. Порядок кнопок — как здесь;
+        // темы, которых нет в списке, идут следом по алфавиту, задания без темы — в «Other».
+        const TOPIC_ORDER = {
+            email: ['Reporting a Problem', 'Feedback', 'Suggestions', 'Requests and Inquiries',
+                    'Invitations and Plans', 'Advice', 'Thanks'],
+            academic: ['Education', 'Technology & Media', 'Environment', 'Business & Work',
+                       'Government & Economy', 'Society & Culture', 'Psychology & Health']
+        };
+        const NO_TOPIC = '__other__';
+        const TOPIC_KEY = 'taskListTopic:' + taskType;
+        let allCards = [];          // { topic, html } — все карточки в порядке показа
+        let activeTopic = 'all';
+
+        function readSavedTopic() {
+            try { return localStorage.getItem(TOPIC_KEY) || 'all'; } catch (e) { return 'all'; }
+        }
+        function saveTopic(t) {
+            try { localStorage.setItem(TOPIC_KEY, t); } catch (e) { /* без запоминания */ }
+        }
+
+        function groupTopic(groupTasks) {
+            const t = groupTasks.map(x => String(x.topic || '').trim()).find(Boolean);
+            return t || NO_TOPIC;
+        }
+
+        function renderTopicFilter() {
+            const bar = document.getElementById('topicFilter');
+            const hasTopics = taskType !== 'sentence' && allCards.some(c => c.topic !== NO_TOPIC);
+            if (!hasTopics) {
+                bar.classList.add('hidden'); bar.classList.remove('flex');
+                activeTopic = 'all';
+                return;
+            }
+            const counts = {};
+            allCards.forEach(c => { counts[c.topic] = (counts[c.topic] || 0) + 1; });
+            const known = TOPIC_ORDER[taskType] || [];
+            const topics = [
+                ...known.filter(t => counts[t]),
+                ...Object.keys(counts).filter(t => t !== NO_TOPIC && !known.includes(t)).sort(),
+                ...(counts[NO_TOPIC] ? [NO_TOPIC] : [])
+            ];
+            if (activeTopic !== 'all' && !counts[activeTopic]) activeTopic = 'all';
+
+            const chip = (value, label, n) => {
+                const on = value === activeTopic;
+                return `<button type="button" data-topic="${tlEsc(value)}" aria-pressed="${on}"
+                    class="topic-chip inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold border transition
+                           ${on ? 'bg-slate-900 text-white border-slate-900 shadow-sm' : 'bg-white text-slate-600 border-gray-200 hover:border-slate-400 hover:text-slate-900'}">
+                    <span>${tlEsc(label)}</span>
+                    <span class="${on ? 'text-slate-300' : 'text-gray-400'} font-semibold">${n}</span>
+                </button>`;
+            };
+            bar.innerHTML = chip('all', 'All', allCards.length)
+                + topics.map(t => chip(t, t === NO_TOPIC ? 'Other' : t, counts[t])).join('');
+            bar.classList.remove('hidden'); bar.classList.add('flex');
+            bar.querySelectorAll('.topic-chip').forEach(b => {
+                b.addEventListener('click', () => selectTopic(b.getAttribute('data-topic')));
+            });
+        }
+
+        function selectTopic(t) {
+            activeTopic = t || 'all';
+            saveTopic(activeTopic);
+            renderTopicFilter();
+            renderCards();
+        }
+
+        function renderCards() {
+            const container = document.getElementById('tasksContainer');
+            const shown = activeTopic === 'all' ? allCards : allCards.filter(c => c.topic === activeTopic);
+            container.className = "grid grid-cols-1 md:grid-cols-2 gap-6";
+            container.innerHTML = shown.map(c => c.html).join('');
+            safeIcons();
+        }
+
         async function loadTasksAndProgress() {
             const container = document.getElementById('tasksContainer');
             try {
@@ -154,9 +245,11 @@
                     .order('id', { ascending: false }));
 
                 if (!tasks || tasks.length === 0) {
+                    allCards = [];
+                    renderTopicFilter();
                     container.className = "flex justify-center items-center py-20 w-full col-span-full";
                     container.innerHTML = `<div class="text-center text-gray-400"><i data-lucide="file-x" class="w-12 h-12 mx-auto mb-2"></i><p class="font-medium">No tasks found.</p></div>`;
-                    lucide.createIcons();
+                    safeIcons();
                     return;
                 }
 
@@ -168,8 +261,10 @@
                     testGroups[groupId].push(task);
                 });
 
-                container.className = "grid grid-cols-1 md:grid-cols-2 gap-6";
-                container.innerHTML = '';
+                // Карточки сначала собираем все, потом показываем с учётом фильтра.
+                // Номера наборов считаются по всему списку, поэтому при фильтре
+                // у набора остаётся тот же номер.
+                const cards = [];
                 currentTestGroups = {};
                 currentGroupResponses = {};
 
@@ -313,7 +408,9 @@
                             </div>
                         `;
                     } else {
-                        progressCircleHTML = `<span class="text-xs font-bold text-gray-300 tracking-wide">${testNumberLabel}</span>`;
+                        // Номер теста теперь стоит под названием во всех состояниях
+                        // (раньше был только здесь и пропадал после начала теста)
+                        progressCircleHTML = '';
                         actionButton = `
                             <a href="writing-practice.html?type=${taskType}&id=${encodeURIComponent(firstTask.id)}" class="w-full flex items-center justify-center space-x-2 bg-[#121629] text-white hover:bg-slate-800 transition py-3.5 rounded-2xl font-bold text-sm shadow-sm">
                                 <span>Start Test</span> <i data-lucide="arrow-right" class="w-4 h-4"></i>
@@ -328,7 +425,13 @@
                     // Когда есть лента — сдвигаем "Test #X" левее, чтобы она не перекрывалась лентой в углу
                     const headerRightPadding = firstTask.is_real_toefl ? 'pr-12' : '';
 
-                    container.innerHTML += `
+                    // Строка под названием: номер теста (всегда), тема, число вопросов
+                    const topic = groupTopic(groupTasks);
+                    const metaParts = [`<span class="font-bold text-slate-500">${testNumberLabel}</span>`];
+                    if (taskType !== 'sentence' && topic !== NO_TOPIC) metaParts.push(tlEsc(topic));
+                    if (taskType === 'sentence' || totalQuestions > 1) metaParts.push(`${totalQuestions} Question${totalQuestions > 1 ? 's' : ''}`);
+
+                    cards.push({ topic, html: `
                         <div class="relative overflow-hidden bg-white p-6 rounded-[1.5rem] border border-gray-100 shadow-sm hover:shadow-md transition-all flex flex-col justify-between min-h-[190px] ${CV.cardClass(isHiddenGroup)}">
                             ${realToeflRibbon}
                             <div>
@@ -342,16 +445,22 @@
                                     ${progressCircleHTML}
                                 </div>
                                 <h2 class="text-base font-extrabold text-slate-900 mb-1 leading-tight line-clamp-1">${cardTitle}</h2>
-                                <p class="text-xs text-gray-400 font-medium mb-5">${totalQuestions} Question${totalQuestions > 1 ? 's' : ''}</p>
+                                <p class="text-xs text-gray-400 font-medium mb-5">${metaParts.join(' <span class="text-gray-300">·</span> ')}</p>
                             </div>
                             ${CV.withEye(actionButton, 'writing_tasks', groupTasks.map(t => t.id), isHiddenGroup)}
                         </div>
-                    `;
+                    ` });
                     groupIndex++;
                 });
-                lucide.createIcons();
+
+                allCards = cards;
+                if (activeTopic === 'all') activeTopic = readSavedTopic();
+                renderTopicFilter();
+                renderCards();
             } catch (err) {
                 console.error(err);
+                allCards = [];
+                renderTopicFilter();
                 container.className = "flex justify-center items-center py-20 w-full col-span-full";
                 container.innerHTML = `<div class="text-center text-rose-500 text-sm font-bold">Failed to load tasks. Check your connection and refresh the page.</div>`;
             }
