@@ -14,6 +14,7 @@
     
     <script src="auth.js"></script>
     <script src="content-visibility.js"></script>
+    <script src="topic-filter.js"></script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -38,6 +39,9 @@
                 <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Academic Reading Passages</h1>
                 <p class="text-sm text-gray-500 mt-1">Advanced long-form texts reflecting authentic TOEFL university-level content.</p>
             </div>
+
+            <!-- Фильтр по предмету (topic-filter.js): появляется, когда у текстов заполнена колонка topic -->
+            <div id="topicFilter" class="hidden flex-wrap gap-2 mb-6" role="group" aria-label="Filter by subject"></div>
 
             <div id="testList" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <p id="loadingMsg" class="text-sm font-medium text-gray-500">Loading academic tests...</p>
@@ -70,17 +74,45 @@
             visibleFor(rows) { return (rows || []).filter(r => r.is_hidden !== true); }
         };
 
-        // Необязательная колонка is_hidden (глазик). Пока SQL не запущен, запрос
-        // с ней падает (42703) — тогда повторяем без неё.
+        // Необязательные колонки: is_hidden (глазик) и topic (предмет для фильтра).
+        // Пока SQL для них не запущен, запрос с ними падает (42703) — тогда убираем
+        // недостающую колонку и повторяем: страница работает в любом порядке выкладки.
+        const OPTIONAL_COLUMNS = ['is_hidden', 'topic'];
         async function fetchAcademicTasks() {
             const run = cols => db.from('academic_tasks').select(cols).eq('is_mock_only', false).order('id', { ascending: true });
             const base = 'id, title, category, questions_count, is_mock_only, is_real_toefl';
-            const res = await run(base + ', is_hidden');
-            if (res.error && (res.error.message || '').includes('is_hidden')) {
-                console.warn('[academic_tasks] нет колонки is_hidden — работаем без неё');
-                return run(base);
+            let optional = OPTIONAL_COLUMNS.slice();
+            for (;;) {
+                const res = await run([base, ...optional].join(', '));
+                const missing = res.error && optional.find(c => (res.error.message || '').includes(c));
+                if (!missing) return res;
+                console.warn(`[academic_tasks] нет колонки ${missing} — работаем без неё`);
+                optional = optional.filter(c => c !== missing);
             }
-            return res;
+        }
+
+        // ---------- ФИЛЬТР ПО ПРЕДМЕТУ ----------
+        // Предмет хранится в academic_tasks.topic, список общий с Complete the Words
+        // (TopicFilter.READING_SUBJECTS в topic-filter.js). Тексты без предмета — в «Other».
+        function escHtml(s) {
+            return String(s === null || s === undefined ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        // Если topic-filter.js не загрузился, список показывается целиком, как раньше
+        const topicFilter = window.TopicFilter ? TopicFilter.create({
+            bar: document.getElementById('topicFilter'),
+            list: testListContainer,
+            storageKey: 'readingTopic:academic',
+            order: TopicFilter.READING_SUBJECTS || [],
+            afterRender: () => lucide.createIcons()
+        }) : null;
+
+        function showCards(cards, opts) {
+            if (topicFilter) return topicFilter.setCards(cards, opts);
+            testListContainer.innerHTML = cards.map(c => c.html).join('') + ((opts && opts.tail) || '');
+            lucide.createIcons();
         }
 
         // 2. Инициализация и проверка авторизации
@@ -159,8 +191,6 @@
                     }
                 }
 
-                testListContainer.innerHTML = '';
-
                 // Демо-режим гостя: только 1 текст, остальные заблокированы
                 const isGuestDemo = currentUser && currentUser.role === 'guest';
                 let visibleTasks = tasksData;
@@ -172,11 +202,17 @@
 
                 // Номер теста считаем только по видимым ученикам заданиям: так у вас
                 // и у учеников «Test #3» — одно и то же задание. Скрытое — без номера.
+                // Считаем по всему списку до фильтра, поэтому при выборе предмета
+                // у текста остаётся тот же номер.
                 let shownNumber = 0;
 
-                // Отрисовка
-                visibleTasks.forEach((test, index) => { 
+                // Собираем все карточки, потом показываем с учётом фильтра
+                const cards = [];
+                visibleTasks.forEach((test, index) => {
                     const isHiddenTask = test.is_hidden === true;
+                    // На плашке — предмет (Biology…); если его ещё нет — категория, как раньше
+                    const topic = String(test.topic || '').trim();
+                    const badgeText = escHtml(topic || test.category);
                     const testLabel = isHiddenTask ? 'Draft' : `Test #${++shownNumber}`;
                     const matchedResult = userResults[test.id];
                     let savedScore = null;
@@ -214,7 +250,7 @@
                     } else {
                         scoreDisplay = `
                             <span class="text-[9px] font-bold text-indigo-600 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100/40">
-                                ${test.category}
+                                ${badgeText}
                             </span>
                         `;
 
@@ -235,13 +271,13 @@
                     // и у названия (pr-6): длинное название первой строкой доходило почти до ленты
                     const headerRightPadding = test.is_real_toefl ? 'pr-12' : '';
 
-                    testListContainer.innerHTML += `
+                    cards.push({ topic, html: `
                         <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col group hover:border-indigo-200 hover:shadow-md transition relative overflow-hidden ${CV.cardClass(isHiddenTask)}">
                             ${realToeflRibbon}
                             <div class="flex justify-between items-start mb-4 ${headerRightPadding}">
                                 ${savedScore !== null ? `
                                     <div class="flex flex-col">
-                                        <span class="text-[9px] font-bold text-indigo-600 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100/40 self-start mb-1">${test.category}</span>
+                                        <span class="text-[9px] font-bold text-indigo-600 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100/40 self-start mb-1">${badgeText}</span>
                                         <div class="flex items-center space-x-2 mt-0.5">
                                             <span class="text-[10px] font-bold text-emerald-600 flex items-center"><i data-lucide="check" class="w-3 h-3 mr-0.5"></i> Completed</span>
                                             <button onclick="resetAcademicTest(${test.id}, '${escapedTitle}')" class="text-gray-400 hover:text-rose-500 transition p-0.5 rounded-md hover:bg-gray-50" title="Reset results">
@@ -262,14 +298,14 @@
                             
                             ${CV.withEye(actionButton, 'academic_tasks', [test.id], isHiddenTask)}
                         </div>
-                    `;
+                    ` });
                 });
 
-                if (isGuestDemo && lockedCount > 0 && typeof renderGuestLockedCard === 'function') {
-                    testListContainer.innerHTML += renderGuestLockedCard(lockedCount, 'текстов');
-                }
+                const lockedCard = (isGuestDemo && lockedCount > 0 && typeof renderGuestLockedCard === 'function')
+                    ? renderGuestLockedCard(lockedCount, 'текстов') : '';
 
-                lucide.createIcons();
+                // Гостю с одним текстом фильтр не нужен
+                showCards(cards, { enabled: !isGuestDemo, tail: lockedCard });
             } catch (err) {
                 if (loadingMsg) {
                     loadingMsg.innerHTML = `<span class="text-red-600 font-bold">Error:</span> ${err.message}`;
