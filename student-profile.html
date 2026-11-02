@@ -475,6 +475,9 @@
                 </div>
                 <!-- END NEW -->
 
+                <!-- Средние по критериям (по последней оценённой попытке каждого эссе) -->
+                <div id="writingCriteriaStats" class="hidden mb-8 p-5 rounded-2xl border border-gray-100 bg-white"></div>
+
                 <!-- Список всех эссе -->
                 <div id="writingList" class="space-y-4">
                     <div class="text-center py-10 text-gray-400 text-sm">Загрузка эссе...</div>
@@ -494,10 +497,13 @@
                                 <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
                                 <span>Задание (Prompt)</span>
                             </label>
-                            <div id="editorTaskPrompt" class="p-4 bg-indigo-50/60 border border-indigo-100/80 rounded-xl text-xs text-slate-800 font-medium whitespace-pre-wrap max-h-[220px] overflow-y-auto leading-relaxed shadow-inner">
+                            <div id="editorTaskPrompt" class="p-4 bg-indigo-50/60 border border-indigo-100/80 rounded-xl text-xs text-slate-800 font-medium max-h-[260px] overflow-y-auto leading-relaxed shadow-inner">
                                 —
                             </div>
                         </div>
+
+                        <!-- ПРЕДЫДУЩИЕ ПОПЫТКИ ЭТОГО ЭССЕ (если это 2-я или 3-я) -->
+                        <div id="editorPrevAttempts" class="hidden"></div>
 
                         <!-- ТЕКСТ СТУДЕНТА -->
                         <div>
@@ -519,10 +525,30 @@
                             </div>
                         </div>
 
+                        <!-- ОЦЕНКИ ПО КРИТЕРИЯМ (1–6) — ученица видит их шкалами по попыткам -->
+                        <div class="pt-4 border-t border-indigo-100">
+                            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">По критериям (1.0–6.0)</label>
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div>
+                                    <span class="block text-[11px] font-bold text-slate-600 mb-1">Grammar</span>
+                                    <input type="number" step="0.25" min="1.0" max="6.0" id="editorGrammar" oninput="updateCriteriaHint()" class="w-full border border-gray-200 rounded-xl p-2 text-sm text-center font-bold focus:ring-2 focus:ring-indigo-200 outline-none text-slate-800" placeholder="—">
+                                </div>
+                                <div>
+                                    <span class="block text-[11px] font-bold text-slate-600 mb-1">Vocabulary</span>
+                                    <input type="number" step="0.25" min="1.0" max="6.0" id="editorVocabulary" oninput="updateCriteriaHint()" class="w-full border border-gray-200 rounded-xl p-2 text-sm text-center font-bold focus:ring-2 focus:ring-indigo-200 outline-none text-slate-800" placeholder="—">
+                                </div>
+                                <div>
+                                    <span class="block text-[11px] font-bold text-slate-600 mb-1">Communicative purpose</span>
+                                    <input type="number" step="0.25" min="1.0" max="6.0" id="editorPurpose" oninput="updateCriteriaHint()" class="w-full border border-gray-200 rounded-xl p-2 text-sm text-center font-bold focus:ring-2 focus:ring-indigo-200 outline-none text-slate-800" placeholder="—">
+                                </div>
+                            </div>
+                            <p id="editorCriteriaHint" class="text-[11px] text-gray-400 mt-2"></p>
+                        </div>
+
                         <div class="flex items-center justify-between pt-4 border-t border-indigo-100">
                             <div class="flex items-center space-x-3">
-                                <label class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Оценка:</label>
-                                <input type="number" step="0.5" min="1.0" max="6.0" id="editorScore" class="w-32 border border-gray-200 rounded-xl p-2 text-sm text-center font-bold focus:ring-2 focus:ring-indigo-200 outline-none text-slate-800" placeholder="От 1.0 до 6.0">
+                                <label class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Общий балл:</label>
+                                <input type="number" step="0.25" min="1.0" max="6.0" id="editorScore" class="w-32 border border-gray-200 rounded-xl p-2 text-sm text-center font-bold focus:ring-2 focus:ring-indigo-200 outline-none text-slate-800" placeholder="От 1.0 до 6.0">
                             </div>
                             <button onclick="saveWritingReview()" id="saveWritingBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 shadow-sm cursor-pointer">
                                 <i data-lucide="save" class="w-4 h-4"></i>
@@ -649,6 +675,10 @@
 
 
     <script>
+        // Если библиотека иконок не загрузилась, вызовы lucide.createIcons()
+        // не должны ломать загрузку вкладок
+        if (typeof window.lucide === 'undefined') window.lucide = { createIcons() {} };
+
         const defaultChecklist = [
             "Договор", "Отзыв", "Решать все вопросы, иначе не засчитают", 
             "Пройти верификацию сразу после регистрации", "Купон на регистрацию", 
@@ -1272,6 +1302,83 @@
                 .trim();
         }
 
+        // ---------- ПОПЫТКИ ЭССЕ И ОЦЕНКИ ПО КРИТЕРИЯМ ----------
+        // У эссе практики до 3 попыток (attempt_no), каждая — своя строка
+        // student_responses. Оценки по критериям — grammar_score, vocabulary_score,
+        // purpose_score (1–6); общий балл — score, как раньше.
+        const SP_MAX_ATTEMPTS = 3;
+        const SP_CRITERIA = [
+            { key: 'grammar_score',    label: 'Grammar',               input: 'editorGrammar',    bar: 'bg-indigo-500' },
+            { key: 'vocabulary_score', label: 'Vocabulary',            input: 'editorVocabulary', bar: 'bg-sky-500' },
+            { key: 'purpose_score',    label: 'Communicative purpose', input: 'editorPurpose',    bar: 'bg-emerald-500' }
+        ];
+        let writingAttemptsByTask = {};   // task_id → попытки эссе от первой к последней
+
+        function spCritVal(r, key) {
+            if (!r || r[key] === null || r[key] === undefined || r[key] === '') return null;
+            const v = parseFloat(r[key]);
+            return isNaN(v) ? null : v;
+        }
+        function spFmt(v) {
+            return v === null || v === undefined ? '—' : (Number.isInteger(v) ? String(v) : String(+Number(v).toFixed(2)));
+        }
+        function spIsEssay(r) {
+            return ['email', 'academic'].includes(String((r && r.task_type) || '').toLowerCase());
+        }
+        function spSortAttempts(list) {
+            return [...list].sort((a, b) => {
+                const an = Number(a.attempt_no), bn = Number(b.attempt_no);
+                if (an && bn && an !== bn) return an - bn;
+                const at = String(a.created_at || ''), bt = String(b.created_at || '');
+                if (at !== bt) return at < bt ? -1 : 1;
+                return Number(a.id) - Number(b.id);
+            });
+        }
+        // Номер попытки и сколько их всего у этого эссе
+        function spAttemptInfo(r) {
+            const list = writingAttemptsByTask[String(r.task_id)] || [r];
+            const idx = list.findIndex(x => String(x.id) === String(r.id));
+            return { no: idx >= 0 ? idx + 1 : 1, total: list.length, list, idx: Math.max(idx, 0) };
+        }
+
+        // Текст задания Writing для преподавателя: Email — адресат, тема, ситуация
+        // и пункты; Academic — вопрос профессора и посты студентов; Build a Sentence —
+        // реплика собеседника. Всё экранируется (HTML из задания показывается текстом).
+        function spParseList(v) {
+            if (Array.isArray(v)) return v;
+            if (typeof v === 'string' && v.trim()) {
+                try { const p = JSON.parse(v); return Array.isArray(p) ? p : [v]; } catch (e) { return [v]; }
+            }
+            return [];
+        }
+        function spTaskPromptHTML(t) {
+            if (!t) return '<p class="text-xs text-gray-400">Текст задания не найден</p>';
+            const txt = v => spEsc(String(v === null || v === undefined ? '' : v).replace(/<[^>]+>/g, '').trim());
+            const type = String(t.type || '').toLowerCase();
+            const parts = [];
+            if (t.instruction_box) parts.push(`<p class="font-bold text-teal-800">${txt(t.instruction_box)}</p>`);
+            if (type === 'email' && (t.meta_to || t.meta_subject)) {
+                parts.push(`<p class="text-[11px] text-slate-500"><b class="text-slate-700">To:</b> ${txt(t.meta_to) || '—'} &nbsp;·&nbsp; <b class="text-slate-700">Subject:</b> ${txt(t.meta_subject) || '—'}</p>`);
+            }
+            if (t.prompt_context) parts.push(`<p class="whitespace-pre-wrap">${txt(t.prompt_context)}</p>`);
+            const instr = spParseList(t.instructions).map(txt).filter(Boolean);
+            if (instr.length) {
+                parts.push(`<div>${type === 'email' ? `<p class="font-bold text-slate-700 mb-1">Write an email to ${txt(t.meta_to) || 'the recipient'}. In the email, do each of the following:</p>` : ''}
+                    <ul class="list-disc pl-5 space-y-0.5">${instr.map(i => `<li>${i}</li>`).join('')}</ul></div>`);
+            }
+            if (t.professor_prompt) {
+                parts.push(`<div><p class="font-bold text-slate-700 mb-1">${txt(t.professor_name) || 'Professor'}:</p><p class="whitespace-pre-wrap">${txt(t.professor_prompt)}</p></div>`);
+            }
+            const peers = spParseList(t.peers).filter(p => p && typeof p === 'object');
+            if (peers.length) {
+                parts.push(`<div class="space-y-2">${peers.map(p => `<div class="pl-3 border-l-2 border-indigo-200"><p class="font-bold text-slate-700">${txt(p.name) || 'Student'}:</p><p class="whitespace-pre-wrap">${txt(p.text)}</p></div>`).join('')}</div>`);
+            }
+            if (t.reading_text) parts.push(`<p class="whitespace-pre-wrap">${txt(t.reading_text)}</p>`);
+            if (t.prompt) parts.push(`<p class="whitespace-pre-wrap">${txt(t.prompt)}</p>`);
+            else if (t.question) parts.push(`<p class="whitespace-pre-wrap">${txt(t.question)}</p>`);
+            return parts.length ? `<div class="space-y-3">${parts.join('')}</div>` : '<p class="text-xs text-gray-400">Текст задания пустой</p>';
+        }
+
         async function loadReadingStats() {
             let dataComplete = [];
             let dataDaily = [];
@@ -1454,6 +1561,14 @@
                     }
                 }
 
+                // Попытки каждого эссе — от первой к последней
+                writingAttemptsByTask = {};
+                (responses || []).filter(spIsEssay).forEach(r => {
+                    const k = String(r.task_id);
+                    (writingAttemptsByTask[k] = writingAttemptsByTask[k] || []).push(r);
+                });
+                Object.keys(writingAttemptsByTask).forEach(k => { writingAttemptsByTask[k] = spSortAttempts(writingAttemptsByTask[k]); });
+
                 renderWritingList(responses || []);
                 calculateWritingStats(responses || []);
             } catch (err) {
@@ -1468,6 +1583,7 @@
             let academicScores = [];
 
             responses.forEach(task => {
+                if (spIsEssay(task)) return;   // эссе — ниже, по попыткам
                 if (task.score === null || task.score === undefined) return;
                 const typeStr = (task.task_type || '').toLowerCase();
 
@@ -1496,12 +1612,58 @@
                 }
             });
 
+            // Эссе: по одному баллу на эссе — последней оценённой попытки
+            // (иначе переписанное эссе засчитывалось бы несколько раз)
+            const critSum = {}, critCnt = {};
+            let critEssays = 0;
+            Object.values(writingAttemptsByTask).forEach(list => {
+                const scored = [...list].reverse().find(r => spEssayScore(r.score) !== null);
+                if (scored) {
+                    const v = spEssayScore(scored.score);
+                    if (String(scored.task_type).toLowerCase() === 'email') emailScores.push(v);
+                    else academicScores.push(v);
+                }
+                const withCrit = [...list].reverse().find(r => SP_CRITERIA.some(c => spCritVal(r, c.key) !== null));
+                if (withCrit) {
+                    critEssays++;
+                    SP_CRITERIA.forEach(c => {
+                        const v = spCritVal(withCrit, c.key);
+                        if (v !== null) { critSum[c.key] = (critSum[c.key] || 0) + v; critCnt[c.key] = (critCnt[c.key] || 0) + 1; }
+                    });
+                }
+            });
+            renderWritingCriteriaStats(critSum, critCnt, critEssays);
+
             const calculateAverage = (arr) => arr.length > 0 ? (arr.reduce((sum, item) => sum + item, 0) / arr.length).toFixed(1) : '—';
             const calculateAveragePercent = (arr) => arr.length > 0 ? Math.round(arr.reduce((sum, item) => sum + item, 0) / arr.length) + '%' : '—';
 
             document.getElementById('avgSentence').innerText = calculateAveragePercent(sentenceScores);
             document.getElementById('avgEmails').innerText = calculateAverage(emailScores);
             document.getElementById('avgWritingAcademic').innerText = calculateAverage(academicScores);
+        }
+
+        function renderWritingCriteriaStats(sum, cnt, essays) {
+            const box = document.getElementById('writingCriteriaStats');
+            if (!box) return;
+            if (!essays) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+            box.innerHTML = `
+                <div class="flex items-baseline justify-between mb-3">
+                    <span class="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">По критериям</span>
+                    <span class="text-[11px] text-gray-400">эссе с оценками: ${essays} · из 6</span>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    ${SP_CRITERIA.map(c => {
+                        const avg = cnt[c.key] ? sum[c.key] / cnt[c.key] : null;
+                        return `<div data-criterion="${c.key}">
+                            <div class="flex items-baseline justify-between mb-1.5">
+                                <span class="text-xs font-bold text-slate-700">${c.label}</span>
+                                <span class="text-sm font-black text-slate-900">${avg === null ? '—' : avg.toFixed(1)}</span>
+                            </div>
+                            <div class="h-2 bg-gray-100 rounded-full overflow-hidden"><div class="h-full ${c.bar} rounded-full" style="width:${avg === null ? 0 : Math.min(100, avg / 6 * 100)}%"></div></div>
+                        </div>`;
+                    }).join('')}
+                </div>`;
+            box.classList.remove('hidden');
         }
 
         function renderWritingList(tasks) {
@@ -1526,7 +1688,13 @@
                 const date = task.created_at ? new Date(task.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute:'2-digit'}) : '—';
                 
                 const essayScore = spEssayScore(task.score);
-                const isChecked = task.correction || task.teacher_correction || essayScore !== null;
+                const isChecked = task.correction || task.teacher_correction || essayScore !== null
+                    || SP_CRITERIA.some(c => spCritVal(task, c.key) !== null);
+                // Номер попытки — если у эссе их больше одной
+                const att = spAttemptInfo(task);
+                const attemptBadge = att.total > 1
+                    ? `<span class="bg-slate-900 text-white px-2 py-0.5 rounded-md text-[10px] font-extrabold" data-attempt-badge>Попытка ${att.no} из ${Math.max(SP_MAX_ATTEMPTS, att.total)}</span>`
+                    : '';
                 
                 const statusBadge = isChecked 
                     ? `<span class="bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-lg text-[10px] font-extrabold flex items-center space-x-1"><i data-lucide="check" class="w-3 h-3"></i><span>Проверено (${spEsc(essayScore !== null ? essayScore : '✔')})</span></span>`
@@ -1542,8 +1710,9 @@
                 return `
                     <div class="border border-gray-100 bg-white rounded-2xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:shadow-md transition cursor-pointer" onclick="openWritingEditor('${task.id}')">
                         <div>
-                            <div class="flex items-center space-x-3 mb-1.5">
+                            <div class="flex items-center flex-wrap gap-x-3 gap-y-1.5 mb-1.5">
                                 <span class="font-bold text-sm text-slate-900">${spEsc(taskTitle)}</span>
+                                ${attemptBadge}
                                 ${statusBadge}
                             </div>
                             <p class="text-[11px] text-gray-500 mb-1 leading-relaxed">${snippet}</p>
@@ -1565,58 +1734,36 @@
 
                 currentWritingId = task.id;
                 const taskInfo = writingTasksMap[task.task_id];
-                let promptText = "Текст задания не найден (или не привязан ID)";
 
+                // Текст задания: Email — адресат, тема, ситуация и пункты;
+                // Academic — вопрос профессора и посты студентов
+                let promptHTML;
                 if (taskInfo) {
-                    const parts = [];
-                    
-                    const instructionsText = taskInfo.instructions || taskInfo.instruction_box;
-                    if (instructionsText) {
-                        const cleanInstructions = String(instructionsText).replace(/<[^>]+>/g, '');
-                        parts.push("📋 ИНСТРУКЦИЯ:\n" + cleanInstructions);
-                    }
-
-                    if (taskInfo.prompt_context) parts.push("✉️ СИТУАЦИЯ / КОНТЕКСТ:\n" + String(taskInfo.prompt_context));
-                    if (taskInfo.professor_prompt) parts.push("👨‍🏫 PROFESSOR:\n" + String(taskInfo.professor_prompt));
-
-                    if (taskInfo.peers) {
-                        let peersArray = [];
-                        if (typeof taskInfo.peers === 'string') {
-                            try { peersArray = JSON.parse(taskInfo.peers); } catch (e) {}
-                        } else if (Array.isArray(taskInfo.peers)) {
-                            peersArray = taskInfo.peers;
-                        }
-
-                        if (peersArray.length > 0) {
-                            let peersText = "👥 СТУДЕНТЫ (PEERS):";
-                            peersArray.forEach(peer => {
-                                peersText += `\n\n🧑‍🎓 ${peer.name || 'Студент'}:\n${peer.text || ''}`;
-                            });
-                            parts.push(peersText);
-                        }
-                    }
-
-                    if (taskInfo.reading_text) parts.push("📚 READING:\n" + String(taskInfo.reading_text));
-                    if (taskInfo.prompt) parts.push("❓ ВОПРОС:\n" + String(taskInfo.prompt));
-                    if (!taskInfo.prompt && taskInfo.question) parts.push("❓ ВОПРОС:\n" + String(taskInfo.question));
-
-                    if (parts.length > 0) {
-                        promptText = parts.join('\n\n-------------------\n\n');
-                    }
+                    promptHTML = spTaskPromptHTML(taskInfo);
                 } else if (task.task_prompt || task.prompt || task.question) {
                     const fallback = task.task_prompt || task.prompt || task.question;
-                    promptText = typeof fallback === 'string' ? fallback : JSON.stringify(fallback);
+                    promptHTML = `<p class="whitespace-pre-wrap">${spEsc(typeof fallback === 'string' ? fallback : JSON.stringify(fallback))}</p>`;
+                } else {
+                    promptHTML = '<p class="text-xs text-gray-400">Текст задания не найден (или не привязан ID)</p>';
                 }
 
-                document.getElementById('editorTitle').innerText = `Проверка: ${task.task_type ? task.task_type : 'Task #' + (task.task_id || '')}`;
-                document.getElementById('editorTaskPrompt').innerText = promptText;
-                
+                const att = spAttemptInfo(task);
+                const attLabel = att.total > 1 ? ` · попытка ${att.no} из ${Math.max(SP_MAX_ATTEMPTS, att.total)}` : '';
+                document.getElementById('editorTitle').innerText = `Проверка: ${task.task_type ? task.task_type : 'Task #' + (task.task_id || '')}${attLabel}`;
+                document.getElementById('editorTaskPrompt').innerHTML = promptHTML;
+                renderPrevAttempts(att.list.slice(0, att.idx));
+
                 document.getElementById('editorOriginalText').innerText = task.response_content ? String(task.response_content) : 'Текст ответа отсутствует';
                 
                 document.getElementById('editorCorrections').value = task.correction || '';
                 document.getElementById('editorExplanations').value = task.teacher_correction || '';
                 const sc = spEssayScore(task.score);
                 document.getElementById('editorScore').value = sc !== null ? sc : '';
+                SP_CRITERIA.forEach(c => {
+                    const v = spCritVal(task, c.key);
+                    document.getElementById(c.input).value = v !== null ? v : '';
+                });
+                updateCriteriaHint();
 
                 document.getElementById('writingList').classList.add('hidden');
                 document.getElementById('writingEditor').classList.remove('hidden');
@@ -1635,6 +1782,44 @@
                 document.getElementById('writingEditor').classList.remove('hidden');
                 document.getElementById('writingEditor').classList.add('flex');
             }
+        }
+
+        // Прошлые попытки этого эссе — свёрнутые, с баллом и оценками по критериям
+        function renderPrevAttempts(prev) {
+            const box = document.getElementById('editorPrevAttempts');
+            if (!prev || !prev.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+            box.innerHTML = `
+                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Предыдущие попытки</label>
+                <div class="space-y-2">
+                    ${prev.map((r, i) => {
+                        const sc = spEssayScore(r.score);
+                        const crit = SP_CRITERIA.map(c => ({ c, v: spCritVal(r, c.key) })).filter(x => x.v !== null);
+                        return `
+                        <details class="bg-white border border-gray-200 rounded-xl" data-prev-attempt="${i + 1}">
+                            <summary class="cursor-pointer px-4 py-2.5 text-xs font-bold text-slate-700 flex flex-wrap items-center gap-x-3 gap-y-1">
+                                <span>Попытка ${i + 1}</span>
+                                <span class="${sc !== null ? 'text-emerald-600' : 'text-amber-600'}">${sc !== null ? spFmt(sc) : 'без балла'}</span>
+                                ${crit.map(x => `<span class="font-semibold text-gray-500">${x.c.label} ${spFmt(x.v)}</span>`).join('')}
+                                <span class="font-medium text-gray-400">${r.created_at ? new Date(r.created_at).toLocaleDateString('ru-RU') : ''}</span>
+                            </summary>
+                            <div class="px-4 pb-4 space-y-3 text-xs">
+                                <div class="p-3 bg-gray-50 rounded-lg whitespace-pre-wrap text-slate-700 leading-relaxed">${spEsc(r.response_content || 'Текст ответа отсутствует')}</div>
+                                ${r.correction ? `<div><p class="font-bold text-gray-500 mb-1">Corrections</p><div class="p-3 bg-teal-50/50 rounded-lg whitespace-pre-wrap">${spEsc(r.correction)}</div></div>` : ''}
+                                ${r.teacher_correction ? `<div><p class="font-bold text-gray-500 mb-1">Объяснение</p><div class="p-3 bg-violet-50/50 rounded-lg whitespace-pre-wrap">${spEsc(r.teacher_correction)}</div></div>` : ''}
+                            </div>
+                        </details>`;
+                    }).join('')}
+                </div>`;
+            box.classList.remove('hidden');
+        }
+
+        // Подсказка под критериями: их среднее (общий балл вы ставите сами)
+        function updateCriteriaHint() {
+            const vals = SP_CRITERIA.map(c => parseFloat(document.getElementById(c.input).value)).filter(v => !isNaN(v));
+            const hint = document.getElementById('editorCriteriaHint');
+            hint.innerText = vals.length
+                ? `Среднее по ${vals.length === 3 ? 'трём критериям' : 'заполненным критериям'}: ${(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2)}. Общий балл ставится отдельно.`
+                : 'Ученица увидит эти оценки шкалами и как они меняются от попытки к попытке.';
         }
 
         function closeWritingEditor() {
@@ -1657,6 +1842,16 @@
                 alert('Балл должен быть от 1.0 до 6.0 (или пустым, если оценки пока нет).');
                 return;
             }
+            const criteria = {};
+            for (const c of SP_CRITERIA) {
+                const raw = document.getElementById(c.input).value.trim();
+                const v = raw === '' ? null : parseFloat(raw);
+                if (v !== null && (isNaN(v) || v < 1 || v > 6)) {
+                    alert(`${c.label}: оценка должна быть от 1.0 до 6.0 (или пустой).`);
+                    return;
+                }
+                criteria[c.key] = v;
+            }
 
             const btn = document.getElementById('saveWritingBtn');
             const originalText = btn.innerHTML;
@@ -1670,7 +1865,8 @@
                     .update({
                         correction: correctionVal || null,
                         teacher_correction: teacherCorrectionVal || null,
-                        score: finalScore
+                        score: finalScore,
+                        ...criteria
                     })
                     .eq('id', currentWritingId)
                     .select('id');
@@ -1961,7 +2157,10 @@
                 const taskIds = [...new Set((answers || []).map(a => a.task_id).filter(Boolean))];
                 let tasksMap = {};
                 if (taskIds.length > 0) {
-                    const { data: tasksData } = await _supabase.from('writing_tasks').select('id, sample_answer, title').in('id', taskIds);
+                    // Задания целиком: раньше брались только образец и название,
+                    // и в проверке были видны одни ответы ученицы, без самих заданий
+                    const { data: tasksData, error: tasksErr } = await _supabase.from('writing_tasks').select('*').in('id', taskIds);
+                    if (tasksErr) throw tasksErr;
                     (tasksData || []).forEach(t => { tasksMap[t.id] = t; });
                 }
                 if (isStale()) return;
@@ -1980,8 +2179,11 @@
                     const correct = tasksMap[s.task_id]?.sample_answer || '';
                     const isMatch = correct && normalizeLocal(s.essay_text) === normalizeLocal(correct);
                     if (isMatch) correctSentences++;
+                    const ctxLine = tasksMap[s.task_id] && tasksMap[s.task_id].prompt_context
+                        ? String(tasksMap[s.task_id].prompt_context).replace(/<[^>]+>/g, '').trim() : '';
                     return `
-                        <div class="p-3 bg-gray-50/60 rounded-xl border border-gray-100 mb-2">
+                        <div class="p-3 bg-gray-50/60 rounded-xl border border-gray-100 mb-2" data-sentence-task="${spEsc(s.task_id)}">
+                            ${ctxLine ? `<p class="text-[11px] text-gray-500 mb-1"><i data-lucide="message-circle" class="w-3 h-3 inline mr-1"></i>${spEsc(ctxLine)}</p>` : ''}
                             <p class="text-sm ${isMatch ? 'text-slate-700' : 'text-rose-600'}">${spEsc(s.essay_text) || '—'}</p>
                             ${!isMatch && correct ? `<p class="text-xs text-gray-400 mt-1">Верно: ${spEsc(correct)}</p>` : ''}
                         </div>
@@ -1996,6 +2198,11 @@
                                 <h4 class="text-sm font-bold text-slate-800">${label}</h4>
                                 <span class="text-[10px] text-gray-400">${spEsc(response.word_count || 0)} слов</span>
                             </div>
+                            <details open class="mb-3 border border-indigo-100 rounded-xl bg-indigo-50/40" data-mock-prompt="${spEsc(response.task_id)}">
+                                <summary class="cursor-pointer px-4 py-2 text-[10px] font-bold text-indigo-600 uppercase tracking-wider">Задание</summary>
+                                <div class="px-4 pb-4 text-xs text-slate-800 leading-relaxed max-h-[300px] overflow-y-auto">${spTaskPromptHTML(tasksMap[response.task_id])}</div>
+                            </details>
+                            <label class="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1 block">Ответ ученицы</label>
                             <div class="p-4 bg-gray-50/60 rounded-xl border border-gray-100 text-sm text-slate-700 whitespace-pre-wrap mb-3">${spEsc(response.essay_text)}</div>
                             <div class="grid grid-cols-1 gap-3">
                                 <div>
