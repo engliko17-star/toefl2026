@@ -284,6 +284,9 @@
                                 <span id="res-reviewed" class="font-bold text-slate-700">—</span>
                             </div>
                         </div>
+
+                        <!-- Оценки преподавателя по критериям (появляются, когда они есть) -->
+                        <div id="res-criteria" class="hidden mt-5 pt-4 border-t border-gray-100 space-y-3"></div>
                     </div>
 
                 </div>
@@ -294,7 +297,8 @@
 
 
     <script>
-        lucide.createIcons();
+        // Иконки необязательны: без библиотеки страница и статистика всё равно работают
+        try { if (window.lucide) lucide.createIcons(); } catch (e) { /* без иконок */ }
 
         const SUPABASE_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
@@ -313,6 +317,59 @@
             return m ? parseFloat(m[1]) : null;
         }
 
+        // ---------- Попытки эссе и оценки по критериям ----------
+        // У эссе до 3 попыток (attempt_no); каждая — своя строка student_responses.
+        const CRITERIA = [
+            { key: 'grammar_score',    label: 'Grammar',               bar: 'bg-indigo-500' },
+            { key: 'vocabulary_score', label: 'Vocabulary',            bar: 'bg-sky-500' },
+            { key: 'purpose_score',    label: 'Communicative purpose', bar: 'bg-emerald-500' }
+        ];
+        function critVal(r, key) {
+            if (!r || r[key] === null || r[key] === undefined || r[key] === '') return null;
+            const v = parseFloat(r[key]);
+            return isNaN(v) ? null : v;
+        }
+        function isReviewed(r) {
+            const filled = v => String(v || '').trim() !== '';
+            return !!r && (filled(r.correction) || filled(r.teacher_correction) || essayScore(r) !== null
+                || CRITERIA.some(c => critVal(r, c.key) !== null));
+        }
+        function sortAttempts(list) {
+            return [...list].sort((a, b) => {
+                const an = Number(a.attempt_no), bn = Number(b.attempt_no);
+                if (an && bn && an !== bn) return an - bn;
+                const at = String(a.created_at || ''), bt = String(b.created_at || '');
+                if (at !== bt) return at < bt ? -1 : 1;
+                return Number(a.id) - Number(b.id);
+            });
+        }
+
+        function renderCriteria(byTask) {
+            const box = document.getElementById('res-criteria');
+            const sum = {}, cnt = {};
+            let essays = 0;
+            Object.values(byTask).forEach(list => {
+                const r = [...list].reverse().find(x => CRITERIA.some(c => critVal(x, c.key) !== null));
+                if (!r) return;
+                essays++;
+                CRITERIA.forEach(c => { const v = critVal(r, c.key); if (v !== null) { sum[c.key] = (sum[c.key] || 0) + v; cnt[c.key] = (cnt[c.key] || 0) + 1; } });
+            });
+            if (!essays) { box.classList.add('hidden'); return; }
+            box.innerHTML = `
+                <p class="text-[10px] font-bold text-slate-800 uppercase tracking-wider">By criteria <span class="normal-case font-medium text-gray-400">· ${essays} reviewed ${essays === 1 ? 'essay' : 'essays'}, out of 6</span></p>
+                ${CRITERIA.map(c => {
+                    const avg = cnt[c.key] ? sum[c.key] / cnt[c.key] : null;
+                    return `<div data-criterion="${c.key}">
+                        <div class="flex items-center justify-between text-xs mb-1">
+                            <span class="text-slate-600">${c.label}</span>
+                            <span class="font-bold text-slate-700">${avg === null ? '—' : avg.toFixed(1)}</span>
+                        </div>
+                        <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden"><div class="h-full ${c.bar} rounded-full" style="width:${avg === null ? 0 : Math.min(100, avg / 6 * 100)}%"></div></div>
+                    </div>`;
+                }).join('')}`;
+            box.classList.remove('hidden');
+        }
+
         function startOfWeek() {
             const d = new Date();
             d.setHours(0, 0, 0, 0);
@@ -324,7 +381,7 @@
             try {
                 const { data: responses, error } = await supabaseClient
                     .from('student_responses')
-                    .select('task_id, task_type, response_content, score, created_at')
+                    .select('*')
                     .eq('user_id', userId)
                     .in('task_type', ['sentence', 'email', 'academic']);
                 if (error) throw error;
@@ -353,9 +410,17 @@
 
                 const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
                 const fmt = v => v === null ? '—' : (Math.round(v * 10) / 10).toFixed(1);
-                const emailScores = essays.filter(r => r.task_type === 'email').map(essayScore).filter(v => v !== null);
-                const academicScores = essays.filter(r => r.task_type === 'academic').map(essayScore).filter(v => v !== null);
+                // По эссе (а не по каждой попытке): балл — последней оценённой попытки
+                const byTask = {};
+                essays.forEach(r => { const k = String(r.task_id); (byTask[k] = byTask[k] || []).push(r); });
+                Object.keys(byTask).forEach(k => { byTask[k] = sortAttempts(byTask[k]); });
+                const lastScore = list => { const r = [...list].reverse().find(x => essayScore(x) !== null); return r ? essayScore(r) : null; };
+                const emailScores = Object.values(byTask).filter(l => l[0].task_type === 'email').map(lastScore).filter(v => v !== null);
+                const academicScores = Object.values(byTask).filter(l => l[0].task_type === 'academic').map(lastScore).filter(v => v !== null);
                 const allScores = emailScores.concat(academicScores);
+                const essayCount = Object.keys(byTask).length;
+                const reviewedCount = Object.values(byTask).filter(l => isReviewed(l[l.length - 1])).length;
+                renderCriteria(byTask);
 
                 let sEarned = 0, sTotal = 0;
                 sentenceRows.forEach(r => {
@@ -373,7 +438,7 @@
                 document.getElementById('res-sentence').innerText = sTotal ? Math.round(sEarned / sTotal * 100) + '%' : '—';
                 document.getElementById('res-email').innerText = emailScores.length ? fmt(avg(emailScores)) + ' / 6' : '—';
                 document.getElementById('res-academic').innerText = academicScores.length ? fmt(avg(academicScores)) + ' / 6' : '—';
-                document.getElementById('res-reviewed').innerText = essays.length ? `${allScores.length} of ${essays.length}` : '—';
+                document.getElementById('res-reviewed').innerText = essayCount ? `${reviewedCount} of ${essayCount}` : '—';
 
                 // Цель недели: задания, сделанные с понедельника
                 const since = startOfWeek().getTime();
