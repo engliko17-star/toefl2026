@@ -126,6 +126,47 @@
         let isSubmitting = false;
         let dragJustEnded = false;
 
+        // ---------- ПОПЫТКИ ЭССЕ (Email и Academic Discussion) ----------
+        // До 3 попыток на одно эссе. Следующая открывается, когда преподаватель
+        // проверил предыдущую. Каждая попытка — отдельная строка student_responses,
+        // старые не удаляются. Номер попытки (attempt_no) ставит база; пока колонки
+        // нет, попытки упорядочиваются по дате отправки.
+        const MAX_ATTEMPTS = 3;
+        const wantRewrite = urlParams.get('rewrite') === '1';
+        const CRITERIA = [
+            { key: 'grammar_score',    label: 'Grammar',               bar: 'bg-indigo-500' },
+            { key: 'vocabulary_score', label: 'Vocabulary',            bar: 'bg-sky-500' },
+            { key: 'purpose_score',    label: 'Communicative purpose', bar: 'bg-emerald-500' }
+        ];
+        let isEssaySet = false;     // эссе из одного задания — тогда работают попытки
+        let essayAttempts = [];     // все попытки этого эссе, от первой к последней
+        let attemptNo = 1;          // номер попытки, которая сейчас пишется
+
+        function critVal(r, key) {
+            if (!r || r[key] === null || r[key] === undefined || r[key] === '') return null;
+            const v = parseFloat(r[key]);
+            return isNaN(v) ? null : v;
+        }
+        function fmtScore(v) {
+            return v === null || v === undefined ? '' : (Number.isInteger(v) ? String(v) : String(+v.toFixed(2)));
+        }
+        function canStartNextAttempt() {
+            const last = essayAttempts[essayAttempts.length - 1];
+            return essayAttempts.length > 0 && essayAttempts.length < MAX_ATTEMPTS && isReviewed(last);
+        }
+        function resultsUrl() {
+            return `writing-practice.html?type=${encodeURIComponent(taskType)}&id=${encodeURIComponent(taskId)}`;
+        }
+        function sortAttempts(list) {
+            return [...list].sort((a, b) => {
+                const an = Number(a.attempt_no), bn = Number(b.attempt_no);
+                if (an && bn && an !== bn) return an - bn;
+                const at = String(a.created_at || ''), bt = String(b.created_at || '');
+                if (at !== bt) return at < bt ? -1 : 1;
+                return Number(a.id) - Number(b.id);
+            });
+        }
+
         function wpEsc(s) {
             return String(s === null || s === undefined ? '' : s)
                 .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -172,6 +213,14 @@
             return m ? parseFloat(m[1]) : null;
         }
         function isEssayGraded(r) { return essayScoreOf(r) !== null; }
+        // Попытка проверена: есть балл, правки, объяснение или оценка по критерию.
+        // Так же считает база (wa_attempt_reviewed) и список заданий.
+        function isReviewed(r) {
+            if (!r) return false;
+            const filled = v => String(v || '').trim() !== '';
+            return filled(r.correction) || filled(r.teacher_correction) || essayScoreOf(r) !== null
+                || CRITERIA.some(c => critVal(r, c.key) !== null);
+        }
 
         // --- ЛОГИКА ТАЙМЕРА ---
         let timerInterval = null;
@@ -336,9 +385,30 @@
                 studentResponses = testQuestions.map(q => latest[String(q.id)]).filter(Boolean);
 
                 practiceQuestions = testQuestions.filter(q => !latest[String(q.id)]);
+
+                // Эссе: все попытки по порядку; новая попытка — по кнопке Rewrite (?rewrite=1),
+                // только если прошлая проверена и попыток меньше трёх
+                isEssaySet = taskType !== 'sentence' && testQuestions.length === 1;
+                if (isEssaySet) {
+                    const q0 = testQuestions[0];
+                    essayAttempts = sortAttempts((resps || []).filter(r => String(r.task_id) === String(q0.id)));
+                    if (wantRewrite) {
+                        if (canStartNextAttempt()) {
+                            practiceQuestions = [q0];
+                            attemptNo = essayAttempts.length + 1;
+                        } else {
+                            history.replaceState(null, '', resultsUrl());
+                        }
+                    }
+                }
+
                 isTestCompleted = practiceQuestions.length === 0;
-                draftKey = `wp_draft_v1:${currentUserId}:${questionIds.join(',')}`;
+                // У 2-й и 3-й попытки свой черновик: текст прошлой попытки в поле не попадает
+                draftKey = `wp_draft_v1:${currentUserId}:${questionIds.join(',')}` + (attemptNo > 1 ? `:a${attemptNo}` : '');
                 if (isTestCompleted) clearDraft();
+                if (attemptNo > 1) {
+                    document.getElementById('testHeaderTitle').innerText += ` · Attempt ${attemptNo} of ${MAX_ATTEMPTS}`;
+                }
 
                 renderTestSlider();
             } catch (e) {
@@ -429,30 +499,8 @@
             if (currentSlide > 0) showSlide(currentSlide - 1);
         }
 
-        function generateFullResultsView() {
-            const respFor = q => studentResponses.find(r => String(r.task_id) === String(q.id)) || null;
-
-            // Итог: Build a Sentence — сколько верно из скольких; эссе — балл преподавателя
-            let scoreDisplay = 'Awaiting';
-            if (taskType === 'sentence') {
-                let earned = 0, max = 0, has = false;
-                testQuestions.forEach(q => {
-                    const r = respFor(q);
-                    if (r && r.score && String(r.score).includes('/')) {
-                        const [e, m] = String(r.score).split('/').map(Number);
-                        if (!isNaN(e) && !isNaN(m)) { earned += e; max += m; has = true; }
-                    }
-                });
-                if (has) scoreDisplay = `${earned} / ${max}`;
-            } else {
-                const v = essayScoreOf(respFor(testQuestions[0]));
-                if (v !== null) scoreDisplay = Number.isInteger(v) ? v.toString() : String(v);
-            }
-
-            const anyResp = studentResponses[0];
-            const savedTime = anyResp && anyResp.time_left_seconds !== undefined && anyResp.time_left_seconds !== null
-                ? parseInt(anyResp.time_left_seconds, 10) : null;
-
+        // Карточка «сколько времени осталось / сколько лишнего ушло»
+        function timeCardHTML(savedTime) {
             let timeCardHtml = '';
             if (savedTime !== null && !isNaN(savedTime)) {
                 const isOvertime = savedTime < 0;
@@ -469,19 +517,13 @@
                 `;
             }
 
+            return timeCardHtml;
+        }
+
+        // Текст задания Email / Academic Discussion для разбора
+        function essayPromptHTML(q) {
             let leftPanelContent = '';
-            if (taskType === 'sentence') {
-                leftPanelContent = `
-                    <div class="flex-1 flex flex-col items-center justify-center text-center mt-8">
-                        <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-100 mb-4 shadow-sm border border-emerald-200">
-                            <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Symbols/Check%20Mark%20Button.png" class="w-8 h-8" alt="Complete" />
-                        </div>
-                        <h3 class="text-lg font-bold text-slate-800">Practice Completed</h3>
-                        <p class="text-sm text-slate-500 mt-2 max-w-[250px] mx-auto leading-relaxed">You have submitted answers for all questions in this set.</p>
-                    </div>
-                `;
-            } else if (taskType === 'email') {
-                const q = testQuestions[0];
+            if (taskType === 'email') {
                 const instructionsHTML = (Array.isArray(q.instructions) ? q.instructions : []).map(li => `<li>${li}</li>`).join('');
                 leftPanelContent = `
                     <div class="mt-8 border-t border-gray-100 pt-6 space-y-4">
@@ -498,7 +540,6 @@
                     </div>
                 `;
             } else if (taskType === 'academic') {
-                const q = testQuestions[0];
                 const peersHTML = (Array.isArray(q.peers) ? q.peers : []).map(peer => `
                     <div class="flex items-start space-x-2.5 bg-gray-50 p-3 rounded-xl border border-gray-100">
                         <div class="flex flex-col items-center shrink-0">
@@ -530,6 +571,234 @@
                         ` : ''}
                     </div>
                 `;
+            }
+            return leftPanelContent;
+        }
+
+        // ---------- РАЗБОР ЭССЕ С ПОПЫТКАМИ ----------
+        // Слева: балл, попытки, шкалы по критериям, кнопка следующей попытки, задание.
+        // Справа: все попытки (новые сверху) с правками преподавателя, потом образец.
+        function attemptDate(r) {
+            const d = r && r.created_at ? new Date(r.created_at) : null;
+            return d && !isNaN(d) ? d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
+        }
+
+        function attemptStatusHTML(r) {
+            const v = essayScoreOf(r);
+            if (v !== null) return `<span class="font-black text-emerald-700">${fmtScore(v)}</span>`;
+            if (isReviewed(r)) return `<span class="font-bold text-emerald-700">Reviewed</span>`;
+            return `<span class="font-bold text-amber-600">Waiting for review</span>`;
+        }
+
+        function criteriaBarsHTML() {
+            const hasAny = essayAttempts.some(r => CRITERIA.some(c => critVal(r, c.key) !== null));
+            if (!hasAny) return '';
+            const blocks = CRITERIA.map(c => {
+                const rows = essayAttempts.map((r, i) => ({ i, v: critVal(r, c.key) })).filter(x => x.v !== null);
+                if (!rows.length) return '';
+                const delta = rows.length > 1 ? rows[rows.length - 1].v - rows[0].v : 0;
+                const deltaHTML = rows.length > 1 && delta !== 0
+                    ? `<span class="text-[10px] font-bold ${delta > 0 ? 'text-emerald-600' : 'text-rose-500'}">${delta > 0 ? '+' : ''}${fmtScore(delta)}</span>` : '';
+                return `
+                    <div class="space-y-1.5" data-criterion="${c.key}">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[11px] font-bold text-slate-700">${c.label}</span>${deltaHTML}
+                        </div>
+                        ${rows.map(x => `
+                            <div class="flex items-center gap-2">
+                                <span class="w-5 text-[9px] font-bold text-gray-400 shrink-0">#${x.i + 1}</span>
+                                <div class="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                                    <div class="h-full ${c.bar} rounded-full" style="width:${Math.max(0, Math.min(100, x.v / 6 * 100))}%"></div>
+                                </div>
+                                <span class="w-8 text-right text-[11px] font-bold text-slate-700 shrink-0">${fmtScore(x.v)}</span>
+                            </div>`).join('')}
+                    </div>`;
+            }).join('');
+            return `
+                <div class="mt-6 space-y-4" id="criteriaBars">
+                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">By criteria <span class="normal-case font-semibold text-gray-300">· out of 6</span></h3>
+                    ${blocks}
+                </div>`;
+        }
+
+        function nextAttemptHTML() {
+            const n = essayAttempts.length;
+            const last = essayAttempts[n - 1];
+            if (canStartNextAttempt()) {
+                return `
+                    <div class="mt-6 bg-indigo-50/60 border border-indigo-100 rounded-2xl p-4 space-y-3" id="nextAttempt">
+                        <p class="text-xs text-slate-600 leading-relaxed">Your teacher has reviewed attempt ${n}. Write the task again from scratch, with the timer, as in the exam.</p>
+                        <a href="${resultsUrl()}&rewrite=1" class="w-full flex items-center justify-center gap-2 py-3 bg-slate-900 text-white font-bold rounded-xl text-sm hover:bg-slate-800 transition shadow-sm">
+                            Write attempt ${n + 1} of ${MAX_ATTEMPTS}
+                        </a>
+                    </div>`;
+            }
+            if (!isReviewed(last)) {
+                return `
+                    <div class="mt-6 bg-amber-50 border border-amber-100 rounded-2xl p-4 text-xs text-amber-900 leading-relaxed" id="nextAttempt">
+                        Attempt ${n} is waiting for your teacher's review.${n < MAX_ATTEMPTS ? ` After the review, you can write attempt ${n + 1}.` : ''}
+                    </div>`;
+            }
+            return `
+                <div class="mt-6 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-xs text-slate-600 leading-relaxed" id="nextAttempt">
+                    You have used all ${MAX_ATTEMPTS} attempts for this task.
+                </div>`;
+        }
+
+        function generateEssayHistoryView() {
+            const q = testQuestions[0];
+            const n = essayAttempts.length;
+            const last = essayAttempts[n - 1];
+            const scored = [...essayAttempts].reverse().find(r => essayScoreOf(r) !== null) || null;
+            const scoreDisplay = scored ? fmtScore(essayScoreOf(scored)) : 'Awaiting';
+            const scoredNo = scored ? essayAttempts.indexOf(scored) + 1 : null;
+            const timeCardHtml = timeCardHTML(last && last.time_left_seconds !== null && last.time_left_seconds !== undefined
+                ? parseInt(last.time_left_seconds, 10) : null);
+
+            const slots = [];
+            for (let i = 0; i < MAX_ATTEMPTS; i++) {
+                const r = essayAttempts[i];
+                slots.push(`
+                    <div class="flex items-center justify-between text-xs py-1.5 ${i ? 'border-t border-gray-100' : ''}">
+                        <span class="font-bold ${r ? 'text-slate-700' : 'text-gray-300'}">Attempt ${i + 1}</span>
+                        ${r ? attemptStatusHTML(r) : '<span class="text-gray-300 font-semibold">—</span>'}
+                    </div>`);
+            }
+            // Если попыток больше трёх (старые повторы) — показываем и их
+            for (let i = MAX_ATTEMPTS; i < n; i++) {
+                slots.push(`
+                    <div class="flex items-center justify-between text-xs py-1.5 border-t border-gray-100">
+                        <span class="font-bold text-slate-700">Attempt ${i + 1}</span>${attemptStatusHTML(essayAttempts[i])}
+                    </div>`);
+            }
+
+            const cards = essayAttempts.map((r, i) => ({ r, i })).reverse().map(({ r, i }) => {
+                const v = essayScoreOf(r);
+                const crit = CRITERIA.map(c => ({ c, v: critVal(r, c.key) })).filter(x => x.v !== null);
+                return `
+                    <div class="bg-white rounded-3xl border ${i === n - 1 ? 'border-slate-300' : 'border-gray-200'} shadow-sm p-6" data-attempt="${i + 1}">
+                        <div class="flex items-start justify-between gap-3 mb-4 border-b border-gray-50 pb-4">
+                            <div class="flex items-center flex-wrap gap-2">
+                                <span class="px-2.5 py-1 rounded-md bg-slate-900 text-white text-[10px] font-extrabold uppercase tracking-wider">Attempt ${i + 1}</span>
+                                <span class="text-[11px] font-semibold text-gray-400">${wpEsc(attemptDate(r))}${attemptDate(r) ? ' · ' : ''}${countWords(r.response_content)} words</span>
+                            </div>
+                            <span class="shrink-0 text-[11px] font-bold px-2.5 py-1 rounded-md ${v !== null ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : isReviewed(r) ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-amber-50 text-amber-700 border border-amber-100'}">${v !== null ? fmtScore(v) : isReviewed(r) ? 'Reviewed' : 'Awaiting review'}</span>
+                        </div>
+                        ${crit.length ? `
+                            <div class="flex flex-wrap gap-2 mb-4">
+                                ${crit.map(x => `<span class="text-[11px] font-semibold text-slate-600 bg-gray-50 border border-gray-100 rounded-lg px-2.5 py-1">${x.c.label} <b class="text-slate-900">${fmtScore(x.v)}</b></span>`).join('')}
+                            </div>` : ''}
+                        <div class="space-y-4">
+                            <div class="space-y-1.5">
+                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Your Answer</span>
+                                <div class="text-sm text-slate-700 bg-gray-50 border border-gray-100 rounded-xl p-3.5 leading-relaxed whitespace-pre-wrap font-medium">${wpEsc(r.response_content || 'No answer provided')}</div>
+                            </div>
+                            ${r.correction ? `
+                            <div class="space-y-1.5 pt-1">
+                                <span class="text-[10px] font-bold text-teal-600 uppercase tracking-wider">Teacher's Corrections</span>
+                                <div class="text-sm text-teal-950 bg-teal-50/40 border border-teal-100 rounded-xl p-3.5 leading-relaxed whitespace-pre-wrap font-medium">${wpEsc(r.correction)}</div>
+                            </div>` : ''}
+                            ${r.teacher_correction ? `
+                            <div class="space-y-1.5 pt-1">
+                                <span class="text-[10px] font-bold text-violet-600 uppercase tracking-wider">Teacher's Explanation</span>
+                                <div class="text-sm text-violet-950 bg-violet-50/40 border border-violet-100 rounded-xl p-3.5 leading-relaxed whitespace-pre-wrap font-medium">${wpEsc(r.teacher_correction)}</div>
+                            </div>` : ''}
+                        </div>
+                    </div>`;
+            }).join('');
+
+            const hasExplanation = q.explanation && q.explanation.trim().toLowerCase() !== 'none' && q.explanation.trim() !== '';
+            const sampleCard = (q.sample_answer || hasExplanation) ? `
+                <div class="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 space-y-4">
+                    ${q.sample_answer ? `
+                    <div class="space-y-1.5">
+                        <span class="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">Sample Answer</span>
+                        <div class="text-sm text-indigo-950 bg-indigo-50/50 border border-indigo-100 rounded-xl p-3.5 leading-relaxed whitespace-pre-wrap font-medium">${q.sample_answer}</div>
+                    </div>` : ''}
+                    ${hasExplanation ? `
+                    <div class="space-y-1.5">
+                        <span class="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Teacher's Note</span>
+                        <div class="text-sm text-amber-900 bg-amber-50/50 border border-amber-100 rounded-xl p-3.5 leading-relaxed whitespace-pre-wrap font-medium">${q.explanation}</div>
+                    </div>` : ''}
+                </div>` : '';
+
+            return `
+                <div class="flex-1 grid grid-cols-1 md:grid-cols-[300px_1fr] lg:grid-cols-[380px_1fr] divide-y md:divide-y-0 md:divide-x divide-gray-100 h-full overflow-hidden w-full bg-white relative">
+                    <div class="flex flex-col h-full bg-white relative z-10 shadow-[4px_0_24px_rgba(0,0,0,0.02)] min-h-0">
+                        <div class="p-6 md:p-8 overflow-y-auto flex-1 flex flex-col">
+                            <h2 class="text-lg font-bold text-slate-900 mb-6">Results Overview</h2>
+                            <div class="${timeCardHtml ? 'grid grid-cols-2 gap-3' : 'flex flex-col'} mb-2">
+                                <div class="bg-emerald-50 border border-emerald-100 rounded-3xl p-5 flex flex-col items-center justify-center shadow-sm shrink-0">
+                                    <span class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-1.5">Teacher Score</span>
+                                    <span class="${timeCardHtml ? 'text-2xl' : 'text-4xl'} font-black text-emerald-700" id="teacherScore">${wpEsc(scoreDisplay)}</span>
+                                    ${scoredNo ? `<span class="text-[10px] font-semibold text-emerald-600/70 mt-1">attempt ${scoredNo}</span>` : ''}
+                                </div>
+                                ${timeCardHtml}
+                            </div>
+                            <div class="mt-6" id="attemptList">
+                                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Attempts</h3>
+                                ${slots.join('')}
+                            </div>
+                            ${criteriaBarsHTML()}
+                            ${nextAttemptHTML()}
+                            ${essayPromptHTML(q)}
+                        </div>
+                        <div class="p-6 border-t border-gray-100 bg-gray-50/50 shrink-0">
+                            <a href="task-list.html?type=${encodeURIComponent(taskType)}" class="w-full flex items-center justify-center space-x-2 py-3.5 bg-white border border-gray-200 text-slate-700 font-bold rounded-xl text-sm hover:bg-gray-50 hover:text-slate-900 hover:border-gray-300 transition shadow-sm">
+                                <span>Back to Dashboard</span>
+                            </a>
+                        </div>
+                    </div>
+                    <div class="bg-[#f4f6f8] h-full overflow-y-auto p-4 md:p-8">
+                        <div class="max-w-3xl mx-auto space-y-6 pb-12">
+                            ${cards}
+                            ${sampleCard}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function generateFullResultsView() {
+            if (isEssaySet && essayAttempts.length) return generateEssayHistoryView();
+            const respFor = q => studentResponses.find(r => String(r.task_id) === String(q.id)) || null;
+
+            // Итог: Build a Sentence — сколько верно из скольких; эссе — балл преподавателя
+            let scoreDisplay = 'Awaiting';
+            if (taskType === 'sentence') {
+                let earned = 0, max = 0, has = false;
+                testQuestions.forEach(q => {
+                    const r = respFor(q);
+                    if (r && r.score && String(r.score).includes('/')) {
+                        const [e, m] = String(r.score).split('/').map(Number);
+                        if (!isNaN(e) && !isNaN(m)) { earned += e; max += m; has = true; }
+                    }
+                });
+                if (has) scoreDisplay = `${earned} / ${max}`;
+            } else {
+                const v = essayScoreOf(respFor(testQuestions[0]));
+                if (v !== null) scoreDisplay = Number.isInteger(v) ? v.toString() : String(v);
+            }
+
+            const anyResp = studentResponses[0];
+            const savedTime = anyResp && anyResp.time_left_seconds !== undefined && anyResp.time_left_seconds !== null
+                ? parseInt(anyResp.time_left_seconds, 10) : null;
+
+            const timeCardHtml = timeCardHTML(savedTime);
+
+            let leftPanelContent = '';
+            if (taskType === 'sentence') {
+                leftPanelContent = `
+                    <div class="flex-1 flex flex-col items-center justify-center text-center mt-8">
+                        <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-100 mb-4 shadow-sm border border-emerald-200">
+                            <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Symbols/Check%20Mark%20Button.png" class="w-8 h-8" alt="Complete" />
+                        </div>
+                        <h3 class="text-lg font-bold text-slate-800">Practice Completed</h3>
+                        <p class="text-sm text-slate-500 mt-2 max-w-[250px] mx-auto leading-relaxed">You have submitted answers for all questions in this set.</p>
+                    </div>
+                `;
+            } else {
+                leftPanelContent = essayPromptHTML(testQuestions[0]);
             }
 
             const questionsHtml = testQuestions.map((q, index) => {
@@ -901,17 +1170,31 @@
                 const { data: existing, error: exErr } = await db.from('student_responses')
                     .select('task_id').eq('user_id', currentUserId).in('task_id', payloads.map(p => p.task_id));
                 if (exErr) throw exErr;
-                const have = new Set((existing || []).map(r => String(r.task_id)));
-                const toInsert = payloads.filter(p => !have.has(String(p.task_id)));
+                let toInsert;
+                if (isEssaySet) {
+                    // Эссе: новая попытка записывается, если с момента открытия страницы
+                    // в базе не появилось новых ответов на это задание (вторая вкладка)
+                    toInsert = (existing || []).length > essayAttempts.length ? [] : payloads;
+                } else {
+                    const have = new Set((existing || []).map(r => String(r.task_id)));
+                    toInsert = payloads.filter(p => !have.has(String(p.task_id)));
+                }
                 if (toInsert.length) {
                     const { error } = await db.from('student_responses').insert(toInsert);
                     if (error) throw error;
                 }
                 clearDraft();
                 isTestCompleted = true;
-                window.location.reload();
+                if (isEssaySet) window.location.replace(resultsUrl());
+                else window.location.reload();
             } catch (err) {
                 console.error('Error saving test:', err);
+                // Правило попыток в базе: прошлая попытка ещё не проверена или все 3 использованы
+                if (err && (err.hint === 'wa_wait' || err.hint === 'wa_limit')) {
+                    alert(err.message + '\n\nYour text is kept on this device.');
+                    window.location.replace(resultsUrl());
+                    return;
+                }
                 alert('Your answers were not saved yet (they are kept on this device).\n\n'
                     + (err && err.code ? 'The server did not accept them — please tell your teacher.\n' : 'Check your internet connection and press Submit again.\n')
                     + (err && err.message ? err.message : ''));
