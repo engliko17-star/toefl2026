@@ -14,6 +14,7 @@
     
     <script src="auth.js"></script>
     <script src="content-visibility.js"></script>
+    <script src="topic-filter.js"></script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -40,6 +41,9 @@
                     <p class="text-sm text-gray-500 mt-1">Short passages from everyday situations. Select a test to practice.</p>
                 </div>
             </div>
+
+            <!-- Фильтр по типу текста (topic-filter.js): появляется, когда у текстов заполнен layout_type -->
+            <div id="topicFilter" class="hidden flex-wrap gap-2 mb-6" role="group" aria-label="Filter by text type"></div>
 
             <div id="testList" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <p id="loadingMsg" class="text-sm font-medium text-gray-500">Loading tests from database...</p>
@@ -73,6 +77,46 @@
             init() {}, cardClass() { return ''; }, withEye(html) { return html; },
             visibleFor(rows) { return (rows || []).filter(r => r.is_hidden !== true); }
         };
+
+        // ---------- ФИЛЬТР ПО ТИПУ ТЕКСТА ----------
+        // Тип берётся из колонки layout_type — по ней страница задания оформляет
+        // текст (письмо, чат, объявление…). Порядок кнопок — как здесь; незнакомые
+        // типы идут следом по алфавиту, тексты без типа — в «Other».
+        const TEXT_TYPES = {
+            email: 'Email',
+            chat: 'Chat',
+            notice: 'Notice',
+            advertisement: 'Advertisement',
+            social_media: 'Social Media',
+            article: 'Article'
+        };
+        function textTypeOf(test) {
+            return String(test.layout_type || '').toLowerCase().trim().replace(/[\s-]+/g, '_');
+        }
+        function textTypeLabel(type) {
+            return TEXT_TYPES[type] || type.replace(/_+/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
+        }
+        function escHtml(s) {
+            return String(s === null || s === undefined ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        // Если topic-filter.js не загрузился, список показывается целиком, как раньше
+        const topicFilter = window.TopicFilter ? TopicFilter.create({
+            bar: document.getElementById('topicFilter'),
+            list: testListContainer,
+            storageKey: 'readingTopic:daily',
+            order: Object.keys(TEXT_TYPES),
+            label: textTypeLabel,
+            afterRender: () => lucide.createIcons()
+        }) : null;
+
+        function showCards(cards, opts) {
+            if (topicFilter) return topicFilter.setCards(cards, opts);
+            testListContainer.innerHTML = cards.map(c => c.html).join('') + ((opts && opts.tail) || '');
+            lucide.createIcons();
+        }
 
         // 2. Инициализация страницы и проверка авторизации
         async function initPage() {
@@ -122,10 +166,10 @@
         // задание реально встречалось на настоящем экзамене (галочка is_real_toefl).
         const REAL_TOEFL_RIBBON = `<div class="absolute top-[15px] right-[-38px] w-[150px] rotate-45 bg-violet-600 text-white text-[9px] font-extrabold tracking-[0.15em] text-center py-1 shadow-sm z-10 pointer-events-none">TOEFL</div>`;
 
-        // Необязательные колонки: is_real_toefl (этикетка TOEFL) и is_hidden (глазик).
-        // Пока SQL для них не запущен, запрос с ними падает (42703) — тогда убираем
-        // недостающую колонку и повторяем: страница работает в любом порядке выкладки.
-        const OPTIONAL_COLUMNS = ['is_real_toefl', 'is_hidden'];
+        // Необязательные колонки: is_real_toefl (этикетка TOEFL), is_hidden (глазик)
+        // и layout_type (тип текста для фильтра). Если колонки нет, запрос с ней
+        // падает (42703) — тогда убираем недостающую колонку и повторяем.
+        const OPTIONAL_COLUMNS = ['is_real_toefl', 'is_hidden', 'layout_type'];
         async function fetchPracticeTasks(table, columns) {
             const run = cols => db.from(table).select(cols).eq('is_mock_only', false).order('id', { ascending: true });
             let optional = OPTIONAL_COLUMNS.slice();
@@ -177,14 +221,18 @@
                     throw new Error('Нет подключения к базе.');
                 }
 
-                testListContainer.innerHTML = '';
                 if (!tests.length) {
+                    showCards([], { enabled: false });
                     testListContainer.innerHTML = '<p class="text-sm font-medium text-gray-500">No practice tests available yet.</p>';
                     return;
                 }
 
-                // Шаг В: Отрисовка карточек
+                // Шаг В: Собираем все карточки, потом показываем с учётом фильтра
+                const cards = [];
                 tests.forEach(test => {
+                    // На плашке — тип текста (Email, Chat…); если его нет — категория, как раньше
+                    const textType = textTypeOf(test);
+                    const badgeText = textType ? textTypeLabel(textType) : (test.category || 'Daily Life');
                     const matchedResult = userResults[test.id];
                     let savedScore = null;
 
@@ -221,7 +269,7 @@
                     } else {
                         scoreDisplay = `
                             <span class="text-[9px] font-bold text-emerald-600 uppercase tracking-widest bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100/40">
-                                ${test.category || 'Daily Life'}
+                                ${escHtml(badgeText)}
                             </span>
                         `;
 
@@ -241,13 +289,13 @@
                     const headerRightPadding = isRealToefl ? 'pr-12' : '';
                     const isHiddenTask = test.is_hidden === true;
 
-                    testListContainer.innerHTML += `
+                    cards.push({ topic: textType, html: `
                         <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col group hover:border-emerald-200 hover:shadow-md transition relative overflow-hidden ${CV.cardClass(isHiddenTask)}">
                             ${isRealToefl ? REAL_TOEFL_RIBBON : ''}
                             <div class="flex justify-between items-start mb-4 ${headerRightPadding}">
                                 ${savedScore !== null ? `
                                     <div class="flex flex-col">
-                                        <span class="text-[9px] font-bold text-emerald-600 uppercase tracking-widest bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100/40 self-start mb-1">${test.category || 'Daily Life'}</span>
+                                        <span class="text-[9px] font-bold text-emerald-600 uppercase tracking-widest bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100/40 self-start mb-1">${escHtml(badgeText)}</span>
                                         <div class="flex items-center space-x-2 mt-0.5">
                                             <span class="text-[10px] font-bold text-emerald-600 flex items-center"><i data-lucide="check" class="w-3 h-3 mr-0.5"></i> Completed</span>
                                             <button onclick="resetDailyTest(${test.id}, '${escapedTitle}')" class="text-gray-400 hover:text-rose-500 transition p-0.5 rounded-md hover:bg-gray-50" title="Reset results">
@@ -268,9 +316,9 @@
                             
                             ${CV.withEye(actionButton, 'daily_life_tasks', [test.id], isHiddenTask)}
                         </div>
-                    `;
+                    ` });
                 });
-                lucide.createIcons();
+                showCards(cards);
 
             } catch (err) {
                 if (loadingMsg) {
