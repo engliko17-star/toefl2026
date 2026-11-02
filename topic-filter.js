@@ -137,15 +137,28 @@
     // и Complete the Words (колонка topic в academic_tasks и complete_words_tasks).
     // Это порядок кнопок. Предмет, которого здесь нет, всё равно получит кнопку
     // (после этих, по алфавиту), так что новый предмет можно завести прямо в базе.
+    // Темы проставляет reading_topics.sql:
+    //   Biology — животные, растения, гены, эволюция, окаменелости
+    //   Health & Medicine — тело человека, медицина, здоровье
+    //   Earth Science — геология, погода, климат, океаны
+    //   Environment & Agriculture — экология, охрана природы, загрязнение, сельское хозяйство
+    //   Space — астрономия, космос
+    //   Technology — технологии, инженерия, компьютеры, математика, физика, химия
+    //   Psychology & Philosophy — психология, мышление, философия, логика, лингвистика
+    //   Society & Economics — общество, города, экономика, бизнес
+    //   History & Archaeology — история, археология, первобытные люди
+    //   Arts & Literature — искусство, архитектура, музыка, театр, кино, литература
     const READING_SUBJECTS = [
         'Biology',
-        'Earth & Environment',
-        'Space & Physical Sciences',
-        'Psychology',
+        'Health & Medicine',
+        'Earth Science',
+        'Environment & Agriculture',
+        'Space',
+        'Technology',
+        'Psychology & Philosophy',
         'Society & Economics',
         'History & Archaeology',
-        'Arts & Culture',
-        'Technology'
+        'Arts & Literature'
     ];
 
     window.TopicFilter = { create, NONE, clean, esc, READING_SUBJECTS };
