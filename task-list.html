@@ -31,6 +31,9 @@
             </div>
         </div>
 
+        <!-- Сводка по критериям (Email и Academic; появляется, когда есть оценки по критериям) -->
+        <div id="criteriaSummary" class="hidden bg-white border border-gray-100 rounded-[1.5rem] shadow-sm p-5 mb-5"></div>
+
         <!-- Фильтр по темам (только Email и Academic Discussion; появляется, когда у заданий есть темы) -->
         <div id="topicFilter" class="hidden flex-wrap gap-2 mb-6" role="group" aria-label="Filter by topic"></div>
 
@@ -78,12 +81,43 @@
             const m = s.match(/^(\d+(?:\.\d+)?)(?:\s*\/\s*6(?:\.0+)?)?$/);
             return m ? parseFloat(m[1]) : null;
         }
-        // Эссе считается проверенным, когда есть балл преподавателя или его правки.
-        // Та же проверка стоит в базе: проверенное эссе ученица не может удалить.
+        // ---------- ПОПЫТКИ ЭССЕ ----------
+        // До 3 попыток на эссе; следующая открывается после проверки предыдущей.
+        // Каждая попытка — своя строка student_responses (номер — attempt_no).
+        const MAX_ATTEMPTS = 3;
+        const CRITERIA = [
+            { key: 'grammar_score',    label: 'Grammar',               bar: 'bg-indigo-500' },
+            { key: 'vocabulary_score', label: 'Vocabulary',            bar: 'bg-sky-500' },
+            { key: 'purpose_score',    label: 'Communicative purpose', bar: 'bg-emerald-500' }
+        ];
+        let currentGroupAttempts = {};   // groupId → попытки эссе (для сброса)
+
+        function critVal(r, key) {
+            if (!r || r[key] === null || r[key] === undefined || r[key] === '') return null;
+            const v = parseFloat(r[key]);
+            return isNaN(v) ? null : v;
+        }
+        function fmtScore(v) {
+            return Number.isInteger(v) ? String(v) : String(+v.toFixed(2));
+        }
+        function sortAttempts(list) {
+            return [...list].sort((a, b) => {
+                const an = Number(a.attempt_no), bn = Number(b.attempt_no);
+                if (an && bn && an !== bn) return an - bn;
+                const at = String(a.created_at || ''), bt = String(b.created_at || '');
+                if (at !== bt) return at < bt ? -1 : 1;
+                return Number(a.id) - Number(b.id);
+            });
+        }
+
+        // Эссе считается проверенным, когда есть балл преподавателя, его правки
+        // или оценка по критерию. Та же проверка стоит в базе: проверенное эссе
+        // ученица не может удалить, а новую попытку начать — только после проверки.
         function isEssayGraded(r) {
             if (!r || taskType === 'sentence') return false;
             const filled = v => String(v || '').trim() !== '';
-            return filled(r.correction) || filled(r.teacher_correction) || essayScoreOf(r) !== null;
+            return filled(r.correction) || filled(r.teacher_correction) || essayScoreOf(r) !== null
+                || CRITERIA.some(c => critVal(r, c.key) !== null);
         }
 
         function resetButtonHTML(groupId, groupResponses, completedStyle) {
@@ -124,8 +158,54 @@
             return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER;
         }
 
-        function explainLockedReset() {
+        function explainLockedReset(allAttemptsUsed) {
+            if (allAttemptsUsed) {
+                alert(`You have used all ${MAX_ATTEMPTS} attempts for this task.\n\nYour answers, scores and the teacher's feedback are kept — open Review Results to see them.`);
+                return;
+            }
             alert("Your teacher has already reviewed this work, so it can't be reset.\n\nYour answer, the score and the teacher's feedback are kept — open Review Results to see them.");
+        }
+
+        // Сводка по критериям над списком: среднее по последней оценённой попытке
+        // каждого эссе этого раздела. Показывается, когда есть хоть одна оценка.
+        function renderCriteriaSummary(attemptsByTask) {
+            const box = document.getElementById('criteriaSummary');
+            if (!box) return;
+            const sums = {}, counts = {};
+            let essays = 0;
+            if (taskType !== 'sentence') {
+                Object.values(attemptsByTask).forEach(list => {
+                    const withCrit = [...list].reverse().find(r => CRITERIA.some(c => critVal(r, c.key) !== null));
+                    if (!withCrit) return;
+                    essays++;
+                    CRITERIA.forEach(c => {
+                        const v = critVal(withCrit, c.key);
+                        if (v !== null) { sums[c.key] = (sums[c.key] || 0) + v; counts[c.key] = (counts[c.key] || 0) + 1; }
+                    });
+                });
+            }
+            if (!essays) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+            box.innerHTML = `
+                <div class="flex items-baseline justify-between mb-3">
+                    <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider">Your criteria</h2>
+                    <span class="text-[11px] font-semibold text-gray-400">${essays} reviewed ${essays === 1 ? 'essay' : 'essays'} · out of 6</span>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    ${CRITERIA.map(c => {
+                        const avg = counts[c.key] ? sums[c.key] / counts[c.key] : null;
+                        return `
+                        <div data-criterion="${c.key}">
+                            <div class="flex items-baseline justify-between mb-1.5">
+                                <span class="text-xs font-bold text-slate-700">${c.label}</span>
+                                <span class="text-sm font-black text-slate-900">${avg === null ? '—' : avg.toFixed(1)}</span>
+                            </div>
+                            <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                <div class="h-full ${c.bar} rounded-full" style="width:${avg === null ? 0 : Math.min(100, avg / 6 * 100)}%"></div>
+                            </div>
+                        </div>`;
+                    }).join('')}
+                </div>`;
+            box.classList.remove('hidden');
         }
 
         // Иконки — необязательная часть: если библиотека не загрузилась,
@@ -208,6 +288,23 @@
             renderCards();
         }
 
+        // Кружок с баллом в углу карточки (как у пройденных наборов)
+        function scoreCircleHTML(hasScore, percent, label) {
+            const strokeDash = 2 * Math.PI * 16;
+            const offset = strokeDash - (percent / 100) * strokeDash;
+            return `
+                <div class="relative flex items-center justify-center w-11 h-11 shrink-0">
+                    <svg class="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                        <circle cx="18" cy="18" r="16" fill="transparent" stroke="#f1f5f9" stroke-width="3.5"></circle>
+                        <circle cx="18" cy="18" r="16" fill="transparent" stroke="${hasScore ? '#10b981' : '#cbd5e1'}" stroke-width="3.5"
+                            stroke-dasharray="${strokeDash}" stroke-dashoffset="${hasScore ? offset : 0}" stroke-linecap="round"></circle>
+                    </svg>
+                    <div class="absolute text-[9px] font-extrabold text-slate-700 tracking-tight">
+                        ${hasScore ? label : '<i data-lucide="check" class="w-4 h-4 text-emerald-500"></i>'}
+                    </div>
+                </div>`;
+        }
+
         function renderCards() {
             const container = document.getElementById('tasksContainer');
             const shown = activeTopic === 'all' ? allCards : allCards.filter(c => c.topic === activeTopic);
@@ -244,6 +341,17 @@
                     .order('created_at', { ascending: false })
                     .order('id', { ascending: false }));
 
+                // Все попытки эссе по заданиям, от первой к последней
+                const attemptsByTask = {};
+                if (taskType !== 'sentence') {
+                    responses.forEach(r => {
+                        const k = String(r.task_id);
+                        (attemptsByTask[k] = attemptsByTask[k] || []).push(r);
+                    });
+                    Object.keys(attemptsByTask).forEach(k => { attemptsByTask[k] = sortAttempts(attemptsByTask[k]); });
+                }
+                renderCriteriaSummary(attemptsByTask);
+
                 if (!tasks || tasks.length === 0) {
                     allCards = [];
                     renderTopicFilter();
@@ -267,6 +375,7 @@
                 const cards = [];
                 currentTestGroups = {};
                 currentGroupResponses = {};
+                currentGroupAttempts = {};
 
                 let groupIndex = 1;
                 // Номер считаем по порядку карточек, а не по test_id: у реальных наборов
@@ -307,6 +416,12 @@
                     let actionButton = '';
                     let progressCircleHTML = '';
                     let statusLabelHTML = '';
+                    let attemptTrail = '';
+
+                    // Эссе из одного задания: все его попытки (у Build a Sentence попыток нет)
+                    const attempts = (taskType !== 'sentence' && totalQuestions === 1)
+                        ? (attemptsByTask[String(firstTask.id)] || []) : null;
+                    currentGroupAttempts[groupId] = attempts || [];
 
                     // У реальных TOEFL показываем название набора («072», «069 16.06.2026»),
                     // у обычных наборов с test_id — порядковый номер, у одиночных заданий — их название
@@ -316,7 +431,55 @@
                             ? (isHiddenGroup ? 'Practice Set (draft)' : `Practice Set ${visibleIndex}`)
                             : firstTask.title;
 
-                    if (isFullyCompleted) {
+                    if (isFullyCompleted && attempts && attempts.length) {
+                        // ---- Эссе с попытками ----
+                        const used = attempts.length;
+                        const last = attempts[used - 1];
+                        const reviewed = isEssayGraded(last);
+                        const allUsed = used >= MAX_ATTEMPTS;
+                        const taskUrl = `writing-practice.html?type=${taskType}&id=${encodeURIComponent(firstTask.id)}`;
+
+                        statusLabelHTML = !reviewed
+                            ? `<span class="text-[11px] font-bold text-amber-600 flex items-center"><i data-lucide="clock" class="w-3.5 h-3.5 mr-1"></i> Waiting for review</span>`
+                            : `<span class="text-[11px] font-bold text-emerald-600 flex items-center"><i data-lucide="check-circle" class="w-3.5 h-3.5 mr-1"></i> ${allUsed ? 'Completed' : 'Reviewed'}</span>`;
+
+                        // В кружке — балл последней оценённой попытки
+                        const scored = [...attempts].reverse().find(r => essayScoreOf(r) !== null);
+                        const sv = scored ? essayScoreOf(scored) : null;
+                        progressCircleHTML = scoreCircleHTML(sv !== null, sv !== null ? Math.round(sv / 6 * 100) : 0, sv !== null ? fmtScore(sv) : '');
+
+                        // Баллы по попыткам: 3.5 → 4.5 → … (… — ждёт проверки)
+                        if (used > 1) {
+                            attemptTrail = attempts.map(r => {
+                                const v = essayScoreOf(r);
+                                return v !== null ? fmtScore(v) : (isEssayGraded(r) ? '✓' : '…');
+                            }).join(' → ');
+                        }
+
+                        let second;
+                        if (!reviewed) {
+                            // Непроверенную попытку можно удалить и написать заново
+                            second = `<button onclick="resetGroup('${groupId}')" class="w-12 flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-100 transition py-3 rounded-2xl shrink-0 border border-rose-100" title="Delete attempt ${used} (not reviewed yet)">
+                                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                                </button>`;
+                        } else if (!allUsed) {
+                            second = `<a href="${taskUrl}&rewrite=1" class="rewrite-btn flex items-center justify-center gap-1.5 px-4 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 transition py-3 rounded-2xl font-bold text-sm shrink-0" title="Write this task again: attempt ${used + 1} of ${MAX_ATTEMPTS}">
+                                    <i data-lucide="pen-line" class="w-4 h-4"></i><span>Rewrite</span><span class="text-indigo-400 text-xs font-semibold">${used + 1}/${MAX_ATTEMPTS}</span>
+                                </a>`;
+                        } else {
+                            second = `<button onclick="explainLockedReset(true)" class="w-12 flex items-center justify-center bg-gray-50 text-gray-400 hover:bg-gray-100 transition py-3 rounded-2xl shrink-0 border border-gray-200" title="All ${MAX_ATTEMPTS} attempts used">
+                                    <i data-lucide="lock" class="w-4 h-4"></i>
+                                </button>`;
+                        }
+                        actionButton = `
+                            <div class="flex gap-2">
+                                <a href="${taskUrl}" class="flex-1 flex items-center justify-center space-x-2 bg-[#edfdf4] text-emerald-700 hover:bg-[#dcfce7] transition py-3 rounded-2xl font-bold text-sm">
+                                    <span>Review Results</span> <i data-lucide="eye" class="w-4 h-4"></i>
+                                </a>
+                                ${second}
+                            </div>
+                        `;
+                    } else if (isFullyCompleted) {
                         statusLabelHTML = `<span class="text-[11px] font-bold text-emerald-600 flex items-center"><i data-lucide="check-circle" class="w-3.5 h-3.5 mr-1"></i> Completed</span>`;
                         
                         let totalEarned = 0;
@@ -430,6 +593,7 @@
                     const metaParts = [`<span class="font-bold text-slate-500">${testNumberLabel}</span>`];
                     if (taskType !== 'sentence' && topic !== NO_TOPIC) metaParts.push(tlEsc(topic));
                     if (taskType === 'sentence' || totalQuestions > 1) metaParts.push(`${totalQuestions} Question${totalQuestions > 1 ? 's' : ''}`);
+                    if (attemptTrail) metaParts.push(`<span class="font-bold text-slate-600" title="Score of each attempt">${attemptTrail}</span>`);
 
                     cards.push({ topic, html: `
                         <div class="relative overflow-hidden bg-white p-6 rounded-[1.5rem] border border-gray-100 shadow-sm hover:shadow-md transition-all flex flex-col justify-between min-h-[190px] ${CV.cardClass(isHiddenGroup)}">
@@ -461,6 +625,7 @@
                 console.error(err);
                 allCards = [];
                 renderTopicFilter();
+                renderCriteriaSummary({});
                 container.className = "flex justify-center items-center py-20 w-full col-span-full";
                 container.innerHTML = `<div class="text-center text-rose-500 text-sm font-bold">Failed to load tasks. Check your connection and refresh the page.</div>`;
             }
@@ -476,9 +641,12 @@
             const responses = currentGroupResponses[groupId] || [];
             const graded = responses.filter(isEssayGraded);
             if (responses.length && graded.length === responses.length) { explainLockedReset(); return; }
-            const msg = graded.length
-                ? "Answers your teacher has already reviewed will be kept.\nOnly the answers that haven't been reviewed yet will be reset. Continue?"
-                : "Are you sure you want to reset your progress for this entire test?";
+            const attempts = currentGroupAttempts[groupId] || [];
+            const msg = attempts.length > 1
+                ? `Delete attempt ${attempts.length} (not reviewed yet) and write it again?\nYour reviewed attempts are kept.`
+                : graded.length
+                    ? "Answers your teacher has already reviewed will be kept.\nOnly the answers that haven't been reviewed yet will be reset. Continue?"
+                    : "Are you sure you want to reset your progress for this entire test?";
             if (!confirm(msg)) return;
 
             resetBusy = true;
