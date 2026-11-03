@@ -9,6 +9,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="auth.js"></script>
+    <script src="homework.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
@@ -102,6 +103,9 @@
         <div class="border-b border-gray-200 mb-8 flex space-x-8 overflow-x-auto whitespace-nowrap">
             <button onclick="switchTab('crm')" id="btn-crm" class="tab-btn active pb-4 text-sm font-bold text-gray-400 border-b-2 border-transparent hover:text-slate-800 transition">
                 CRM и План
+            </button>
+            <button onclick="switchTab('homework')" id="btn-homework" class="tab-btn pb-4 text-sm font-bold text-gray-400 border-b-2 border-transparent hover:text-slate-800 transition">
+                Домашка
             </button>
             <button onclick="switchTab('access')" id="btn-access" class="tab-btn pb-4 text-sm font-bold text-gray-400 border-b-2 border-transparent hover:text-slate-800 transition">
                 Доступы платформы
@@ -288,6 +292,11 @@
         <!-- ========================================== -->
         <!-- ВКЛАДКА 2: ДОСТУПЫ ПЛАТФОРМЫ              -->
         <!-- ========================================== -->
+        <!-- ВКЛАДКА: ДОМАШНЕЕ ЗАДАНИЕ (homework.js) -->
+        <div id="tab-homework" class="tab-content">
+            <div id="homeworkTeacher"></div>
+        </div>
+
         <div id="tab-access" class="tab-content bg-white p-8 rounded-3xl border border-gray-100 shadow-sm">
             <h2 class="text-lg font-bold text-slate-900 mb-2">Модули обучения</h2>
             <p class="text-xs text-gray-400 mb-6">Управление доступом ученика к разделам платформы. Изменения сохраняются автоматически.</p>
@@ -716,11 +725,40 @@
             if (studentId && typeof _supabase !== 'undefined') {
                 await loadStudentDataFromDB();
                 await loadLessonsFromDB();
+                openFromUrl();
             } else {
                 document.getElementById('profileEmail').innerText = "Ошибка: ID ученика не найден";
                 document.getElementById('profileInitial').innerText = "!";
             }
         };
+
+        // Ссылки из «На проверку» и из Telegram: сразу нужная вкладка и проверка работы.
+        // ?tab=writing&open=essay:<id> | fullwriting:<id>; ?tab=speaking&open=practice|mini|full:<id>
+        async function openFromUrl() {
+            const tab = urlParams.get('tab');
+            if (!tab || !document.getElementById('tab-' + tab) || !document.getElementById('btn-' + tab)) return;
+            switchTab(tab);
+            const open = urlParams.get('open') || '';
+            const sep = open.indexOf(':');
+            if (sep < 1) return;
+            const kind = open.slice(0, sep);
+            const id = open.slice(sep + 1);
+            try {
+                if (kind === 'essay') {
+                    // эссе открывается из списка — ждём, пока он загрузится
+                    for (let i = 0; i < 60 && !globalWritingTasks.some(t => String(t.id) === id); i++) {
+                        await new Promise(r => setTimeout(r, 150));
+                    }
+                    openWritingEditor(id);
+                } else if (kind === 'fullwriting') {
+                    openFullMockWritingGrading(id);
+                } else if (['practice', 'mini', 'full'].includes(kind)) {
+                    openSpeakingGrading(kind, id);
+                }
+            } catch (e) {
+                console.warn('Не удалось открыть работу по ссылке:', e);
+            }
+        }
 
         // --- ВИТРИНА ВКЛАДОК ---
         function switchTab(tabName) {
@@ -742,6 +780,8 @@
                 loadSpeakingMockData();
             } else if (tabName === 'access') {
                 refreshAccessFromDb();
+            } else if (tabName === 'homework') {
+                if (window.Homework) Homework.teacher(document.getElementById('homeworkTeacher'), studentId);
             }
         }
 
@@ -1384,61 +1424,45 @@
             let dataDaily = [];
             let dataAcademic = [];
 
+            // Процент из того, что реально сохранено. Нет данных — точки нет
+            // (раньше пустое значение превращалось в точку «0%»).
+            const pct = (item) => {
+                const p = Number(item.score_percent);
+                if (item.score_percent !== null && item.score_percent !== undefined && item.score_percent !== '' && isFinite(p)) return Math.round(p);
+                const e = Number(item.score_earned), t = Number(item.score_total);
+                if (item.score_earned !== null && item.score_earned !== undefined && isFinite(e) && isFinite(t) && t > 0) return Math.round(e / t * 100);
+                if (typeof item.score === 'string' && item.score.includes('/')) {
+                    const [a, b] = item.score.split('/').map(Number);
+                    if (isFinite(a) && isFinite(b) && b > 0) return Math.round(a / b * 100);
+                }
+                const sc = Number(item.score);
+                if (item.score !== null && item.score !== undefined && item.score !== '' && isFinite(sc)) return Math.round(sc);
+                return null;
+            };
+
             try {
                 // 1. Complete Words
                 const wordsData = await fetchResultsHelper('complete_words_results', studentId);
-                wordsData.forEach(item => { 
-                    let scoreVal = item.score_percent !== undefined ? item.score_percent : item.score;
-                    let dateVal = item.completed_at || item.created_at;
-                    if (scoreVal !== undefined && dateVal) {
-                        dataComplete.push({ date: new Date(dateVal), score: parseFloat(scoreVal) }); 
-                    }
+                wordsData.forEach(item => {
+                    const score = pct(item);
+                    const dateVal = item.completed_at || item.created_at;
+                    if (score !== null && dateVal) dataComplete.push({ date: new Date(dateVal), score });
                 });
 
                 // 2. Reading Results (делим на Daily и Academic)
+                // Результаты Listening «Choose a Response» (response_results) сюда
+                // больше не попадают: у них нет типа задания, и раньше каждая их
+                // попытка рисовалась на графике Daily Reading точкой 0%. Они есть
+                // на вкладке Listening.
                 const readingData = await fetchResultsHelper('reading_results', studentId);
                 readingData.forEach(item => {
-                    let percent = 0;
-                    if (item.score_percent !== undefined) {
-                        percent = item.score_percent;
-                    } else if (item.score_earned !== undefined && item.score_total > 0) {
-                        percent = (item.score_earned / item.score_total) * 100;
-                    }
-                    let dateVal = item.created_at || item.completed_at;
-                    if (dateVal) {
-                        let entry = { date: new Date(dateVal), score: Math.round(percent) };
-                        if (item.task_type === 'academic') {
-                            dataAcademic.push(entry);
-                        } else {
-                            dataDaily.push(entry);
-                        }
-                    }
-                });
-
-                // 3. Response Results (остальные практические задания, отправляем в соответствующую категорию)
-                const responsesData = await fetchResultsHelper('response_results', studentId);
-                responsesData.forEach(item => {
-                    let percent = 0;
-                    if (typeof item.score === 'string' && item.score.includes('/')) {
-                        let parts = item.score.split('/');
-                        if (parseFloat(parts[1]) > 0) percent = (parseFloat(parts[0]) / parseFloat(parts[1])) * 100;
-                    } else if (item.score !== undefined) {
-                        percent = parseFloat(item.score);
-                    }
-                    let dateVal = item.created_at || item.completed_at;
-                    if (dateVal) {
-                        let entry = { date: new Date(dateVal), score: Math.round(percent) };
-                        let typeStr = (item.task_type || '').toLowerCase();
-                        
-                        if (typeStr.includes('academic')) {
-                            dataAcademic.push(entry);
-                        } else if (typeStr.includes('daily')) {
-                            dataDaily.push(entry);
-                        } else {
-                            // Если не указано, пусть будет в Daily (как общая практика)
-                            dataDaily.push(entry);
-                        }
-                    }
+                    const score = pct(item);
+                    const dateVal = item.created_at || item.completed_at;
+                    if (score === null || !dateVal) return;
+                    const entry = { date: new Date(dateVal), score };
+                    const type = String(item.task_type || '').toLowerCase();
+                    if (type.includes('academic')) dataAcademic.push(entry);
+                    else dataDaily.push(entry);
                 });
 
             } catch (err) {
@@ -2880,4 +2904,4 @@
         }
     </script>
 </body>
-    </html>
+</html>
