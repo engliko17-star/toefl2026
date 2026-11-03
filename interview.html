@@ -6,10 +6,15 @@
     <title>Interview — TOEFL Practice</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        // Если CDN иконок не ответил, страница не должна падать на lucide.createIcons()
+        if (!window.lucide || typeof window.lucide.createIcons !== 'function') window.lucide = { createIcons: function () {} };
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <!-- Подключаем auth.js для авторизации и глобального объекта _supabase -->
     <script src="auth.js"></script>
+    <script src="topic-filter.js"></script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -31,6 +36,9 @@
             <p class="text-sm text-gray-500 mt-1">Simulate a live interview environment. Watch the video question and respond within 45 seconds.</p>
         </div>
 
+        <!-- Фильтр по темам (topic-filter.js): появляется, когда у тестов заполнена колонка topic -->
+        <div id="topicFilter" class="hidden flex-wrap gap-2 mb-6" role="group" aria-label="Filter by topic"></div>
+
         <div id="tests-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <!-- Сюда будут загружаться тесты -->
         </div>
@@ -48,6 +56,25 @@
                 .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
+
+        // ---------- ФИЛЬТР ПО ТЕМАМ ----------
+        // Тема хранится в speaking_tests.topic, порядок кнопок — в topic-filter.js
+        // (TopicFilter.SPEAKING_TOPICS.interview). Тесты без темы — в «Other».
+        // Если topic-filter.js не загрузился, список показывается целиком, как раньше.
+        const topicFilter = window.TopicFilter ? TopicFilter.create({
+            bar: document.getElementById('topicFilter'),
+            list: document.getElementById('tests-container'),
+            storageKey: 'speakingTopic:interview',
+            order: (TopicFilter.SPEAKING_TOPICS && TopicFilter.SPEAKING_TOPICS.interview) || [],
+            afterRender: () => lucide.createIcons()
+        }) : null;
+
+        function showCards(cards, opts) {
+            if (topicFilter) return topicFilter.setCards(cards, opts);
+            document.getElementById('tests-container').innerHTML = cards.map(c => c.html).join('');
+            lucide.createIcons();
+        }
+
 
         // Функция для загрузки тестов из базы данных
         async function loadTests() {
@@ -98,6 +125,7 @@
 
                 // Если тестов пока нет
                 if (!tests || tests.length === 0) {
+                    showCards([], { enabled: false });
                     container.innerHTML = `
                         <div class="col-span-full bg-white p-8 rounded-2xl border border-gray-100 text-center">
                             <i data-lucide="video" class="w-8 h-8 text-gray-300 mx-auto mb-3"></i>
@@ -109,8 +137,11 @@
                 }
 
                 // 4. Перебираем полученные тесты и создаем HTML-карточки
+                // Номер Set считается по всему списку до фильтра — при выборе темы он не меняется
+                const cards = [];
                 tests.forEach((test, index) => {
                     const setNumber = index + 1;
+                    const topic = String(test.topic || '').trim();
                     
                     // Ищем последнюю попытку для текущего теста
                     // Последняя попытка, в которой есть хотя бы одна запись
@@ -162,19 +193,19 @@
                                 ${cardStatus}
                             </div>
                             <h3 class="font-bold text-slate-800 text-[15px] leading-snug mb-1 mt-3">${spListEsc(test.title)}</h3>
-                            <p class="text-xs text-gray-400 mb-2">${test.total_questions} Questions • 45s Response</p>
+                            <p class="text-xs text-gray-400 mb-2">${topic ? `<span class="font-semibold text-slate-500">${spListEsc(topic)}</span> • ` : ''}${test.total_questions} Questions • 45s Response</p>
                             
                             ${buttonsHTML}
                         </div>
                     `;
-                    container.innerHTML += cardHTML;
+                    cards.push({ topic, html: cardHTML });
                 });
 
-                // Перерисовываем иконки для новых карточек
-                lucide.createIcons();
+                showCards(cards);
 
             } catch (err) {
                 console.error("Error loading tests:", err.message);
+                showCards([], { enabled: false });
                 container.innerHTML = '<p class="text-sm text-rose-500 col-span-full font-medium p-4 bg-rose-50 rounded-xl">Failed to load tests. Please check console.</p>';
             }
         }
