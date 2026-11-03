@@ -16,7 +16,8 @@
 //   ContentVisibility.eye(table, ids, hidden, { compact })    // только кнопка
 (function () {
     const TABLES = ['complete_words_tasks', 'daily_life_tasks', 'academic_tasks',
-                    'mock_tests', 'writing_tasks', 'mini_mock_writing'];
+                    'mock_tests', 'writing_tasks', 'mini_mock_writing', 'full_tests'];
+    // Большие мок-тесты (full_tests) скрываются своей функцией — mock_visibility.sql
 
     // Иконки встроены, чтобы глазик не зависел от загрузки lucide
     const ICON_EYE = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>';
@@ -135,10 +136,13 @@
         const client = db();
         if (!client) { alert('Нет подключения к базе — обновите страницу.'); return; }
 
+        const isTest = table === 'full_tests';
         btn.disabled = true;
         let res;
         try {
-            res = await client.rpc('set_content_hidden', { p_table: table, p_ids: ids.map(String), p_hidden: hide });
+            res = isTest
+                ? await client.rpc('set_full_test_hidden', { p_id: Number(ids[0]), p_hidden: hide })
+                : await client.rpc('set_content_hidden', { p_table: table, p_ids: ids.map(String), p_hidden: hide });
         } catch (err) {
             res = { error: err };
         }
@@ -146,8 +150,8 @@
 
         if (res.error) {
             const msg = res.error.message || String(res.error);
-            if (res.error.code === 'PGRST202' || /set_content_hidden/.test(msg)) {
-                alert('Глазик ещё не подключён в базе.\n\nЗапустите в Supabase файл content_visibility.sql и обновите страницу.');
+            if (res.error.code === 'PGRST202' || /set_content_hidden|set_full_test_hidden/.test(msg)) {
+                alert('Глазик ещё не подключён в базе.\n\nЗапустите в Supabase файл ' + (isTest ? 'mock_visibility.sql' : 'content_visibility.sql') + ' и обновите страницу.');
             } else if (res.error.code === '42501') {
                 alert('Скрывать и открывать задания может только преподаватель.');
             } else {
@@ -160,7 +164,8 @@
         if (data.changed === 0) {
             alert('Ничего не изменилось — задание не найдено. Обновите страницу.');
         } else {
-            toast(hide ? 'Скрыто от учеников' : 'Ученики снова видят это задание');
+            toast(isTest ? (hide ? 'Тест скрыт от учеников' : 'Ученики снова видят этот тест')
+                         : (hide ? 'Скрыто от учеников' : 'Ученики снова видят это задание'));
             const used = Array.isArray(data.used_in) ? data.used_in : [];
             if (hide && used.length) {
                 alert('Скрыто. Учтите: это задание стоит ещё в\n\n• ' + used.join('\n• ')
