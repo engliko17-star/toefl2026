@@ -161,5 +161,34 @@
         'Arts & Literature'
     ];
 
-    window.TopicFilter = { create, NONE, clean, esc, READING_SUBJECTS };
+    // Темы наборов Speaking (колонка topic в speaking_tests, их проставляет
+    // speaking_topics.sql). Это порядок кнопок; тема, которой здесь нет,
+    // тоже получит кнопку — после этих, по алфавиту.
+    const SPEAKING_TOPICS = {
+        // Interview — о чём интервью
+        interview: [
+            'Education',
+            'Work & Money',
+            'Shopping & Fashion',
+            'Food & Health',
+            'Hobbies & Entertainment',
+            'Technology & Media',
+            'Travel & Cities',
+            'People & Community',
+            'Daily Life & Goals',
+            'Nature & Environment'
+        ],
+        // Listen & Repeat — где происходит сценарий
+        listen_repeat: [
+            'Campus Services',
+            'Library',
+            'Shops & Services',
+            'Museums & Public Places',
+            'Nature & Animals',
+            'Sports & Fitness',
+            'Cooking & Crafts'
+        ]
+    };
+
+    window.TopicFilter = { create, NONE, clean, esc, READING_SUBJECTS, SPEAKING_TOPICS };
 })();
