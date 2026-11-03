@@ -8,6 +8,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
+    <script src="review-inbox.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
@@ -36,7 +37,7 @@
         </div>
 
         <!-- ВКЛАДКИ -->
-        <div class="flex space-x-6 border-b border-gray-200 mb-8">
+        <div class="flex space-x-6 border-b border-gray-200 mb-8 overflow-x-auto whitespace-nowrap">
             <button onclick="switchTab('students')" id="tab-students" class="pb-3 text-sm font-bold border-b-2 border-indigo-600 text-indigo-600 transition flex items-center space-x-2 cursor-pointer">
                 <i data-lucide="users" class="w-4 h-4"></i>
                 <span>Доступы и Ученики</span>
@@ -44,6 +45,11 @@
             <button onclick="switchTab('calendar')" id="tab-calendar" class="pb-3 text-sm font-bold border-b-2 border-transparent text-gray-400 hover:text-slate-700 transition flex items-center space-x-2 cursor-pointer">
                 <i data-lucide="calendar-days" class="w-4 h-4"></i>
                 <span>Календарь экзаменов</span>
+            </button>
+            <button onclick="switchTab('review')" id="tab-review" class="pb-3 text-sm font-bold border-b-2 border-transparent text-gray-400 hover:text-slate-700 transition flex items-center space-x-2 cursor-pointer">
+                <i data-lucide="inbox" class="w-4 h-4"></i>
+                <span>На проверку</span>
+                <span id="reviewBadge" class="hidden min-w-[20px] h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-extrabold items-center justify-center">0</span>
             </button>
         </div>
 
@@ -170,6 +176,30 @@
             </div>
         </div>
 
+        <!-- ========================================== -->
+        <!-- РАЗДЕЛ 3: НА ПРОВЕРКУ (review-inbox.js)     -->
+        <!-- ========================================== -->
+        <div id="reviewView" class="hidden">
+            <!-- Карточка Telegram: подключение уведомлений -->
+            <div id="tgCard"></div>
+
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <div id="reviewFilters" class="flex p-1 bg-gray-100 rounded-xl space-x-1"></div>
+                <div class="flex items-center gap-2">
+                    <select id="reviewPeriod" class="text-xs font-bold text-slate-600 bg-white border border-gray-200 rounded-xl px-3 py-2 outline-none cursor-pointer">
+                        <option value="all">За всё время</option>
+                        <option value="30">За 30 дней</option>
+                        <option value="7">За 7 дней</option>
+                    </select>
+                    <button type="button" data-tg="refresh" title="Обновить" class="p-2 bg-white border border-gray-200 rounded-xl text-gray-500 hover:text-slate-800 transition cursor-pointer">
+                        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div id="reviewList" class="space-y-3"></div>
+        </div>
+
     </main>
 
     <script>
@@ -215,29 +245,34 @@
 
             await loadStudents();
             lucide.createIcons();
+
+            // «На проверку»: число работ на вкладке видно сразу (review-inbox.js)
+            if (window.ReviewInbox) ReviewInbox.init({ teacherId: user.id, students: () => allStudents });
+            // Ссылка из Telegram и кнопка «Назад» из проверки ведут сюда: teacher-board.html?tab=review
+            const startTab = new URLSearchParams(location.search).get('tab');
+            if (startTab === 'review' || startTab === 'calendar') switchTab(startTab);
         };
 
         function switchTab(tab) {
-            const studentsTab = document.getElementById('tab-students');
-            const calendarTab = document.getElementById('tab-calendar');
-            const studentsView = document.getElementById('studentsView');
-            const calendarView = document.getElementById('calendarView');
-            const searchContainer = document.getElementById('searchContainer');
-
-            if (tab === 'students') {
-                studentsTab.className = "pb-3 text-sm font-bold border-b-2 border-indigo-600 text-indigo-600 transition flex items-center space-x-2 cursor-pointer";
-                calendarTab.className = "pb-3 text-sm font-bold border-b-2 border-transparent text-gray-400 hover:text-slate-700 transition flex items-center space-x-2 cursor-pointer";
-                studentsView.classList.remove('hidden');
-                calendarView.classList.add('hidden');
-                searchContainer.classList.remove('hidden');
-            } else {
-                calendarTab.className = "pb-3 text-sm font-bold border-b-2 border-indigo-600 text-indigo-600 transition flex items-center space-x-2 cursor-pointer";
-                studentsTab.className = "pb-3 text-sm font-bold border-b-2 border-transparent text-gray-400 hover:text-slate-700 transition flex items-center space-x-2 cursor-pointer";
-                studentsView.classList.add('hidden');
-                calendarView.classList.remove('hidden');
-                searchContainer.classList.add('hidden');
-                renderCalendar();
+            const on = "pb-3 text-sm font-bold border-b-2 border-indigo-600 text-indigo-600 transition flex items-center space-x-2 cursor-pointer";
+            const off = "pb-3 text-sm font-bold border-b-2 border-transparent text-gray-400 hover:text-slate-700 transition flex items-center space-x-2 cursor-pointer";
+            const views = { students: 'studentsView', calendar: 'calendarView', review: 'reviewView' };
+            if (!views[tab]) tab = 'students';
+            Object.keys(views).forEach(name => {
+                const btn = document.getElementById('tab-' + name);
+                const view = document.getElementById(views[name]);
+                if (btn) btn.className = name === tab ? on : off;
+                if (view) view.classList.toggle('hidden', name !== tab);
+            });
+            // На телефоне ряд вкладок прокручивается — выбранная должна быть видна
+            const activeBtn = document.getElementById('tab-' + tab);
+            if (activeBtn && activeBtn.parentElement.scrollWidth > activeBtn.parentElement.clientWidth) {
+                activeBtn.parentElement.scrollLeft = activeBtn.offsetLeft - activeBtn.parentElement.offsetLeft - 16;
             }
+            // Поиск учеников нужен только на первой вкладке
+            document.getElementById('searchContainer').classList.toggle('hidden', tab !== 'students');
+            if (tab === 'calendar') renderCalendar();
+            if (tab === 'review' && window.ReviewInbox) ReviewInbox.show();
         }
 
         function setFolder(folder) {
