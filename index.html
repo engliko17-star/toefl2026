@@ -6,19 +6,34 @@
     <title>Dashboard — TOEFL Prep</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
+    <script src="practice-next.js"></script>
     <script src="homework.js"></script>
     <script src="faq.js" defer></script>
-    
+
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
-        
+        .tnum { font-variant-numeric: tabular-nums; }
+
         /* Скрываем скроллбар для мобильного меню, чтобы было аккуратно */
         .mobile-nav-scroll::-webkit-scrollbar { display: none; }
         .mobile-nav-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* Карта активности */
+        .heat { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 1fr); gap: 3px; }
+        .heat span { width: 100%; aspect-ratio: 1; border-radius: 3px; background: #eef0f4; }
+        .heat span.l1 { background: #c7d2fe; }
+        .heat span.l2 { background: #818cf8; }
+        .heat span.l3 { background: #4f46e5; }
+        .heat span.future { background: transparent; }
+        .heat span.today { outline: 2px solid #0f172a; outline-offset: 1px; }
+
+        a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visible {
+            outline: 2px solid #4f46e5; outline-offset: 2px;
+        }
     </style>
 </head>
 <body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex flex-col md:flex-row">
@@ -26,182 +41,129 @@
     <div id="app-sidebar"></div>
     <script src="nav.js"></script>
 
-    <main class="flex-1 p-6 overflow-y-auto bg-[#f8f9fa] pb-24 md:pb-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        <div class="lg:col-span-2 space-y-6">
-            
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <main class="flex-1 min-w-0 overflow-y-auto pb-28 md:pb-10">
+        <div class="max-w-6xl mx-auto px-4 sm:px-8 pt-6 sm:pt-10 space-y-10">
+
+            <!-- ============ ГЛАВНОЕ: сколько до экзамена и где сейчас балл ============ -->
+            <header class="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
+                <div class="min-w-0">
+                    <p id="userGreeting" class="text-sm font-semibold text-slate-500">Welcome back</p>
+                    <h1 id="heroTitle" class="mt-1 text-[30px] sm:text-[40px] leading-[1.1] font-extrabold tracking-tight text-slate-900 tnum">Your TOEFL preparation</h1>
+                    <p id="heroSub" class="mt-2 text-sm text-slate-500">&nbsp;</p>
+                </div>
+                <div id="heroScore" class="hidden self-start lg:self-auto bg-white rounded-2xl border border-gray-100 shadow-xs divide-x divide-gray-100 flex"></div>
+            </header>
+
+            <!-- ============ ЦИФРЫ ПРАКТИКИ ============ -->
+            <section aria-label="Practice stats">
+                <div id="statsStrip" class="bg-white rounded-3xl border border-gray-100 shadow-xs grid grid-cols-2 lg:grid-cols-4">
+                    <div class="p-5 text-xs text-gray-400">Loading stats…</div>
+                </div>
+            </section>
+
+            <!-- ============ СЕГОДНЯ: домашка, продолжить, расписание ============ -->
+            <section class="space-y-4" aria-labelledby="todayTitle">
                 <div>
-                    <span id="userGreeting" class="text-xs font-semibold text-gray-400">Loading profile...</span>
-                    <h1 class="text-xl font-bold text-slate-900 tracking-tight mt-0.5">Your TOEFL Preparation Portal</h1>
+                    <h2 id="todayTitle" class="text-lg font-bold text-slate-900 tracking-tight">Today</h2>
+                    <p class="text-sm text-slate-500 mt-0.5">Your homework and where you left off</p>
                 </div>
-                <div class="relative w-full sm:w-64">
-                    <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4"></i>
-                    <input type="text" placeholder="Search resources..." class="w-full pl-10 pr-4 py-1.5 bg-white border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-100">
-                </div>
-            </div>
 
-            <div class="bg-white rounded-3xl p-6 border border-gray-100 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden">
-                <div class="space-y-3 max-w-md z-10">
-                    <h2 class="text-3xl font-extrabold tracking-tight text-slate-900 leading-tight">
-                        Discipline today, <br>
-                        <span class="text-indigo-600">freedom</span> tomorrow.
-                    </h2>
-                    <p class="text-xs text-gray-400">Focused practice. Real progress. Higher score.</p>
-                    <div class="pt-2 flex items-center space-x-3">
-                        <button class="bg-slate-900 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow-xs hover:bg-slate-800 transition flex items-center space-x-1.5">
-                            <span>Continue learning</span>
-                            <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
-                        </button>
-                        <button class="text-slate-600 hover:text-slate-900 text-xs font-medium flex items-center space-x-1">
-                            <i data-lucide="play" class="w-3.5 h-3.5 fill-slate-600/10"></i>
-                            <span>Resume last practice</span>
-                        </button>
+                <!-- Домашнее задание (homework.js): появляется, когда преподаватель выдал задание -->
+                <div id="homeworkCard" class="hidden"></div>
+
+                <!-- General English: появляется только у учеников с назначенным курсом -->
+                <div id="geCard" class="hidden"></div>
+
+                <!-- Карточки в ряду одной высоты — без пустых мест сбоку -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Продолжить, слова на повторение, проверки, ближайший урок -->
+                    <div id="todayList" class="lg:col-span-2 bg-white rounded-3xl border border-gray-100 shadow-xs divide-y divide-gray-100 overflow-hidden self-start lg:self-stretch">
+                        <div class="p-5 text-xs text-gray-400">Loading…</div>
                     </div>
-                </div>
-                <div class="flex flex-col items-center bg-gray-50/50 p-4 rounded-2xl border border-gray-100 min-w-36">
-                    <div id="examCountdownRing" class="w-20 h-20 flex flex-col items-center justify-center border-8 border-indigo-600 border-t-gray-100 rounded-full text-slate-800">
-                        <span id="examDaysNumber" class="text-xl font-extrabold leading-none">—</span>
-                        <span class="text-[9px] font-bold text-gray-400 uppercase leading-none mt-0.5">дней</span>
-                    </div>
-                    <span id="examCountdownLabel" class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-3 text-center">До экзамена</span>
-                </div>
-            </div>
 
-            <!-- Домашнее задание (homework.js): появляется, когда преподаватель выдал задание -->
-            <div id="homeworkCard" class="hidden"></div>
-
-            <!-- General English: появляется только у учеников с назначенным курсом -->
-            <div id="geCard" class="hidden"></div>
-
-            <div class="bg-white p-6 sm:p-8 rounded-3xl border border-indigo-100 shadow-md space-y-5">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <h3 class="text-base font-bold text-slate-900 tracking-tight">Ваши результаты</h3>
-                        <p class="text-[10px] text-gray-400 mt-0.5">Все мок-тесты и цели в одной таблице</p>
-                    </div>
-                    <button id="saveGoalsBtn" onclick="saveGoals()" class="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center space-x-1.5 cursor-pointer shadow-xs">
-                        <i data-lucide="save" class="w-3.5 h-3.5"></i>
-                        <span id="saveGoalsLabel">Сохранить цели</span>
-                    </button>
-                </div>
-
-                <div id="scoreMatrix" class="overflow-x-auto -mx-1 px-1">
-                    <p class="text-xs text-gray-400 text-center py-8">Загрузка результатов...</p>
-                </div>
-
-                <div class="pt-0.5">
-                    <div class="flex justify-between text-[10px] font-bold mb-1.5">
-                        <span class="text-slate-500">До цели: <span id="points-diff" class="text-slate-800">—</span></span>
-                        <span id="percent-achieved" class="text-indigo-600">—</span>
-                    </div>
-                    <div class="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                        <div id="goal-progress-bar" class="bg-indigo-500 h-2 rounded-full transition-all duration-500 ease-out" style="width: 0%"></div>
-                    </div>
-                </div>
-            </div>
-
-            <div id="teacherReviewBanner" class="hidden"></div>
-
-            <div class="space-y-3">
-                <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Your progress over time</h3>
-                <div class="bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-xs">
-                    <div id="progressChart" class="w-full">
-                        <p class="text-xs text-gray-400 text-center py-10">Загрузка...</p>
-                    </div>
-                </div>
-            </div>
-
-            <div class="space-y-3">
-                <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider">What to focus on next</h3>
-                <div id="focusArea">
-                    <p class="text-xs text-gray-400">Загрузка...</p>
-                </div>
-            </div>
-
-            <div class="space-y-3">
-                <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Explore by skill</h3>
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <a href="reading.html" class="block bg-white p-4 rounded-2xl border border-gray-100 shadow-xs text-center space-y-2 hover:shadow-md hover:border-indigo-100 transition cursor-pointer group">
-                        <div class="w-8 h-8 mx-auto bg-gray-50 group-hover:bg-indigo-50 group-hover:text-indigo-600 text-slate-600 rounded-xl flex items-center justify-center transition"><i data-lucide="book-text" class="w-4 h-4"></i></div>
-                        <div>
-                            <h4 class="text-xs font-bold text-slate-800">Reading</h4>
-                            <p class="text-[10px] text-gray-400 mt-0.5"><span id="count-r">—</span> tasks available</p>
+                    <aside class="bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-xs space-y-4" aria-labelledby="scheduleTitle">
+                        <div class="flex justify-between items-baseline gap-3">
+                            <h2 id="scheduleTitle" class="text-base font-bold text-slate-900">Schedule</h2>
+                            <span id="calMonthLabel" class="text-sm font-semibold text-indigo-600">—</span>
                         </div>
-                    </a>
-                    <a href="listening.html" class="block bg-white p-4 rounded-2xl border border-gray-100 shadow-xs text-center space-y-2 hover:shadow-md hover:border-indigo-100 transition cursor-pointer group">
-                        <div class="w-8 h-8 mx-auto bg-gray-50 group-hover:bg-indigo-50 group-hover:text-indigo-600 text-slate-600 rounded-xl flex items-center justify-center transition"><i data-lucide="headphones" class="w-4 h-4"></i></div>
-                        <div>
-                            <h4 class="text-xs font-bold text-slate-800">Listening</h4>
-                            <p class="text-[10px] text-gray-400 mt-0.5"><span id="count-l">—</span> tasks available</p>
+                        <div class="grid grid-cols-7 gap-1 text-center text-[11px] font-medium text-gray-400">
+                            <div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div>Sa</div><div>Su</div>
                         </div>
-                    </a>
-                    <a href="writing.html" class="block bg-white p-4 rounded-2xl border border-gray-100 shadow-xs text-center space-y-2 hover:shadow-md hover:border-indigo-100 transition cursor-pointer group">
-                        <div class="w-8 h-8 mx-auto bg-gray-50 group-hover:bg-indigo-50 group-hover:text-indigo-600 text-slate-600 rounded-xl flex items-center justify-center transition"><i data-lucide="pen-tool" class="w-4 h-4"></i></div>
-                        <div>
-                            <h4 class="text-xs font-bold text-slate-800">Writing</h4>
-                            <p class="text-[10px] text-gray-400 mt-0.5"><span id="count-w">—</span> tasks available</p>
+                        <div id="calGrid" class="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-700"></div>
+                        <div id="calLegend" class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-400"></div>
+                        <div id="upcomingLessons" class="space-y-2 border-t border-gray-100 pt-4">
+                            <p class="text-xs text-gray-400 text-center py-2">Loading schedule…</p>
                         </div>
-                    </a>
-                    <a href="speaking.html" class="block bg-white p-4 rounded-2xl border border-gray-100 shadow-xs text-center space-y-2 hover:shadow-md hover:border-indigo-100 transition cursor-pointer group">
-                        <div class="w-8 h-8 mx-auto bg-gray-50 group-hover:bg-indigo-50 group-hover:text-indigo-600 text-slate-600 rounded-xl flex items-center justify-center transition"><i data-lucide="mic" class="w-4 h-4"></i></div>
-                        <div>
-                            <h4 class="text-xs font-bold text-slate-800">Speaking</h4>
-                            <p class="text-[10px] text-gray-400 mt-0.5"><span id="count-s">—</span> tasks available</p>
-                        </div>
-                    </a>
+                    </aside>
                 </div>
+            </section>
+
+            <!-- ============ МОК-ТЕСТЫ + АКТИВНОСТЬ ============ -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <section class="lg:col-span-2 bg-white p-5 sm:p-7 rounded-3xl border border-gray-100 shadow-xs space-y-5" aria-labelledby="scoresTitle">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <h2 id="scoresTitle" class="text-lg font-bold text-slate-900 tracking-tight">Mock test scores</h2>
+                            <p class="text-sm text-slate-500 mt-0.5">Every full mock test, with your target for each section</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <div class="flex p-1 bg-gray-100 rounded-xl" role="group" aria-label="View">
+                                <button type="button" data-scores-view="table" aria-pressed="true" class="px-3 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer">Table</button>
+                                <button type="button" data-scores-view="chart" aria-pressed="false" class="px-3 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer">Chart</button>
+                            </div>
+                            <button id="saveGoalsBtn" onclick="saveGoals()" class="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer">
+                                <i data-lucide="save" class="w-3.5 h-3.5"></i>
+                                <span id="saveGoalsLabel">Save targets</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="scoreMatrix" class="overflow-x-auto -mx-1 px-1">
+                        <p class="text-xs text-gray-400 text-center py-8">Loading scores…</p>
+                    </div>
+                    <div id="progressChart" class="hidden w-full"></div>
+
+                    <div class="pt-1">
+                        <div class="flex justify-between text-xs font-semibold mb-1.5 gap-3">
+                            <span class="text-slate-500">To your target: <span id="points-diff" class="text-slate-800">—</span></span>
+                            <span id="percent-achieved" class="text-indigo-600">—</span>
+                        </div>
+                        <div class="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                            <div id="goal-progress-bar" class="bg-indigo-500 h-2 rounded-full transition-all duration-500 ease-out" style="width: 0%"></div>
+                        </div>
+                    </div>
+
+                    <div id="focusArea"></div>
+                </section>
+
+                <section class="bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-xs flex flex-col gap-5 lg:justify-between" aria-labelledby="activityTitle">
+                    <div class="flex justify-between items-baseline gap-3">
+                        <h2 id="activityTitle" class="text-base font-bold text-slate-900">Activity</h2>
+                        <span class="text-xs text-gray-400">Last 18 weeks</span>
+                    </div>
+                    <div id="activityHeat"><p class="text-xs text-gray-400 py-6 text-center">Loading…</p></div>
+                    <div id="activityVocab" class="border-t border-gray-100 pt-4"></div>
+                    <div id="activityMonth" class="border-t border-gray-100 pt-4 space-y-2.5"></div>
+                </section>
             </div>
 
-            <!-- Частые вопросы: вопросы и ответы — в faq.js -->
-            <div class="space-y-3" id="faqSection">
+            <!-- ============ РАЗДЕЛЫ ============ -->
+            <section class="space-y-4" aria-labelledby="sectionsTitle">
                 <div>
-                    <h3 class="text-base font-bold text-slate-900 tracking-tight">Частые вопросы</h3>
-                    <p class="text-[11px] text-gray-400 mt-0.5">Про экзамен, Home Edition, подготовку и платформу — нажмите на вопрос</p>
+                    <h2 id="sectionsTitle" class="text-lg font-bold text-slate-900 tracking-tight">Practice by section</h2>
+                    <p class="text-sm text-slate-500 mt-0.5">How much of each section you've done</p>
                 </div>
-                <div id="faqList" class="space-y-4"></div>
-            </div>
+                <div id="sectionCards" class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4"></div>
+            </section>
 
-        </div>
-
-        <div class="space-y-6">
-            
-            <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-                <div class="flex justify-between items-center">
-                    <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider">Schedule</h3>
-                    <span id="calMonthLabel" class="text-xs font-semibold text-indigo-600">—</span>
+            <!-- ============ ЧАСТЫЕ ВОПРОСЫ (вопросы и ответы — в faq.js) ============ -->
+            <section class="space-y-4" id="faqSection" aria-labelledby="faqTitle">
+                <div>
+                    <h2 id="faqTitle" class="text-lg font-bold text-slate-900 tracking-tight">Frequently asked questions</h2>
+                    <p class="text-sm text-slate-500 mt-0.5">About the exam, the Home Edition, preparing and this platform</p>
                 </div>
-                <div class="grid grid-cols-7 gap-1 text-center text-[10px] font-medium text-gray-400 mb-1">
-                    <div>Пн</div><div>Вт</div><div>Ср</div><div>Чт</div><div>Пт</div><div>Сб</div><div>Вс</div>
-                </div>
-                <div id="calGrid" class="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-700"></div>
-
-                <div id="calLegend" class="flex flex-wrap gap-x-3 gap-y-1 text-[9px] text-gray-400 pt-1"></div>
-
-                <div id="upcomingLessons" class="space-y-2 border-t border-gray-50 pt-3">
-                    <p class="text-[11px] text-gray-400 text-center py-2">Загрузка расписания...</p>
-                </div>
-            </div>
-
-            <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-xs space-y-3">
-                <div class="flex justify-between items-center">
-                    <div>
-                        <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider">Quick Vocabulary</h3>
-                        <p class="text-[10px] text-gray-400 mt-0.5">Your recently saved list</p>
-                    </div>
-                    <a href="vocabulary.html" class="p-1.5 bg-gray-50 hover:bg-gray-100 text-slate-700 rounded-xl transition"><i data-lucide="external-link" class="w-3.5 h-3.5"></i></a>
-                </div>
-                <div class="space-y-1.5 text-xs">
-                    <div class="flex justify-between items-center p-2 rounded-xl border border-gray-50 hover:bg-slate-50/50 cursor-pointer">
-                        <span class="font-bold text-slate-900">EMPIRE</span>
-                        <span class="text-[10px] text-gray-400 italic">noun</span>
-                    </div>
-                    <div class="flex justify-between items-center p-2 rounded-xl border border-gray-50 hover:bg-slate-50/50 cursor-pointer">
-                        <span class="font-bold text-slate-900">ABUNDANT</span>
-                        <span class="text-[10px] text-gray-400 italic">adjective</span>
-                    </div>
-                </div>
-            </div>
+                <div id="faqList"></div>
+            </section>
 
         </div>
     </main>
@@ -214,13 +176,41 @@
         let profileData = null;
         let goals = { r: null, l: null, s: null, w: null };
         let matrixData = null;
+        let mockAttempts = [];          // попытки больших мок-тестов (для таблицы, графика и активности)
+        let lessonsData = [];
+        let mocksReady = null;          // активность ждёт мок-тесты (они тоже считаются)
 
         const SECTIONS = [
-            { key: 'r', name: 'Reading',   table: 'big_mock_attempts',           extra: { section_name: 'reading' }, link: 'reading.html',   color: '#2563eb' },
-            { key: 'l', name: 'Listening', table: 'big_mock_listening_attempts', extra: null,                        link: 'listening.html', color: '#9333ea' },
-            { key: 's', name: 'Speaking',  table: 'big_mock_speaking_attempts',  extra: null,                        link: 'speaking.html',  color: '#e11d48' },
-            { key: 'w', name: 'Writing',   table: 'big_mock_writing_attempts',   extra: null,                        link: 'writing.html',   color: '#059669' }
+            { key: 'r', name: 'Reading',   table: 'big_mock_attempts',           extra: { section_name: 'reading' }, link: 'reading.html',   color: '#2563eb', icon: 'book-text',  access: 'access_reading' },
+            { key: 'l', name: 'Listening', table: 'big_mock_listening_attempts', extra: null,                        link: 'listening.html', color: '#9333ea', icon: 'headphones', access: 'access_listening' },
+            { key: 'w', name: 'Writing',   table: 'big_mock_writing_attempts',   extra: null,                        link: 'writing.html',   color: '#059669', icon: 'pen-tool',   access: 'access_writing' },
+            { key: 's', name: 'Speaking',  table: 'big_mock_speaking_attempts',  extra: null,                        link: 'speaking.html',  color: '#e11d48', icon: 'mic',        access: 'access_speaking' }
         ];
+        const SEC = Object.fromEntries(SECTIONS.map(s => [s.key, s]));
+
+        const esc = s => String(s === null || s === undefined ? '' : s)
+            .replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        const icons = () => { try { lucide.createIcons(); } catch (e) { /* без иконок */ } };
+        const DAY = 86400000;
+        function ymd(d) {
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        }
+        function dayOf(iso) {
+            if (!iso) return null;
+            if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+            const t = new Date(iso);
+            return isNaN(t) ? null : ymd(t);
+        }
+        function shortDate(d) { return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
+        function ago(t) {
+            const m = Math.round((Date.now() - t) / 60000);
+            if (m < 60) return m <= 1 ? 'just now' : m + ' min ago';
+            const h = Math.round(m / 60);
+            if (h < 24) return h + (h === 1 ? ' hour ago' : ' hours ago');
+            const d = Math.round(h / 24);
+            return d === 1 ? 'yesterday' : d + ' days ago';
+        }
+        const isTeacher = () => currentUser && currentUser.role === 'teacher';
 
         window.onload = async () => {
             currentUser = await requireAuth();
@@ -228,15 +218,20 @@
 
             await loadProfile();
             renderGreeting();
-            renderExamCountdown();
+            renderHero();
 
             // Каждый блок грузится независимо: сбой одной таблицы
             // не должен обнулять весь дашборд.
-            loadMockScores();
-            loadTaskCounts();
-            loadSchedule();
+            const mocks = mocksReady = loadMockScores();
+            const schedule = loadSchedule();
             loadGeCard();
             if (window.Homework) Homework.student(document.getElementById('homeworkCard'), currentUser);
+            loadSectionProgress();
+            const vocab = loadVocab();
+            await mocks;
+            loadActivity();
+            await schedule;
+            renderToday({ vocab: await vocab });
         };
 
         async function loadProfile() {
@@ -247,9 +242,8 @@
                     .eq('id', currentUser.id)
                     .maybeSingle();
                 profileData = data || null;
-
                 if (profileData) {
-                    ['r','l','s','w'].forEach(k => {
+                    ['r', 'l', 's', 'w'].forEach(k => {
                         const v = parseFloat(profileData['target_' + k]);
                         goals[k] = (!isNaN(v) && v > 0) ? v : null;
                     });
@@ -259,76 +253,96 @@
             }
         }
 
-        function renderGreeting() {
-            let name = '';
-            if (profileData && profileData.full_name) {
-                name = profileData.full_name.trim().split(/\s+/)[0];
-            } else if (currentUser.email) {
+        function firstName() {
+            if (profileData && profileData.full_name) return profileData.full_name.trim().split(/\s+/)[0];
+            if (currentUser.email) {
                 const prefix = currentUser.email.split('@')[0];
-                name = prefix.charAt(0).toUpperCase() + prefix.slice(1);
+                return prefix.charAt(0).toUpperCase() + prefix.slice(1);
             }
+            return '';
+        }
+
+        function renderGreeting() {
+            const name = firstName();
             const h = new Date().getHours();
             const part = h < 12 ? 'Good morning' : (h < 18 ? 'Good afternoon' : 'Good evening');
-            document.getElementById('userGreeting').innerText = name ? `${part}, ${name} 👋` : `${part} 👋`;
+            document.getElementById('userGreeting').innerText = name ? `${part}, ${name}` : part;
 
-            if (currentUser.role === 'teacher') {
-                ['teacherLinkDesktop','teacherLinkMobile'].forEach(id => {
+            if (isTeacher()) {
+                ['teacherLinkDesktop', 'teacherLinkMobile'].forEach(id => {
                     const el = document.getElementById(id);
                     if (el) { el.classList.remove('hidden'); el.classList.add('flex'); }
                 });
             }
         }
 
-        function renderExamCountdown() {
-            const numEl = document.getElementById('examDaysNumber');
-            const labelEl = document.getElementById('examCountdownLabel');
-            const ring = document.getElementById('examCountdownRing');
-
+        // Заголовок страницы — сколько дней до экзамена
+        function renderHero() {
+            const title = document.getElementById('heroTitle');
+            const sub = document.getElementById('heroSub');
             if (!profileData || !profileData.exam_date) {
-                numEl.innerText = '—';
-                labelEl.innerText = 'Дата экзамена не назначена';
+                title.innerText = isTeacher() ? 'Your teaching dashboard' : 'Let’s keep going';
+                sub.innerText = isTeacher() ? 'Students see their homework, progress and stats here.' : 'Your exam date isn’t set yet. Your teacher can add it.';
                 return;
             }
-            const exam = new Date(profileData.exam_date);
-            const today = new Date();
-            today.setHours(0,0,0,0); exam.setHours(0,0,0,0);
-            const days = Math.round((exam - today) / 86400000);
+            const p = String(profileData.exam_date).slice(0, 10).split('-').map(Number);
+            const exam = new Date(p[0], p[1] - 1, p[2]);
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            const days = Math.round((exam - today) / DAY);
+            const when = exam.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 
-            if (days > 0) {
-                numEl.innerText = days;
-                labelEl.innerText = 'До экзамена';
-                if (days <= 14) ring.classList.replace('border-indigo-600','border-rose-500');
+            if (days > 1) {
+                title.innerText = `${days} days until your TOEFL`;
+                sub.innerText = when + (days <= 14 ? '. Final stretch: keep doing full mock tests.' : '');
+            } else if (days === 1) {
+                title.innerText = 'Your TOEFL is tomorrow';
+                sub.innerText = when + '. Rest well and check your setup tonight.';
             } else if (days === 0) {
-                numEl.innerText = '🎯'; labelEl.innerText = 'Экзамен сегодня!';
+                title.innerText = 'Your TOEFL is today. Good luck!';
+                sub.innerText = when;
             } else {
-                numEl.innerText = '✓'; labelEl.innerText = 'Экзамен позади';
+                title.innerText = 'Your TOEFL is behind you';
+                sub.innerText = 'You took it on ' + when + '. Well done for getting there.';
             }
         }
 
+        function renderHeroScore() {
+            const box = document.getElementById('heroScore');
+            const avg = currentAverage();
+            const target = targetTotal();
+            if (avg === null && target === null) { box.classList.add('hidden'); return; }
+            const cell = (label, value, cls) => `
+                <div class="px-5 py-3 min-w-[104px]">
+                    <div class="text-xs font-medium text-slate-500">${label}</div>
+                    <div class="text-2xl font-extrabold tnum ${cls}">${value}</div>
+                </div>`;
+            box.innerHTML = cell('Latest score', avg === null ? '—' : (Math.round(avg * 2) / 2).toFixed(1), 'text-slate-900')
+                          + cell('Target', target === null ? '—' : target.toFixed(1), 'text-indigo-600');
+            box.classList.remove('hidden');
+        }
+
         // ==========================================
-        // Сбор всех попыток: строки = секции, колонки = мок-тесты
+        // Мок-тесты: строки = секции, колонки = тесты
         // ==========================================
         async function loadMockScores() {
             const allAttempts = [];
-
-            for (const sec of SECTIONS) {
+            await Promise.all(SECTIONS.map(async sec => {
                 try {
                     let q = _supabase.from(sec.table)
                         .select('test_id, total_score, status, completed_at')
                         .eq('user_id', currentUser.id)
                         .order('completed_at', { ascending: true });
-                    if (sec.extra) Object.entries(sec.extra).forEach(([k,v]) => { q = q.eq(k,v); });
-
+                    if (sec.extra) Object.entries(sec.extra).forEach(([k, v]) => { q = q.eq(k, v); });
                     const { data, error } = await q;
                     if (error) throw error;
-
                     (data || []).forEach(a => {
                         if (a.completed_at) allAttempts.push({ ...a, key: sec.key, name: sec.name, color: sec.color });
                     });
                 } catch (err) {
                     console.error('Ошибка загрузки ' + sec.table + ':', err);
                 }
-            }
+            }));
+            mockAttempts = allAttempts;
 
             // Колонки — по тестам, в порядке первого прохождения.
             // Если тест пересдавали, берём последнюю попытку по каждой секции.
@@ -340,32 +354,24 @@
                 const prev = byTest[tid].cells[a.key];
                 if (!prev || a.completed_at >= prev.completed_at) byTest[tid].cells[a.key] = a;
             });
+            const columns = Object.values(byTest).sort((a, b) => new Date(a.firstAt) - new Date(b.firstAt));
 
-            let columns = Object.values(byTest).sort((a,b) => new Date(a.firstAt) - new Date(b.firstAt));
-
-            // Названия тестов
             const ids = columns.map(c => c.testId).filter(v => v !== 'unknown');
+            const titles = {};
             if (ids.length) {
                 try {
                     const { data: tests } = await _supabase.from('full_tests').select('id, title').in('id', ids);
-                    const titles = {};
                     (tests || []).forEach(t => { titles[String(t.id)] = t.title; });
-                    columns.forEach((c,i) => { c.title = titles[c.testId] || ('Тест ' + (i+1)); });
-                } catch (err) {
-                    columns.forEach((c,i) => { c.title = 'Тест ' + (i+1); });
-                }
-            } else {
-                columns.forEach((c,i) => { c.title = 'Тест ' + (i+1); });
+                } catch (err) { /* без названий */ }
             }
+            columns.forEach((c, i) => { c.title = titles[c.testId] || ('Test ' + (i + 1)); });
 
             matrixData = columns;
             renderMatrix();
             updateGoals();
             renderChart(allAttempts);
-            renderTeacherReview(allAttempts);
         }
 
-        // Балл последней колонки, где секция вообще оценена
         function latestScoreFor(key) {
             if (!matrixData) return null;
             for (let i = matrixData.length - 1; i >= 0; i--) {
@@ -378,14 +384,19 @@
         function currentAverage() {
             const vals = SECTIONS.map(s => latestScoreFor(s.key)).filter(v => v !== null);
             if (!vals.length) return null;
-            return vals.reduce((a,b) => a+b, 0) / vals.length;
+            return vals.reduce((a, b) => a + b, 0) / vals.length;
         }
 
+        const SCORE_BASE = 'inline-block px-2 py-1 rounded-lg border text-xs font-bold tnum ';
+        function targetTotal() {
+            const goalVals = SECTIONS.map(s => goals[s.key]).filter(v => v !== null);
+            return goalVals.length ? Math.ceil((goalVals.reduce((a, b) => a + b, 0) / goalVals.length) * 2) / 2 : null;
+        }
         function cellClasses(score, goal) {
             if (score === null) return 'text-gray-300';
-            if (goal === null)  return 'text-slate-800';
-            if (score >= goal)        return 'bg-emerald-50 text-emerald-700 border-emerald-100';
-            if (goal - score <= 0.5)  return 'bg-amber-50 text-amber-700 border-amber-100';
+            if (goal === null) return 'text-slate-800 border-transparent';
+            if (score >= goal) return 'bg-emerald-50 text-emerald-700 border-emerald-100';
+            if (goal - score <= 0.5) return 'bg-amber-50 text-amber-700 border-amber-100';
             return 'bg-rose-50 text-rose-700 border-rose-100';
         }
 
@@ -395,97 +406,116 @@
             if (!matrixData || !matrixData.length) {
                 box.innerHTML = `
                     <div class="text-center py-8">
-                        <div class="w-10 h-10 bg-indigo-50 text-indigo-500 rounded-xl flex items-center justify-center mx-auto mb-3">
-                            <i data-lucide="clipboard-list" class="w-5 h-5"></i>
-                        </div>
-                        <p class="text-xs font-bold text-slate-700">Вы ещё не проходили мок-тесты</p>
-                        <p class="text-[11px] text-gray-400 mt-1 mb-4">Первый результат появится здесь сразу после прохождения.</p>
-                        <a href="tests.html" class="inline-block bg-slate-900 text-white text-xs font-bold px-5 py-2 rounded-xl hover:bg-indigo-600 transition">Пройти мок-тест</a>
-                    </div>`;
-                lucide.createIcons();
+                        <p class="text-sm font-bold text-slate-700">No mock tests yet</p>
+                        <p class="text-xs text-slate-500 mt-1 mb-4">Your first scores will appear here as soon as you finish one.</p>
+                        <a href="tests.html" class="inline-block bg-slate-900 text-white text-xs font-bold px-5 py-2.5 rounded-xl hover:bg-indigo-600 transition">Take a mock test</a>
+                    </div>
+                    ${goalRowsOnly()}`;
                 return;
             }
 
-            let head = `<th class="sticky left-0 bg-white z-10 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider py-2 pr-3">Секция</th>`;
-            matrixData.forEach((c,i) => {
-                head += `<th class="px-2 py-2 min-w-[68px]">
-                            <div class="text-[10px] font-bold text-slate-700 truncate max-w-[84px] mx-auto" title="${c.title}">${c.title}</div>
-                            <div class="text-[9px] text-gray-400 font-normal">${new Date(c.firstAt).toLocaleDateString('ru-RU',{day:'numeric',month:'short'})}</div>
+            let head = `<th class="sticky left-0 bg-white z-10 text-left text-xs font-semibold text-slate-500 py-2 pr-3">Section</th>`;
+            matrixData.forEach(c => {
+                head += `<th class="px-2 py-2 min-w-[68px] font-normal">
+                            <div class="text-xs font-bold text-slate-700 truncate max-w-[84px] mx-auto" title="${esc(c.title)}">${esc(c.title)}</div>
+                            <div class="text-[11px] text-gray-400">${shortDate(new Date(c.firstAt))}</div>
                          </th>`;
             });
-            head += `<th class="px-2 py-2 min-w-[76px] border-l-2 border-indigo-100">
-                        <div class="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">Цель</div>
-                     </th>`;
+            head += `<th class="px-2 py-2 min-w-[76px] border-l-2 border-indigo-100 text-xs font-bold text-indigo-600">Target</th>`;
 
             let rows = '';
             SECTIONS.forEach(sec => {
                 const goal = goals[sec.key];
                 let tds = `<td class="sticky left-0 bg-white z-10 py-1.5 pr-3">
-                            <div class="flex items-center space-x-2">
+                            <div class="flex items-center gap-2">
                                 <span class="w-2 h-2 rounded-full shrink-0" style="background:${sec.color}"></span>
-                                <span class="text-xs font-semibold text-slate-700">${sec.name}</span>
-                            </div>
-                           </td>`;
-
+                                <span class="text-sm font-semibold text-slate-700">${sec.name}</span>
+                            </div></td>`;
                 matrixData.forEach(c => {
                     const cell = c.cells[sec.key];
                     if (!cell) {
                         tds += `<td class="px-2 py-1.5 text-center"><span class="text-xs text-gray-300">—</span></td>`;
                     } else if (cell.total_score === null || cell.total_score === undefined) {
-                        tds += `<td class="px-2 py-1.5 text-center"><span class="text-[9px] font-bold text-amber-600 uppercase leading-tight">на<br>проверке</span></td>`;
+                        tds += `<td class="px-2 py-1.5 text-center"><span class="text-[11px] font-bold text-amber-600 leading-tight">in review</span></td>`;
                     } else {
                         const v = parseFloat(cell.total_score);
-                        tds += `<td class="px-2 py-1.5 text-center">
-                                    <span class="inline-block px-2 py-1 rounded-lg border text-xs font-bold ${cellClasses(v, goal)}">${v.toFixed(1)}</span>
-                                </td>`;
+                        tds += `<td class="px-2 py-1.5 text-center"><span data-score="${sec.key}" data-v="${v}" class="${SCORE_BASE}${cellClasses(v, goal)}">${v.toFixed(1)}</span></td>`;
                     }
                 });
-
-                tds += `<td class="px-2 py-1.5 text-center border-l-2 border-indigo-100">
-                            <input type="number" min="1.0" max="6.0" step="0.5" value="${goal !== null ? goal : ''}" placeholder="—"
-                                   oninput="onGoalInput('${sec.key}', this.value)"
-                                   class="w-14 text-center py-1 bg-white border border-gray-200 rounded-lg text-xs font-bold text-indigo-600 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition">
-                        </td>`;
-
+                tds += `<td class="px-2 py-1.5 text-center border-l-2 border-indigo-100">${goalInput(sec.key)}</td>`;
                 rows += `<tr class="border-t border-gray-50">${tds}</tr>`;
             });
 
-            // Итоговая строка
-            let totalTds = `<td class="sticky left-0 bg-white z-10 py-2 pr-3"><span class="text-xs font-extrabold text-slate-900">Итого</span></td>`;
+            let totalTds = `<td class="sticky left-0 bg-white z-10 py-2 pr-3"><span class="text-sm font-extrabold text-slate-900">Total</span></td>`;
             matrixData.forEach(c => {
                 const vals = SECTIONS.map(s => c.cells[s.key])
                     .filter(x => x && x.total_score !== null && x.total_score !== undefined)
                     .map(x => parseFloat(x.total_score));
-                const avg = vals.length ? (Math.round((vals.reduce((a,b)=>a+b,0)/vals.length)*2)/2) : null;
-                totalTds += `<td class="px-2 py-2 text-center"><span class="text-xs font-extrabold ${avg===null?'text-gray-300':'text-slate-900'}">${avg===null?'—':avg.toFixed(1)}</span></td>`;
+                const avg = vals.length ? (Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 2) / 2) : null;
+                totalTds += `<td class="px-2 py-2 text-center"><span class="text-sm font-extrabold tnum ${avg === null ? 'text-gray-300' : 'text-slate-900'}">${avg === null ? '—' : avg.toFixed(1)}</span></td>`;
             });
-            const goalVals = SECTIONS.map(s => goals[s.key]).filter(v => v !== null);
-            const goalAvg = goalVals.length ? (Math.ceil((goalVals.reduce((a,b)=>a+b,0)/goalVals.length)*2)/2) : null;
-            totalTds += `<td class="px-2 py-2 text-center border-l-2 border-indigo-100"><span class="text-xs font-extrabold text-indigo-600">${goalAvg===null?'—':goalAvg.toFixed(1)}</span></td>`;
+            const goalAvg = targetTotal();
+            totalTds += `<td class="px-2 py-2 text-center border-l-2 border-indigo-100"><span id="goalTotalCell" class="text-sm font-extrabold text-indigo-600 tnum">${goalAvg === null ? '—' : goalAvg.toFixed(1)}</span></td>`;
 
             box.innerHTML = `
                 <table class="w-full border-collapse">
                     <thead><tr>${head}</tr></thead>
                     <tbody>${rows}<tr class="border-t-2 border-gray-100">${totalTds}</tr></tbody>
                 </table>
-                <div class="flex flex-wrap gap-x-3 gap-y-1 mt-3 text-[9px] text-gray-400">
-                    <span class="inline-flex items-center"><span class="w-2 h-2 rounded bg-emerald-100 border border-emerald-200 mr-1"></span>цель взята</span>
-                    <span class="inline-flex items-center"><span class="w-2 h-2 rounded bg-amber-100 border border-amber-200 mr-1"></span>почти</span>
-                    <span class="inline-flex items-center"><span class="w-2 h-2 rounded bg-rose-100 border border-rose-200 mr-1"></span>нужно подтянуть</span>
+                <div class="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-[11px] text-slate-500">
+                    <span class="inline-flex items-center"><span class="w-2.5 h-2.5 rounded bg-emerald-100 border border-emerald-200 mr-1.5"></span>target reached</span>
+                    <span class="inline-flex items-center"><span class="w-2.5 h-2.5 rounded bg-amber-100 border border-amber-200 mr-1.5"></span>within 0.5</span>
+                    <span class="inline-flex items-center"><span class="w-2.5 h-2.5 rounded bg-rose-100 border border-rose-200 mr-1.5"></span>needs work</span>
                 </div>`;
-            lucide.createIcons();
         }
 
+        function goalInput(key) {
+            const goal = goals[key];
+            return `<input type="number" min="1.0" max="6.0" step="0.5" value="${goal !== null ? goal : ''}" placeholder="—" aria-label="Target for ${SEC[key].name}"
+                        oninput="onGoalInput('${key}', this.value)"
+                        class="w-14 text-center py-1 bg-white border border-gray-200 rounded-lg text-xs font-bold text-indigo-600 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition">`;
+        }
+
+        // Пока мок-тестов нет, цели всё равно можно задать
+        function goalRowsOnly() {
+            return `<div class="border-t border-gray-100 pt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                ${SECTIONS.map(sec => `<label class="flex items-center justify-between gap-2 text-sm font-semibold text-slate-700">
+                    <span class="flex items-center gap-2"><span class="w-2 h-2 rounded-full" style="background:${sec.color}"></span>${sec.name}</span>${goalInput(sec.key)}</label>`).join('')}
+            </div>`;
+        }
+
+        // Таблицу целиком не перерисовываем — иначе поле теряет фокус посреди ввода.
+        // Меняются только цвета баллов этой секции и итоговая цель.
         function onGoalInput(key, value) {
             const v = parseFloat(value);
             goals[key] = (!isNaN(v) && v > 0) ? v : null;
-            renderMatrix();
+            document.querySelectorAll(`[data-score="${key}"]`).forEach(el => {
+                el.className = SCORE_BASE + cellClasses(parseFloat(el.dataset.v), goals[key]);
+            });
+            const total = targetTotal();
+            const cell = document.getElementById('goalTotalCell');
+            if (cell) cell.textContent = total === null ? '—' : total.toFixed(1);
             updateGoals();
         }
 
+        // Таблица / график
+        document.addEventListener('click', e => {
+            const b = e.target.closest && e.target.closest('[data-scores-view]');
+            if (!b) return;
+            const view = b.getAttribute('data-scores-view');
+            document.querySelectorAll('[data-scores-view]').forEach(x => {
+                const on = x === b;
+                x.setAttribute('aria-pressed', on ? 'true' : 'false');
+                x.className = 'px-3 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ' + (on ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-800');
+            });
+            document.getElementById('scoreMatrix').classList.toggle('hidden', view !== 'table');
+            document.getElementById('progressChart').classList.toggle('hidden', view !== 'chart');
+            document.getElementById('saveGoalsBtn').classList.toggle('hidden', view !== 'table');
+        });
+        document.querySelector('[data-scores-view="table"]').click();
 
         // ==========================================
-        // График динамики — инлайновый SVG, без внешних библиотек
+        // График динамики — инлайновый SVG
         // ==========================================
         function renderChart(attempts) {
             const box = document.getElementById('progressChart');
@@ -493,54 +523,71 @@
 
             if (scored.length < 2) {
                 box.innerHTML = `
-                    <div class="text-center py-8">
-                        <div class="w-10 h-10 bg-indigo-50 text-indigo-500 rounded-xl flex items-center justify-center mx-auto mb-3">
-                            <i data-lucide="trending-up" class="w-5 h-5"></i>
-                        </div>
-                        <p class="text-xs font-bold text-slate-700">График появится после второго мок-теста</p>
-                        <p class="text-[11px] text-gray-400 mt-1">Пройдено оценённых секций: ${scored.length}. Нужно минимум 2, чтобы увидеть динамику.</p>
+                    <div class="text-center py-10">
+                        <p class="text-sm font-bold text-slate-700">The chart appears after your second scored section</p>
+                        <p class="text-xs text-slate-500 mt-1">Scored so far: ${scored.length}.</p>
                     </div>`;
-                lucide.createIcons();
                 return;
             }
 
-            const dates = [...new Set(scored.map(a => a.completed_at.slice(0,10)))].sort();
-            const W = 600, H = 200, padL = 32, padR = 12, padT = 14, padB = 26;
+            const dates = [...new Set(scored.map(a => a.completed_at.slice(0, 10)))].sort();
+            const W = 600, H = 220, padL = 32, padR = 12, padT = 14, padB = 26;
             const plotW = W - padL - padR, plotH = H - padT - padB;
-            const xOf = d => dates.length === 1 ? padL + plotW/2 : padL + (dates.indexOf(d)/(dates.length-1))*plotW;
+            const xOf = d => dates.length === 1 ? padL + plotW / 2 : padL + (dates.indexOf(d) / (dates.length - 1)) * plotW;
             const yOf = v => padT + plotH - ((v - 1) / 5) * plotH;
 
-            let svg = `<svg viewBox="0 0 ${W} ${H}" class="w-full" style="max-height:220px">`;
+            let svg = `<svg viewBox="0 0 ${W} ${H}" class="w-full" style="max-height:240px" role="img" aria-label="Mock test scores over time">`;
             for (let b = 1; b <= 6; b++) {
-                svg += `<line x1="${padL}" y1="${yOf(b)}" x2="${W-padR}" y2="${yOf(b)}" stroke="#f1f5f9" stroke-width="1"/>`;
-                svg += `<text x="${padL-6}" y="${yOf(b)+3}" text-anchor="end" font-size="9" fill="#94a3b8">${b}.0</text>`;
+                svg += `<line x1="${padL}" y1="${yOf(b)}" x2="${W - padR}" y2="${yOf(b)}" stroke="#f1f5f9" stroke-width="1"/>`;
+                svg += `<text x="${padL - 6}" y="${yOf(b) + 3}" text-anchor="end" font-size="10" fill="#94a3b8">${b}.0</text>`;
             }
-
             let legend = '';
             SECTIONS.forEach(sec => {
                 const pts = scored.filter(a => a.key === sec.key)
-                    .map(a => ({ x: xOf(a.completed_at.slice(0,10)), y: yOf(parseFloat(a.total_score)) }))
-                    .sort((a,b) => a.x - b.x);
+                    .map(a => ({ x: xOf(a.completed_at.slice(0, 10)), y: yOf(parseFloat(a.total_score)), v: parseFloat(a.total_score) }))
+                    .sort((a, b) => a.x - b.x);
                 if (!pts.length) return;
-                if (pts.length > 1) {
-                    svg += `<polyline points="${pts.map(p => p.x+','+p.y).join(' ')}" fill="none" stroke="${sec.color}" stroke-width="2" stroke-linejoin="round"/>`;
-                }
-                pts.forEach(p => { svg += `<circle cx="${p.x}" cy="${p.y}" r="3.5" fill="white" stroke="${sec.color}" stroke-width="2"/>`; });
-                legend += `<span class="inline-flex items-center mr-3"><span class="w-2 h-2 rounded-full mr-1" style="background:${sec.color}"></span><span class="text-[10px] text-slate-500 font-medium">${sec.name}</span></span>`;
+                if (pts.length > 1) svg += `<polyline points="${pts.map(p => p.x + ',' + p.y).join(' ')}" fill="none" stroke="${sec.color}" stroke-width="2" stroke-linejoin="round"/>`;
+                pts.forEach(p => { svg += `<circle cx="${p.x}" cy="${p.y}" r="3.5" fill="white" stroke="${sec.color}" stroke-width="2"><title>${sec.name}: ${p.v.toFixed(1)}</title></circle>`; });
+                legend += `<span class="inline-flex items-center mr-4"><span class="w-2 h-2 rounded-full mr-1.5" style="background:${sec.color}"></span><span class="text-xs text-slate-600 font-medium">${sec.name}</span></span>`;
             });
-
             dates.forEach(d => {
-                const dt = new Date(d);
-                svg += `<text x="${xOf(d)}" y="${H-8}" text-anchor="middle" font-size="9" fill="#94a3b8">${dt.toLocaleDateString('ru-RU',{day:'numeric',month:'short'})}</text>`;
+                const p = d.split('-').map(Number);
+                svg += `<text x="${xOf(d)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="#94a3b8">${shortDate(new Date(p[0], p[1] - 1, p[2]))}</text>`;
             });
             svg += '</svg>';
-
             box.innerHTML = svg + `<div class="mt-3 flex flex-wrap">${legend}</div>`;
         }
 
         // ==========================================
-        // Слабое место -> прямое действие
+        // Цели: пересчёт и сохранение
         // ==========================================
+        function updateGoals() {
+            const totalTarget = targetTotal();
+            const avg = currentAverage();
+            const diffEl = document.getElementById('points-diff');
+            const pctEl = document.getElementById('percent-achieved');
+            const bar = document.getElementById('goal-progress-bar');
+            renderHeroScore();
+
+            if (avg === null || totalTarget === null) {
+                diffEl.innerText = avg === null ? 'no scores yet' : 'set your targets in the table';
+                pctEl.innerText = '';
+                bar.style.width = '0%';
+                renderFocusArea();
+                return;
+            }
+            const diff = totalTarget - avg;
+            const percent = Math.min(100, totalTarget > 0 ? Math.round((avg / totalTarget) * 100) : 0);
+            if (diff > 0) diffEl.innerText = `${diff.toFixed(1)} points to go`;
+            else if (diff === 0) diffEl.innerText = 'target reached';
+            else diffEl.innerText = `${Math.abs(diff).toFixed(1)} above your target`;
+            pctEl.innerText = `${percent}% of the way`;
+            bar.style.width = `${percent}%`;
+            renderFocusArea();
+        }
+
+        // Слабое место → куда идти
         function renderFocusArea() {
             const box = document.getElementById('focusArea');
             const gaps = SECTIONS.map(sec => {
@@ -549,88 +596,46 @@
                 if (got === null || goal === null) return null;
                 return { ...sec, got, goal, gap: goal - got };
             }).filter(Boolean);
-
-            if (!gaps.length) {
-                box.innerHTML = `
-                    <a href="tests.html" class="block bg-white p-5 rounded-2xl border border-gray-100 shadow-xs hover:border-indigo-200 transition">
-                        <div class="flex items-center space-x-3">
-                            <div class="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl"><i data-lucide="rocket" class="w-5 h-5"></i></div>
-                            <div class="flex-1">
-                                <h4 class="text-sm font-bold text-slate-800">Пройдите первый мок-тест</h4>
-                                <p class="text-[11px] text-gray-400 mt-0.5">Это покажет ваш текущий уровень по всем четырём секциям.</p>
-                            </div>
-                            <i data-lucide="chevron-right" class="w-4 h-4 text-gray-300"></i>
-                        </div>
-                    </a>`;
-                lucide.createIcons();
-                return;
-            }
-
-            gaps.sort((a,b) => b.gap - a.gap);
+            if (!gaps.length) { box.innerHTML = ''; return; }
+            gaps.sort((a, b) => b.gap - a.gap);
             const worst = gaps[0];
-
             if (worst.gap <= 0) {
-                box.innerHTML = `
-                    <div class="bg-emerald-50/50 p-5 rounded-2xl border border-emerald-100">
-                        <div class="flex items-center space-x-3">
-                            <div class="p-2.5 bg-emerald-100 text-emerald-600 rounded-xl"><i data-lucide="party-popper" class="w-5 h-5"></i></div>
-                            <div>
-                                <h4 class="text-sm font-bold text-slate-800">Все цели достигнуты 🎯</h4>
-                                <p class="text-[11px] text-gray-500 mt-0.5">Можно поднять планку в блоке целей выше — или закреплять результат.</p>
-                            </div>
-                        </div>
-                    </div>`;
+                box.innerHTML = `<div class="flex items-center gap-3 p-4 rounded-2xl bg-emerald-50/60 border border-emerald-100">
+                        <i data-lucide="party-popper" class="w-5 h-5 text-emerald-600 shrink-0"></i>
+                        <p class="text-sm text-slate-700"><b>Every section is at its target.</b> Raise a target or keep your level steady.</p></div>`;
             } else {
-                box.innerHTML = `
-                    <a href="${worst.link}" class="block bg-white p-5 rounded-2xl border border-gray-100 shadow-xs hover:border-indigo-200 transition">
-                        <div class="flex items-center space-x-3">
-                            <div class="p-2.5 bg-rose-50 text-rose-600 rounded-xl"><i data-lucide="target" class="w-5 h-5"></i></div>
-                            <div class="flex-1 min-w-0">
-                                <h4 class="text-sm font-bold text-slate-800">${worst.name} — самая дальняя от цели секция</h4>
-                                <p class="text-[11px] text-gray-500 mt-0.5">Сейчас ${worst.got.toFixed(1)}, цель ${worst.goal.toFixed(1)} — не хватает ${worst.gap.toFixed(1)} балла. Начать тренировку →</p>
-                            </div>
-                            <i data-lucide="chevron-right" class="w-4 h-4 text-gray-300"></i>
-                        </div>
-                    </a>`;
+                box.innerHTML = `<a href="${worst.link}" class="flex items-center gap-3 p-4 rounded-2xl bg-gray-50 border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50/40 transition">
+                        <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:${worst.color}"></span>
+                        <p class="text-sm text-slate-700 flex-1"><b>Focus on ${worst.name}.</b> You're at ${worst.got.toFixed(1)}, your target is ${worst.goal.toFixed(1)}.</p>
+                        <span class="text-xs font-bold text-indigo-600 shrink-0">Practice</span>
+                        <i data-lucide="chevron-right" class="w-4 h-4 text-indigo-400 shrink-0"></i></a>`;
             }
-            lucide.createIcons();
+            icons();
+        }
+
+        async function saveGoals() {
+            const btn = document.getElementById('saveGoalsBtn');
+            const label = document.getElementById('saveGoalsLabel');
+            label.innerText = 'Saving…';
+            btn.disabled = true;
+            try {
+                const { error } = await _supabase.from('profiles').update({
+                    target_r: goals.r, target_l: goals.l, target_s: goals.s, target_w: goals.w
+                }).eq('id', currentUser.id);
+                if (error) throw error;
+                label.innerText = 'Saved ✓';
+            } catch (err) {
+                console.error('Не удалось сохранить цели:', err);
+                label.innerText = 'Not saved, try again';
+            } finally {
+                btn.disabled = false;
+                setTimeout(() => { label.innerText = 'Save targets'; }, 2200);
+            }
         }
 
         // ==========================================
-        // Свежие проверки преподавателя
+        // Расписание: месяц, сегодня, экзамен и уроки
         // ==========================================
-        function renderTeacherReview(attempts) {
-            const box = document.getElementById('teacherReviewBanner');
-            const reviewed = attempts.filter(a =>
-                a.status === 'reviewed' && a.total_score !== null && a.total_score !== undefined &&
-                (a.key === 'w' || a.key === 's')
-            );
-            if (!reviewed.length) return;
-
-            reviewed.sort((a,b) => new Date(b.completed_at) - new Date(a.completed_at));
-            const items = reviewed.slice(0,2).map(a =>
-                `<span class="inline-flex items-center bg-white/15 px-2.5 py-1 rounded-lg mr-2 mb-1">
-                    <span class="font-bold">${a.name}</span><span class="ml-1.5 font-extrabold">${parseFloat(a.total_score).toFixed(1)}</span>
-                 </span>`).join('');
-
-            box.className = 'bg-gradient-to-br from-slate-900 to-indigo-900 text-white p-5 rounded-2xl shadow-md';
-            box.innerHTML = `
-                <div class="flex items-start space-x-3">
-                    <div class="p-2 bg-white/10 rounded-xl shrink-0"><i data-lucide="check-circle-2" class="w-5 h-5"></i></div>
-                    <div class="flex-1 min-w-0">
-                        <h4 class="text-sm font-bold">Преподаватель проверил ваши работы</h4>
-                        <div class="mt-2 flex flex-wrap text-xs">${items}</div>
-                        <a href="tests.html" class="inline-block mt-2 text-[11px] font-bold text-indigo-200 hover:text-white transition">Посмотреть разбор →</a>
-                    </div>
-                </div>`;
-            lucide.createIcons();
-        }
-
-        // ==========================================
-        // Календарь: текущий месяц, сегодня, дата экзамена и дни с уроками
-        // ==========================================
-        let lessonsData = [];
-
         async function loadSchedule() {
             try {
                 const { data, error } = await _supabase
@@ -648,125 +653,434 @@
             renderUpcomingLessons();
         }
 
-        function ymd(d) {
-            return d.getFullYear() + '-' +
-                   String(d.getMonth()+1).padStart(2,'0') + '-' +
-                   String(d.getDate()).padStart(2,'0');
-        }
-
         function renderCalendar() {
             const grid = document.getElementById('calGrid');
-            const label = document.getElementById('calMonthLabel');
-            const legend = document.getElementById('calLegend');
-
             const now = new Date();
             const year = now.getFullYear(), month = now.getMonth();
-            label.innerText = now.toLocaleDateString('ru-RU', { month:'long', year:'numeric' });
+            document.getElementById('calMonthLabel').innerText = now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
             const todayStr = ymd(now);
-            const examStr = (profileData && profileData.exam_date) ? profileData.exam_date.slice(0,10) : null;
-            const lessonDays = new Set(lessonsData.map(l => (l.lesson_date || '').slice(0,10)));
-
-            const first = new Date(year, month, 1);
-            // В JS неделя начинается с воскресенья, у нас — с понедельника
-            const offset = (first.getDay() + 6) % 7;
-            const daysInMonth = new Date(year, month+1, 0).getDate();
+            const examStr = (profileData && profileData.exam_date) ? String(profileData.exam_date).slice(0, 10) : null;
+            const lessonDays = new Set(lessonsData.map(l => (l.lesson_date || '').slice(0, 10)));
+            const offset = (new Date(year, month, 1).getDay() + 6) % 7;   // неделя с понедельника
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
 
             let html = '';
             for (let i = 0; i < offset; i++) html += '<div></div>';
-
             for (let d = 1; d <= daysInMonth; d++) {
                 const dateStr = ymd(new Date(year, month, d));
-                const isToday = dateStr === todayStr;
-                const isExam = examStr === dateStr;
-                const hasLesson = lessonDays.has(dateStr);
-
-                let cls = 'p-1 relative';
-                if (isExam)      cls = 'p-1 relative bg-rose-500 text-white rounded-full flex items-center justify-center w-5 h-5 mx-auto';
-                else if (isToday) cls = 'p-1 relative bg-indigo-600 text-white rounded-full flex items-center justify-center w-5 h-5 mx-auto';
-
-                const dot = (hasLesson && !isToday && !isExam)
-                    ? '<span class="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 bg-purple-500 rounded-full"></span>' : '';
-
-                html += `<div class="${cls}" title="${dateStr}">${d}${dot}</div>`;
+                const isToday = dateStr === todayStr, isExam = examStr === dateStr, hasLesson = lessonDays.has(dateStr);
+                let cls = 'relative h-7 flex items-center justify-center';
+                let inner = d;
+                if (isExam) inner = `<span class="w-7 h-7 rounded-full bg-rose-500 text-white flex items-center justify-center">${d}</span>`;
+                else if (isToday) inner = `<span class="w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center">${d}</span>`;
+                const dot = (hasLesson && !isToday && !isExam) ? '<span class="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 bg-purple-500 rounded-full"></span>' : '';
+                const label = [isToday && 'today', isExam && 'exam day', hasLesson && 'lesson'].filter(Boolean).join(', ');
+                html += `<div class="${cls}" title="${dateStr}${label ? ': ' + label : ''}">${inner}${dot}</div>`;
             }
             grid.innerHTML = html;
 
-            let leg = '<span class="inline-flex items-center"><span class="w-2 h-2 bg-indigo-600 rounded-full mr-1"></span>сегодня</span>';
-            if (lessonDays.size) leg += '<span class="inline-flex items-center"><span class="w-1.5 h-1.5 bg-purple-500 rounded-full mr-1"></span>урок</span>';
-            if (examStr) leg += '<span class="inline-flex items-center"><span class="w-2 h-2 bg-rose-500 rounded-full mr-1"></span>экзамен</span>';
-            legend.innerHTML = leg;
+            let leg = '<span class="inline-flex items-center"><span class="w-2 h-2 bg-indigo-600 rounded-full mr-1.5"></span>today</span>';
+            if (lessonDays.size) leg += '<span class="inline-flex items-center"><span class="w-1.5 h-1.5 bg-purple-500 rounded-full mr-1.5"></span>lesson</span>';
+            if (examStr) leg += '<span class="inline-flex items-center"><span class="w-2 h-2 bg-rose-500 rounded-full mr-1.5"></span>exam</span>';
+            document.getElementById('calLegend').innerHTML = leg;
+        }
+
+        function upcomingLessons() {
+            const todayStr = ymd(new Date());
+            return lessonsData.filter(l => l.lesson_date && l.lesson_date.slice(0, 10) >= todayStr);
         }
 
         function renderUpcomingLessons() {
             const box = document.getElementById('upcomingLessons');
             const todayStr = ymd(new Date());
-
-            const upcoming = lessonsData
-                .filter(l => l.lesson_date && l.lesson_date.slice(0,10) >= todayStr)
-                .slice(0, 3);
-
-            // Домашка с последнего прошедшего урока — то, что нужно прямо сейчас
-            const past = lessonsData.filter(l => l.lesson_date && l.lesson_date.slice(0,10) < todayStr);
+            const upcoming = upcomingLessons().slice(0, 3);
+            const past = lessonsData.filter(l => l.lesson_date && l.lesson_date.slice(0, 10) < todayStr);
             const lastWithHw = past.reverse().find(l => (l.homework || '').trim());
 
-            let html = '';
-
-            if (upcoming.length) {
-                html += upcoming.map(l => {
-                    const dt = new Date(l.lesson_date);
-                    return `
-                    <div class="flex items-center justify-between text-xs p-2 rounded-xl bg-slate-50/60">
-                        <div class="flex items-center space-x-2 min-w-0">
-                            <span class="w-1.5 h-1.5 bg-purple-600 rounded-full shrink-0"></span>
-                            <span class="font-bold text-slate-800 shrink-0">${dt.toLocaleDateString('ru-RU',{day:'numeric',month:'short'})}</span>
-                            <span class="text-gray-500 truncate">${l.topic || l.section || 'Занятие'}</span>
-                        </div>
-                    </div>`;
-                }).join('');
-            } else {
-                html += '<p class="text-[11px] text-gray-400 text-center py-2">Занятий не запланировано</p>';
-            }
+            let html = '<h3 class="text-sm font-bold text-slate-800">Upcoming lessons</h3>';
+            html += upcoming.length ? upcoming.map(l => {
+                const p = l.lesson_date.slice(0, 10).split('-').map(Number);
+                const dt = new Date(p[0], p[1] - 1, p[2]);
+                return `<div class="flex items-center gap-3 text-sm py-1">
+                            <span class="w-14 shrink-0 text-xs font-bold text-slate-800">${shortDate(dt)}</span>
+                            <span class="text-slate-600 truncate">${esc(l.topic || l.section || 'Lesson')}</span>
+                        </div>`;
+            }).join('') : '<p class="text-xs text-slate-500">No lessons scheduled.</p>';
 
             if (lastWithHw) {
-                html += `
-                    <div class="mt-2 p-3 rounded-xl bg-amber-50/60 border border-amber-100">
-                        <div class="flex items-center space-x-1.5 mb-1">
-                            <i data-lucide="book-open" class="w-3 h-3 text-amber-600"></i>
-                            <span class="text-[10px] font-bold text-amber-700 uppercase tracking-wide">Домашнее задание</span>
-                        </div>
-                        <p class="text-[11px] text-slate-700 leading-relaxed">${lastWithHw.homework}</p>
-                    </div>`;
+                html += `<div class="mt-2 p-3 rounded-xl bg-amber-50/60 border border-amber-100">
+                            <div class="text-xs font-bold text-amber-700 mb-1">From your last lesson</div>
+                            <p class="text-xs text-slate-700 leading-relaxed whitespace-pre-line">${esc(lastWithHw.homework)}</p>
+                         </div>`;
             }
-
             box.innerHTML = html;
-            lucide.createIcons();
         }
 
         // ==========================================
-        // Счётчики доступных заданий
+        // Сегодня: продолжить, слова, проверки, урок
         // ==========================================
-        async function loadTaskCounts() {
-            const counts = {
-                r: ['complete_words_tasks','daily_life_tasks','academic_tasks'],
-                l: ['listening_tests'],
-                w: ['writing_tasks'],
-                s: ['speaking_tests']
-            };
-            for (const [key, tables] of Object.entries(counts)) {
-                let total = 0, ok = false;
-                for (const t of tables) {
-                    try {
-                        const { count, error } = await _supabase.from(t).select('id', { count: 'exact', head: true });
-                        if (error) throw error;
-                        total += (count || 0); ok = true;
-                    } catch (err) {
-                        console.warn('Не удалось посчитать ' + t + ':', err.message);
-                    }
-                }
-                const el = document.getElementById('count-' + key);
-                if (el) el.innerText = ok ? total : '—';
+        function todayRow(o) {
+            const tag = o.href ? 'a' : 'div';
+            return `<${tag} ${o.href ? `href="${esc(o.href)}"` : ''} class="flex items-center gap-4 px-5 py-4 ${o.href ? 'hover:bg-gray-50/80 transition group' : ''}">
+                        <div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${o.tone || 'bg-indigo-50 text-indigo-600'}"><i data-lucide="${o.icon}" class="w-5 h-5"></i></div>
+                        <div class="flex-1 min-w-0">
+                            <div class="text-sm font-bold text-slate-900">${o.title}</div>
+                            ${o.sub ? `<div class="text-xs text-slate-500 mt-0.5 truncate">${o.sub}</div>` : ''}
+                        </div>
+                        ${o.action ? `<span class="shrink-0 text-xs font-bold ${o.primary ? 'text-white bg-slate-900 group-hover:bg-indigo-600' : 'text-indigo-700 bg-indigo-50 group-hover:bg-indigo-100'} px-3.5 py-2 rounded-xl transition">${o.action}</span>` : ''}
+                    </${tag}>`;
+        }
+
+        function renderToday(ctx) {
+            const box = document.getElementById('todayList');
+            const rows = [];
+
+            if (isTeacher()) {
+                rows.push(todayRow({ icon: 'inbox', title: 'Teacher Board', sub: 'Submissions to review, students and access', href: 'teacher-board.html?tab=review', action: 'Open', primary: true }));
             }
+
+            // 1) Незаконченный мок-тест (сохраняется на этом устройстве, tests.html)
+            try {
+                const mt = JSON.parse(localStorage.getItem('mt_progress_v1:' + currentUser.id) || 'null');
+                const t = mt && Date.parse(mt.savedAt || '');
+                if (mt && mt.testId && !isNaN(t) && Date.now() - t < 30 * DAY) {
+                    const sec = mt.section ? mt.section.charAt(0).toUpperCase() + mt.section.slice(1) + ' section, ' : '';
+                    rows.push(todayRow({ icon: 'timer', tone: 'bg-rose-50 text-rose-600', title: 'Finish your mock test',
+                        sub: `${esc(mt.testEmoji || '')} ${esc(mt.testTitle || 'Mock test')}: ${esc(sec)}saved ${ago(t)}`, href: 'tests.html', action: 'Resume', primary: true }));
+                }
+            } catch (e) { /* без памяти браузера */ }
+
+            // 2) Следующий тест в практике Reading (practice-next.js)
+            const s = window.PracticeNext && PracticeNext.suggest ? PracticeNext.suggest(currentUser.id) : null;
+            if (s && s.allDone) {
+                rows.push(todayRow({ icon: 'trophy', tone: 'bg-emerald-50 text-emerald-600', title: `You've done every ${esc(s.label)} test`, sub: 'Pick another task type on the Reading page', href: 'reading.html', action: 'Reading' }));
+            } else if (s && s.item) {
+                const name = [s.item.label, s.item.title].filter(Boolean).map(esc).join(': ');
+                rows.push(todayRow({ icon: 'book-open', tone: 'bg-blue-50 text-blue-600',
+                    title: s.resume ? `Continue ${esc(s.label)}` : `Next up in ${esc(s.label)}`, sub: name || 'Next test', href: s.href, action: s.resume ? 'Continue' : 'Start' }));
+            }
+
+            // 3) Слова на повторение
+            const v = ctx.vocab;
+            if (v && v.ok && !isTeacher()) {
+                if (v.due > 0) {
+                    rows.push(todayRow({ icon: 'layers', tone: 'bg-amber-50 text-amber-600', title: `${v.due} ${v.due === 1 ? 'word' : 'words'} to review`,
+                        sub: `${v.learning} in progress, ${v.mastered} mastered`, href: 'review.html', action: 'Review' }));
+                } else if (v.learning + v.mastered > 0) {
+                    rows.push(todayRow({ icon: 'layers', tone: 'bg-amber-50 text-amber-600', title: 'No words to review today',
+                        sub: 'Come back tomorrow, or learn some new words', href: 'vocabulary.html', action: 'Learn' }));
+                } else {
+                    rows.push(todayRow({ icon: 'layers', tone: 'bg-amber-50 text-amber-600', title: 'Start your vocabulary',
+                        sub: 'A few new words a day add up fast', href: 'vocabulary.html', action: 'Start' }));
+                }
+            }
+
+            // 4) Свежие проверки преподавателя (мок-тесты, Writing и Speaking, за 30 дней)
+            const reviewed = mockAttempts.filter(a => a.status === 'reviewed' && a.total_score !== null && a.total_score !== undefined
+                && (a.key === 'w' || a.key === 's') && Date.now() - Date.parse(a.completed_at) < 30 * DAY)
+                .sort((a, b) => String(b.completed_at).localeCompare(String(a.completed_at))).slice(0, 2);
+            if (reviewed.length) {
+                rows.push(todayRow({ icon: 'message-square-text', tone: 'bg-emerald-50 text-emerald-600', title: 'Your teacher reviewed your work',
+                    sub: reviewed.map(a => `${a.name} ${parseFloat(a.total_score).toFixed(1)}`).join(', '), href: 'tests.html', action: 'See feedback' }));
+            }
+
+            // 5) Ближайший урок — если в ближайшую неделю
+            const next = upcomingLessons()[0];
+            if (next) {
+                const p = next.lesson_date.slice(0, 10).split('-').map(Number);
+                const dt = new Date(p[0], p[1] - 1, p[2]);
+                const today = new Date(); today.setHours(0, 0, 0, 0);
+                const days = Math.round((dt - today) / DAY);
+                if (days <= 7) {
+                    const when = days === 0 ? 'today' : days === 1 ? 'tomorrow' : dt.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+                    rows.push(todayRow({ icon: 'calendar-days', tone: 'bg-purple-50 text-purple-600', title: `Next lesson ${when}`, sub: esc(next.topic || next.section || '') }));
+                }
+            }
+
+            if (!rows.length) {
+                rows.push(todayRow({ icon: 'sparkles', title: 'Nothing waiting for you', sub: 'Pick a section below and start a practice task' }));
+            }
+            box.innerHTML = rows.join('');
+            icons();
+        }
+
+        // ==========================================
+        // Словарь: сколько слов к повторению (как в review.html)
+        // ==========================================
+        async function loadVocab() {
+            const MASTERED = 13;   // SRS_MASTERED_BOX в review.html
+            const nowIso = new Date().toISOString();
+            const base = () => _supabase.from('user_word_progress').select('word', { count: 'exact', head: true }).eq('user_id', currentUser.id);
+            try {
+                const [due, learning, mastered] = await Promise.all([
+                    base().gt('box', 0).lt('box', MASTERED).or('due_at.is.null,due_at.lte.' + nowIso),
+                    base().gt('box', 0).lt('box', MASTERED),
+                    base().gte('box', MASTERED)
+                ]);
+                if (due.error || learning.error || mastered.error) throw (due.error || learning.error || mastered.error);
+                return { ok: true, due: due.count || 0, learning: learning.count || 0, mastered: mastered.count || 0 };
+            } catch (err) {
+                console.warn('Словарь: не удалось посчитать слова', err);
+                return { ok: false };
+            }
+        }
+
+        // ==========================================
+        // Активность: дни подряд, неделя, точность, карта
+        // ==========================================
+        async function ownRows(table, cols) {
+            const run = c => _supabase.from(table).select(c).eq('user_id', currentUser.id).limit(5000);
+            let r = await run(cols);
+            if (r.error && cols !== '*') r = await run('*');   // если какой-то колонки нет
+            if (r.error) throw r.error;
+            return r.data || [];
+        }
+        const pctOf = r => {
+            const e = Number(r.score_earned), t = Number(r.score_total);
+            if (r.score_total !== null && r.score_total !== undefined && t > 0 && isFinite(e)) return Math.max(0, Math.min(100, e / t * 100));
+            if (r.score_percent !== null && r.score_percent !== undefined && isFinite(Number(r.score_percent))) return Math.max(0, Math.min(100, Number(r.score_percent)));
+            return null;
+        };
+
+        let activityPromise = null;
+        function collectActivity() {
+            if (!activityPromise) activityPromise = buildActivity();
+            return activityPromise;
+        }
+        async function buildActivity() {
+            if (mocksReady) await mocksReady;
+            const safe = (p, name) => p.catch(err => { console.warn('Активность: ' + name, err); return []; });
+            const [reading, words, readingMini, listening, response, listeningMini, writing, miniWriting, speaking, miniSpeaking, vocab] = await Promise.all([
+                safe(ownRows('reading_results', 'task_id, task_type, score_earned, score_total, created_at'), 'reading_results'),
+                safe(ownRows('complete_words_results', 'task_id, score_percent, created_at'), 'complete_words_results'),
+                safe(ownRows('mock_test_results', 'test_id, created_at'), 'mock_test_results'),
+                safe(ownRows('listening_results', 'task_id, task_type, score_earned, score_total, created_at'), 'listening_results'),
+                safe(ownRows('response_results', 'set_number, score_earned, score_total, created_at'), 'response_results'),
+                safe(ownRows('listening_mini_mock_results', 'completed_at, created_at'), 'listening_mini_mock_results'),
+                safe(ownRows('student_responses', 'task_id, task_type, created_at'), 'student_responses'),
+                safe(ownRows('mini_mock_writing_attempts', 'created_at'), 'mini_mock_writing_attempts'),
+                safe(ownRows('speaking_attempts', 'id, test_id, status, created_at, completed_at'), 'speaking_attempts'),
+                safe(ownRows('mini_mock_speaking_attempts', 'status, created_at, completed_at'), 'mini_mock_speaking_attempts'),
+                safe(ownRows('vocab_activity', 'day, reviews, learned'), 'vocab_activity')
+            ]);
+
+            // записи Speaking-практики: набор засчитан, если в нём есть хоть одна запись
+            const spAnswered = new Set();
+            const spIds = speaking.map(a => a.id).filter(Boolean);
+            for (let i = 0; i < spIds.length; i += 100) {
+                try {
+                    const { data } = await _supabase.from('speaking_responses').select('attempt_id').in('attempt_id', spIds.slice(i, i + 100));
+                    (data || []).forEach(r => spAnswered.add(String(r.attempt_id)));
+                } catch (e) { /* без записей */ }
+            }
+
+            const events = [];   // { day, sec, pct }
+            const add = (iso, sec, pct) => { const d = dayOf(iso); if (d) events.push({ day: d, sec, pct: pct === undefined ? null : pct }); };
+            reading.forEach(r => add(r.created_at, 'r', pctOf(r)));
+            words.forEach(r => add(r.created_at, 'r', pctOf(r)));
+            readingMini.forEach(r => add(r.created_at, 'r'));
+            listening.forEach(r => add(r.created_at, 'l', pctOf(r)));
+            response.forEach(r => add(r.created_at, 'l', pctOf(r)));
+            listeningMini.forEach(r => add(r.completed_at || r.created_at, 'l'));
+            // Build a Sentence уходит пачкой: одна отправка (минута + тип) = одно задание
+            const wGroups = new Set();
+            writing.forEach(r => {
+                const k = String(r.created_at || '').slice(0, 16) + '|' + String(r.task_type || '').toLowerCase();
+                if (!wGroups.has(k)) { wGroups.add(k); add(r.created_at, 'w'); }
+            });
+            miniWriting.forEach(r => add(r.created_at, 'w'));
+            speaking.forEach(a => { if (a.status === 'completed' || spAnswered.has(String(a.id))) add(a.completed_at || a.created_at, 's'); });
+            miniSpeaking.forEach(a => { if (a.status && a.status !== 'in_progress') add(a.completed_at || a.created_at, 's'); });
+            mockAttempts.forEach(a => add(a.completed_at, a.key));
+
+            const vocabDays = new Map();
+            const vocabWeek = { reviews: 0, learned: 0 };
+            const weekAgo = ymd(new Date(Date.now() - 6 * DAY));
+            vocab.forEach(v => {
+                const n = (Number(v.reviews) || 0) + (Number(v.learned) || 0);
+                const d = String(v.day || '').slice(0, 10);
+                if (n > 0 && d) vocabDays.set(d, n);
+                if (d >= weekAgo) { vocabWeek.reviews += Number(v.reviews) || 0; vocabWeek.learned += Number(v.learned) || 0; }
+            });
+
+            return { events, vocabDays, vocabWeek, done: {
+                reading: new Set([...words.map(r => 'w:' + r.task_id), ...reading.map(r => (String(r.task_type).toLowerCase() === 'academic' ? 'a:' : 'd:') + r.task_id)]),
+                listening: new Set([...listening.map(r => 't:' + r.task_id), ...response.map(r => 'r:' + r.set_number)]),
+                writing: new Set(writing.map(r => String(r.task_id))),
+                speaking: new Set(speaking.filter(a => a.status === 'completed' || spAnswered.has(String(a.id))).map(a => String(a.test_id)))
+            } };
+        }
+
+        async function loadActivity() {
+            const { events, vocabDays, vocabWeek } = await collectActivity();
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            const perDay = new Map();
+            events.forEach(e => perDay.set(e.day, (perDay.get(e.day) || 0) + 1));
+            const active = d => perDay.has(d) || vocabDays.has(d);
+
+            // Дни подряд: если сегодня ещё не занимались, серия не прерывается до конца дня
+            let streak = 0;
+            const cur = new Date(today);
+            if (!active(ymd(cur))) cur.setDate(cur.getDate() - 1);
+            while (active(ymd(cur))) { streak++; cur.setDate(cur.getDate() - 1); }
+            const allDays = [...new Set([...perDay.keys(), ...vocabDays.keys()])].sort();
+            let best = 0, run = 0, prev = null;
+            allDays.forEach(d => {
+                const p = d.split('-').map(Number);
+                const t = new Date(p[0], p[1] - 1, p[2]).getTime();
+                run = (prev !== null && Math.round((t - prev) / DAY) === 1) ? run + 1 : 1;
+                best = Math.max(best, run); prev = t;
+            });
+
+            const daysAgo = d => { const p = d.split('-').map(Number); return Math.round((today - new Date(p[0], p[1] - 1, p[2])) / DAY); };
+            const week = events.filter(e => daysAgo(e.day) >= 0 && daysAgo(e.day) < 7).length;
+            const lastWeek = events.filter(e => daysAgo(e.day) >= 7 && daysAgo(e.day) < 14).length;
+            const acc = sec => {
+                const list = events.filter(e => e.sec === sec && e.pct !== null && daysAgo(e.day) < 30);
+                return list.length ? { pct: Math.round(list.reduce((a, e) => a + e.pct, 0) / list.length), n: list.length } : null;
+            };
+            renderStats({ streak, best, week, lastWeek, r: acc('r'), l: acc('l') });
+            renderHeat(perDay, vocabDays, today);
+            renderMonth(events, today);
+            renderVocabWeek(vocabWeek);
+        }
+
+        function renderVocabWeek(v) {
+            const tile = (n, label) => `<div class="rounded-2xl bg-gray-50 px-4 py-3">
+                    <div class="text-xl font-extrabold text-slate-900 tnum">${n}</div>
+                    <div class="text-xs text-slate-500">${label}</div></div>`;
+            document.getElementById('activityVocab').innerHTML = `
+                <div class="flex items-baseline justify-between gap-3 mb-3">
+                    <h3 class="text-sm font-bold text-slate-800">Vocabulary this week</h3>
+                    <a href="vocabulary.html" class="text-xs font-bold text-indigo-600 hover:text-indigo-800">Open</a>
+                </div>
+                <div class="grid grid-cols-2 gap-3">${tile(v.reviews, v.reviews === 1 ? 'word reviewed' : 'words reviewed')}${tile(v.learned, v.learned === 1 ? 'new word' : 'new words')}</div>`;
+        }
+
+        function renderStats(s) {
+            const cell = (label, value, sub, extra) => `
+                <div class="p-5 sm:p-6 ${extra || ''}">
+                    <div class="text-sm font-semibold text-slate-500">${label}</div>
+                    <div class="mt-1 text-[28px] leading-tight font-extrabold text-slate-900 tnum">${value}</div>
+                    <div class="mt-1 text-xs text-slate-500">${sub}</div>
+                </div>`;
+            const diff = s.week - s.lastWeek;
+            const accCell = (name, a) => a
+                ? [a.pct + '%', `Last 30 days, ${a.n} ${a.n === 1 ? 'task' : 'tasks'}`]
+                : ['—', `No ${name} practice in 30 days`];
+            const [rv, rs] = accCell('Reading', s.r), [lv, ls] = accCell('Listening', s.l);
+            document.getElementById('statsStrip').innerHTML =
+                cell('Day streak', `${s.streak} ${s.streak === 1 ? 'day' : 'days'}`, s.streak ? `Best: ${s.best} ${s.best === 1 ? 'day' : 'days'}` : 'Practice today to start one', 'border-b lg:border-b-0 border-r border-gray-100')
+                + cell('This week', `${s.week} ${s.week === 1 ? 'task' : 'tasks'}`, s.lastWeek || s.week ? (diff > 0 ? `${diff} more than last week` : diff < 0 ? `${-diff} fewer than last week` : 'Same as last week') : 'Tasks finished in the last 7 days', 'border-b lg:border-b-0 lg:border-r border-gray-100')
+                + cell('Reading accuracy', rv, rs, 'border-r border-gray-100')
+                + cell('Listening accuracy', lv, ls, '');
+        }
+
+        function renderHeat(perDay, vocabDays, today) {
+            const WEEKS = 18;
+            // последняя колонка — текущая неделя (с понедельника)
+            const monday = new Date(today); monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+            const start = new Date(monday); start.setDate(start.getDate() - (WEEKS - 1) * 7);
+            let cells = '', activeDays = 0;
+            for (let i = 0; i < WEEKS * 7; i++) {
+                const d = new Date(start); d.setDate(start.getDate() + i);
+                const key = ymd(d);
+                if (d > today) { cells += '<span class="future"></span>'; continue; }
+                const n = perDay.get(key) || 0, w = vocabDays.get(key) || 0;
+                const lvl = n >= 4 ? 'l3' : n >= 2 ? 'l2' : (n >= 1 || w > 0) ? 'l1' : '';
+                if (lvl) activeDays++;
+                const tip = shortDate(d) + ': ' + (n ? n + (n === 1 ? ' task' : ' tasks') : 'no tasks') + (w ? ', vocabulary' : '');
+                cells += `<span class="${lvl}${key === ymd(today) ? ' today' : ''}" title="${tip}"></span>`;
+            }
+            document.getElementById('activityHeat').innerHTML = `
+                <div class="heat" style="grid-template-columns: repeat(${WEEKS}, minmax(0, 1fr))" role="img" aria-label="Practice activity: active on ${activeDays} of the last ${WEEKS * 7} days">${cells}</div>
+                <div class="flex items-center justify-between mt-3 text-[11px] text-slate-500">
+                    <span>${activeDays} active ${activeDays === 1 ? 'day' : 'days'}</span>
+                    <span class="flex items-center gap-1">Less <span class="w-2.5 h-2.5 rounded-[3px] bg-[#eef0f4]"></span><span class="w-2.5 h-2.5 rounded-[3px] bg-[#c7d2fe]"></span><span class="w-2.5 h-2.5 rounded-[3px] bg-[#818cf8]"></span><span class="w-2.5 h-2.5 rounded-[3px] bg-[#4f46e5]"></span> More</span>
+                </div>`;
+        }
+
+        function renderMonth(events, today) {
+            const prefix = ymd(today).slice(0, 7);
+            const counts = { r: 0, l: 0, w: 0, s: 0 };
+            events.forEach(e => { if (e.day.startsWith(prefix) && counts[e.sec] !== undefined) counts[e.sec]++; });
+            const max = Math.max(1, ...Object.values(counts));
+            const month = today.toLocaleDateString('en-US', { month: 'long' });
+            document.getElementById('activityMonth').innerHTML = `<h3 class="text-sm font-bold text-slate-800">Tasks in ${month}</h3>`
+                + SECTIONS.map(sec => `
+                    <div class="flex items-center gap-3 text-xs">
+                        <span class="w-16 shrink-0 font-semibold text-slate-600">${sec.name}</span>
+                        <span class="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden"><span class="block h-full rounded-full" style="width:${Math.round(counts[sec.key] / max * 100)}%;background:${sec.color}"></span></span>
+                        <span class="w-6 text-right font-bold text-slate-800 tnum">${counts[sec.key]}</span>
+                    </div>`).join('');
+        }
+
+        // ==========================================
+        // Разделы: сколько сделано из всех заданий
+        // ==========================================
+        async function countRows(table, mockFilter) {
+            let q = _supabase.from(table).select('id', { count: 'exact', head: true });
+            if (mockFilter === 'eq') q = q.eq('is_mock_only', false);
+            if (mockFilter === 'or') q = q.or('is_mock_only.eq.false,is_mock_only.is.null');
+            const { count, error } = await q;
+            if (error) throw error;
+            return count || 0;
+        }
+        async function countResponseSets() {
+            const sets = new Set();
+            for (let from = 0; from < 20000; from += 1000) {
+                const { data, error } = await _supabase.from('listening_questions').select('set_number')
+                    .or('is_mock_only.eq.false,is_mock_only.is.null').order('id', { ascending: true }).range(from, from + 999);
+                if (error) throw error;
+                (data || []).forEach(q => { if (q.set_number) sets.add(q.set_number); });
+                if (!data || data.length < 1000) break;
+            }
+            return sets.size;
+        }
+
+        async function loadSectionProgress() {
+            const box = document.getElementById('sectionCards');
+            const prof = currentUser.profile || {};
+            const open = sec => isTeacher() || prof[sec.access] === true;
+            const card = (sec, body) => `
+                <a href="${sec.link}" class="block bg-white p-5 rounded-3xl border border-gray-100 shadow-xs hover:border-gray-200 hover:shadow-sm transition group">
+                    <div class="flex items-center justify-between">
+                        <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background:${sec.color}14;color:${sec.color}"><i data-lucide="${sec.icon}" class="w-5 h-5"></i></div>
+                        <i data-lucide="chevron-right" class="w-4 h-4 text-gray-300 group-hover:text-gray-500 transition"></i>
+                    </div>
+                    <h3 class="mt-4 text-base font-bold text-slate-900">${sec.name}</h3>
+                    ${body}
+                </a>`;
+            const bar = (sec, done, total) => {
+                const pct = total ? Math.min(100, Math.round(done / total * 100)) : 0;
+                return `<p class="text-xs text-slate-500 mt-0.5"><span class="font-bold text-slate-800 tnum">${done}</span> of <span class="tnum">${total}</span> tasks done</p>
+                        <div class="mt-3 h-1.5 bg-gray-100 rounded-full overflow-hidden"><div class="h-full rounded-full" style="width:${pct}%;background:${sec.color}"></div></div>`;
+            };
+            box.innerHTML = SECTIONS.map(sec => card(sec, open(sec)
+                ? '<p class="text-xs text-gray-400 mt-0.5">Counting…</p><div class="mt-3 h-1.5 bg-gray-100 rounded-full"></div>'
+                : '<p class="text-xs text-slate-500 mt-0.5 flex items-center gap-1"><i data-lucide="lock" class="w-3 h-3"></i> Ask your teacher for access</p>')).join('');
+            icons();
+
+            const totals = {};
+            const safe = p => p.catch(e => { console.warn('Не удалось посчитать задания:', e.message || e); return null; });
+            const [cw, dl, ac, lt, rs, wt, st] = await Promise.all([
+                safe(countRows('complete_words_tasks', 'eq')), safe(countRows('daily_life_tasks', 'eq')), safe(countRows('academic_tasks', 'eq')),
+                safe(countRows('listening_tests', 'or')), safe(countResponseSets()),
+                safe(countRows('writing_tasks', 'eq')), safe(countRows('speaking_tests'))
+            ]);
+            const sum = (...v) => v.some(x => x === null) && v.every(x => x === null) ? null : v.reduce((a, x) => a + (x || 0), 0);
+            totals.r = sum(cw, dl, ac); totals.l = sum(lt, rs); totals.w = wt; totals.s = st;
+            const { done } = await collectActivity();
+            const doneCount = { r: done.reading.size, l: done.listening.size, w: done.writing.size, s: done.speaking.size };
+
+            box.innerHTML = SECTIONS.map(sec => {
+                if (!open(sec)) return card(sec, '<p class="text-xs text-slate-500 mt-0.5 flex items-center gap-1"><i data-lucide="lock" class="w-3 h-3"></i> Ask your teacher for access</p>');
+                const total = totals[sec.key];
+                if (total === null || total === undefined) return card(sec, '<p class="text-xs text-slate-500 mt-0.5">Open practice</p>');
+                return card(sec, bar(sec, Math.min(doneCount[sec.key], total), total));
+            }).join('');
+            icons();
         }
 
         // ==========================================
@@ -776,7 +1090,6 @@
         async function loadGeCard() {
             const box = document.getElementById('geCard');
             if (!box || !currentUser || currentUser.role === 'teacher' || currentUser.role === 'guest') return;
-            const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
             try {
                 const { count: nCourses, error: cErr } = await _supabase.from('ge_course_students')
                     .select('course_id', { count: 'exact', head: true }).eq('student_id', currentUser.id);
@@ -798,13 +1111,13 @@
                     lessons = l.data || []; tasks = t.data || []; answers = a.data || [];
                 }
                 const ansBy = new Map(answers.map(a => [a.task_id, a]));
-                const weekAgo = Date.now() - 7 * 86400000;
+                const weekAgo = Date.now() - 7 * DAY;
                 const fresh = answers.filter(a => a.status === 'reviewed' && a.feedback && a.reviewed_at && new Date(a.reviewed_at).getTime() > weekAgo).length;
 
                 const rows = open.map(a => {
                     const lesson = lessons.find(x => x.id === a.lesson_id);
                     if (!lesson) return null;
-                    const parts = [['class', 'Урок', a.class_open], ['homework', 'Домашка', a.homework_open]]
+                    const parts = [['class', 'Class', a.class_open], ['homework', 'Homework', a.homework_open]]
                         .filter(p => p[2])
                         .map(([part, label]) => {
                             const work = tasks.filter(t => t.lesson_id === lesson.id && t.part === part && t.type !== 'info');
@@ -822,11 +1135,11 @@
                     const part = (r.todo || r.parts[0] || {}).part || 'class';
                     const chips = r.parts.map(p => {
                         const full = p.total && p.done === p.total;
-                        return `<span class="text-[10px] font-bold px-2 py-1 rounded-lg ${full ? 'bg-emerald-50 text-emerald-700' : 'bg-indigo-50 text-indigo-600'}">${full ? '✓ ' : ''}${p.label}${p.total ? ' ' + p.done + '/' + p.total : ''}</span>`;
+                        return `<span class="text-[11px] font-bold px-2 py-1 rounded-lg ${full ? 'bg-emerald-50 text-emerald-700' : 'bg-indigo-50 text-indigo-600'}">${full ? '✓ ' : ''}${p.label}${p.total ? ' ' + p.done + '/' + p.total : ''}</span>`;
                     }).join('');
                     return `<a href="ge-lesson.html?lesson=${encodeURIComponent(r.lesson.id)}&part=${part}" class="flex items-center justify-between gap-3 p-3 rounded-2xl border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50/30 transition">
                                 <div class="min-w-0">
-                                    <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider truncate">${esc(c.title)}${u.title ? ' · ' + esc(u.title) : ''}</div>
+                                    <div class="text-xs text-slate-500 truncate">${esc(c.title)}${u.title ? ', ' + esc(u.title) : ''}</div>
                                     <div class="text-sm font-bold text-slate-800 truncate">${esc(r.lesson.title)}</div>
                                 </div>
                                 <div class="flex flex-wrap justify-end gap-1.5 shrink-0">${chips}</div>
@@ -837,83 +1150,19 @@
                 box.innerHTML = `
                     <div class="flex items-center justify-between gap-3">
                         <div class="flex items-center gap-3">
-                            <div class="p-2 bg-indigo-50 text-indigo-600 rounded-xl"><i data-lucide="graduation-cap" class="w-4 h-4"></i></div>
+                            <div class="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center"><i data-lucide="graduation-cap" class="w-5 h-5"></i></div>
                             <div>
                                 <h3 class="text-base font-bold text-slate-900 tracking-tight">General English</h3>
-                                <p class="text-[10px] text-gray-400 mt-0.5">Открытые уроки и домашние задания</p>
+                                <p class="text-xs text-slate-500 mt-0.5">Open lessons and homework</p>
                             </div>
                         </div>
-                        <a href="ge-courses.html" class="text-xs font-bold text-indigo-600 hover:text-indigo-800 whitespace-nowrap">Все курсы →</a>
+                        <a href="ge-courses.html" class="text-xs font-bold text-indigo-600 hover:text-indigo-800 whitespace-nowrap">All courses</a>
                     </div>
-                    ${fresh ? `<a href="ge-courses.html" class="block text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">💬 Преподаватель оставил комментарии к вашим ответам: ${fresh}</a>` : ''}
-                    ${rows.length ? rows.map(rowHtml).join('') : '<p class="text-xs text-gray-400 py-2">Уроки откроются, когда преподаватель начнёт занятие.</p>'}`;
-                try { lucide.createIcons(); } catch (e) {}
+                    ${fresh ? `<a href="ge-courses.html" class="block text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">Your teacher left comments on ${fresh} ${fresh === 1 ? 'answer' : 'answers'}</a>` : ''}
+                    ${rows.length ? rows.map(rowHtml).join('') : '<p class="text-xs text-slate-500 py-2">Lessons open when your teacher starts a class.</p>'}`;
+                icons();
             } catch (err) {
                 console.error('Не удалось загрузить General English:', err);
-            }
-        }
-
-        // ==========================================
-        // Цели: пересчёт и сохранение
-        // ==========================================
-        function updateGoals() {
-            const goalVals = SECTIONS.map(x => goals[x.key]).filter(v => v !== null);
-            const totalTarget = goalVals.length
-                ? Math.ceil((goalVals.reduce((a,b)=>a+b,0)/goalVals.length)*2)/2
-                : null;
-
-            const avg = currentAverage();
-            const diffEl = document.getElementById('points-diff');
-            const pctEl = document.getElementById('percent-achieved');
-            const bar = document.getElementById('goal-progress-bar');
-
-            if (avg === null || totalTarget === null) {
-                diffEl.innerText = avg === null ? 'нет результатов' : 'цели не заданы';
-                pctEl.innerText = '—';
-                bar.style.width = '0%';
-                renderFocusArea();
-                return;
-            }
-
-            const diff = totalTarget - avg;
-            let percent = totalTarget > 0 ? Math.round((avg / totalTarget) * 100) : 0;
-            if (percent > 100) percent = 100;
-
-            if (diff > 0)       diffEl.innerText = `${diff.toFixed(1)} points to go`;
-            else if (diff === 0) diffEl.innerText = 'Goal reached! 🎯';
-            else                 diffEl.innerText = `You exceeded your goal by ${Math.abs(diff).toFixed(1)} pts! 🔥`;
-
-            pctEl.innerText = `${percent}% Achieved`;
-            bar.style.width = `${percent}%`;
-
-            renderFocusArea();
-        }
-
-        async function saveGoals() {
-            const btn = document.getElementById('saveGoalsBtn');
-            const label = document.getElementById('saveGoalsLabel');
-            const original = label.innerText;
-            label.innerText = 'Сохраняю...';
-            btn.disabled = true;
-
-            try {
-                const { error } = await _supabase.from('profiles').update({
-                    target_r: goals.r,
-                    target_l: goals.l,
-                    target_s: goals.s,
-                    target_w: goals.w
-                }).eq('id', currentUser.id);
-                if (error) throw error;
-
-                label.innerText = 'Сохранено ✓';
-                setTimeout(() => { label.innerText = original; }, 2000);
-            } catch (err) {
-                console.error('Не удалось сохранить цели:', err);
-                label.innerText = 'Ошибка';
-                alert('Не удалось сохранить цели: ' + (err.message || err));
-                setTimeout(() => { label.innerText = original; }, 2000);
-            } finally {
-                btn.disabled = false;
             }
         }
     </script>
