@@ -19,10 +19,12 @@
 //   ContentVisibility.eye(table, ids, hidden, { compact })    // только кнопка
 (function () {
     const TABLES = ['complete_words_tasks', 'daily_life_tasks', 'academic_tasks',
-                    'mock_tests', 'writing_tasks', 'mini_mock_writing', 'full_tests'];
+                    'mock_tests', 'writing_tasks', 'mini_mock_writing', 'full_tests',
+                    'listening_tests', 'listening_questions', 'speaking_tests'];
     // Большие мок-тесты (full_tests) скрываются своей функцией — mock_visibility.sql
     // Задания практики: глазик убирает их только из практики, не из мок-тестов
-    const PRACTICE = ['complete_words_tasks', 'daily_life_tasks', 'academic_tasks', 'writing_tasks'];
+    const PRACTICE = ['complete_words_tasks', 'daily_life_tasks', 'academic_tasks', 'writing_tasks',
+                      'listening_tests', 'listening_questions', 'speaking_tests'];
 
     // Иконки встроены, чтобы глазик не зависел от загрузки lucide
     const ICON_EYE = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>';
@@ -156,8 +158,8 @@
 
         if (res.error) {
             const msg = res.error.message || String(res.error);
-            if (res.error.code === 'PGRST202' || /set_content_hidden|set_full_test_hidden/.test(msg)) {
-                alert('Глазик ещё не подключён в базе.\n\nЗапустите в Supabase файл ' + (isTest ? 'mock_visibility.sql' : 'content_visibility.sql') + ' и обновите страницу.');
+            if (res.error.code === 'PGRST202' || /set_content_hidden|set_full_test_hidden|не поддерживается/.test(msg)) {
+                alert('Глазик ещё не подключён в базе.\n\nЗапустите в Supabase файл ' + (isTest ? 'mock_visibility.sql' : 'content_visibility.sql, потом eye_practice_only.sql,') + ' и обновите страницу.');
             } else if (res.error.code === '42501') {
                 alert('Скрывать и открывать задания может только преподаватель.');
             } else {
