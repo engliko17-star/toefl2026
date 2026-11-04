@@ -8,7 +8,7 @@
 //                                      удалить, посмотреть отметки.
 //
 // Пункт задания — одна строка текста. Ссылку на задание платформы можно
-// вставить прямо в строку: у ученицы появится кнопка «Открыть».
+// вставить прямо в строку: у ученицы появится кнопка «Open».
 // =====================================================================
 (function () {
     'use strict';
@@ -53,22 +53,25 @@
     }
 
     var MONTHS = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
-    function fmtDate(iso) {
+    var MONTHS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    function fmtDate(iso, en) {
         var p = String(iso || '').split('-');
-        return p.length === 3 ? (+p[2]) + ' ' + MONTHS[(+p[1]) - 1] : '';
+        if (p.length !== 3) return '';
+        return en ? MONTHS_EN[(+p[1]) - 1] + ' ' + (+p[2]) : (+p[2]) + ' ' + MONTHS[(+p[1]) - 1];
     }
-    function dueChip(iso, allDone) {
+    // en — подписи для ученицы (дашборд на английском), иначе по-русски (профиль)
+    function dueChip(iso, allDone, en) {
         if (!iso) return '';
         var p = String(iso).split('-').map(Number);
         var due = new Date(p[0], p[1] - 1, p[2]);
         var t = new Date(); t.setHours(0, 0, 0, 0);
         var days = Math.round((due - t) / 864e5);
-        var text = 'до ' + fmtDate(iso);
+        var text = en ? 'Due ' + fmtDate(iso, true) : 'до ' + fmtDate(iso);
         var cls = 'bg-gray-50 text-gray-500 border-gray-100';
         if (!allDone) {
-            if (days < 0) { text = 'просрочено · ' + fmtDate(iso); cls = 'bg-rose-50 text-rose-600 border-rose-100'; }
-            else if (days === 0) { text = 'сегодня'; cls = 'bg-amber-50 text-amber-700 border-amber-100'; }
-            else if (days === 1) { text = 'до завтра'; cls = 'bg-amber-50 text-amber-700 border-amber-100'; }
+            if (days < 0) { text = en ? 'Overdue, was due ' + fmtDate(iso, true) : 'просрочено · ' + fmtDate(iso); cls = 'bg-rose-50 text-rose-600 border-rose-100'; }
+            else if (days === 0) { text = en ? 'Due today' : 'сегодня'; cls = 'bg-amber-50 text-amber-700 border-amber-100'; }
+            else if (days === 1) { text = en ? 'Due tomorrow' : 'до завтра'; cls = 'bg-amber-50 text-amber-700 border-amber-100'; }
         }
         return '<span class="shrink-0 text-[10px] font-bold px-2 py-1 rounded-lg border ' + cls + '">' + esc(text) + '</span>';
     }
@@ -110,6 +113,7 @@
         function render() {
             var active = list.filter(function (h) { return h.items.length && (!h.allDone || isRecent(h)); });
             var done = list.filter(function (h) { return h.items.length && h.allDone && !isRecent(h); });
+            box.dispatchEvent(new CustomEvent('homework:rendered', { detail: { count: active.length, open: active.filter(function (h) { return !h.allDone; }).length } }));
             if (!active.length && !done.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
             var open = active.filter(function (h) { return !h.allDone; });
             var left = open.reduce(function (s, h) { return s + h.items.length - h.nDone; }, 0);
@@ -118,14 +122,14 @@
             box.innerHTML = '<div class="bg-white p-5 sm:p-6 rounded-3xl border border-amber-100 shadow-sm">'
                 + '<div class="flex items-center justify-between gap-3 mb-4">'
                 +   '<div class="flex items-center gap-3"><div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0"><i data-lucide="notebook-pen" class="w-5 h-5"></i></div>'
-                +   '<div><h3 class="text-base font-bold text-slate-900 tracking-tight">Домашнее задание</h3>'
-                +   '<p class="text-[11px] text-gray-400 mt-0.5">Отмечайте сделанное — преподаватель это увидит</p></div></div>'
-                +   (left ? '<span class="shrink-0 text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-100 px-2.5 py-1 rounded-lg">Осталось: ' + left + '</span>'
-                          : '<span class="shrink-0 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-lg">Всё сделано ✓</span>')
+                +   '<div><h3 class="text-base font-bold text-slate-900 tracking-tight">Homework</h3>'
+                +   '<p class="text-xs text-gray-500 mt-0.5">Tick each task when it\'s done, your teacher sees your progress</p></div></div>'
+                +   (left ? '<span class="shrink-0 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-100 px-2.5 py-1 rounded-lg">' + left + ' left</span>'
+                          : '<span class="shrink-0 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-lg">All done ✓</span>')
                 + '</div>'
                 + '<div class="space-y-3">' + active.map(card).join('') + '</div>'
                 + (done.length ? '<button type="button" data-hw-showdone class="mt-3 text-xs font-bold text-gray-400 hover:text-slate-700 transition cursor-pointer">'
-                    + (showDone ? 'Скрыть выполненные' : 'Выполненные раньше (' + done.length + ')') + '</button>'
+                    + (showDone ? 'Hide completed' : 'Completed earlier (' + done.length + ')') + '</button>'
                     + (showDone ? '<div class="space-y-3 mt-3">' + done.map(card).join('') + '</div>' : '') : '')
                 + '<p data-hw-msg class="hidden mt-3 text-xs font-medium text-rose-600"></p>'
                 + '</div>';
@@ -136,12 +140,12 @@
             var pct = h.items.length ? Math.round(h.nDone / h.items.length * 100) : 0;
             return '<div class="rounded-2xl border ' + (h.allDone ? 'border-emerald-100 bg-emerald-50/30' : 'border-gray-100 bg-gray-50/40') + ' p-4">'
                 + '<div class="flex items-start justify-between gap-3">'
-                +   '<div class="min-w-0"><h4 class="text-sm font-bold text-slate-900">' + esc(h.title || 'Домашнее задание') + '</h4>'
+                +   '<div class="min-w-0"><h4 class="text-sm font-bold text-slate-900">' + esc(h.title || 'Homework') + '</h4>'
                 +   (h.note ? '<p class="text-xs text-slate-500 mt-1 whitespace-pre-line leading-relaxed">' + esc(h.note) + '</p>' : '') + '</div>'
-                +   dueChip(h.due_date, h.allDone)
+                +   dueChip(h.due_date, h.allDone, true)
                 + '</div>'
                 + '<div class="flex items-center gap-3 mt-3"><div class="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden"><div class="h-full ' + (h.allDone ? 'bg-emerald-500' : 'bg-amber-500') + ' rounded-full transition-all" style="width:' + pct + '%"></div></div>'
-                +   '<span class="text-[10px] font-bold text-gray-400">' + h.nDone + ' из ' + h.items.length + '</span></div>'
+                +   '<span class="text-[11px] font-bold text-gray-400">' + h.nDone + ' of ' + h.items.length + '</span></div>'
                 + '<ul class="mt-3 space-y-1">' + h.items.map(function (i) {
                     var url = safeUrl(i.url);
                     return '<li class="flex items-center gap-3 py-1">'
@@ -150,7 +154,7 @@
                         +   '<span class="text-sm ' + (i.done ? 'text-gray-400 line-through' : 'text-slate-700') + '">' + esc(i.text) + '</span>'
                         + '</label>'
                         + (url ? '<a href="' + esc(url) + '"' + (/^https?:/i.test(url) ? ' target="_blank" rel="noopener"' : '')
-                            + ' class="shrink-0 text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg transition flex items-center gap-1">Открыть <i data-lucide="arrow-right" class="w-3 h-3"></i></a>' : '')
+                            + ' class="shrink-0 text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg transition flex items-center gap-1">Open <i data-lucide="arrow-right" class="w-3 h-3"></i></a>' : '')
                         + '</li>';
                 }).join('') + '</ul></div>';
         }
@@ -175,7 +179,7 @@
             if (r.error) {
                 cb.checked = !want;
                 cb.disabled = false;
-                msg('Отметка не сохранилась — проверьте интернет и попробуйте ещё раз.');
+                msg('The tick wasn\'t saved. Check your connection and try again.');
                 return;
             }
             item.done = want;
@@ -192,6 +196,7 @@
         loadFor(user.id).then(function (l) { list = l; render(); }, function (err) {
             if (!missingTable(err)) console.warn('Домашнее задание не загрузилось:', err);
             box.classList.add('hidden');
+            box.dispatchEvent(new CustomEvent('homework:rendered', { detail: { count: 0 } }));
         });
     }
 
@@ -210,13 +215,13 @@
                 + '<div><h3 class="text-base font-bold text-slate-900">' + (h ? 'Изменить задание' : 'Новое задание') + '</h3>'
                 + '<p class="text-[11px] text-gray-400 mt-0.5">Ученица увидит его на своём дашборде</p></div>'
                 + '<label class="block"><span class="text-[10px] font-bold uppercase tracking-wider text-gray-400">Название</span>'
-                + '<input name="title" maxlength="200" value="' + esc(h ? h.title : '') + '" placeholder="Домашнее задание" class="mt-1 w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"></label>'
+                + '<input name="title" maxlength="200" value="' + esc(h ? h.title : '') + '" placeholder="Homework" class="mt-1 w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"></label>'
                 + '<label class="block"><span class="text-[10px] font-bold uppercase tracking-wider text-gray-400">Срок</span>'
                 + '<input name="due" type="date" value="' + esc(h && h.due_date ? h.due_date : '') + '" class="mt-1 w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"></label>'
                 + '<label class="block"><span class="text-[10px] font-bold uppercase tracking-wider text-gray-400">Пункты — каждый с новой строки</span>'
                 + '<textarea name="items" rows="6" placeholder="Read in Daily Life: тесты 12–15 read-daily.html&#10;Write an Email: Library hours&#10;Vocabulary: список 4" class="mt-1 w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-indigo-200">'
                 + esc(h ? itemsToText(h.items) : '') + '</textarea>'
-                + '<span class="block text-[11px] text-gray-400 mt-1">Ссылку на задание можно вставить прямо в строку — у ученицы появится кнопка «Открыть».</span></label>'
+                + '<span class="block text-[11px] text-gray-400 mt-1">Ссылку на задание можно вставить прямо в строку — у ученицы появится кнопка «Open». Дашборд ученицы на английском, так что название и пункты можно писать по-английски.</span></label>'
                 + '<label class="block"><span class="text-[10px] font-bold uppercase tracking-wider text-gray-400">Комментарий (необязательно)</span>'
                 + '<textarea name="note" rows="2" maxlength="2000" class="mt-1 w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200">' + esc(h && h.note ? h.note : '') + '</textarea></label>'
                 + '<div class="flex flex-wrap gap-2"><button type="submit" class="text-xs font-bold text-white bg-slate-900 hover:bg-indigo-600 px-4 py-2.5 rounded-xl transition cursor-pointer">' + (h ? 'Сохранить изменения' : 'Выдать задание') + '</button>'
@@ -230,7 +235,7 @@
             return list.map(function (h) {
                 return '<div class="bg-white p-5 rounded-2xl border ' + (String(editing) === String(h.id) ? 'border-indigo-300 ring-2 ring-indigo-100' : 'border-gray-100') + ' shadow-sm">'
                     + '<div class="flex items-start justify-between gap-3">'
-                    +   '<div class="min-w-0"><h4 class="text-sm font-bold text-slate-900">' + esc(h.title || 'Домашнее задание') + '</h4>'
+                    +   '<div class="min-w-0"><h4 class="text-sm font-bold text-slate-900">' + esc(h.title || 'Homework') + '</h4>'
                     +   '<p class="text-[10px] text-gray-400 mt-0.5">выдано ' + esc(doneAt(h.created_at)) + '</p></div>'
                     +   '<div class="flex items-center gap-2 shrink-0">' + dueChip(h.due_date, h.allDone)
                     +   '<span class="text-[10px] font-extrabold px-2 py-1 rounded-lg ' + (h.allDone ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-slate-600') + '">' + h.nDone + ' / ' + h.items.length + '</span></div>'
@@ -282,7 +287,7 @@
             var items = parseLines(f.items.value);
             if (!items.length) { msg('Добавьте хотя бы один пункт.'); return; }
             var row = {
-                title: f.title.value.trim() || 'Домашнее задание',
+                title: f.title.value.trim() || 'Homework',
                 due_date: f.due.value || null,
                 note: f.note.value.trim() || null,
                 updated_at: new Date().toISOString()
