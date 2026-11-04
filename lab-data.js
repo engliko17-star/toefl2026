@@ -60,8 +60,52 @@ function normQuestion(q) {
         text: q.text || q.question || '',
         type: q.type || '',
         options: Array.isArray(q.options) ? q.options : [],
-        correct: correct === null ? null : Number(correct)
+        correct: correct === null || correct === '' ? null : Number(correct),
+        insert: q.insertSentence || q.insert_sentence || ''
     };
+}
+
+// Select a Sentence и Insert Text отвечают кликом по тексту, а не выбором
+// варианта, поэтому «вариантов» в самом вопросе нет. Берём их из текста:
+//   Select a Sentence — предложения, размеченные [s1] … [sN]; ответ и ключ —
+//     номер метки (не порядковый: метки не обязаны идти подряд);
+//   Insert Text — места [sq1] / [■], по порядку A, B, C…; ответ и ключ — 0, 1, 2…
+function plainText(h) {
+    return String(h || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+        .replace(/\s+/g, ' ').trim();
+}
+const isType = (q, name) => String(q.type || '').trim().toLowerCase() === name;
+function prepClickQuestions(questions, passage) {
+    const sentences = [];
+    String(passage || '').replace(/\[s(\d+)\]([\s\S]*?)(?=\[s\d+\]|\[sq\d+\]|\[■\]|$)/g, (m, id, txt) => {
+        sentences.push({ id: Number(id), text: plainText(txt) });
+        return m;
+    });
+    const squares = (String(passage || '').match(/\[sq\d+\]|\[■\]/g) || []).length;
+    questions.forEach(q => {
+        if (isType(q, 'select a sentence')) {
+            q.mode = 'sentence';
+            q.values = sentences.map(x => x.id);
+            q.options = sentences.map(x => x.text);
+            q.optionNorm = q.options.map(normText);
+            q.correct = q.correct === null || isNaN(q.correct) ? null : q.values.indexOf(Number(q.correct));
+        } else if (isType(q, 'insert text')) {
+            q.mode = 'insert';
+            q.options = Array.from({ length: squares }, (_, i) => 'Позиция ' + String.fromCharCode(65 + i));
+        }
+    });
+    return questions;
+}
+
+// Ответ ученицы → номер варианта. У Select a Sentence ответ — номер метки [sN]
+// или (в полных пробниках) текст предложения; -1 — выбрано то, чего нет в списке.
+function answerIndex(q, g) {
+    if (g === undefined || g === null || g === '') return null;
+    if (!q.values) { const n = Number(g); return isFinite(n) ? n : null; }
+    const n = Number(g);
+    if (String(g).trim() !== '' && isFinite(n)) return q.values.indexOf(n);
+    return (q.optionNorm || []).indexOf(normText(g));
 }
 
 // Последовательное выполнение вместо Promise.all: чуть медленнее,
@@ -120,7 +164,7 @@ async function loadReading(byKey) {
     // соединение: часть запросов подвисала, а заодно срывалась проверка
     // профиля в auth.js и появлялся экран «Аккаунт на проверке».
     const [acad, daily, res, mini, big, attemptsMap] = await series([
-        () => fetchAllOpt('academic_tasks', 'id, title, questions, questions_count, is_mock_only', ['is_real_toefl']),
+        () => fetchAllOpt('academic_tasks', 'id, title, passage, questions, questions_count, is_mock_only', ['is_real_toefl']),
         () => fetchAllOpt('daily_life_tasks', 'id, title, questions, questions_count, is_mock_only', ['is_real_toefl']),
         () => fetchAllOpt('reading_results', 'task_id, task_type, user_answers, created_at', ['user_id'], q => q.in('task_type', ['academic', 'daily'])),
         () => fetchAllOpt('mock_test_results', 'test_id, user_answers, created_at', ['user_id']),
@@ -135,7 +179,7 @@ async function loadReading(byKey) {
             title: t.title || ('Без названия #' + t.id),
             kind: type === 'academic' ? 'Academic' : 'Daily Life',
             declared: t.questions_count, isMockOnly: t.is_mock_only, isToefl: t.is_real_toefl === true,
-            questions: asArray(t.questions).map(normQuestion),
+            questions: prepClickQuestions(asArray(t.questions).map(normQuestion), t.passage),
             perQuestion: true, attempts: []
         };
     });
@@ -175,9 +219,25 @@ async function loadReading(byKey) {
         if (!hit) return;
         const info = attemptInfo[row.attempt_id] || {};
         const g = (grouped[row.attempt_id + '|' + hit.key] ||= { key: hit.key, answers: {}, created_at: row.created_at, testId: info.test_id, user: info.user_id || null });
-        const opts = hit.task.questions[hit.index].options;
+        const q = hit.task.questions[hit.index];
+        if (q.mode === 'sentence') {
+            // в ответе — текст выбранного предложения
+            let k = (q.optionNorm || []).indexOf(normText(row.answer_text));
+            if (k === -1 && row.is_correct) k = q.correct;
+            if (k !== null && k !== -1) g.answers[hit.index] = q.values[k];
+            else if (row.answer_text) g.answers[hit.index] = row.answer_text;   // засчитается как «не из списка»
+            return;
+        }
+        if (q.mode === 'insert') {
+            // в ответе — номер позиции, с нуля
+            const n = Number(row.answer_text);
+            if (String(row.answer_text || '').trim() !== '' && isFinite(n)) g.answers[hit.index] = n;
+            else if (row.is_correct && q.correct !== null) g.answers[hit.index] = q.correct;
+            return;
+        }
+        const opts = q.options;
         let choice = opts.findIndex(o => normText(o) === normText(row.answer_text));
-        if (choice === -1 && row.is_correct) choice = hit.task.questions[hit.index].correct;
+        if (choice === -1 && row.is_correct) choice = q.correct;
         if (choice !== -1 && choice !== null) g.answers[hit.index] = choice;
     });
     Object.values(grouped).forEach(g => byKey[g.key].attempts.push({ source: 'mock', answers: g.answers, created_at: g.created_at, testId: g.testId, user: g.user }));
@@ -474,10 +534,10 @@ function analyse(task) {
     const scored = detailed.map(a => {
         let correct = 0, answered = 0;
         qs.forEach((q, i) => {
-            const g = a.answers[String(i)] ?? a.answers[i];
-            if (g === undefined || g === null) return;
+            const k = answerIndex(q, a.answers[String(i)] ?? a.answers[i]);
+            if (k === null) return;
             answered++;
-            if (Number(g) === q.correct) correct++;
+            if (k === q.correct) correct++;
         });
         return { a, correct, answered, share: n ? correct / n : 0 };
     }).filter(x => x.answered > 0);
@@ -499,21 +559,23 @@ function analyse(task) {
     const sorted = [...scored].sort((a, b) => b.share - a.share);
     const half = Math.floor(sorted.length / 2);
     const top = sorted.slice(0, half), bottom = sorted.slice(-half);
-    const get = (x, i) => x.a.answers[String(i)] ?? x.a.answers[i];
+    const get = (x, i) => answerIndex(qs[i], x.a.answers[String(i)] ?? x.a.answers[i]);
 
     task.items = qs.map((q, i) => {
         const counts = {};
         let answered = 0, correct = 0;
+        let outside = 0;   // выбрали то, чего нет среди вариантов (другое предложение, старая разметка)
         scored.forEach(x => {
             const g = get(x, i);
-            if (g === undefined || g === null) return;
-            answered++; counts[g] = (counts[g] || 0) + 1;
-            if (Number(g) === q.correct) correct++;
+            if (g === null) return;
+            answered++;
+            if (g >= 0) counts[g] = (counts[g] || 0) + 1; else outside++;
+            if (g === q.correct) correct++;
         });
         const share = answered ? correct / answered : null;
         const shareIn = grp => {
             let c = 0, tot = 0;
-            grp.forEach(x => { const g = get(x, i); if (g === undefined || g === null) return; tot++; if (Number(g) === q.correct) c++; });
+            grp.forEach(x => { const g = get(x, i); if (g === null) return; tot++; if (g === q.correct) c++; });
             return tot ? c / tot : null;
         };
         const pT = shareIn(top), pB = shareIn(bottom);
@@ -521,17 +583,18 @@ function analyse(task) {
         const dead = q.options.map((_, oi) => oi).filter(oi => oi !== q.correct && !counts[oi]);
 
         const flags = [];
-        if (!q.options.length) flags.push(['нет вариантов ответа', 'rose']);
+        if (!q.options.length) flags.push([q.mode === 'sentence' ? 'в тексте не размечены предложения [s1], [s2]… — выбирать не из чего'
+                                         : q.mode === 'insert' ? 'в тексте нет мест для вставки [sq1] / [■]' : 'нет вариантов ответа', 'rose']);
         else if (q.correct === null || isNaN(q.correct)) flags.push(['не отмечен правильный ответ', 'rose']);
-        else if (q.correct < 0 || q.correct >= q.options.length) flags.push(['правильный ответ вне списка вариантов', 'rose']);
+        else if (q.correct < 0 || q.correct >= q.options.length) flags.push([q.mode === 'sentence' ? 'в ключе номер предложения, которого нет в тексте' : 'правильный ответ вне списка вариантов', 'rose']);
         if (answered >= 3 && share === 0) flags.push(['никто не ответил верно — вероятно, ошибка в ключе', 'rose']);
         if (answered >= MIN_ATTEMPTS) {
             if (share === 1) flags.push(['все отвечают верно — вопрос ничего не проверяет', 'amber']);
             if (discrimination !== null && discrimination < 0) flags.push(['сильные ошибаются чаще слабых — проверьте ключ и формулировку', 'rose']);
-            if (dead.length && q.options.length > 2) flags.push([`вариант(ы) ${dead.map(d => String.fromCharCode(65 + d)).join(', ')} никто не выбирает — их можно усилить`, 'amber']);
+            if (dead.length && q.options.length > 2 && q.mode !== 'sentence') flags.push([`вариант(ы) ${dead.map(d => String.fromCharCode(65 + d)).join(', ')} никто не выбирает — их можно усилить`, 'amber']);
         }
         const cat = task.type === 'std' ? (q.type ? typeLabel(q.type) : task.kind) : typeLabel(q.type);
-        return { i, q, counts, answered, correct, share, discrimination, dead, flags, cat };
+        return { i, q, counts, outside, answered, correct, share, discrimination, dead, flags, cat };
     });
 
     task.health = [];
