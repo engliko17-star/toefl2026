@@ -165,7 +165,9 @@
     async function fromDb(kind, client, userId) {
         var cfg = KINDS[kind];
         try {
-            var r = await client.from(cfg.table).select('id, title').eq('is_mock_only', false).order('id', { ascending: true });
+            // is_hidden — глазик: скрытое в практике не предлагаем (пока колонки нет — без неё)
+            var r = await client.from(cfg.table).select('id, title, is_hidden').eq('is_mock_only', false).order('id', { ascending: true });
+            if (r && r.error) r = await client.from(cfg.table).select('id, title').eq('is_mock_only', false).order('id', { ascending: true });
             if (!r || r.error || !Array.isArray(r.data)) return null;
             var done = {};
             if (userId) {
@@ -174,7 +176,7 @@
                 var r2 = await q;
                 if (r2 && !r2.error && Array.isArray(r2.data)) r2.data.forEach(function (x) { done[String(x.task_id)] = true; });
             }
-            var items = r.data.map(function (t) {
+            var items = r.data.filter(function (t) { return t.is_hidden !== true; }).map(function (t) {
                 return { id: String(t.id), done: !!done[String(t.id)], title: String(t.title || '').slice(0, 140), label: '' };
             });
             var old = load(kind);
