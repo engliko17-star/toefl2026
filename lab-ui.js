@@ -52,35 +52,45 @@ function flagChips(flags) {
 function renderItem(it) {
     if (it.word) return renderWordItem(it);
     const reliable = it.answered >= MIN_ATTEMPTS;
-    const opts = it.q.options.map((o, oi) => {
+    const q = it.q;
+    // Select a Sentence: предложений в тексте много — показываем правильное
+    // и те, что выбирали, остальные одной строкой
+    const shownIdx = q.options.map((_, oi) => oi).filter(oi => q.mode !== 'sentence' || oi === q.correct || it.counts[oi]);
+    const label = oi => q.mode === 'sentence' ? 's' + q.values[oi] : String.fromCharCode(65 + oi);
+    const rest = q.options.length - shownIdx.length;
+    const opts = shownIdx.map(oi => {
+        const o = q.options[oi];
         const n = it.counts[oi] || 0;
         const share = it.answered ? n / it.answered : 0;
-        const ok = oi === it.q.correct;
+        const ok = oi === q.correct;
         return `
-            <div class="grid grid-cols-[18px_minmax(60px,140px)_28px_1fr] items-center gap-2 text-xs">
-                <span class="font-bold ${ok ? 'text-emerald-600' : 'text-gray-400'}" title="${ok ? 'Правильный ответ' : ''}">${String.fromCharCode(65 + oi)}</span>
+            <div class="grid grid-cols-[28px_minmax(60px,140px)_28px_1fr] items-center gap-2 text-xs">
+                <span class="font-bold ${ok ? 'text-emerald-600' : 'text-gray-400'}" title="${ok ? 'Правильный ответ' : ''}">${label(oi)}</span>
                 <div class="h-3.5 bg-gray-100 rounded-md overflow-hidden">
                     <div class="h-full ${ok ? 'bg-emerald-500' : 'bg-slate-300'}" style="width:${Math.round(share * 100)}%"></div>
                 </div>
                 <span class="text-right text-gray-500 tabular-nums">${n}</span>
                 <span class="truncate ${ok ? 'text-slate-800 font-medium' : 'text-gray-600'}" title="${esc(o)}">${esc(o)}</span>
             </div>`;
-    }).join('');
+    }).join('')
+        + (q.mode === 'sentence' && rest > 0 ? `<p class="text-[11px] text-gray-400 pl-9">Остальные ${rest} ${rest === 1 ? 'предложение' : rest < 5 ? 'предложения' : 'предложений'} текста не выбирали</p>` : '')
+        + (it.outside ? `<p class="text-[11px] text-amber-700 pl-9">Ещё ${it.outside} — выбрано то, чего нет в разметке текста</p>` : '');
     const d = discInfo(it.discrimination);
     return `
     <div class="border border-gray-100 rounded-2xl p-4">
         <div class="flex items-start gap-3 mb-3">
             <span class="text-[11px] font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded-lg shrink-0">${it.i + 1}</span>
             <div class="min-w-0 flex-1">
-                <p class="text-sm text-slate-800 leading-relaxed">${esc(it.q.text || '(без текста)')}</p>
-                ${it.cat && it.cat !== 'Без типа' ? `<span class="text-[11px] font-semibold text-gray-400">${esc(it.cat)}</span>` : ''}
+                <p class="text-sm text-slate-800 leading-relaxed">${esc(q.text || '(без текста)')}</p>
+                ${q.mode === 'insert' && q.insert ? `<p class="text-xs text-slate-500 mt-1 italic">Вставить: «${esc(q.insert)}»</p>` : ''}
+                ${it.cat && it.cat !== 'Без типа' ? `<span class="text-[11px] font-semibold text-gray-400">${esc(it.cat)}${q.mode ? ' · ответ кликом по тексту' : ''}</span>` : ''}
             </div>
             <div class="text-right shrink-0">
                 <p class="text-base font-bold tabular-nums ${shareCls(it.share)}">${pct(it.share)}</p>
                 <p class="text-[11px] text-gray-400">${it.answered ? `верно ${it.correct} из ${it.answered}` : 'нет ответов'}</p>
             </div>
         </div>
-        <div class="space-y-1.5">${opts || '<p class="text-xs text-rose-600">Нет вариантов ответа</p>'}</div>
+        <div class="space-y-1.5">${opts || `<p class="text-xs text-rose-600">${q.mode === 'sentence' ? 'В тексте нет размеченных предложений [s1], [s2]…' : q.mode === 'insert' ? 'В тексте нет мест для вставки' : 'Нет вариантов ответа'}</p>`}</div>
         <p class="mt-3 text-[11px] ${reliable ? 'text-gray-500' : 'text-gray-400'}" title="${esc(d.tip)}">
             Отделяет сильных от слабых: <b class="${d.cls}">${d.text}</b>${!reliable && it.answered ? ' · пока мало ответов для выводов' : ''}
         </p>
