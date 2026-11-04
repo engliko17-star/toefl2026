@@ -284,23 +284,36 @@
         }
 
         // Количество заданий раньше было вписано руками («20 Sets», «18 Tracks»)
-        async function loadHubCounts() {
+        // Скрытое глазиком ученице не считаем: в практике его не видно
+        // (пока колонки is_hidden нет — считаем как раньше)
+        async function loadHubCounts(user) {
             const put = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+            const skipHidden = !(user && user.role === 'teacher');
             try {
-                const sets = new Set();
+                const sets = new Set(), hiddenSets = new Set();
+                let cols = skipHidden ? 'set_number, is_hidden' : 'set_number';
                 for (let from = 0; ; from += 1000) {
-                    const { data, error } = await db.from('listening_questions').select('set_number')
+                    let { data, error } = await db.from('listening_questions').select(cols)
                         .or('is_mock_only.eq.false,is_mock_only.is.null').order('id', { ascending: true }).range(from, from + 999);
+                    if (error && cols !== 'set_number' && /is_hidden/.test(error.message || '')) {
+                        cols = 'set_number'; from -= 1000; continue;
+                    }
                     if (error) throw error;
-                    (data || []).forEach(q => { if (q.set_number) sets.add(q.set_number); });
+                    (data || []).forEach(q => { if (q.set_number) { sets.add(q.set_number); if (q.is_hidden === true) hiddenSets.add(q.set_number); } });
                     if (!data || data.length < 1000) break;
                 }
+                hiddenSets.forEach(sn => sets.delete(sn));
                 put('hub-count-response', sets.size + (sets.size === 1 ? ' Set' : ' Sets'));
             } catch (e) { put('hub-count-response', '—'); }
             for (const type of ['conversation', 'announcement', 'academic']) {
                 try {
-                    const { count, error } = await db.from('listening_tests').select('id', { count: 'exact', head: true })
-                        .eq('task_type', type).or('is_mock_only.eq.false,is_mock_only.is.null');
+                    const run = withHidden => {
+                        let q = db.from('listening_tests').select('id', { count: 'exact', head: true })
+                            .eq('task_type', type).or('is_mock_only.eq.false,is_mock_only.is.null');
+                        return withHidden ? q.not('is_hidden', 'is', true) : q;
+                    };
+                    let { count, error } = await run(skipHidden);
+                    if (error && skipHidden) ({ count, error } = await run(false));
                     if (error) throw error;
                     put('hub-count-' + type, (count || 0) + (count === 1 ? ' Track' : ' Tracks'));
                 } catch (e) { put('hub-count-' + type, '—'); }
@@ -331,7 +344,7 @@
                 const user = await window.requireAuth();
                 if (!user) return;
 
-                loadHubCounts();
+                loadHubCounts(user);
                 await fetchAndRenderListeningAnalytics(user);
             } catch (err) {
                 console.error("Auth initialization error:", err);
