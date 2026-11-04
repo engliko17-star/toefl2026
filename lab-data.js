@@ -2,18 +2,28 @@
 // Общие данные лаборатории: загрузка и анализ.
 // Используется двумя страницами — content-lab.html (материал)
 // и mock-lab.html (пробники). Правка считается один раз.
+//
+// У каждого прохождения запоминается, чьё оно (user) — для статистики
+// по ученицам. Свои (преподавательские) прохождения по умолчанию
+// не учитываются: вы знаете ответы, и задание выглядело бы легче.
+// У задания — пометка TOEFL (is_real_toefl), если она есть в базе.
 // ==========================================================
 
 const MIN_ATTEMPTS = 5;
 const SECTIONS = {
-    reading:   { title: 'Reading',   icon: 'book-text',  color: 'indigo' },
-    listening: { title: 'Listening', icon: 'headphones', color: 'teal' },
+    reading:   { title: 'Reading',   icon: 'book-text',  color: 'indigo', hex: '#4f46e5' },
+    listening: { title: 'Listening', icon: 'headphones', color: 'teal',   hex: '#0d9488' },
     // В этих секциях правильность определяет преподаватель,
     // поэтому вместо доли верных ответов считаем проверку и охват.
-    writing:   { title: 'Writing',   icon: 'pen-tool',   color: 'amber',  manual: true },
-    speaking:  { title: 'Speaking',  icon: 'mic',        color: 'rose',   manual: true }
+    writing:   { title: 'Writing',   icon: 'pen-tool',   color: 'amber',  hex: '#d97706', manual: true },
+    speaking:  { title: 'Speaking',  icon: 'mic',        color: 'rose',   hex: '#e11d48', manual: true }
 };
 const SOURCE_LABEL = { practice: 'Практика', minimock: 'Мини-пробники', mock: 'Полные пробники' };
+
+let tasks = [];            // все задания после анализа
+let labProfiles = {};      // id → профиль (имя для статистики по ученицам)
+let labTeacherId = null;   // кто смотрит страницу
+let labIncludeTeacher = false;
 
 function db() {
     if (typeof _supabase !== 'undefined' && _supabase) return _supabase;
@@ -33,6 +43,14 @@ function parseJson(raw) {
 }
 function asArray(raw) { const v = parseJson(raw); return Array.isArray(v) ? v : []; }
 
+// Тип вопроса: «inference» → «Inference», пустой — «Без типа»
+function typeLabel(t) {
+    const s = String(t || '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!s) return 'Без типа';
+    // «Choose a Response» уже записан как надо — не трогаем
+    return /[A-Z]/.test(s) ? s : s.replace(/\b[a-z]/g, c => c.toUpperCase());
+}
+
 // Вопрос приводим к общему виду: текст, варианты, номер верного
 function normQuestion(q) {
     const correct = (q.correct !== undefined) ? q.correct
@@ -46,8 +64,6 @@ function normQuestion(q) {
     };
 }
 
-// Если запрос завис, ждать вечно нельзя: страница должна сказать,
-// на чём именно она остановилась.
 // Последовательное выполнение вместо Promise.all: чуть медленнее,
 // но не забивает соединение десятком параллельных запросов.
 async function series(makers) {
@@ -58,6 +74,8 @@ async function series(makers) {
     return out;
 }
 
+// Если запрос завис, ждать вечно нельзя: страница должна сказать,
+// на чём именно она остановилась.
 function withTimeout(promise, ms, label) {
     return Promise.race([
         promise,
@@ -80,6 +98,20 @@ async function fetchAll(table, columns, tune) {
     }
 }
 
+// Колонки, которых в базе может не быть (is_real_toefl, user_id в старых
+// таблицах): сначала просим с ними, если базе такая колонка не знакома — без них.
+async function fetchAllOpt(table, columns, optional, tune) {
+    const extra = (optional || []).filter(Boolean);
+    if (!extra.length) return fetchAll(table, columns, tune);
+    try {
+        return await fetchAll(table, columns + ', ' + extra.join(', '), tune);
+    } catch (e) {
+        if (!/column|42703|schema cache/i.test(String(e.message || e.code || ''))) throw e;
+        console.info('[лаборатория] ' + table + ': нет колонок ' + extra.join(', ') + ' — без них');
+        return fetchAll(table, columns, tune);
+    }
+}
+
 // ==========================================
 // READING
 // ==========================================
@@ -88,12 +120,12 @@ async function loadReading(byKey) {
     // соединение: часть запросов подвисала, а заодно срывалась проверка
     // профиля в auth.js и появлялся экран «Аккаунт на проверке».
     const [acad, daily, res, mini, big, attemptsMap] = await series([
-        () => fetchAll('academic_tasks', 'id, title, questions, questions_count, is_mock_only'),
-        () => fetchAll('daily_life_tasks', 'id, title, questions, questions_count, is_mock_only'),
-        () => fetchAll('reading_results', 'task_id, task_type, user_answers, created_at', q => q.in('task_type', ['academic', 'daily'])),
-        () => fetchAll('mock_test_results', 'test_id, user_answers, created_at'),
+        () => fetchAllOpt('academic_tasks', 'id, title, questions, questions_count, is_mock_only', ['is_real_toefl']),
+        () => fetchAllOpt('daily_life_tasks', 'id, title, questions, questions_count, is_mock_only', ['is_real_toefl']),
+        () => fetchAllOpt('reading_results', 'task_id, task_type, user_answers, created_at', ['user_id'], q => q.in('task_type', ['academic', 'daily'])),
+        () => fetchAllOpt('mock_test_results', 'test_id, user_answers, created_at', ['user_id']),
         () => fetchAll('big_mock_answers', 'attempt_id, answer_json, answer_text, is_correct, created_at', q => q.in('task_type', ['academic', 'daily', 'daily_life'])),
-        () => fetchAll('big_mock_attempts', 'id, test_id')
+        () => fetchAllOpt('big_mock_attempts', 'id, test_id', ['user_id'])
     ]);
 
     const add = (rows, type) => (rows || []).forEach(t => {
@@ -102,7 +134,7 @@ async function loadReading(byKey) {
             section: 'reading', type, id: t.id,
             title: t.title || ('Без названия #' + t.id),
             kind: type === 'academic' ? 'Academic' : 'Daily Life',
-            declared: t.questions_count, isMockOnly: t.is_mock_only,
+            declared: t.questions_count, isMockOnly: t.is_mock_only, isToefl: t.is_real_toefl === true,
             questions: asArray(t.questions).map(normQuestion),
             perQuestion: true, attempts: []
         };
@@ -114,45 +146,86 @@ async function loadReading(byKey) {
         const t = byKey['reading:' + r.task_type + ':' + r.task_id];
         if (!t) return;
         const answers = {};
-        Object.entries(r.user_answers || {}).forEach(([k, v]) => {
+        Object.entries(parseJson(r.user_answers) || {}).forEach(([k, v]) => {
             if (v !== null && v !== '') answers[k] = Number(v);
         });
-        t.attempts.push({ source: 'practice', answers, created_at: r.created_at });
+        t.attempts.push({ source: 'practice', answers, created_at: r.created_at, user: r.user_id || null });
     });
 
     // мини-пробники: ключи academic_62_3
     mini.forEach(row => {
         const byTask = {};
-        Object.entries(row.user_answers || {}).forEach(([k, v]) => {
+        Object.entries(parseJson(row.user_answers) || {}).forEach(([k, v]) => {
             const m = /^(academic|daily)_(\d+)_(\d+)$/.exec(k);
             if (!m || v === null || v === '') return;
             (byTask['reading:' + m[1] + ':' + m[2]] ||= {})[m[3]] = Number(v);
         });
         Object.entries(byTask).forEach(([key, answers]) => {
-            if (byKey[key]) byKey[key].attempts.push({ source: 'minimock', answers, created_at: row.created_at, testId: row.test_id });
+            if (byKey[key]) byKey[key].attempts.push({ source: 'minimock', answers, created_at: row.created_at, testId: row.test_id, user: row.user_id || null });
         });
     });
 
     // полные пробники: вопрос и ответ текстом
-    const attemptTest = {};
-    (attemptsMap || []).forEach(a => attemptTest[a.id] = a.test_id);
+    const attemptInfo = {};
+    (attemptsMap || []).forEach(a => attemptInfo[a.id] = a);
     const lookup = buildLookup(byKey, 'reading');
     const grouped = {};
     big.forEach(row => {
-        const hit = lookup[normText((row.answer_json || {}).question)];
+        const hit = lookup[normText((parseJson(row.answer_json) || {}).question)];
         if (!hit) return;
-        const g = (grouped[row.attempt_id + '|' + hit.key] ||= { key: hit.key, answers: {}, created_at: row.created_at, testId: attemptTest[row.attempt_id] });
+        const info = attemptInfo[row.attempt_id] || {};
+        const g = (grouped[row.attempt_id + '|' + hit.key] ||= { key: hit.key, answers: {}, created_at: row.created_at, testId: info.test_id, user: info.user_id || null });
         const opts = hit.task.questions[hit.index].options;
         let choice = opts.findIndex(o => normText(o) === normText(row.answer_text));
         if (choice === -1 && row.is_correct) choice = hit.task.questions[hit.index].correct;
         if (choice !== -1 && choice !== null) g.answers[hit.index] = choice;
     });
-    Object.values(grouped).forEach(g => byKey[g.key].attempts.push({ source: 'mock', answers: g.answers, created_at: g.created_at, testId: g.testId }));
+    Object.values(grouped).forEach(g => byKey[g.key].attempts.push({ source: 'mock', answers: g.answers, created_at: g.created_at, testId: g.testId, user: g.user }));
+
+    await loadCompleteWords(byKey);
+}
+
+// Complete the Words: «вопрос» — слово с пропущенными буквами.
+// Ответы практики — буквы по словам: [["a","t"], ["e"], …]
+async function loadCompleteWords(byKey) {
+    let list = [], res = [];
+    try {
+        [list, res] = await series([
+            () => fetchAllOpt('complete_words_tasks', 'id, title, passage, is_mock_only', ['is_real_toefl']),
+            () => fetchAllOpt('complete_words_results', 'task_id, score_percent, created_at', ['user_id', 'user_answers'])
+        ]);
+    } catch (e) {
+        console.warn('Complete the Words:', e.message || e);
+        return;
+    }
+    list.forEach(t => {
+        const words = [];
+        String(t.passage || '').replace(/\S*(?:\[.\])+\S*/g, w => {
+            const letters = (w.match(/\[(.)\]/g) || []).map(m => m.slice(1, 2));
+            const clean = x => x.replace(/^[("«“']+|[.,;:!?)"»”']+$/g, '');   // знаки препинания рядом со словом — не часть слова
+            words.push({ text: clean(w.replace(/\[(.)\]/g, '_')), full: clean(w.replace(/\[(.)\]/g, '$1')), letters });
+            return w;
+        });
+        byKey['reading:cwords:' + t.id] = {
+            key: 'reading:cwords:' + t.id, section: 'reading', type: 'cwords', id: t.id,
+            title: t.title || ('Без названия #' + t.id), kind: 'Complete the Words',
+            isMockOnly: t.is_mock_only, isToefl: t.is_real_toefl === true,
+            cwords: true, words, questions: words.map(w => ({ text: w.text, type: 'Complete the Words', options: [], correct: null })),
+            attempts: []
+        };
+    });
+    res.forEach(r => {
+        const t = byKey['reading:cwords:' + r.task_id];
+        if (!t) return;
+        const saved = parseJson(r.user_answers);
+        const share = r.score_percent !== null && r.score_percent !== undefined && isFinite(Number(r.score_percent)) ? Number(r.score_percent) / 100 : null;
+        t.attempts.push({ source: 'practice', answers: Array.isArray(saved) ? saved : null, share, created_at: r.created_at, user: r.user_id || null });
+    });
 }
 
 function buildLookup(byKey, section) {
     const map = {};
-    Object.values(byKey).filter(t => t.section === section).forEach(task => {
+    Object.values(byKey).filter(t => t.section === section && !t.cwords).forEach(task => {
         task.questions.forEach((q, i) => {
             const t = normText(q.text);
             if (t && !map[t]) map[t] = { key: task.key, task, index: i };
@@ -166,22 +239,22 @@ function buildLookup(byKey, section) {
 // ==========================================
 async function loadListening(byKey) {
     const [tests, shortQs, res, mini, big, lAttempts] = await series([
-        () => fetchAll('listening_tests', 'id, task_type, title, questions, is_mock_only'),
-        () => fetchAll('listening_questions', 'id, set_number, options, correct_answer, transcript, is_mock_only'),
-        () => fetchAll('listening_results', 'task_id, task_type, score_earned, score_total, user_answers, created_at'),
-        () => fetchAll('listening_mini_mock_results', 'mock_test_id, detailed_answers, completed_at'),
+        () => fetchAllOpt('listening_tests', 'id, task_type, title, questions, is_mock_only', ['is_real_toefl']),
+        () => fetchAllOpt('listening_questions', 'id, set_number, options, correct_answer, transcript, is_mock_only', ['is_real_toefl']),
+        () => fetchAllOpt('listening_results', 'task_id, task_type, score_earned, score_total, user_answers, created_at', ['user_id']),
+        () => fetchAllOpt('listening_mini_mock_results', 'mock_test_id, detailed_answers, completed_at', ['user_id']),
         () => fetchAll('big_mock_listening_answers', 'attempt_id, user_answer, is_correct, created_at'),
-        () => fetchAll('big_mock_listening_attempts', 'id, test_id')
+        () => fetchAllOpt('big_mock_listening_attempts', 'id, test_id', ['user_id'])
     ]);
-    const respRes = await fetchAll('response_results', 'set_number, user_answers, created_at');
+    const respRes = await fetchAllOpt('response_results', 'set_number, user_answers, created_at', ['user_id']);
 
     // задания с несколькими вопросами (диалоги, объявления, лекции)
     tests.forEach(t => {
         byKey['listening:std:' + t.id] = {
             key: 'listening:std:' + t.id, section: 'listening', type: 'std', id: t.id,
             title: t.title || ('Без названия #' + t.id),
-            kind: ({ conversation: 'Диалог', announcement: 'Объявление', academic: 'Лекция' })[t.task_type] || (t.task_type || 'Задание'),
-            isMockOnly: t.is_mock_only,
+            kind: ({ conversation: 'Conversation', announcement: 'Announcement', academic: 'Academic Talk' })[t.task_type] || (t.task_type || 'Задание'),
+            isMockOnly: t.is_mock_only, isToefl: t.is_real_toefl === true,
             questions: asArray(t.questions).map(normQuestion),
             perQuestion: true, attempts: []
         };
@@ -194,11 +267,13 @@ async function loadListening(byKey) {
         rows.sort((a, b) => a.id - b.id);
         byKey['listening:resp:' + set] = {
             key: 'listening:resp:' + set, section: 'listening', type: 'resp', id: Number(set),
-            title: 'Choose a Response · набор ' + set,
-            kind: 'Короткие реплики',
+            title: 'Choose a Response, набор ' + set,
+            kind: 'Choose a Response',
             isMockOnly: rows.every(r => r.is_mock_only),
+            isToefl: rows.length > 0 && rows.every(r => r.is_real_toefl === true),
             questions: rows.map(r => normQuestion({
                 text: r.transcript || ('Вопрос #' + r.id),
+                type: 'Choose a Response',
                 options: asArray(r.options), correct_answer: r.correct_answer
             })),
             qIds: rows.map(r => r.id),
@@ -215,7 +290,7 @@ async function loadListening(byKey) {
             const idx = t.qIds.indexOf(a.question_id);
             if (idx !== -1 && a.selected_index !== null) answers[idx] = Number(a.selected_index);
         });
-        t.attempts.push({ source: 'practice', answers, created_at: r.created_at });
+        t.attempts.push({ source: 'practice', answers, created_at: r.created_at, user: r.user_id || null });
     });
 
     // практика остальных заданий: с недавних пор сохраняются ответы
@@ -232,7 +307,7 @@ async function loadListening(byKey) {
             });
         }
         t.attempts.push({
-            source: 'practice', answers, created_at: r.created_at,
+            source: 'practice', answers, created_at: r.created_at, user: r.user_id || null,
             share: r.score_total ? r.score_earned / r.score_total : null
         });
     });
@@ -253,23 +328,24 @@ async function loadListening(byKey) {
             }
         });
         Object.entries(byTask).forEach(([key, answers]) => {
-            if (byKey[key]) byKey[key].attempts.push({ source: 'minimock', answers, created_at: row.completed_at, testId: row.mock_test_id });
+            if (byKey[key]) byKey[key].attempts.push({ source: 'minimock', answers, created_at: row.completed_at, testId: row.mock_test_id, user: row.user_id || null });
         });
     });
 
     // полные пробники: в user_answer лежит текст вопроса и выбранный вариант
-    const attemptTest = {};
-    (lAttempts || []).forEach(a => attemptTest[a.id] = a.test_id);
+    const attemptInfo = {};
+    (lAttempts || []).forEach(a => attemptInfo[a.id] = a);
     const lookup = buildLookup(byKey, 'listening');
     const grouped = {};
     big.forEach(row => {
         const d = parseJson(row.user_answer) || {};
         const hit = lookup[normText(d.question_text)];
         if (!hit || d.choice_index === null || d.choice_index === undefined) return;
-        const g = (grouped[row.attempt_id + '|' + hit.key] ||= { key: hit.key, answers: {}, created_at: row.created_at, testId: attemptTest[row.attempt_id] });
+        const info = attemptInfo[row.attempt_id] || {};
+        const g = (grouped[row.attempt_id + '|' + hit.key] ||= { key: hit.key, answers: {}, created_at: row.created_at, testId: info.test_id, user: info.user_id || null });
         g.answers[hit.index] = Number(d.choice_index);
     });
-    Object.values(grouped).forEach(g => byKey[g.key].attempts.push({ source: 'mock', answers: g.answers, created_at: g.created_at, testId: g.testId }));
+    Object.values(grouped).forEach(g => byKey[g.key].attempts.push({ source: 'mock', answers: g.answers, created_at: g.created_at, testId: g.testId, user: g.user }));
 }
 
 // ==========================================
@@ -279,15 +355,15 @@ async function loadListening(byKey) {
 // сколько проверено, что ждёт очереди и какие задания не давали ни разу.
 async function loadManual(byKey) {
     let wTasks = [], sTasks = [];
-    try { wTasks = await fetchAll('writing_tasks', 'id, title, type, category, is_mock_only'); } catch (e) { console.warn('writing_tasks:', e.message); }
-    try { sTasks = await fetchAll('speaking_tests', 'id, title, type'); } catch (e) { console.warn('speaking_tests:', e.message); }
+    try { wTasks = await fetchAllOpt('writing_tasks', 'id, title, type, is_mock_only', ['is_real_toefl']); } catch (e) { console.warn('writing_tasks:', e.message); }
+    try { sTasks = await fetchAllOpt('speaking_tests', 'id, title, type', ['is_real_toefl']); } catch (e) { console.warn('speaking_tests:', e.message); }
 
     wTasks.forEach(t => {
         byKey['writing:task:' + t.id] = {
             key: 'writing:task:' + t.id, section: 'writing', type: 'task', id: t.id,
             title: t.title || ('Без названия #' + t.id),
             kind: ({ email: 'Write an Email', academic: 'Academic Discussion', sentence: 'Build a Sentence' })[t.type] || (t.type || 'Задание'),
-            isMockOnly: t.is_mock_only, manual: true,
+            isMockOnly: t.is_mock_only, isToefl: t.is_real_toefl === true, manual: true,
             questions: [], attempts: [], responses: []
         };
     });
@@ -296,6 +372,7 @@ async function loadManual(byKey) {
             key: 'speaking:test:' + t.id, section: 'speaking', type: 'test', id: t.id,
             title: t.title || ('Без названия #' + t.id),
             kind: t.type === 'interview' ? 'Interview' : 'Listen & Repeat',
+            isToefl: t.is_real_toefl === true,
             manual: true, questions: [], attempts: [], responses: []
         };
     });
@@ -322,48 +399,50 @@ async function loadManual(byKey) {
         return isFinite(n) ? { value: n, auto: false } : { value: null, auto: false };
     };
 
-    const put = (key, source, raw, created_at, isEssay) => {
+    const put = (key, source, raw, created_at, isEssay, user) => {
         const t = byKey[key];
         if (!t) return;
         const p = parseScore(raw, isEssay);
         if (p.auto) t.autoGraded = true;
-        t.responses.push({ source, graded: p.value !== null, score: p.value, share: p.share, auto: p.auto, created_at });
-        t.attempts.push({ source, answers: null, created_at });
+        t.responses.push({ source, graded: p.value !== null, score: p.value, share: p.share, auto: p.auto, created_at, user: user || null });
+        t.attempts.push({ source, answers: null, created_at, user: user || null });
     };
 
     // практика Writing
     try {
-        (await fetchAll('student_responses', 'task_id, task_type, score, teacher_correction, created_at'))
+        (await fetchAllOpt('student_responses', 'task_id, task_type, score, teacher_correction, created_at', ['user_id']))
             .forEach(r => put('writing:task:' + r.task_id, 'practice',
                 r.score ?? (r.teacher_correction ? null : undefined), r.created_at,
-                ['email', 'academic'].includes(String(r.task_type || '').toLowerCase())));
+                ['email', 'academic'].includes(String(r.task_type || '').toLowerCase()), r.user_id));
     } catch (e) { console.warn('student_responses:', e.message); }
 
     // мини-пробники Writing
     try {
-        (await fetchAll('mini_mock_writing_responses', 'task_id, task_type, score, teacher_correction, created_at'))
+        (await fetchAllOpt('mini_mock_writing_responses', 'task_id, task_type, score, teacher_correction, created_at', ['user_id']))
             .forEach(r => {
-                put('writing:task:' + r.task_id, 'minimock', r.score, r.created_at);
+                put('writing:task:' + r.task_id, 'minimock', r.score, r.created_at, false, r.user_id);
                 // Build a Sentence в мини-моке проверяется сам — «ждут проверки» не бывает
                 const t = byKey['writing:task:' + r.task_id];
                 if (t && r.task_type === 'sentence') t.autoGraded = true;
             });
     } catch (e) { console.warn('mini_mock_writing_responses:', e.message); }
 
-    // полные пробники Writing
+    // полные пробники Writing (чья работа — по попытке)
     try {
-        (await fetchAll('big_mock_writing_answers', 'task_id, task_type, score, feedback, created_at'))
+        const who = {};
+        try { (await fetchAll('big_mock_writing_attempts', 'id, user_id')).forEach(a => who[a.id] = a.user_id); } catch (e) { /* без имён */ }
+        (await fetchAll('big_mock_writing_answers', 'attempt_id, task_id, task_type, score, feedback, created_at'))
             .forEach(r => {
-                put('writing:task:' + r.task_id, 'mock', r.score, r.created_at);
+                put('writing:task:' + r.task_id, 'mock', r.score, r.created_at, false, who[r.attempt_id]);
                 const t = byKey['writing:task:' + r.task_id];
                 if (t && r.task_type === 'sentence') t.autoGraded = true;
             });
     } catch (e) { console.warn('big_mock_writing_answers:', e.message); }
 
-    // Speaking: практика по попыткам, мини-пробники и полные — по ответам
+    // Speaking: практика по попыткам, мини-пробники — по ответам
     try {
-        (await fetchAll('speaking_attempts', 'test_id, score, created_at'))
-            .forEach(r => put('speaking:test:' + r.test_id, 'practice', r.score, r.created_at));
+        (await fetchAllOpt('speaking_attempts', 'test_id, score, created_at', ['user_id']))
+            .forEach(r => put('speaking:test:' + r.test_id, 'practice', r.score, r.created_at, false, r.user_id));
     } catch (e) { console.warn('speaking_attempts:', e.message); }
     try {
         (await fetchAll('mini_mock_speaking_responses', 'task_id, score, created_at'))
@@ -378,12 +457,14 @@ async function loadManual(byKey) {
 // посмотреть, как задание отработало в конкретном пробнике.
 function analyseSubset(task, filter) {
     const copy = Object.assign({}, task, { attempts: task.attempts.filter(filter) });
+    if (task.responses) copy.responses = task.responses.filter(filter);
     analyse(copy);
     return copy;
 }
 
 function analyse(task) {
     if (task.manual) return analyseManual(task);
+    if (task.cwords) return analyseWords(task);
     const qs = task.questions, n = qs.length;
     task.bySource = { practice: 0, minimock: 0, mock: 0 };
     task.attempts.forEach(a => task.bySource[a.source]++);
@@ -400,6 +481,13 @@ function analyse(task) {
         });
         return { a, correct, answered, share: n ? correct / n : 0 };
     }).filter(x => x.answered > 0);
+
+    // результат каждого прохождения — для статистики по ученицам
+    task.attempts.forEach(a => { a._c = null; a._n = null; });
+    scored.forEach(x => { x.a._c = x.correct; x.a._n = x.answered; });
+    task.attempts.forEach(a => {
+        if (a._n === null && typeof a.share === 'number' && n) { a._c = a.share * n; a._n = n; }
+    });
 
     task.used = scored.length;
     // средний результат: по разобранным попыткам, иначе по готовым баллам
@@ -434,15 +522,16 @@ function analyse(task) {
 
         const flags = [];
         if (!q.options.length) flags.push(['нет вариантов ответа', 'rose']);
-        else if (q.correct === null) flags.push(['не отмечен правильный ответ', 'rose']);
+        else if (q.correct === null || isNaN(q.correct)) flags.push(['не отмечен правильный ответ', 'rose']);
         else if (q.correct < 0 || q.correct >= q.options.length) flags.push(['правильный ответ вне списка вариантов', 'rose']);
         if (answered >= 3 && share === 0) flags.push(['никто не ответил верно — вероятно, ошибка в ключе', 'rose']);
         if (answered >= MIN_ATTEMPTS) {
             if (share === 1) flags.push(['все отвечают верно — вопрос ничего не проверяет', 'amber']);
-            if (discrimination !== null && discrimination < 0) flags.push(['сильные ошибаются чаще слабых', 'rose']);
-            if (dead.length && q.options.length > 2) flags.push([`вариант(ы) никто не выбирает: ${dead.map(d => String.fromCharCode(65 + d)).join(', ')}`, 'amber']);
+            if (discrimination !== null && discrimination < 0) flags.push(['сильные ошибаются чаще слабых — проверьте ключ и формулировку', 'rose']);
+            if (dead.length && q.options.length > 2) flags.push([`вариант(ы) ${dead.map(d => String.fromCharCode(65 + d)).join(', ')} никто не выбирает — их можно усилить`, 'amber']);
         }
-        return { i, q, counts, answered, share, discrimination, dead, flags };
+        const cat = task.type === 'std' ? (q.type ? typeLabel(q.type) : task.kind) : typeLabel(q.type);
+        return { i, q, counts, answered, correct, share, discrimination, dead, flags, cat };
     });
 
     task.health = [];
@@ -454,6 +543,59 @@ function analyse(task) {
     if (n && !task.totalAttempts) task.health.push(['Ни разу не проходили', 'gray']);
     if (n && task.totalAttempts && !task.used) task.health.push(['Есть прохождения, но без ответов по вопросам (старые записи)', 'gray']);
 
+    countProblems(task);
+}
+
+// Complete the Words: по каждому слову — сколько дописали верно
+function analyseWords(task) {
+    task.bySource = { practice: 0, minimock: 0, mock: 0 };
+    task.attempts.forEach(a => task.bySource[a.source]++);
+    task.totalAttempts = task.attempts.length;
+    const words = task.words || [];
+    const detailed = task.attempts.filter(a => Array.isArray(a.answers));
+    const ok = (a, w) => {
+        const typed = a.answers[w];
+        if (!Array.isArray(typed)) return null;
+        return words[w].letters.every((l, i) => String(typed[i] || '').toLowerCase() === l.toLowerCase());
+    };
+    task.attempts.forEach(a => {
+        a._c = null; a._n = null;
+        if (Array.isArray(a.answers) && words.length) {
+            let c = 0, n = 0;
+            words.forEach((_, w) => { const r = ok(a, w); if (r === null) return; n++; if (r) c++; });
+            if (n) { a._c = c; a._n = n; }
+        }
+        if (a._n === null && typeof a.share === 'number' && words.length) { a._c = a.share * words.length; a._n = words.length; }
+    });
+    task.used = detailed.length;
+    const shares = task.attempts.filter(a => a._n).map(a => a._c / a._n);
+    task.avgShare = shares.length ? shares.reduce((s, v) => s + v, 0) / shares.length : null;
+
+    task.items = words.map((wd, w) => {
+        let answered = 0, correct = 0;
+        const wrong = {};
+        detailed.forEach(a => {
+            const r = ok(a, w);
+            if (r === null) return;
+            answered++;
+            if (r) correct++;
+            else { const typed = (a.answers[w] || []).join('') || '(пусто)'; wrong[typed] = (wrong[typed] || 0) + 1; }
+        });
+        const share = answered ? correct / answered : null;
+        const flags = [];
+        if (!wd.letters.length) flags.push(['в слове нет пропусков', 'rose']);
+        if (answered >= 3 && share === 0) flags.push(['никто не дописал — проверьте пропуск и букву-ответ', 'rose']);
+        if (answered >= MIN_ATTEMPTS && share === 1) flags.push(['все дописывают — слово ничего не проверяет', 'amber']);
+        return { i: w, word: true, q: { text: wd.text, full: wd.full, options: [], correct: null }, answered, correct, share, wrong, flags, cat: 'Complete the Words', counts: {} };
+    });
+    task.health = [];
+    if (!words.length) task.health.push(['В тексте нет пропусков [x]', 'rose']);
+    if (words.length && !task.totalAttempts) task.health.push(['Ни разу не проходили', 'gray']);
+    if (words.length && task.totalAttempts && !task.used) task.health.push(['Есть прохождения, но без ответов по словам (старые записи)', 'gray']);
+    countProblems(task);
+}
+
+function countProblems(task) {
     task.problemCount = task.health.filter(h => h[1] === 'rose').length
         + task.items.reduce((s, it) => s + it.flags.filter(f => f[1] === 'rose').length, 0);
     task.warnCount = task.health.filter(h => h[1] === 'amber').length
@@ -485,7 +627,11 @@ function analyseManual(task) {
 }
 
 
+// ==========================================
+// Пробники целиком (по попыткам)
+// ==========================================
 let testData = { mini: [], full: [] };
+let testRaw = { mini: [], full: [] };
 async function collectTests() {
     // [подпись секции, таблица попыток, поле балла, таблица тестов, поле названия, поле «какой тест»]
     const MINI = [
@@ -505,53 +651,75 @@ async function collectTests() {
 
     // Тоже по очереди: четыре секции разом давали восемь параллельных запросов
     const build = async defs => series(defs.map(([name, attTable, scoreField, testTable, titleField, idFieldOverride]) => async () => {
+        const idField = idFieldOverride || (attTable === 'listening_mini_mock_results' ? 'mock_test_id' : 'test_id');
         try {
-            const idField = idFieldOverride || (attTable === 'listening_mini_mock_results' ? 'mock_test_id' : 'test_id');
             const rows = await fetchAll(attTable, `user_id, ${idField}, ${scoreField}`);
-            let titles = {};
+            const titles = {};
             try {
                 (await fetchAll(testTable, `id, ${titleField}`)).forEach(t => titles[t.id] = t[titleField]);
             } catch (e) { /* названий нет — покажем номер */ }
-
-            const byTest = {};
-            rows.forEach(r => {
-                const id = r[idField];
-                const g = (byTest[id] ||= { id, attempts: 0, students: new Set(), scores: [] });
-                g.attempts++;
-                if (r.user_id) g.students.add(r.user_id);
-                // Непроверенная попытка (балл пустой) — не ноль: в среднее не идёт
-                const raw = r[scoreField];
-                const v = raw === null || raw === undefined || raw === '' ? NaN : Number(raw);
-                if (isFinite(v)) g.scores.push(v);
-            });
-            const tests = Object.values(byTest).map(g => ({
-                id: g.id,
-                title: titles[g.id] || ('Тест #' + g.id),
-                attempts: g.attempts,
-                students: g.students.size,
-                avg: g.scores.length ? g.scores.reduce((a, b) => a + b, 0) / g.scores.length : null
-            })).sort((a, b) => b.attempts - a.attempts);
-
-            const all = rows.map(r => r[scoreField]).filter(v => v !== null && v !== undefined && v !== '').map(Number).filter(isFinite);
-            return {
-                name, tests,
-                attempts: rows.length,
-                students: new Set(rows.map(r => r.user_id).filter(Boolean)).size,
-                avg: all.length ? all.reduce((a, b) => a + b, 0) / all.length : null
-            };
+            return { name, rows, idField, scoreField, titles };
         } catch (e) {
             console.warn(attTable + ':', e.message);
-            return { name, tests: [], attempts: 0, students: 0, avg: null, missing: true };
+            return { name, rows: [], idField, scoreField, titles: {}, missing: true };
         }
     }));
+    testRaw.mini = await build(MINI);
+    testRaw.full = await build(FULL);
+    summarizeTests();
+}
 
-    testData.mini = await build(MINI);
-    testData.full = await build(FULL);
+function summarizeTests() {
+    const keep = r => labIncludeTeacher || !labTeacherId || r.user_id !== labTeacherId;
+    const one = def => {
+        const rows = def.rows.filter(keep);
+        const byTest = {};
+        rows.forEach(r => {
+            const id = r[def.idField];
+            const g = (byTest[id] ||= { id, attempts: 0, students: new Set(), scores: [] });
+            g.attempts++;
+            if (r.user_id) g.students.add(r.user_id);
+            // Непроверенная попытка (балл пустой) — не ноль: в среднее не идёт
+            const raw = r[def.scoreField];
+            const v = raw === null || raw === undefined || raw === '' ? NaN : Number(raw);
+            if (isFinite(v)) g.scores.push(v);
+        });
+        const testsList = Object.values(byTest).map(g => ({
+            id: g.id,
+            title: def.titles[g.id] || ('Тест #' + g.id),
+            attempts: g.attempts,
+            students: g.students.size,
+            avg: g.scores.length ? g.scores.reduce((a, b) => a + b, 0) / g.scores.length : null
+        })).sort((a, b) => b.attempts - a.attempts);
+        const all = rows.map(r => r[def.scoreField]).filter(v => v !== null && v !== undefined && v !== '').map(Number).filter(isFinite);
+        return {
+            name: def.name, tests: testsList, missing: def.missing,
+            attempts: rows.length,
+            students: new Set(rows.map(r => r.user_id).filter(Boolean)).size,
+            avg: all.length ? all.reduce((a, b) => a + b, 0) / all.length : null
+        };
+    };
+    testData.mini = testRaw.mini.map(one);
+    testData.full = testRaw.full.map(one);
+}
+
+// Учитывать ли свои (преподавательские) прохождения. Пересчитывает всё.
+function setIncludeTeacher(on) {
+    labIncludeTeacher = !!on;
+    const keep = a => labIncludeTeacher || !labTeacherId || a.user !== labTeacherId;
+    tasks.forEach(t => {
+        t.attempts = t.allAttempts.filter(keep);
+        if (t.allResponses) t.responses = t.allResponses.filter(keep);
+        analyse(t);
+    });
+    summarizeTests();
 }
 
 
 // Загружает всё разом и возвращает готовые данные обеим страницам
-async function loadLabData(onStep) {
+async function loadLabData(onStep, opts) {
+    opts = opts || {};
+    labTeacherId = opts.teacherId || null;
     const byKey = {};
     const say = t => { if (onStep) onStep(t); console.log('[лаборатория]', t); };
 
@@ -571,12 +739,26 @@ async function loadLabData(onStep) {
     await step('Reading', () => loadReading(byKey));
     await step('Listening', () => loadListening(byKey));
     await step('Writing и Speaking', () => loadManual(byKey));
+    await step('Ученицы', async () => {
+        (await fetchAll('profiles', '*')).forEach(p => { labProfiles[p.id] = p; });
+    });
 
     const list = Object.values(byKey);
-    list.forEach(analyse);
+    list.forEach(t => {
+        t.allAttempts = t.attempts.slice();
+        if (t.responses) t.allResponses = t.responses.slice();
+    });
     tasks = list;
 
     await step('Пробники', () => collectTests());
+    setIncludeTeacher(!!opts.includeTeacher);
     say('Готово');
     return { tasks: list, testData };
+}
+
+// Имя ученицы для таблиц
+function studentName(id) {
+    const p = labProfiles[id];
+    if (!p) return 'Ученица ' + String(id || '').slice(0, 6);
+    return p.full_name || p.name || (p.email ? String(p.email).split('@')[0] : 'Ученица');
 }
