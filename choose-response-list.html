@@ -8,6 +8,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
+    <script src="content-visibility.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
@@ -64,19 +65,29 @@
         // хранилище сессии иногда «зависал» на входе)
         const supabaseClient = window.supabaseClient;
 
+        // Глазик преподавателя (content-visibility.js). Если файл не загрузился,
+        // страница работает как раньше, а скрытое всё равно не попадает к ученикам.
+        const CV = window.ContentVisibility || {
+            init() {}, cardClass() { return ''; }, withEye(html) { return html; }, eye() { return ''; },
+            visibleFor(rows) { return (rows || []).filter(r => r.is_hidden !== true); }
+        };
+
         // База отдаёт не больше 1000 строк за раз: когда вопросов станет больше,
         // часть наборов просто пропала бы из списка. Читаем порциями.
+        // Необязательные колонки: is_real_toefl (этикетка TOEFL, listening_official_setup.sql)
+        // и is_hidden (глазик, eye_practice_only.sql). Пока SQL не запущен, запрос с колонкой
+        // падает (42703) — тогда читаем без неё.
         async function fetchAllQuestionSets() {
-            // is_real_toefl (этикетка TOEFL) добавляет listening_official_setup.sql. Пока его
-            // не запустили, запрос с этой колонкой падает (42703) — тогда читаем без неё.
-            try {
-                return await fetchQuestionPages('set_number, is_real_toefl');
-            } catch (error) {
-                if (error && (error.code === '42703' || /is_real_toefl/.test(error.message || ''))) {
-                    console.warn('[listening_questions] нет колонки is_real_toefl — этикетки TOEFL не показываются');
-                    return fetchQuestionPages('set_number');
+            let optional = ['is_real_toefl', 'is_hidden'];
+            for (;;) {
+                try {
+                    return await fetchQuestionPages(['id', 'set_number', ...optional].join(', '));
+                } catch (error) {
+                    const missing = error && optional.find(c => (error.message || '').includes(c));
+                    if (!missing) throw error;
+                    console.warn('[listening_questions] нет колонки ' + missing + ' — работаем без неё');
+                    optional = optional.filter(c => c !== missing);
                 }
-                throw error;
             }
         }
 
@@ -112,6 +123,7 @@
                 if (!user) return;
 
                 currentUser = user;
+                CV.init({ user, reload: loadSetsList });
                 document.getElementById('mainBody').classList.remove('opacity-0');
 
                 await loadSetsList();
@@ -129,17 +141,25 @@
 
                 const setCounts = {};
                 const setIsToefl = {};   // набор TOEFL, только если помечены все его вопросы
+                const setIds = {};       // id вопросов набора — глазик скрывает набор целиком
+                const setHidden = {};    // скрыт глазиком (хотя бы один вопрос набора)
                 if (questionsData && questionsData.length > 0) {
                     questionsData.forEach(q => {
                         const sn = q.set_number;
                         if (sn) {
                             setCounts[sn] = (setCounts[sn] || 0) + 1;
                             setIsToefl[sn] = (setIsToefl[sn] !== false) && q.is_real_toefl === true;
+                            (setIds[sn] = setIds[sn] || []).push(q.id);
+                            if (q.is_hidden === true) setHidden[sn] = true;
                         }
                     });
                 }
 
-                const availableSets = Object.keys(setCounts).map(Number).sort((a, b) => a - b);
+                // Скрытый набор ученице не показываем (в мок-тестах он остаётся)
+                const isTeacherView = !!currentUser && currentUser.role === 'teacher';
+                const availableSets = Object.keys(setCounts).map(Number)
+                    .filter(sn => isTeacherView || !setHidden[sn])
+                    .sort((a, b) => a - b);
 
                 const { data: results, error } = await supabaseClient
                     .from('response_results')
@@ -188,6 +208,8 @@
                     const ribbon = isRealToefl ? REAL_TOEFL_RIBBON : '';
                     // отступ справа, чтобы процент / «Ready» не уходили под ленту
                     const headerPad = isRealToefl ? 'pr-12' : '';
+                    const isHiddenSet = setHidden[i] === true;
+                    const eyeBtn = CV.eye('listening_questions', setIds[i] || [], isHiddenSet, { compact: true });
                     let cardHtml = '';
 
                     if (userResult) {
@@ -195,7 +217,7 @@
                             ? Math.round((userResult.score_earned / userResult.score_total) * 100) : 0;
                         
                         cardHtml = `
-                            <div class="bg-white rounded-2xl p-5 border border-purple-100 shadow-xs flex flex-col justify-between relative overflow-hidden group border-t-4 border-t-purple-500">
+                            <div class="bg-white rounded-2xl p-5 border border-purple-100 shadow-xs flex flex-col justify-between relative overflow-hidden group border-t-4 border-t-purple-500 ${CV.cardClass(isHiddenSet)}">
                                 ${ribbon}
                                 <div>
                                     <div class="flex justify-between items-start mb-3 ${headerPad}">
@@ -209,15 +231,17 @@
                                     <button onclick="resetTest(${i})" class="w-8 h-8 rounded-lg border border-gray-200 hover:border-red-200 hover:bg-rose-50 text-gray-400 hover:text-rose-500 flex items-center justify-center transition" title="Reset Score">
                                         <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
                                     </button>
+                                    <div class="flex items-center gap-2">
                                     <a href="choose-response-test.html?set=${i}&review=true" class="text-xs font-bold text-purple-600 border border-purple-200 px-4 py-2 rounded-xl hover:bg-purple-50 transition flex items-center">
                                         View Review <i data-lucide="eye" class="w-3.5 h-3.5 ml-1.5"></i>
-                                    </a>
+                                    </a>${eyeBtn}
+                                    </div>
                                 </div>
                             </div>
                         `;
                     } else {
                         cardHtml = `
-                            <div class="bg-white rounded-2xl p-5 border border-gray-100 shadow-xs flex flex-col justify-between relative overflow-hidden group hover:shadow-md transition duration-200">
+                            <div class="bg-white rounded-2xl p-5 border border-gray-100 shadow-xs flex flex-col justify-between relative overflow-hidden group hover:shadow-md transition duration-200 ${CV.cardClass(isHiddenSet)}">
                                 ${ribbon}
                                 <div>
                                     <div class="flex justify-between items-start mb-3 ${headerPad}">
@@ -229,9 +253,11 @@
                                 
                                 <div class="flex items-center justify-between pt-4 border-t border-gray-50 mt-auto">
                                     <span class="text-[10px] font-bold text-gray-300 uppercase">Not Started</span>
+                                    <div class="flex items-center gap-2">
                                     <a href="choose-response-test.html?set=${i}" class="text-xs font-bold text-white bg-slate-900 px-4 py-2 rounded-xl hover:bg-purple-600 transition flex items-center shadow-xs">
                                         Start Test <i data-lucide="play" class="w-3 h-3 ml-1.5 fill-current"></i>
-                                    </a>
+                                    </a>${eyeBtn}
+                                    </div>
                                 </div>
                             </div>
                         `;
