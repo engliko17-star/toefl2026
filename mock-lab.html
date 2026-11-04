@@ -13,6 +13,9 @@
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        .lab-chip { display: inline-flex; align-items: center; white-space: nowrap; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 8px; }
+        .lab-help summary::-webkit-details-marker { display: none; }
+        .lab-help summary { list-style: none; }
     </style>
 </head>
 <body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex flex-col md:flex-row">
@@ -69,6 +72,7 @@
     </main>
 
     <script src="lab-data.js"></script>
+    <script src="lab-ui.js"></script>
     <script>
         // esc, icons, pct, MIN_ATTEMPTS и разбор данных приходят из lab-data.js.
         // Повторное объявление здесь отменяло весь скрипт страницы,
@@ -173,59 +177,22 @@
             const t = tasks.find(x => x.key === key);
             const source = selected.kind === 'mini' ? 'minimock' : 'mock';
             const sub = analyseSubset(t, a => a.source === source && String(a.testId) === String(selected.testId));
-            box.innerHTML = sub.items.length ? sub.items.map(renderItem).join('')
+            box.innerHTML = sub.items.length ? LAB_HELP + '<div class="space-y-2 mt-2">' + sub.items.map(renderItem).join('') + '</div>'
                 : `<p class="text-xs text-gray-400">Разбор по вопросам недоступен.</p>`;
             icons();
         }
 
-        // Разбор одного вопроса — тот же вид, что на странице материала
-        function renderItem(it) {
-            const reliable = it.answered >= MIN_ATTEMPTS;
-            const opts = it.q.options.map((o, oi) => {
-                const n = it.counts[oi] || 0;
-                const share = it.answered ? n / it.answered : 0;
-                const ok = oi === it.q.correct;
-                return `
-                    <div class="flex items-center gap-2 text-xs">
-                        <span class="w-4 font-bold ${ok ? 'text-emerald-600' : 'text-gray-400'}">${String.fromCharCode(65 + oi)}</span>
-                        <div class="flex-1 h-3.5 bg-gray-100 rounded-md overflow-hidden">
-                            <div class="h-full ${ok ? 'bg-emerald-400' : 'bg-slate-300'}" style="width:${Math.round(share * 100)}%"></div>
-                        </div>
-                        <span class="w-8 text-right text-gray-500">${n}</span>
-                        <span class="flex-1 truncate text-gray-600">${esc(o)}</span>
-                    </div>`;
-            }).join('');
-            const disc = it.discrimination === null ? '—' : (it.discrimination > 0 ? '+' : '') + Math.round(it.discrimination * 100) + '%';
-            return `
-            <div class="border border-gray-100 rounded-2xl p-4 mb-2">
-                <div class="flex items-start gap-3 mb-3">
-                    <span class="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded-lg shrink-0">${it.i + 1}</span>
-                    <div class="min-w-0 flex-1">
-                        <p class="text-sm text-slate-800">${esc(it.q.text || '(без текста)')}</p>
-                        ${it.q.type ? `<span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">${esc(it.q.type)}</span>` : ''}
-                    </div>
-                    <div class="text-right shrink-0">
-                        <p class="text-sm font-bold ${it.share === null ? 'text-gray-300' : it.share === 0 ? 'text-rose-600' : it.share < 0.4 ? 'text-amber-600' : 'text-slate-700'}">${pct(it.share)}</p>
-                        <p class="text-[10px] text-gray-400">верных</p>
-                    </div>
-                </div>
-                <div class="space-y-1.5 mb-3">${opts}</div>
-                <div class="flex flex-wrap gap-3 text-[11px] ${reliable ? 'text-gray-500' : 'text-gray-300'}">
-                    <span>ответов: ${it.answered}</span>
-                    <span>различающая способность: <b>${disc}</b></span>
-                    ${!reliable ? '<span>— данных мало</span>' : ''}
-                </div>
-                ${it.flags.length ? `<div class="flex flex-wrap gap-1.5 mt-2">${it.flags.map(f => `
-                    <span class="text-[10px] font-bold px-2 py-1 rounded-lg ${f[1] === 'rose' ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-700'}">${esc(f[0])}</span>`).join('')}</div>` : ''}
-            </div>`;
-        }
+        // Разбор одного вопроса — renderItem из lab-ui.js (тот же вид, что на странице материала)
 
         async function load() {
             const state = document.getElementById('state');
             try {
                 const user = await requireAuth();
                 if (!user) return;
-                await loadLabData(msg => { state.textContent = msg; });
+                // свои прохождения — как на странице «Обкатка материала» (галочка там)
+                let includeMe = false;
+                try { includeMe = localStorage.getItem('lab:includeMe') === '1'; } catch (e) { /* без памяти */ }
+                await loadLabData(msg => { state.textContent = msg; }, { teacherId: user.id, includeTeacher: includeMe });
                 renderLists();
                 state.classList.add('hidden');
                 document.getElementById('body').classList.remove('hidden');
