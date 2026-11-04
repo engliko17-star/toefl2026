@@ -11,8 +11,15 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        .tnum { font-variant-numeric: tabular-nums; }
+        .lab-chip { display: inline-flex; align-items: center; white-space: nowrap; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 8px; }
+        .lab-help summary::-webkit-details-marker { display: none; }
+        .lab-help summary { list-style: none; }
+        #drawer { transition: transform .22s ease, visibility 0s; }
+        /* закрытый разбор прячется целиком: без тени у края и без фокуса внутри */
+        #drawer.closed { transform: translateX(100%); visibility: hidden; transition: transform .22s ease, visibility 0s linear .22s; }
+        @media (prefers-reduced-motion: reduce) { #drawer { transition: none; } }
+        a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid #4f46e5; outline-offset: 2px; }
     </style>
 </head>
 <body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex flex-col md:flex-row">
@@ -20,265 +27,525 @@
     <div id="app-sidebar"></div>
     <script src="nav.js"></script>
 
-    <main class="flex-1 overflow-y-auto p-4 md:p-8">
-        <div class="max-w-6xl mx-auto">
+    <main class="flex-1 min-w-0 overflow-y-auto pb-28 md:pb-10">
+        <div class="max-w-6xl mx-auto px-4 sm:px-8 pt-6 sm:pt-8">
 
-            <div class="mb-6">
-                <span class="text-xs font-semibold text-gray-400">Только для преподавателя</span>
-                <h1 class="text-2xl font-bold text-slate-900 tracking-tight mt-0.5">Обкатка материала</h1>
-                <p class="text-sm text-gray-500 mt-2 max-w-2xl">
-                    Как ведут себя вопросы на реальных учениках и нет ли в заданиях поломок.
-                    Пока прохождений мало, выводы ненадёжны — рядом с каждым числом видно,
-                    на скольких попытках оно основано.
-                </p>
-            </div>
+            <header class="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
+                <div>
+                    <p class="text-xs font-semibold text-gray-400">Только для преподавателя</p>
+                    <h1 class="text-2xl font-bold text-slate-900 tracking-tight mt-0.5">Обкатка материала</h1>
+                    <p class="text-sm text-gray-500 mt-1.5 max-w-2xl">Как задания работают на ученицах: результаты, слабые вопросы и поломки. Рядом с каждым числом видно, на скольких ответах оно посчитано.</p>
+                </div>
+                <div class="flex items-center gap-3 shrink-0">
+                    <label class="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer select-none" title="Вы знаете ответы, поэтому по умолчанию ваши прохождения не считаются">
+                        <input id="includeMe" type="checkbox" class="w-4 h-4 accent-indigo-600"> Учитывать мои прохождения
+                    </label>
+                    <a href="mock-lab.html" class="text-xs font-bold text-violet-700 bg-violet-50 hover:bg-violet-100 px-3.5 py-2 rounded-xl transition flex items-center gap-1.5">
+                        <i data-lucide="file-check" class="w-3.5 h-3.5"></i> Пробники
+                    </a>
+                </div>
+            </header>
 
             <div id="state" class="text-sm text-gray-500 py-16 text-center">Загрузка…</div>
 
-            <div id="body" class="hidden space-y-6">
+            <div id="body" class="hidden">
+                <!-- Вкладки -->
+                <nav class="flex gap-6 border-b border-gray-200 mb-6 overflow-x-auto whitespace-nowrap" role="tablist">
+                    <button type="button" data-tab="tasks" role="tab" class="lab-tab pb-3 text-sm font-bold border-b-2 transition cursor-pointer">Задания</button>
+                    <button type="button" data-tab="toefl" role="tab" class="lab-tab pb-3 text-sm font-bold border-b-2 transition cursor-pointer flex items-center gap-2">Задания TOEFL <span id="toeflCount" class="lab-chip bg-violet-50 text-violet-700"></span></button>
+                    <button type="button" data-tab="problems" role="tab" class="lab-tab pb-3 text-sm font-bold border-b-2 transition cursor-pointer flex items-center gap-2">Поломки <span id="problemCount" class="lab-chip"></span></button>
+                </nav>
 
-                <section class="bg-white rounded-3xl border border-gray-100 shadow-xs overflow-hidden">
-                    <div class="px-5 py-4 border-b border-gray-100">
-                        <h2 class="text-base font-bold text-slate-900">Здоровье материала</h2>
-                        <p class="text-xs text-gray-400 mt-0.5">Поломки во всех секциях сразу. Работает даже без прохождений.</p>
+                <!-- ===== ЗАДАНИЯ ===== -->
+                <section id="tab-tasks" class="space-y-5">
+                    <div id="sectionTiles" class="grid grid-cols-2 lg:grid-cols-4 gap-3"></div>
+
+                    <div class="bg-white rounded-3xl border border-gray-100 shadow-xs">
+                        <div class="p-4 sm:p-5 border-b border-gray-100 space-y-3">
+                            <div class="flex flex-col md:flex-row gap-3">
+                                <div class="relative flex-1">
+                                    <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"></i>
+                                    <input id="q" type="search" placeholder="Название задания…" class="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100">
+                                </div>
+                                <div class="flex flex-wrap gap-2">
+                                    <select id="fSource" class="text-xs font-semibold bg-white border border-gray-200 rounded-xl px-3 py-2 cursor-pointer" aria-label="Где проходили">
+                                        <option value="">Где угодно</option><option value="practice">В практике</option><option value="minimock">В мини-пробниках</option><option value="mock">В полных пробниках</option>
+                                    </select>
+                                    <select id="fStatus" class="text-xs font-semibold bg-white border border-gray-200 rounded-xl px-3 py-2 cursor-pointer" aria-label="Состояние">
+                                        <option value="">Все задания</option><option value="problem">С ошибками</option><option value="warn">Стоит посмотреть</option><option value="hard">Трудные (меньше 40%)</option><option value="easy">Лёгкие (больше 85%)</option><option value="unused">Не проходили</option>
+                                    </select>
+                                    <select id="fSort" class="text-xs font-semibold bg-white border border-gray-200 rounded-xl px-3 py-2 cursor-pointer" aria-label="Сортировка">
+                                        <option value="attempts">Сначала частые</option><option value="low">Сначала трудные</option><option value="high">Сначала лёгкие</option><option value="problems">Сначала с ошибками</option><option value="title">По названию</option>
+                                    </select>
+                                    <label class="flex items-center gap-2 text-xs font-bold text-violet-700 bg-violet-50 border border-violet-100 rounded-xl px-3 py-2 cursor-pointer select-none">
+                                        <input id="fToefl" type="checkbox" class="w-3.5 h-3.5 accent-violet-600"> Только TOEFL
+                                    </label>
+                                </div>
+                            </div>
+                            <p id="listInfo" class="text-xs text-gray-400"></p>
+                        </div>
+                        <div id="taskList" class="divide-y divide-gray-50"></div>
+                        <div id="moreBox" class="p-4 text-center hidden">
+                            <button id="moreBtn" type="button" class="text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl transition cursor-pointer">Показать ещё</button>
+                        </div>
                     </div>
-                    <div id="healthList" class="divide-y divide-gray-50 max-h-96 overflow-y-auto"></div>
                 </section>
 
-                <div id="sections" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+                <!-- ===== TOEFL ===== -->
+                <section id="tab-toefl" class="hidden space-y-6">
+                    <p class="text-sm text-gray-500 max-w-3xl">Задания с пометкой TOEFL — официальные материалы. По ним видно, как ученицы справятся на экзамене, и похожи ли свои задания на настоящие по сложности.</p>
 
-                <a href="mock-lab.html" class="block bg-white rounded-3xl border border-gray-100 shadow-xs px-5 py-4 hover:border-violet-200 transition flex items-center gap-4">
-                    <div class="w-10 h-10 rounded-2xl bg-violet-50 text-violet-600 flex items-center justify-center shrink-0">
-                        <i data-lucide="file-check" class="w-5 h-5"></i>
+                    <div class="bg-white rounded-3xl border border-gray-100 shadow-xs p-5 sm:p-6">
+                        <h2 class="text-base font-bold text-slate-900">TOEFL и свои задания</h2>
+                        <p class="text-xs text-gray-400 mt-0.5 mb-4">Reading и Listening — доля верных ответов, Writing и Speaking — средний балл преподавателя (1–6)</p>
+                        <div id="cmpBox" class="space-y-4"></div>
                     </div>
-                    <div class="flex-1">
-                        <p class="text-base font-bold text-slate-900">Пробники целиком</p>
-                        <p class="text-[11px] text-gray-400">Разбор мини- и полных пробников — на отдельной странице</p>
+
+                    <div class="bg-white rounded-3xl border border-gray-100 shadow-xs p-5 sm:p-6">
+                        <h2 class="text-base font-bold text-slate-900">По типам вопросов</h2>
+                        <p class="text-xs text-gray-400 mt-0.5 mb-4">Где ученицы ошибаются на настоящих заданиях — и так ли трудны свои задания того же типа</p>
+                        <div id="typeBox" class="overflow-x-auto"></div>
                     </div>
-                    <i data-lucide="arrow-right" class="w-4 h-4 text-gray-300"></i>
-                </a>
+
+                    <div class="bg-white rounded-3xl border border-gray-100 shadow-xs p-5 sm:p-6">
+                        <h2 class="text-base font-bold text-slate-900">По ученицам</h2>
+                        <p class="text-xs text-gray-400 mt-0.5 mb-4">Результаты на TOEFL-заданиях — ориентир готовности к экзамену. Под процентом — сколько заданий сделано.</p>
+                        <div id="studentBox" class="overflow-x-auto"></div>
+                    </div>
+
+                    <div class="bg-white rounded-3xl border border-gray-100 shadow-xs">
+                        <div class="p-5 sm:p-6 pb-3 flex flex-wrap items-end justify-between gap-3">
+                            <div>
+                                <h2 class="text-base font-bold text-slate-900">Все задания TOEFL</h2>
+                                <p class="text-xs text-gray-400 mt-0.5">Нажмите на задание — откроется разбор по вопросам</p>
+                            </div>
+                            <button type="button" id="toeflToList" class="text-xs font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer">Открыть с фильтрами</button>
+                        </div>
+                        <div id="toeflList" class="divide-y divide-gray-50 border-t border-gray-100"></div>
+                    </div>
+                </section>
+
+                <!-- ===== ПОЛОМКИ ===== -->
+                <section id="tab-problems" class="hidden space-y-5">
+                    <div id="probFilters" class="flex flex-wrap gap-2"></div>
+                    <div id="probBox" class="space-y-5"></div>
+                </section>
             </div>
         </div>
     </main>
+
+    <!-- Разбор задания: выезжает справа -->
+    <div id="drawerShade" class="hidden fixed inset-0 bg-slate-900/30 z-40"></div>
+    <aside id="drawer" class="closed fixed top-0 right-0 h-full w-full sm:w-[600px] bg-[#f8f9fa] z-50 shadow-2xl flex flex-col" aria-hidden="true" aria-labelledby="drawerTitle">
+        <div class="bg-white border-b border-gray-100 px-5 py-4 flex items-start gap-3">
+            <div class="flex-1 min-w-0" id="drawerHead"></div>
+            <button type="button" id="drawerClose" class="p-2 rounded-xl hover:bg-gray-100 text-gray-500 cursor-pointer" aria-label="Закрыть"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+        <div id="drawerBody" class="flex-1 overflow-y-auto p-5 space-y-3"></div>
+    </aside>
+
     <script src="lab-data.js"></script>
+    <script src="lab-ui.js"></script>
     <script>
-        // ==========================================
-        // Отрисовка
-        // ==========================================
-        function renderHealth() {
+        const state = { tab: 'tasks', section: '', q: '', source: '', status: '', sort: 'attempts', toefl: false, shown: 60, probSection: '' };
+        const $ = id => document.getElementById(id);
+        const sectionOf = t => SECTIONS[t.section];
+        const fmtScore = v => v === null || v === undefined ? '—' : Number(v).toFixed(1);
+
+        // ---------- вкладки ----------
+        function setTab(tab) {
+            state.tab = tab;
+            document.querySelectorAll('.lab-tab').forEach(b => {
+                const on = b.dataset.tab === tab;
+                b.setAttribute('aria-selected', on ? 'true' : 'false');
+                b.classList.toggle('border-indigo-600', on); b.classList.toggle('text-indigo-600', on);
+                b.classList.toggle('border-transparent', !on); b.classList.toggle('text-gray-400', !on);
+            });
+            ['tasks', 'toefl', 'problems'].forEach(n => $('tab-' + n).classList.toggle('hidden', n !== tab));
+            try { history.replaceState(null, '', '?tab=' + tab); } catch (e) { /* локальный файл */ }
+        }
+        document.querySelectorAll('.lab-tab').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
+
+        // ---------- строка задания ----------
+        function resultCell(t) {
+            if (t.manual) {
+                if (t.autoGraded) return `<span class="text-sm font-bold tnum ${shareCls(t.avgShare)}">${pct(t.avgShare)}</span><span class="block text-[11px] text-gray-400">верных, автопроверка</span>`;
+                return `<span class="text-sm font-bold tnum ${t.avgScore === null ? 'text-gray-300' : 'text-slate-800'}">${fmtScore(t.avgScore)}</span><span class="block text-[11px] text-gray-400">${t.gradedCount ? 'средний балл' : 'нет оценок'}</span>`;
+            }
+            return `<span class="text-sm font-bold tnum ${shareCls(t.avgShare)}">${pct(t.avgShare)}</span><span class="block text-[11px] text-gray-400">${t.avgShare === null ? 'нет ответов' : 'верных в среднем'}</span>`;
+        }
+        function statusChip(t) {
+            if (t.problemCount) return `<span class="lab-chip bg-rose-50 text-rose-700">${plural(t.problemCount, ['ошибка', 'ошибки', 'ошибок'])}</span>`;
+            if (t.warnCount) return `<span class="lab-chip bg-amber-50 text-amber-800">посмотреть: ${t.warnCount}</span>`;
+            if (!t.totalAttempts) return `<span class="lab-chip bg-gray-100 text-gray-500">не проходили</span>`;
+            return `<span class="lab-chip bg-emerald-50 text-emerald-700">в порядке</span>`;
+        }
+        function sourceText(t) {
+            const s = [];
+            if (t.bySource.practice) s.push('практика ' + t.bySource.practice);
+            if (t.bySource.minimock) s.push('мини ' + t.bySource.minimock);
+            if (t.bySource.mock) s.push('полные ' + t.bySource.mock);
+            return s.join(', ');
+        }
+        function taskRow(t) {
+            const meta = SECTIONS[t.section];
+            const extra = t.manual
+                ? (t.autoGraded ? '' : (t.pendingCount ? `ждут проверки ${t.pendingCount}` : ''))
+                : (t.questions.length ? `${t.questions.length} ${t.cwords ? 'слов' : 'вопр.'}` : '');
+            return `
+            <button type="button" data-open="${esc(t.key)}" class="w-full text-left px-4 sm:px-5 py-3.5 hover:bg-gray-50/80 transition flex items-center gap-3 sm:gap-4 cursor-pointer">
+                <span class="w-2 h-2 rounded-full shrink-0" style="background:${meta.hex}" title="${meta.title}"></span>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <span class="text-sm font-bold text-slate-900 truncate">${esc(t.title)}</span>
+                        ${t.isToefl ? toeflBadge : ''}
+                    </div>
+                    <p class="text-xs text-gray-400 mt-0.5 truncate">${meta.title}, ${esc(t.kind)}${extra ? ', ' + extra : ''}</p>
+                </div>
+                <div class="hidden sm:block w-28 text-right shrink-0">
+                    <span class="text-sm font-bold text-slate-700 tnum">${t.totalAttempts}</span>
+                    <span class="block text-[11px] text-gray-400 truncate" title="${esc(sourceText(t))}">${t.totalAttempts ? plural(t.totalAttempts, W_PASS).replace(/^\d+ /, '') : 'не проходили'}</span>
+                </div>
+                <div class="w-24 sm:w-28 text-right shrink-0">${resultCell(t)}</div>
+                <div class="hidden md:flex w-32 justify-end shrink-0">${statusChip(t)}</div>
+            </button>`;
+        }
+
+        // ---------- вкладка «Задания» ----------
+        function renderTiles() {
+            const tile = (key, title, list, hex) => {
+                const att = list.reduce((s, t) => s + t.totalAttempts, 0);
+                const prob = list.reduce((s, t) => s + t.problemCount, 0);
+                const on = state.section === key;
+                return `<button type="button" data-section="${key}" class="text-left bg-white rounded-2xl border ${on ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-gray-100 hover:border-gray-200'} shadow-xs p-4 transition cursor-pointer">
+                    <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full" style="background:${hex}"></span><span class="text-sm font-bold text-slate-900">${title}</span></div>
+                    <p class="text-xs text-gray-500 mt-2">${plural(list.length, W_TASK)}, ${plural(att, W_PASS)}</p>
+                    <p class="text-xs mt-1 ${prob ? 'text-rose-600 font-semibold' : 'text-emerald-600'}">${prob ? plural(prob, ['ошибка', 'ошибки', 'ошибок']) + ' в заданиях' : 'ошибок не найдено'}</p>
+                </button>`;
+            };
+            $('sectionTiles').innerHTML = Object.entries(SECTIONS).map(([k, m]) => tile(k, m.title, tasks.filter(t => t.section === k), m.hex)).join('');
+        }
+
+        function filtered() {
+            const q = normText(state.q);
+            let list = tasks.filter(t =>
+                (!state.section || t.section === state.section) &&
+                (!state.toefl || t.isToefl) &&
+                (!state.source || t.bySource[state.source]) &&
+                (!q || normText(t.title).includes(q) || normText(t.kind).includes(q)));
+            const st = state.status;
+            if (st === 'problem') list = list.filter(t => t.problemCount);
+            if (st === 'warn') list = list.filter(t => t.warnCount);
+            if (st === 'hard') list = list.filter(t => t.avgShare !== null && t.avgShare < 0.4);
+            if (st === 'easy') list = list.filter(t => t.avgShare !== null && t.avgShare > 0.85);
+            if (st === 'unused') list = list.filter(t => !t.totalAttempts);
+            const s = state.sort;
+            const val = t => t.avgShare === null ? (s === 'low' ? 2 : -1) : t.avgShare;
+            list.sort((a, b) =>
+                s === 'low' ? val(a) - val(b) || b.totalAttempts - a.totalAttempts :
+                s === 'high' ? val(b) - val(a) || b.totalAttempts - a.totalAttempts :
+                s === 'problems' ? (b.problemCount - a.problemCount) || (b.warnCount - a.warnCount) :
+                s === 'title' ? a.title.localeCompare(b.title) :
+                (b.totalAttempts - a.totalAttempts) || a.title.localeCompare(b.title));
+            return list;
+        }
+
+        function renderList() {
+            const list = filtered();
+            const shown = list.slice(0, state.shown);
+            $('taskList').innerHTML = shown.length ? shown.map(taskRow).join('')
+                : '<p class="px-5 py-10 text-center text-sm text-gray-400">Ничего не нашлось — смягчите фильтры.</p>';
+            $('listInfo').textContent = `Показано ${shown.length} из ${list.length}` + (list.length !== tasks.length ? ` (всего заданий ${tasks.length})` : '');
+            $('moreBox').classList.toggle('hidden', list.length <= state.shown);
+            icons();
+        }
+
+        $('q').addEventListener('input', e => { state.q = e.target.value; state.shown = 60; renderList(); });
+        $('fSource').addEventListener('change', e => { state.source = e.target.value; state.shown = 60; renderList(); });
+        $('fStatus').addEventListener('change', e => { state.status = e.target.value; state.shown = 60; renderList(); });
+        $('fSort').addEventListener('change', e => { state.sort = e.target.value; renderList(); });
+        $('fToefl').addEventListener('change', e => { state.toefl = e.target.checked; state.shown = 60; renderList(); });
+        $('moreBtn').addEventListener('click', () => { state.shown += 60; renderList(); });
+        $('sectionTiles').addEventListener('click', e => {
+            const b = e.target.closest('[data-section]');
+            if (!b) return;
+            state.section = state.section === b.dataset.section ? '' : b.dataset.section;
+            state.shown = 60;
+            renderTiles(); renderList();
+        });
+
+        // ---------- вкладка «TOEFL» ----------
+        // Доля верных по прохождениям: сумма верных / сумма отвеченных
+        function attemptAgg(list) {
+            let c = 0, n = 0, att = 0;
+            list.forEach(t => t.attempts.forEach(a => { if (a._n) { c += a._c; n += a._n; att++; } }));
+            return { share: n ? c / n : null, answers: Math.round(n), attempts: att, tasks: list.filter(t => t.attempts.some(a => a._n)).length };
+        }
+        function scoreAgg(list) {
+            const s = [];
+            list.forEach(t => (t.responses || []).forEach(r => { if (r.graded && !r.auto) s.push(Number(r.score)); }));
+            return { avg: s.length ? s.reduce((a, b) => a + b, 0) / s.length : null, n: s.length, tasks: list.filter(t => (t.responses || []).some(r => r.graded && !r.auto)).length };
+        }
+
+        function verdict(toefl, own, scale) {
+            if (toefl === null || own === null) return { text: 'пока не с чем сравнить', cls: 'text-gray-400' };
+            const d = scale === 'share' ? Math.round((own - toefl) * 100) : Math.round((own - toefl) * 10) / 10;
+            const unit = scale === 'share' ? ' п.п.' : ' балла';
+            const small = scale === 'share' ? Math.abs(d) < 5 : Math.abs(d) < 0.3;
+            if (small) return { text: 'по сложности похожи', cls: 'text-emerald-600' };
+            return d > 0 ? { text: `свои легче на ${Math.abs(d)}${unit}`, cls: 'text-amber-700' } : { text: `свои труднее на ${Math.abs(d)}${unit}`, cls: 'text-indigo-700' };
+        }
+
+        function renderCompare() {
+            const bar = (v, max, color, label, sub) => `
+                <div class="grid grid-cols-[64px_1fr_64px] items-center gap-3 text-xs">
+                    <span class="font-semibold ${color === 'violet' ? 'text-violet-700' : 'text-slate-500'}">${label}</span>
+                    <span class="h-2.5 bg-gray-100 rounded-full overflow-hidden"><span class="block h-full rounded-full ${color === 'violet' ? 'bg-violet-600' : 'bg-slate-400'}" style="width:${v === null ? 0 : Math.round(v / max * 100)}%"></span></span>
+                    <span class="text-right"><b class="text-slate-900 tnum">${sub}</b></span>
+                </div>`;
+            $('cmpBox').innerHTML = Object.entries(SECTIONS).map(([k, m]) => {
+                const all = tasks.filter(t => t.section === k);
+                if (m.manual) {
+                    const a = scoreAgg(all.filter(t => t.isToefl)), b = scoreAgg(all.filter(t => !t.isToefl));
+                    const v = verdict(a.avg, b.avg, 'score');
+                    return `<div class="grid grid-cols-1 md:grid-cols-[120px_1fr_200px] gap-2 md:gap-4 items-center py-1">
+                        <span class="text-sm font-bold text-slate-900">${m.title}</span>
+                        <div class="space-y-1.5">${bar(a.avg, 6, 'violet', 'TOEFL', fmtScore(a.avg))}${bar(b.avg, 6, 'slate', 'Свои', fmtScore(b.avg))}</div>
+                        <div class="text-xs"><p class="font-semibold ${v.cls}">${v.text}</p><p class="text-gray-400">оценок: TOEFL ${a.n}, свои ${b.n}</p></div></div>`;
+                }
+                const a = attemptAgg(all.filter(t => t.isToefl)), b = attemptAgg(all.filter(t => !t.isToefl));
+                const v = verdict(a.share, b.share, 'share');
+                return `<div class="grid grid-cols-1 md:grid-cols-[120px_1fr_200px] gap-2 md:gap-4 items-center py-1">
+                    <span class="text-sm font-bold text-slate-900">${m.title}</span>
+                    <div class="space-y-1.5">${bar(a.share, 1, 'violet', 'TOEFL', pct(a.share))}${bar(b.share, 1, 'slate', 'Свои', pct(b.share))}</div>
+                    <div class="text-xs"><p class="font-semibold ${v.cls}">${v.text}</p><p class="text-gray-400">ответов: TOEFL ${a.answers}, свои ${b.answers}</p></div></div>`;
+            }).join('<div class="border-t border-gray-50"></div>');
+        }
+
+        function renderTypes() {
+            const rows = {};
+            tasks.filter(t => !t.manual).forEach(t => (t.items || []).forEach(it => {
+                if (!it.answered) return;
+                const k = t.section + '|' + it.cat;
+                const r = (rows[k] ||= { section: t.section, cat: it.cat, tc: 0, tn: 0, oc: 0, on: 0 });
+                if (t.isToefl) { r.tc += it.correct; r.tn += it.answered; } else { r.oc += it.correct; r.on += it.answered; }
+            }));
+            const list = Object.values(rows).sort((a, b) => a.section.localeCompare(b.section) || (b.tn - a.tn) || (b.on - a.on));
+            if (!list.length) { $('typeBox').innerHTML = '<p class="text-sm text-gray-400">Пока нет ответов по вопросам.</p>'; return; }
+            const cell = (c, n) => n ? `<b class="tnum ${shareCls(c / n)}">${pct(c / n)}</b> <span class="text-gray-400 tnum">· ${n}</span>` : '<span class="text-gray-300">—</span>';
+            $('typeBox').innerHTML = `<table class="w-full text-sm min-w-[520px]">
+                <thead><tr class="text-xs text-gray-400 text-left">
+                    <th class="font-semibold pb-2 pr-3">Тип вопроса</th><th class="font-semibold pb-2 px-3">TOEFL <span class="font-normal">· ответов</span></th>
+                    <th class="font-semibold pb-2 px-3">Свои <span class="font-normal">· ответов</span></th><th class="font-semibold pb-2 pl-3">Разница</th></tr></thead>
+                <tbody>${list.map(r => {
+                    const v = r.tn && r.on ? verdict(r.tc / r.tn, r.oc / r.on, 'share') : null;
+                    return `<tr class="border-t border-gray-50">
+                        <td class="py-2.5 pr-3"><span class="inline-flex items-center gap-2"><span class="w-2 h-2 rounded-full" style="background:${SECTIONS[r.section].hex}"></span><span class="font-semibold text-slate-800">${esc(r.cat)}</span></span></td>
+                        <td class="py-2.5 px-3">${cell(r.tc, r.tn)}</td><td class="py-2.5 px-3">${cell(r.oc, r.on)}</td>
+                        <td class="py-2.5 pl-3 text-xs ${v ? v.cls : 'text-gray-300'}">${v ? v.text : '—'}</td></tr>`;
+                }).join('')}</tbody></table>`;
+        }
+
+        function renderStudents() {
+            const by = {};
+            const st = id => (by[id] ||= { id, r: [0, 0, new Set()], l: [0, 0, new Set()], w: [], s: [], wT: new Set(), sT: new Set(), own: [0, 0], last: '', toeflAtt: 0 });
+            tasks.forEach(t => {
+                if (t.manual) {
+                    (t.responses || []).forEach(r => {
+                        if (!r.user || !t.isToefl) return;
+                        const x = st(r.user);
+                        x.toeflAtt++;
+                        if (r.created_at > x.last) x.last = r.created_at;
+                        if (r.graded && !r.auto) { (t.section === 'writing' ? x.w : x.s).push(Number(r.score)); (t.section === 'writing' ? x.wT : x.sT).add(t.key); }
+                    });
+                    return;
+                }
+                t.attempts.forEach(a => {
+                    if (!a.user || !a._n) return;
+                    const x = st(a.user);
+                    if (t.isToefl) {
+                        const g = t.section === 'reading' ? x.r : x.l;
+                        g[0] += a._c; g[1] += a._n; g[2].add(t.key);
+                        x.toeflAtt++;
+                        if ((a.created_at || '') > x.last) x.last = a.created_at || '';
+                    } else { x.own[0] += a._c; x.own[1] += a._n; }
+                });
+            });
+            const list = Object.values(by).filter(x => (labProfiles[x.id] || {}).role !== 'teacher' || labIncludeTeacher)
+                .sort((a, b) => (b.toeflAtt - a.toeflAtt) || studentName(a.id).localeCompare(studentName(b.id)));
+            if (!list.length) { $('studentBox').innerHTML = '<p class="text-sm text-gray-400">Пока никто не проходил задания.</p>'; return; }
+            const shareCell = g => g[1] ? `<b class="tnum ${shareCls(g[0] / g[1])}">${pct(g[0] / g[1])}</b><span class="block text-[11px] text-gray-400">${plural(g[2].size, W_TASK)}</span>` : '<span class="text-gray-300">—</span>';
+            const scoreCell = (arr, set) => arr.length ? `<b class="tnum text-slate-800">${fmtScore(arr.reduce((a, b) => a + b, 0) / arr.length)}</b><span class="block text-[11px] text-gray-400">${plural(set.size, W_TASK)}</span>` : '<span class="text-gray-300">—</span>';
+            $('studentBox').innerHTML = `<table class="w-full text-sm min-w-[720px]">
+                <thead><tr class="text-xs text-gray-400 text-left">
+                    <th class="font-semibold pb-2 pr-3">Ученица</th><th class="font-semibold pb-2 px-3">Reading TOEFL</th><th class="font-semibold pb-2 px-3">Listening TOEFL</th>
+                    <th class="font-semibold pb-2 px-3">Writing TOEFL</th><th class="font-semibold pb-2 px-3">Speaking TOEFL</th>
+                    <th class="font-semibold pb-2 px-3" title="Доля верных в Reading и Listening на своих (не TOEFL) заданиях">Свои R + L</th><th class="font-semibold pb-2 pl-3">Последнее TOEFL</th></tr></thead>
+                <tbody>${list.map(x => `<tr class="border-t border-gray-50 align-top">
+                    <td class="py-2.5 pr-3"><a href="student-profile.html?id=${encodeURIComponent(x.id)}" class="font-semibold text-slate-900 hover:text-indigo-600">${esc(studentName(x.id))}</a></td>
+                    <td class="py-2.5 px-3">${shareCell(x.r)}</td><td class="py-2.5 px-3">${shareCell(x.l)}</td>
+                    <td class="py-2.5 px-3">${scoreCell(x.w, x.wT)}</td><td class="py-2.5 px-3">${scoreCell(x.s, x.sT)}</td>
+                    <td class="py-2.5 px-3">${x.own[1] ? `<b class="tnum ${shareCls(x.own[0] / x.own[1])}">${pct(x.own[0] / x.own[1])}</b>` : '<span class="text-gray-300">—</span>'}</td>
+                    <td class="py-2.5 pl-3 text-xs text-gray-500">${x.last ? new Date(x.last).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : '—'}</td></tr>`).join('')}</tbody></table>`;
+        }
+
+        function renderToeflList() {
+            const list = tasks.filter(t => t.isToefl).sort((a, b) => (b.totalAttempts - a.totalAttempts) || a.title.localeCompare(b.title));
+            $('toeflCount').textContent = list.length;
+            $('toeflList').innerHTML = list.length ? list.slice(0, 40).map(taskRow).join('')
+                + (list.length > 40 ? `<p class="px-5 py-3 text-xs text-gray-400">…и ещё ${list.length - 40}. Все — через «Открыть с фильтрами».</p>` : '')
+                : '<p class="px-5 py-8 text-sm text-gray-400 text-center">Заданий с пометкой TOEFL пока нет. Пометка ставится в базе (колонка is_real_toefl).</p>';
+        }
+        $('toeflToList').addEventListener('click', () => {
+            state.toefl = true; $('fToefl').checked = true; state.section = ''; state.shown = 60;
+            renderTiles(); renderList(); setTab('tasks');
+        });
+
+        // ---------- вкладка «Поломки» ----------
+        function problemRows() {
             const rows = [];
             tasks.forEach(t => {
                 t.health.forEach(([text, level]) => rows.push({ t, text, level }));
-                t.items.forEach(it => it.flags.filter(f => f[1] === 'rose')
-                    .forEach(f => rows.push({ t, text: `Вопрос ${it.i + 1}: ${f[0]}`, level: 'rose' })));
+                t.items.forEach(it => it.flags.forEach(f => rows.push({ t, text: `${it.word ? 'Слово' : 'Вопрос'} ${it.i + 1}: ${f[0]}`, level: f[1] })));
             });
-            const order = { rose: 0, amber: 1, gray: 2 };
-            rows.sort((a, b) => order[a.level] - order[b.level]);
-
-            const box = document.getElementById('healthList');
-            if (!rows.length) { box.innerHTML = `<p class="px-5 py-6 text-sm text-emerald-600 font-medium">Проблем не найдено.</p>`; return; }
-            const color = { rose: 'text-rose-600 bg-rose-50', amber: 'text-amber-700 bg-amber-50', gray: 'text-gray-500 bg-gray-50' };
-            const label = { rose: 'ошибка', amber: 'внимание', gray: 'простой' };
-            box.innerHTML = rows.slice(0, 80).map(r => `
-                <div class="px-5 py-3 flex items-start gap-3">
-                    <span class="text-[10px] font-bold px-2 py-1 rounded-lg shrink-0 ${color[r.level]}">${label[r.level]}</span>
-                    <div class="min-w-0">
-                        <p class="text-sm text-slate-800">${esc(r.text)}</p>
-                        <p class="text-[11px] text-gray-400">${esc(r.t.title)} · ${SECTIONS[r.t.section].title} · ${esc(r.t.kind)}</p>
-                    </div>
-                </div>`).join('') + (rows.length > 80 ? `<p class="px-5 py-3 text-xs text-gray-400">…и ещё ${rows.length - 80}</p>` : '');
+            return rows;
         }
-
-        function renderSections() {
-            document.getElementById('sections').innerHTML = Object.entries(SECTIONS).map(([sec, meta]) => {
-                const list = tasks.filter(t => t.section === sec);
-                const attempts = list.reduce((s, t) => s + t.totalAttempts, 0);
-                const problems = list.reduce((s, t) => s + t.problemCount, 0);
-                const unused = list.filter(t => !t.totalAttempts).length;
-                return `
-                <div class="bg-white rounded-3xl border border-gray-100 shadow-xs overflow-hidden">
-                    <button onclick="toggleSection('${sec}')" class="w-full text-left px-5 py-4 hover:bg-gray-50/70 transition flex items-center gap-4">
-                        <div class="w-11 h-11 rounded-2xl bg-${meta.color}-50 text-${meta.color}-600 flex items-center justify-center shrink-0">
-                            <i data-lucide="${meta.icon}" class="w-5 h-5"></i>
-                        </div>
-                        <div class="flex-1 min-w-0">
-                            <p class="text-base font-bold text-slate-900">${meta.title}</p>
-                            <p class="text-[11px] text-gray-400 mt-0.5">${list.length} заданий · ${meta.manual ? `${list.reduce((s, t) => s + t.responses.length, 0)} работ, ждут проверки ${list.reduce((s, t) => s + t.pendingCount, 0)}` : `${attempts} прохождений`}${unused ? ` · ${unused} не использовались` : ''}</p>
-                        </div>
-                        <span class="text-[10px] font-bold px-2 py-1 rounded-lg ${problems ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}">
-                            ${problems ? problems + ' ошибок' : 'чисто'}
-                        </span>
-                        <i data-lucide="chevron-down" class="w-4 h-4 text-gray-300 shrink-0"></i>
-                    </button>
-                    <div id="sec-${sec}" class="hidden border-t border-gray-100"></div>
-                </div>`;
-            }).join('');
+        function renderProblems() {
+            const all = problemRows();
+            const rose = all.filter(r => r.level === 'rose').length;
+            $('problemCount').textContent = rose || '0';
+            $('problemCount').className = 'lab-chip ' + (rose ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700');
+            const chip = (key, label) => `<button type="button" data-prob="${key}" class="text-xs font-bold px-3 py-1.5 rounded-xl border transition cursor-pointer ${state.probSection === key ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-gray-200 hover:border-gray-300'}">${label}</button>`;
+            $('probFilters').innerHTML = chip('', 'Все секции') + Object.entries(SECTIONS).map(([k, m]) => chip(k, m.title)).join('');
+            const rows = all.filter(r => !state.probSection || r.t.section === state.probSection);
+            const group = (level, title, sub, open) => {
+                const g = rows.filter(r => r.level === level);
+                if (!g.length) return '';
+                const tone = { rose: 'bg-rose-50 text-rose-700', amber: 'bg-amber-50 text-amber-800', gray: 'bg-gray-100 text-gray-500' }[level];
+                return `<details class="lab-help bg-white rounded-3xl border border-gray-100 shadow-xs" ${open ? 'open' : ''}>
+                    <summary class="px-5 py-4 cursor-pointer flex items-center gap-3">
+                        <span class="lab-chip ${tone}">${g.length}</span>
+                        <span class="flex-1"><span class="text-sm font-bold text-slate-900">${title}</span><span class="block text-xs text-gray-400">${sub}</span></span>
+                        <i data-lucide="chevron-down" class="w-4 h-4 text-gray-300"></i>
+                    </summary>
+                    <div class="divide-y divide-gray-50 border-t border-gray-100">${g.slice(0, 200).map(r => `
+                        <button type="button" data-open="${esc(r.t.key)}" class="w-full text-left px-5 py-3 hover:bg-gray-50/80 transition flex items-start gap-3 cursor-pointer">
+                            <span class="w-2 h-2 rounded-full mt-1.5 shrink-0" style="background:${SECTIONS[r.t.section].hex}"></span>
+                            <span class="flex-1 min-w-0"><span class="block text-sm text-slate-800">${esc(r.text)}</span>
+                            <span class="block text-xs text-gray-400 truncate">${esc(r.t.title)}, ${SECTIONS[r.t.section].title}, ${esc(r.t.kind)}</span></span>
+                            ${r.t.isToefl ? toeflBadge : ''}
+                        </button>`).join('')}${g.length > 200 ? `<p class="px-5 py-3 text-xs text-gray-400">…и ещё ${g.length - 200}</p>` : ''}</div>
+                </details>`;
+            };
+            $('probBox').innerHTML = (group('rose', 'Ошибки в заданиях', 'Нет вариантов или ключа, никто не отвечает верно, сильные ошибаются чаще слабых', true)
+                + group('amber', 'Стоит посмотреть', 'Все отвечают верно, вариант никто не выбирает, много непроверенных работ', false)
+                + group('gray', 'Не проходили или нет ответов по вопросам', 'Не поломка — просто задание ещё не обкатано', false))
+                || '<p class="text-sm text-emerald-600 font-medium py-8 text-center">Проблем не найдено.</p>';
             icons();
         }
+        $('probFilters').addEventListener('click', e => {
+            const b = e.target.closest('[data-prob]'); if (!b) return;
+            state.probSection = b.dataset.prob; renderProblems();
+        });
 
-        function toggleSection(sec) {
-            const box = document.getElementById('sec-' + sec);
-            if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
-            box.classList.remove('hidden');
-            const list = tasks.filter(t => t.section === sec);
-            const groups = [
-                ['practice', list.filter(t => t.bySource.practice)],
-                ['minimock', list.filter(t => t.bySource.minimock)],
-                ['mock', list.filter(t => t.bySource.mock)],
-                ['unused', list.filter(t => !t.totalAttempts)]
-            ];
-            box.innerHTML = groups.map(([g, items]) => {
-                if (!items.length) return '';
-                const title = g === 'unused' ? 'Не использовались' : SOURCE_LABEL[g];
-                items.sort((a, b) => (b.problemCount - a.problemCount) || (b.warnCount - a.warnCount));
-                return `
-                <div class="border-b border-gray-50 last:border-0">
-                    <button onclick="toggleGroup('${sec}','${g}')" class="w-full text-left px-5 py-3 bg-gray-50/40 hover:bg-gray-50 transition flex items-center gap-2">
-                        <span class="text-xs font-bold text-slate-700">${title}</span>
-                        <span class="text-[11px] text-gray-400">${items.length}</span>
-                        <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-gray-300 ml-auto"></i>
-                    </button>
-                    <div id="grp-${sec}-${g}" class="hidden divide-y divide-gray-50"></div>
-                </div>`;
-            }).join('');
-            icons();
-        }
-
-        function toggleGroup(sec, g) {
-            const box = document.getElementById(`grp-${sec}-${g}`);
-            if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
-            box.classList.remove('hidden');
-            const list = tasks.filter(t => t.section === sec).filter(t =>
-                g === 'unused' ? !t.totalAttempts : t.bySource[g]);
-            list.sort((a, b) => (b.problemCount - a.problemCount) || (b.warnCount - a.warnCount));
-            box.innerHTML = list.map(t => {
-                const src = [];
-                if (t.bySource.practice) src.push('практика ' + t.bySource.practice);
-                if (t.bySource.minimock) src.push('мини ' + t.bySource.minimock);
-                if (t.bySource.mock) src.push('мок ' + t.bySource.mock);
-                const manualInfo = t.manual
-                    ? (t.autoGraded
-                        ? `${t.responses.length} прохождений · проверяется автоматически`
-                        : `${t.responses.length} работ · проверено ${t.gradedCount}${t.pendingCount ? ` · ждут ${t.pendingCount}` : ''}`)
-                    : null;
-                const badge = t.problemCount
-                    ? `<span class="text-[10px] font-bold px-2 py-1 rounded-lg bg-rose-50 text-rose-600">${t.problemCount}</span>`
-                    : t.warnCount
-                        ? `<span class="text-[10px] font-bold px-2 py-1 rounded-lg bg-amber-50 text-amber-700">${t.warnCount}</span>`
-                        : `<span class="text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-50 text-emerald-600">ок</span>`;
-                return `
-                <div>
-                    <button onclick="toggleTask('${t.key}')" class="w-full text-left px-5 py-3 hover:bg-gray-50/70 transition flex items-center gap-3">
-                        <div class="flex-1 min-w-0">
-                            <p class="text-sm font-bold text-slate-900 truncate">${esc(t.title)}</p>
-                            <p class="text-[11px] text-gray-400 mt-0.5">${esc(t.kind)} · ${manualInfo || `${t.questions.length} вопр. · ${src.join(' · ') || 'нет прохождений'}${t.used && t.used < MIN_ATTEMPTS ? ' — мало для выводов' : ''}`}</p>
-                        </div>
-                        <span class="text-sm font-bold ${t.avgShare === null ? 'text-gray-300' : t.avgShare < 0.4 ? 'text-rose-600' : t.avgShare > 0.85 ? 'text-amber-600' : 'text-slate-700'}">${t.manual ? (t.avgScore === null ? '—' : (t.autoGraded ? pct(t.avgShare) : t.avgScore.toFixed(1))) : pct(t.avgShare)}</span>
-                        ${badge}
-                    </button>
-                    <div id="tsk-${cssKey(t.key)}" class="hidden px-5 pb-4"></div>
-                </div>`;
-            }).join('');
-            icons();
-        }
-
-        const cssKey = k => k.replace(/[^\w]/g, '_');
-
-        function toggleTask(key) {
+        // ---------- разбор задания (справа) ----------
+        function openTask(key) {
             const t = tasks.find(x => x.key === key);
-            const box = document.getElementById('tsk-' + cssKey(key));
-            if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
-            box.classList.remove('hidden');
-            if (t.manual) {
-                const bySrc = ['practice', 'minimock', 'mock'].map(sr => {
-                    const list = t.responses.filter(r => r.source === sr);
-                    if (!list.length) return '';
-                    const g = list.filter(r => r.graded);
-                    const avgNum = g.length ? g.reduce((s, r) => s + Number(r.score), 0) / g.length : null;
-                    const avg = avgNum === null ? '—' : (t.autoGraded ? pct(avgNum / 6) : avgNum.toFixed(1));
-                    return `<div class="flex items-center gap-3 text-xs py-1.5">
-                        <span class="w-32 text-gray-500">${SOURCE_LABEL[sr]}</span>
-                        <span class="text-slate-700">${t.autoGraded ? 'прохождений' : 'работ'} ${list.length}</span>
-                        ${t.autoGraded ? '' : `<span class="text-emerald-600">проверено ${g.length}</span>`}
-                        ${!t.autoGraded && list.length - g.length ? `<span class="text-amber-600">ждут ${list.length - g.length}</span>` : ''}
-                        <span class="ml-auto font-bold text-slate-700">${t.autoGraded ? 'верных' : 'средний'} ${avg}</span>
-                    </div>`;
-                }).join('');
-                box.innerHTML = bySrc || `<p class="text-sm text-gray-400">Работ по этому заданию пока нет.</p>`;
-                return;
+            if (!t) return;
+            const m = SECTIONS[t.section];
+            $('drawerHead').innerHTML = `
+                <div class="flex items-center gap-2 flex-wrap"><span class="w-2 h-2 rounded-full" style="background:${m.hex}"></span>
+                    <span class="text-xs font-semibold text-gray-500">${m.title}, ${esc(t.kind)}</span>${t.isToefl ? toeflBadge : ''}${t.isMockOnly ? '<span class="lab-chip bg-gray-100 text-gray-500">только в пробниках</span>' : ''}</div>
+                <h2 id="drawerTitle" class="text-lg font-bold text-slate-900 mt-1 leading-snug">${esc(t.title)}</h2>`;
+            const summary = t.manual ? manualSummary(t) : `
+                <div class="bg-white rounded-2xl border border-gray-100 p-4 grid grid-cols-3 gap-3">
+                    <div><p class="text-xs text-gray-400">Верных в среднем</p><p class="text-xl font-extrabold tnum ${shareCls(t.avgShare)}">${pct(t.avgShare)}</p></div>
+                    <div><p class="text-xs text-gray-400">Прохождений</p><p class="text-xl font-extrabold text-slate-900 tnum">${t.totalAttempts}</p><p class="text-[11px] text-gray-400">${esc(sourceText(t)) || '—'}</p></div>
+                    <div><p class="text-xs text-gray-400">С ответами по ${t.cwords ? 'словам' : 'вопросам'}</p><p class="text-xl font-extrabold text-slate-900 tnum">${t.used}</p></div>
+                </div>
+                <div class="flex flex-wrap gap-1.5">${difficultyChip(t.avgShare, t.used || t.totalAttempts)}</div>`;
+            const health = t.health.length ? `<div class="space-y-1.5">${t.health.map(h => `<p class="text-sm rounded-xl px-3 py-2 ${h[1] === 'rose' ? 'bg-rose-50 text-rose-700' : h[1] === 'amber' ? 'bg-amber-50 text-amber-800' : 'bg-gray-100 text-gray-600'}">${esc(h[0])}</p>`).join('')}</div>` : '';
+            let items = '';
+            if (!t.manual) {
+                if (!t.questions.length) items = '';
+                else if (!t.totalAttempts) items = `<p class="text-sm text-gray-500 bg-white rounded-2xl border border-gray-100 p-4">Задание ещё не проходили — ниже только проверка самих ${t.cwords ? 'пропусков' : 'вопросов и ключей'}.</p>` + t.items.map(renderItem).join('');
+                else if (!t.used) items = `<p class="text-sm text-gray-500 bg-white rounded-2xl border border-gray-100 p-4">Ответы по ${t.cwords ? 'словам' : 'вопросам'} не сохранялись — по этому заданию виден только общий результат.</p>`;
+                else items = LAB_HELP + t.items.map(renderItem).join('');
             }
-            if (!t.questions.length) { box.innerHTML = `<p class="text-sm text-gray-400">В задании нет вопросов.</p>`; return; }
-            if (!t.used) {
-                box.innerHTML = `<p class="text-sm text-gray-400">Ответы по вопросам не сохранялись — по этому заданию виден только общий результат.</p>`;
-                return;
-            }
-            box.innerHTML = t.items.map(it => renderItem(it)).join('');
+            $('drawerBody').innerHTML = summary + health + items;
+            $('drawerBody').scrollTop = 0;
+            $('drawer').classList.remove('closed');
+            $('drawer').setAttribute('aria-hidden', 'false');
+            $('drawerShade').classList.remove('hidden');
             icons();
+            $('drawerClose').focus();
         }
-
-        function renderItem(it) {
-            const reliable = it.answered >= MIN_ATTEMPTS;
-            const opts = it.q.options.map((o, oi) => {
-                const n = it.counts[oi] || 0;
-                const share = it.answered ? n / it.answered : 0;
-                const ok = oi === it.q.correct;
-                return `
-                    <div class="flex items-center gap-2 text-xs">
-                        <span class="w-4 font-bold ${ok ? 'text-emerald-600' : 'text-gray-400'}">${String.fromCharCode(65 + oi)}</span>
-                        <div class="flex-1 h-3.5 bg-gray-100 rounded-md overflow-hidden">
-                            <div class="h-full ${ok ? 'bg-emerald-400' : 'bg-slate-300'}" style="width:${Math.round(share * 100)}%"></div>
-                        </div>
-                        <span class="w-8 text-right text-gray-500">${n}</span>
-                        <span class="flex-1 truncate text-gray-600">${esc(o)}</span>
-                    </div>`;
+        function manualSummary(t) {
+            const rows = ['practice', 'minimock', 'mock'].map(sr => {
+                const list = t.responses.filter(r => r.source === sr);
+                if (!list.length) return '';
+                const g = list.filter(r => r.graded);
+                const avgNum = g.length ? g.reduce((s, r) => s + Number(r.score), 0) / g.length : null;
+                return `<tr class="border-t border-gray-50"><td class="py-2 pr-3 text-gray-500">${SOURCE_LABEL[sr]}</td>
+                    <td class="py-2 px-3 tnum">${list.length}</td>
+                    <td class="py-2 px-3 tnum">${t.autoGraded ? '—' : g.length}</td>
+                    <td class="py-2 pl-3 font-bold tnum">${avgNum === null ? '—' : t.autoGraded ? pct(avgNum / 6) : avgNum.toFixed(1)}</td></tr>`;
             }).join('');
-            const disc = it.discrimination === null ? '—' : (it.discrimination > 0 ? '+' : '') + Math.round(it.discrimination * 100) + '%';
-            return `
-            <div class="border border-gray-100 rounded-2xl p-4 mb-2">
-                <div class="flex items-start gap-3 mb-3">
-                    <span class="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded-lg shrink-0">${it.i + 1}</span>
-                    <div class="min-w-0 flex-1">
-                        <p class="text-sm text-slate-800">${esc(it.q.text || '(без текста)')}</p>
-                        ${it.q.type ? `<span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">${esc(it.q.type)}</span>` : ''}
-                    </div>
-                    <div class="text-right shrink-0">
-                        <p class="text-sm font-bold ${it.share === null ? 'text-gray-300' : it.share === 0 ? 'text-rose-600' : it.share < 0.4 ? 'text-amber-600' : 'text-slate-700'}">${pct(it.share)}</p>
-                        <p class="text-[10px] text-gray-400">верных</p>
-                    </div>
+            return `<div class="bg-white rounded-2xl border border-gray-100 p-4">
+                <div class="grid grid-cols-3 gap-3 mb-3">
+                    <div><p class="text-xs text-gray-400">${t.autoGraded ? 'Верных в среднем' : 'Средний балл'}</p><p class="text-xl font-extrabold text-slate-900 tnum">${t.autoGraded ? pct(t.avgShare) : fmtScore(t.avgScore)}</p></div>
+                    <div><p class="text-xs text-gray-400">Работ</p><p class="text-xl font-extrabold text-slate-900 tnum">${t.responses.length}</p></div>
+                    <div><p class="text-xs text-gray-400">${t.autoGraded ? 'Проверка' : 'Ждут проверки'}</p><p class="text-xl font-extrabold tnum ${t.pendingCount ? 'text-amber-600' : 'text-slate-900'}">${t.autoGraded ? 'авто' : t.pendingCount}</p></div>
                 </div>
-                <div class="space-y-1.5 mb-3">${opts}</div>
-                <div class="flex flex-wrap gap-3 text-[11px] ${reliable ? 'text-gray-500' : 'text-gray-300'}">
-                    <span>ответов: ${it.answered}</span>
-                    <span>различающая способность: <b>${disc}</b></span>
-                    ${!reliable ? '<span>— данных мало</span>' : ''}
-                </div>
-                ${it.flags.length ? `<div class="flex flex-wrap gap-1.5 mt-2">${it.flags.map(f => `
-                    <span class="text-[10px] font-bold px-2 py-1 rounded-lg ${f[1] === 'rose' ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-700'}">${esc(f[0])}</span>`).join('')}</div>` : ''}
+                ${rows ? `<table class="w-full text-sm"><thead><tr class="text-xs text-gray-400 text-left"><th class="font-semibold pb-1 pr-3">Где</th><th class="font-semibold pb-1 px-3">Работ</th><th class="font-semibold pb-1 px-3">Проверено</th><th class="font-semibold pb-1 pl-3">${t.autoGraded ? 'Верных' : 'Средний'}</th></tr></thead><tbody>${rows}</tbody></table>`
+                       : '<p class="text-sm text-gray-400">Работ по этому заданию пока нет.</p>'}
             </div>`;
         }
+        function closeTask() {
+            $('drawer').classList.add('closed');
+            $('drawer').setAttribute('aria-hidden', 'true');
+            $('drawerShade').classList.add('hidden');
+        }
+        $('drawerClose').addEventListener('click', closeTask);
+        $('drawerShade').addEventListener('click', closeTask);
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') closeTask(); });
+        document.addEventListener('click', e => {
+            const b = e.target.closest && e.target.closest('[data-open]');
+            if (b) openTask(b.dataset.open);
+        });
 
-        // ==========================================
-        // Нижние карточки: пробники целиком, с разбивкой по тестам
-        // ==========================================
+        function renderAll() {
+            renderTiles(); renderList(); renderProblems();
+            renderCompare(); renderTypes(); renderStudents(); renderToeflList();
+            icons();
+        }
+
+        $('includeMe').addEventListener('change', e => {
+            setIncludeTeacher(e.target.checked);
+            try { localStorage.setItem('lab:includeMe', e.target.checked ? '1' : ''); } catch (err) { /* без памяти */ }
+            renderAll();
+        });
 
         async function load() {
-            const state = document.getElementById('state');
+            const st = $('state');
             try {
                 const user = await requireAuth();
                 if (!user) return;
-                await loadLabData(msg => { state.textContent = msg; });
-                renderHealth();
-                renderSections();
-                state.classList.add('hidden');
-                document.getElementById('body').classList.remove('hidden');
-                icons();
+                let includeMe = false;
+                try { includeMe = localStorage.getItem('lab:includeMe') === '1'; } catch (e) { /* без памяти */ }
+                $('includeMe').checked = includeMe;
+                await loadLabData(msg => { st.textContent = msg; }, { teacherId: user.id, includeTeacher: includeMe });
+                renderAll();
+                st.classList.add('hidden');
+                $('body').classList.remove('hidden');
+                const tab = new URLSearchParams(location.search).get('tab');
+                setTab(['tasks', 'toefl', 'problems'].includes(tab) ? tab : 'tasks');
             } catch (e) {
                 console.error(e);
-                state.innerHTML = `<p class="text-rose-600 font-medium">Не удалось загрузить данные.</p>
-                                   <p class="text-xs text-gray-400 mt-1">${esc(e.message || e)}</p>`;
+                st.innerHTML = `<p class="text-rose-600 font-medium">Не удалось загрузить данные.</p>
+                                <p class="text-xs text-gray-400 mt-1">${esc(e.message || e)}</p>`;
             }
         }
-
         document.addEventListener('DOMContentLoaded', load);
     </script>
 </body>
