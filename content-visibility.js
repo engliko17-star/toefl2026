@@ -6,6 +6,9 @@
 //
 // Скрывает по-настоящему база (content_visibility.sql): скрытые строки
 // она отдаёт только преподавателю, ученица не откроет их и по прямой ссылке.
+// Задание практики, скрытое глазиком, остаётся в мини-моках и полных тестах
+// (eye_practice_only.sql): глазик убирает его только из практики.
+// Глазик на самом мок-тесте прячет весь мок-тест.
 // Этот файл — только кнопка для преподавателя и отметка на карточке.
 //
 // На странице:
@@ -18,6 +21,8 @@
     const TABLES = ['complete_words_tasks', 'daily_life_tasks', 'academic_tasks',
                     'mock_tests', 'writing_tasks', 'mini_mock_writing', 'full_tests'];
     // Большие мок-тесты (full_tests) скрываются своей функцией — mock_visibility.sql
+    // Задания практики: глазик убирает их только из практики, не из мок-тестов
+    const PRACTICE = ['complete_words_tasks', 'daily_life_tasks', 'academic_tasks', 'writing_tasks'];
 
     // Иконки встроены, чтобы глазик не зависел от загрузки lucide
     const ICON_EYE = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>';
@@ -86,9 +91,10 @@
     function eye(table, ids, hidden, opts) {
         if (!isTeacher(currentUser)) return '';
         const idList = (Array.isArray(ids) ? ids : [ids]).map(String);
+        const inPractice = PRACTICE.includes(table);
         const title = hidden
-            ? 'Скрыто от учеников — нажмите, чтобы открыть'
-            : 'Видно ученикам — нажмите, чтобы скрыть';
+            ? (inPractice ? 'Скрыто от учеников в практике (в мок-тестах остаётся) — нажмите, чтобы открыть' : 'Скрыто от учеников — нажмите, чтобы открыть')
+            : (inPractice ? 'Видно ученикам в практике — нажмите, чтобы скрыть (из мок-тестов не уберётся)' : 'Видно ученикам — нажмите, чтобы скрыть');
         return `<button type="button" class="cv-eye" data-cv-table="${esc(table)}" data-cv-ids="${esc(JSON.stringify(idList))}" data-cv-hidden="${hidden ? '1' : '0'}" title="${title}" aria-label="${title}">${hidden ? ICON_EYE_OFF + (opts && opts.compact ? '' : '<span>Hidden</span>') : ICON_EYE}</button>`;
     }
 
@@ -99,7 +105,7 @@
     }
 
     let toastTimer = null;
-    function toast(text) {
+    function toast(text, ms) {
         let el = document.getElementById('cv-toast');
         if (!el) {
             el = document.createElement('div');
@@ -111,7 +117,7 @@
         el.textContent = text;
         el.style.opacity = '1';
         clearTimeout(toastTimer);
-        toastTimer = setTimeout(() => { el.style.opacity = '0'; }, 2600);
+        toastTimer = setTimeout(() => { el.style.opacity = '0'; }, ms || 2600);
     }
 
     function db() {
@@ -163,15 +169,15 @@
         const data = res.data || {};
         if (data.changed === 0) {
             alert('Ничего не изменилось — задание не найдено. Обновите страницу.');
-        } else {
+        } else if (isTest || !PRACTICE.includes(table)) {
             toast(isTest ? (hide ? 'Тест скрыт от учеников' : 'Ученики снова видят этот тест')
-                         : (hide ? 'Скрыто от учеников' : 'Ученики снова видят это задание'));
-            const used = Array.isArray(data.used_in) ? data.used_in : [];
-            if (hide && used.length) {
-                alert('Скрыто. Учтите: это задание стоит ещё в\n\n• ' + used.join('\n• ')
-                    + '\n\nПока оно скрыто, ученики не увидят его и там — тест пройдёт без него. '
-                    + 'Если это не нужно, нажмите на глазик ещё раз.');
-            }
+                         : (hide ? 'Мок-тест скрыт от учеников' : 'Ученики снова видят этот мок-тест'));
+        } else {
+            // Задание практики: в мок-тестах оно остаётся (eye_practice_only.sql)
+            const used = Array.isArray(data.used_in) ? data.used_in.filter(u => !/^\(/.test(String(u))) : [];
+            toast(hide
+                ? (used.length ? 'Скрыто в практике. В мок-тестах остаётся (' + used.length + ')' : 'Скрыто от учеников в практике')
+                : 'Ученики снова видят это задание в практике', used.length ? 4000 : 2600);
         }
         if (typeof reloadFn === 'function') {
             try { await reloadFn(); } catch (err) { console.error('[глазик] не удалось обновить список:', err); }
