@@ -1024,23 +1024,35 @@
         // ==========================================
         // Разделы: сколько сделано из всех заданий
         // ==========================================
+        // Задания, скрытые глазиком, ученице не считаем: в практике их не видно
+        // (в мок-тестах они остаются, и база их отдаёт — eye_practice_only.sql)
+        const HIDEABLE = ['complete_words_tasks', 'daily_life_tasks', 'academic_tasks', 'writing_tasks', 'listening_tests'];
         async function countRows(table, mockFilter) {
-            let q = _supabase.from(table).select('id', { count: 'exact', head: true });
-            if (mockFilter === 'eq') q = q.eq('is_mock_only', false);
-            if (mockFilter === 'or') q = q.or('is_mock_only.eq.false,is_mock_only.is.null');
-            const { count, error } = await q;
+            const build = withHidden => {
+                let q = _supabase.from(table).select('id', { count: 'exact', head: true });
+                if (mockFilter === 'eq') q = q.eq('is_mock_only', false);
+                if (mockFilter === 'or') q = q.or('is_mock_only.eq.false,is_mock_only.is.null');
+                if (withHidden) q = q.not('is_hidden', 'is', true);
+                return q;
+            };
+            const hideable = !isTeacher() && HIDEABLE.includes(table);
+            let { count, error } = await build(hideable);
+            if (error && hideable) ({ count, error } = await build(false));   // колонки is_hidden ещё нет
             if (error) throw error;
             return count || 0;
         }
         async function countResponseSets() {
-            const sets = new Set();
+            const sets = new Set(), hiddenSets = new Set();
+            let cols = isTeacher() ? 'set_number' : 'set_number, is_hidden';
             for (let from = 0; from < 20000; from += 1000) {
-                const { data, error } = await _supabase.from('listening_questions').select('set_number')
+                const { data, error } = await _supabase.from('listening_questions').select(cols)
                     .or('is_mock_only.eq.false,is_mock_only.is.null').order('id', { ascending: true }).range(from, from + 999);
+                if (error && cols !== 'set_number' && /is_hidden/.test(error.message || '')) { cols = 'set_number'; from -= 1000; continue; }
                 if (error) throw error;
-                (data || []).forEach(q => { if (q.set_number) sets.add(q.set_number); });
+                (data || []).forEach(q => { if (q.set_number) { sets.add(q.set_number); if (q.is_hidden === true) hiddenSets.add(q.set_number); } });
                 if (!data || data.length < 1000) break;
             }
+            hiddenSets.forEach(sn => sets.delete(sn));   // скрытые глазиком наборы не считаем
             return sets.size;
         }
 
