@@ -8,6 +8,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
+    <script src="content-visibility.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
@@ -206,6 +207,13 @@
         // Клиент _supabase берётся из auth.js. Раньше страница создавала свой
         // с тем же именем — вместе с auth.js это уронило бы весь скрипт.
 
+        // Глазик преподавателя (content-visibility.js). Если файл не загрузился,
+        // страница работает как раньше, а скрытое всё равно не попадает к ученикам.
+        const CV = window.ContentVisibility || {
+            init() {}, cardClass() { return ''; }, withEye(html) { return html; }, eye() { return ''; },
+            visibleFor(rows) { return (rows || []).filter(r => r.is_hidden !== true); }
+        };
+
         let mockTests = [];
         let currentTest = null;
         let currentQuestionIndex = 0;
@@ -359,6 +367,7 @@
             const user = await requireAuth();
             if (!user) return;
             currentUser = user;
+            CV.init({ user, reload: async () => { await loadMyResults(); await loadTestsFromSupabase(); } });
             if (user.role === 'teacher') document.getElementById('devSkipBtn').classList.remove('hidden');
             // Сначала досылаем то, что не сохранилось в прошлый раз
             await retryPendingSaves(false);
@@ -387,8 +396,9 @@
             document.getElementById('listSubtitle').innerText = currentMeta.sub;
             document.title = `${currentMeta.page} Practice — TOEFL`;
 
-            // is_real_toefl (этикетка TOEFL) добавляет listening_official_setup.sql. Пока его
-            // не запустили, запрос с этой колонкой падает (42703) — тогда берём список без этикеток.
+            // Необязательные колонки: is_real_toefl (этикетка TOEFL, listening_official_setup.sql)
+            // и is_hidden (глазик, eye_practice_only.sql). Пока SQL не запущен, запрос с колонкой
+            // падает (42703) — тогда убираем её и повторяем.
             const runList = (cols) => _supabase
                 .from('listening_tests')
                 .select(cols)
@@ -396,10 +406,14 @@
                 .or('is_mock_only.eq.false,is_mock_only.is.null')
                 .order('id', { ascending: true });   // порядок карточек и «Test #N» не скачет
             const baseCols = 'id, title, audio_url, image_url, transcript, questions, task_type';
-            let { data, error } = await runList(baseCols + ', is_real_toefl');
-            if (error && (error.code === '42703' || /is_real_toefl/.test(error.message || ''))) {
-                console.warn('[listening_tests] нет колонки is_real_toefl — этикетки TOEFL не показываются');
-                ({ data, error } = await runList(baseCols));
+            let optional = ['is_real_toefl', 'is_hidden'];
+            let data, error;
+            for (;;) {
+                ({ data, error } = await runList([baseCols, ...optional].join(', ')));
+                const missing = error && optional.find(c => (error.message || '').includes(c));
+                if (!missing) break;
+                console.warn('[listening_tests] нет колонки ' + missing + ' — работаем без неё');
+                optional = optional.filter(c => c !== missing);
             }
 
             if (error) {
@@ -408,7 +422,8 @@
                 return;
             }
 
-            mockTests = data || [];
+            // Скрытое глазиком ученице не показываем (в мок-тестах оно остаётся)
+            mockTests = CV.visibleFor(data || [], currentUser);
             showList(); 
         }
 
@@ -487,12 +502,13 @@
 
                 // Лента TOEFL в углу — как в Reading, Writing и Speaking: задание с настоящего экзамена
                 const isRealToefl = test.is_real_toefl === true;
+                const isHiddenTask = test.is_hidden === true;
                 const realToeflRibbon = isRealToefl
                     ? `<div class="absolute top-[15px] right-[-38px] w-[150px] rotate-45 bg-violet-600 text-white text-[9px] font-extrabold tracking-[0.15em] text-center py-1 shadow-sm z-10 pointer-events-none">TOEFL</div>`
                     : '';
 
                 let cardHTML = `
-                    <div class="bg-white p-6 rounded-2xl border border-slate-200/60 shadow-sm flex flex-col transition hover:shadow-md relative overflow-hidden">
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200/60 shadow-sm flex flex-col transition hover:shadow-md relative overflow-hidden ${CV.cardClass(isHiddenTask)}">
                         ${realToeflRibbon}
                         <div class="flex justify-between items-start mb-5 ${isRealToefl ? 'pr-12' : ''}">
                             <span class="bg-emerald-50 text-emerald-600 text-[10px] font-bold px-3 py-1.5 rounded-full uppercase tracking-wider">${displayBadge}</span>
@@ -521,13 +537,13 @@
                                     <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
                                 </button>
                             </div>
-                            <button onclick="showResults('${test.id}')" class="w-full bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold py-3 rounded-xl transition flex justify-center items-center text-xs">
+                            ${CV.withEye(`<button onclick="showResults('${test.id}')" class="w-full bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold py-3 rounded-xl transition flex justify-center items-center text-xs">
                                 Review Results <i data-lucide="eye" class="w-4 h-4 ml-2"></i>
-                            </button>
+                            </button>`, 'listening_tests', [test.id], isHiddenTask)}
                         ` : `
-                            <button onclick="startTest('${test.id}')" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-xl transition text-xs uppercase tracking-wider">
+                            ${CV.withEye(`<button onclick="startTest('${test.id}')" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-xl transition text-xs uppercase tracking-wider">
                                 Start Practice
-                            </button>
+                            </button>`, 'listening_tests', [test.id], isHiddenTask)}
                         `}
                     </div>
                 `;
