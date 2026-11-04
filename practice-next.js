@@ -68,7 +68,7 @@
 
     function setFocus(kind, id) {
         if (id === null || id === undefined) return;
-        update(kind, function (st) { st.focus = String(id); });
+        update(kind, function (st) { st.focus = String(id); st.last = String(id); st.lastAt = Date.now(); });
     }
 
     function markDone(kind, id) {
@@ -128,7 +128,8 @@
 
         var old = load(kind);
         var focus = old && old.focus;
-        save(kind, { uid: userId || null, items: items, at: Date.now() });
+        // focus — «вернуть список к этой карточке» (один раз); last — последний открытый тест (для дашборда)
+        save(kind, { uid: userId || null, items: items, at: Date.now(), last: old && old.last, lastAt: old && old.lastAt });
 
         // Запоминаем, какой тест открыли из списка
         if (!listEl.__pnClicks) {
@@ -177,7 +178,7 @@
                 return { id: String(t.id), done: !!done[String(t.id)], title: String(t.title || '').slice(0, 140), label: '' };
             });
             var old = load(kind);
-            save(kind, { uid: userId || null, items: items, at: Date.now(), focus: old && old.focus, source: 'db' });
+            save(kind, { uid: userId || null, items: items, at: Date.now(), focus: old && old.focus, last: old && old.last, lastAt: old && old.lastAt, source: 'db' });
             return items;
         } catch (e) {
             return null;
@@ -239,5 +240,31 @@
         });
     }
 
-    window.PracticeNext = { remember: remember, mount: mount, _pick: pick };
+    // ---------- Дашборд: «что дальше» ----------
+    // Практика, которую открывали последней, и тест в ней: недоделанный — его,
+    // сделанный — следующий несделанный.
+    var LABELS = { daily: 'Read in Daily Life', academic: 'Read an Academic Passage', words: 'Complete the Words' };
+    function suggest(userId) {
+        var best = null;
+        Object.keys(KINDS).forEach(function (kind) {
+            var st = load(kind);
+            if (!st || !st.last || !Array.isArray(st.items) || !st.items.length) return;
+            if (st.uid && userId && st.uid !== userId) return;
+            if (!best || (st.lastAt || 0) > (best.st.lastAt || 0)) best = { kind: kind, st: st };
+        });
+        if (!best) return null;
+        var cfg = KINDS[best.kind];
+        var cur = null;
+        best.st.items.forEach(function (i) { if (i.id === String(best.st.last)) cur = i; });
+        var next = cur && !cur.done ? cur : pick(best.st.items, best.st.last);
+        if (!next) return null;
+        if (next.none) return { kind: best.kind, label: LABELS[best.kind], allDone: true, list: cfg.list, at: best.st.lastAt || null };
+        return {
+            kind: best.kind, label: LABELS[best.kind], at: best.st.lastAt || null,
+            resume: !!(cur && !cur.done), item: next, list: cfg.list,
+            href: cfg.task + '?id=' + encodeURIComponent(next.id)
+        };
+    }
+
+    window.PracticeNext = { remember: remember, mount: mount, suggest: suggest, _pick: pick };
 })();
