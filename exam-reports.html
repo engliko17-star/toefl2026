@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Экзамены учениц — TOEFL Prep</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="auth.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .tnum { font-variant-numeric: tabular-nums; }
+        .ex-chip { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 8px; }
+        .ex-in { width: 100%; padding: 7px 10px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 13px; }
+        .ex-in:focus { outline: none; background: #fff; border-color: #a5b4fc; box-shadow: 0 0 0 3px #eef2ff; }
+        .ex-label { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #9ca3af; }
+        details > summary { list-style: none; } details > summary::-webkit-details-marker { display: none; }
+        a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 2px solid #4f46e5; outline-offset: 2px; }
+    </style>
+</head>
+<body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex flex-col md:flex-row">
+
+    <div id="app-sidebar"></div>
+    <script src="nav.js"></script>
+
+    <main class="flex-1 min-w-0 overflow-y-auto pb-28 md:pb-10">
+        <div class="max-w-6xl mx-auto px-4 sm:px-8 pt-6 sm:pt-8">
+
+            <header class="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
+                <div class="min-w-0">
+                    <p class="text-xs font-semibold text-gray-400">Только для преподавателя</p>
+                    <h1 class="text-2xl font-bold text-slate-900 tracking-tight mt-0.5">Экзамены учениц</h1>
+                    <p class="text-sm text-gray-500 mt-1.5 max-w-2xl">Что попадалось на настоящих TOEFL: по дням, темам и заданиям из базы. Записи видите только вы.</p>
+                </div>
+                <button type="button" data-ex="new" class="shrink-0 self-start sm:self-auto text-xs font-bold text-white bg-slate-900 hover:bg-indigo-600 px-4 py-2.5 rounded-xl transition cursor-pointer flex items-center gap-1.5">
+                    <i data-lucide="plus" class="w-3.5 h-3.5"></i> Новый отчёт
+                </button>
+            </header>
+
+            <div id="state" class="text-sm text-gray-500 py-16 text-center">Загрузка…</div>
+
+            <div id="body" class="hidden">
+                <div id="summary" class="bg-white rounded-3xl border border-gray-100 shadow-xs grid grid-cols-2 lg:grid-cols-4 mb-6"></div>
+                <div id="editor"></div>
+
+                <nav class="flex gap-6 border-b border-gray-200 mb-6 overflow-x-auto whitespace-nowrap" role="tablist">
+                    <button type="button" data-tab="reports" role="tab" class="ex-tab pb-3 text-sm font-bold border-b-2 transition cursor-pointer">Отчёты</button>
+                    <button type="button" data-tab="topics" role="tab" class="ex-tab pb-3 text-sm font-bold border-b-2 transition cursor-pointer">Темы</button>
+                    <button type="button" data-tab="repeats" role="tab" class="ex-tab pb-3 text-sm font-bold border-b-2 transition cursor-pointer flex items-center gap-2">Задания из базы <span id="repeatCount" class="ex-chip bg-amber-50 text-amber-700" style="display:none"></span></button>
+                </nav>
+
+                <section id="tab-reports">
+                    <div class="flex flex-col sm:flex-row gap-3 mb-4">
+                        <input id="fText" type="search" placeholder="Поиск по темам и описаниям" class="ex-in sm:max-w-xs" aria-label="Поиск">
+                        <select id="fStudent" class="ex-in sm:max-w-[220px]" aria-label="Ученица"></select>
+                    </div>
+                    <div id="reportList" class="space-y-4"></div>
+                </section>
+                <section id="tab-topics" class="hidden"></section>
+                <section id="tab-repeats" class="hidden"></section>
+            </div>
+        </div>
+    </main>
+
+    <script>
+    (function () {
+        'use strict';
+        const db = window.supabaseClient;
+        const $ = id => document.getElementById(id);
+        const esc = s => String(s === null || s === undefined ? '' : s)
+            .replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        const icons = () => { try { lucide.createIcons(); } catch (e) { /* без иконок */ } };
+        const nid = () => 'x' + Math.random().toString(36).slice(2, 10);
+        const DAY = 864e5;
+
+        // ---------- Разделы и типы заданий ----------
+        // Темы — те же, что в фильтрах практики (topic-filter.js, task-list.html)
+        const READING_SUBJECTS = ['Biology', 'Health & Medicine', 'Earth Science', 'Environment & Agriculture', 'Space', 'Technology',
+                                  'Psychology & Philosophy', 'Society & Economics', 'History & Archaeology', 'Arts & Literature'];
+        const EMAIL_TOPICS = ['Reporting a Problem', 'Feedback', 'Suggestions', 'Requests and Inquiries', 'Invitations and Plans', 'Advice', 'Thanks'];
+        const DISCUSSION_TOPICS = ['Education', 'Technology & Media', 'Environment', 'Business & Work', 'Government & Economy', 'Society & Culture', 'Psychology & Health'];
+        const INTERVIEW_TOPICS = ['Education', 'Work & Money', 'Shopping & Fashion', 'Food & Health', 'Hobbies & Entertainment', 'Technology & Media',
+                                  'Travel & Cities', 'People & Community', 'Daily Life & Goals', 'Nature & Environment'];
+        const LR_TOPICS = ['Campus Services', 'Library', 'Shops & Services', 'Museums & Public Places', 'Nature & Animals', 'Sports & Fitness', 'Cooking & Crafts'];
+
+        const SECTIONS = [
+            { id: 'reading', label: 'Reading', color: '#2563eb', types: [
+                { id: 'complete_words', label: 'Complete the Words', topics: READING_SUBJECTS,
+                  bank: { table: 'complete_words_tasks', cols: 'id, title, topic', link: id => 'complete-words-task.html?id=' + encodeURIComponent(id) } },
+                { id: 'daily_life', label: 'Read in Daily Life', topics: [],
+                  bank: { table: 'daily_life_tasks', cols: 'id, title', link: id => 'read-daily-task.html?id=' + encodeURIComponent(id) } },
+                { id: 'academic', label: 'Academic Passage', topics: READING_SUBJECTS,
+                  bank: { table: 'academic_tasks', cols: 'id, title, topic', link: id => 'read-academic-task.html?id=' + encodeURIComponent(id) } }
+            ] },
+            { id: 'listening', label: 'Listening', color: '#9333ea', types: [
+                { id: 'choose_response', label: 'Choose a Response', topics: [],
+                  bank: { table: 'listening_questions', sets: true, link: id => 'choose-response-test.html?set=' + encodeURIComponent(id) } },
+                { id: 'conversation', label: 'Conversation', topics: [],
+                  bank: { table: 'listening_tests', cols: 'id, title', eq: ['task_type', 'conversation'], link: () => 'practice-view.html?type=conversation' } },
+                { id: 'announcement', label: 'Announcement', topics: [],
+                  bank: { table: 'listening_tests', cols: 'id, title', eq: ['task_type', 'announcement'], link: () => 'practice-view.html?type=announcement' } },
+                { id: 'academic_talk', label: 'Academic Talk', topics: READING_SUBJECTS,
+                  bank: { table: 'listening_tests', cols: 'id, title', eq: ['task_type', 'academic'], link: () => 'practice-view.html?type=academic' } }
+            ] },
+            { id: 'writing', label: 'Writing', color: '#059669', types: [
+                { id: 'build_sentence', label: 'Build a Sentence', topics: [], bank: null },
+                { id: 'email', label: 'Write an Email', topics: EMAIL_TOPICS,
+                  bank: { table: 'writing_tasks', cols: 'id, title, meta_subject, topic', ilikeType: 'email', search: ['title', 'meta_subject'],
+                          link: id => 'writing-practice.html?type=email&id=' + encodeURIComponent(id) } },
+                { id: 'academic_discussion', label: 'Academic Discussion', topics: DISCUSSION_TOPICS,
+                  bank: { table: 'writing_tasks', cols: 'id, title, topic', ilikeType: 'academic', search: ['title', 'professor_prompt'],
+                          link: id => 'writing-practice.html?type=academic&id=' + encodeURIComponent(id) } }
+            ] },
+            { id: 'speaking', label: 'Speaking', color: '#e11d48', types: [
+                { id: 'listen_repeat', label: 'Listen & Repeat', topics: LR_TOPICS,
+                  bank: { table: 'speaking_tests', cols: 'id, title, topic', eq: ['type', 'listen_repeat'], link: id => 'speaking_player.html?type=listen_repeat&id=' + encodeURIComponent(id) } },
+                { id: 'interview', label: 'Interview', topics: INTERVIEW_TOPICS,
+                  bank: { table: 'speaking_tests', cols: 'id, title, topic', eq: ['type', 'interview'], link: id => 'speaking_player.html?type=interview&id=' + encodeURIComponent(id) } }
+            ] }
+        ];
+        const SEC = Object.fromEntries(SECTIONS.map(s => [s.id, s]));
+        const TYPE = {};
+        SECTIONS.forEach(s => s.types.forEach(t => { t.section = s.id; TYPE[t.id] = t; }));
+        const MODULES = [['', 'модуль —'], ['m1', '1 модуль'], ['m2_hard', '2 модуль · сложный'], ['m2_easy', '2 модуль · лёгкий']];
+        const MODULE_LABEL = { m1: '1 модуль', m2_hard: '2 модуль · сложный', m2_easy: '2 модуль · лёгкий' };
+
+        // ---------- Разбор сообщения ученицы ----------
+        // Черновик: раздел и тип — по словам «ридинг», «письмо», «академик»…,
+        // тема — по ключевым словам. Всё можно поправить перед сохранением.
+        const SECTION_WORDS = [
+            ['reading',   /(ридинг|ридинге|рединг|reading|чтени)/i],
+            ['listening', /(листенинг|лисенинг|листнинг|листенинге|listening|аудировани|слушани)/i],
+            ['writing',   /(райтинг|врайтинг|райтинге|writing|письменн)/i],
+            ['speaking',  /(спикинг|спикинге|speaking|говорени|устн)/i]
+        ];
+        // [тип, слова, раздел, в котором так говорят] — порядок важен
+        const TYPE_WORDS = [
+            ['complete_words',      /(слова?\s+вставля|вставля\S*\s+слов|пропуск\S*\s+в\s+слов|complete the words|дописыва\S*\s+слов|буквы)/i, null],
+            ['choose_response',     /(choose a response|выб\S+\s+ответ|реплик)/i, null],
+            ['listen_repeat',       /(повтор\S*|listen (and|&) repeat|л\s?&\s?р|l\s?&\s?r)/i, null],
+            ['interview',           /(интервью|interview)/i, null],
+            ['build_sentence',      /(собра\S*\s+предложени|предложени\S*\s+собира|build a sentence)/i, null],
+            ['email',               /(письм|e-?mail|имейл|мейл)/i, 'writing'],
+            ['academic_discussion', /(дискусс|discussion|академик|academic)/i, 'writing'],
+            ['academic_talk',       /(лекци|lecture|академик|academic|talk)/i, 'listening'],
+            ['announcement',        /(объявлени|announcement)/i, 'listening'],
+            ['conversation',        /(разговор|диалог|conversation|бесед)/i, 'listening'],
+            ['academic',            /(академик|academic|научн)/i, 'reading'],
+            ['daily_life',          /(стать|объявлени|письм|e-?mail|чат|переписк|меню|расписани|реклам|постер|брошюр|сайт|заметк|daily)/i, 'reading']
+        ];
+        const TOPIC_WORDS = {
+            reading: [
+                ['Health & Medicine', /(медицин|болезн|здоров|врач|лечен|medic|health)/i],
+                ['Biology', /(живот|биолог|растен|клетк|насеком|птиц|рыб|animal|biolog)/i],
+                ['Space', /(космос|планет|звезд|галакт|луна|space)/i],
+                ['Earth Science', /(геолог|вулкан|минерал|опал|камн|камен|землетряс|ледник|океан|gem|geolog)/i],
+                ['Environment & Agriculture', /(эколог|климат|сельск|фермер|почв|загрязн|environment|agricult)/i],
+                ['History & Archaeology', /(истор|археолог|древн|раскоп|history|archae)/i],
+                ['Arts & Literature', /(искусств|музык|архитект|литератур|картин|театр|art|music|literat)/i],
+                ['Psychology & Philosophy', /(психолог|философ|памят|поведени|psycholog)/i],
+                ['Society & Economics', /(социальн|обществ|эконом|бизнес|город|рол[ьи]|social|econom)/i],
+                ['Technology', /(технолог|компьютер|изобрет|машин|technolog)/i]
+            ],
+            email: [
+                ['Reporting a Problem', /(возврат|сломан|жалоб|проблем|не работа|брак|верну|refund|broken|problem)/i],
+                ['Thanks', /(благодар|спасибо|thank)/i],
+                ['Invitations and Plans', /(пригла|встреч|план|вечеринк|invit)/i],
+                ['Advice', /(совет|advice)/i],
+                ['Feedback', /(отзыв|feedback|мнение о)/i],
+                ['Suggestions', /(предлож|идея|suggest)/i],
+                ['Requests and Inquiries', /(спросить|узнать|информац|запрос|просьб|попросить|inquir|request)/i]
+            ],
+            academic_discussion: [
+                ['Society & Culture', /(обществ|культур|традици|conformity|конформ|social|culture)/i],
+                ['Education', /(образован|обучен|школ|университет|учеб|студент|educat)/i],
+                ['Technology & Media', /(технолог|соцсет|интернет|медиа|телефон|technolog|media)/i],
+                ['Environment', /(эколог|климат|природ|environment)/i],
+                ['Business & Work', /(работ|бизнес|компани|офис|business|work)/i],
+                ['Government & Economy', /(правительств|эконом|налог|государств|government|econom)/i],
+                ['Psychology & Health', /(психолог|здоров|стресс|psycholog|health)/i]
+            ],
+            interview: [
+                ['Hobbies & Entertainment', /(хобби|увлечен|развлеч|фильм|музык|игр|hobb|entertain)/i],
+                ['Education', /(учеб|школ|университет|образован|educat)/i],
+                ['Work & Money', /(работ|деньг|зарплат|карьер|money|work)/i],
+                ['Shopping & Fashion', /(покуп|магазин|одежд|мод|shop|fashion)/i],
+                ['Food & Health', /((^|[^а-яё])ед[аеуы]([^а-яё]|$)|питан|здоров|спорт|food|health)/i],
+                ['Technology & Media', /(технолог|телефон|интернет|соцсет|technolog|media)/i],
+                ['Travel & Cities', /(путешеств|город|поездк|travel|city)/i],
+                ['People & Community', /(люд|друз|семь|сообществ|соседи|people|communit)/i],
+                ['Daily Life & Goals', /(цел[ьи]|повседнев|привычк|goal|daily)/i],
+                ['Nature & Environment', /(природ|эколог|животн|nature|environment)/i]
+            ],
+            listen_repeat: [
+                ['Library', /(библиотек|library)/i],
+                ['Campus Services', /(кампус|общежит|столов|campus)/i],
+                ['Shops & Services', /(магазин|кафе|пекарн|салон|shop|bakery|cafe)/i],
+                ['Museums & Public Places', /(музе|галере|парк|museum|gallery)/i],
+                ['Nature & Animals', /(природ|живот|сад|ферм|nature|animal|garden)/i],
+                ['Sports & Fitness', /(спорт|зал|фитнес|sport|gym|fitness)/i],
+                ['Cooking & Crafts', /(готов|выпеч|ремонт|шить|craft|cook|repair)/i]
+            ]
+        };
+        TOPIC_WORDS.complete_words = TOPIC_WORDS.reading;
+        TOPIC_WORDS.academic = TOPIC_WORDS.reading;
+        TOPIC_WORDS.academic_talk = TOPIC_WORDS.reading;
+        function guessTopic(type, text) {
+            const list = TOPIC_WORDS[type];
+            if (!list) return '';
+            const hit = list.find(([, re]) => re.test(text));
+            return hit ? hit[0] : '';
+        }
+        // «лекция про вулканы и разговор с библиотекарем» — два задания в одной фразе:
+        // режем по запятой / «и» / «а», если следующий кусок называет новое задание
+        const mentions = frag => TYPE_WORDS.some(([, re]) => re.test(frag)) || SECTION_WORDS.some(([, re]) => re.test(frag));
+        function segments(clause) {
+            const parts = clause.split(/(\s*[,;:]\s+|\s+и\s+|\s+а\s+)/i);
+            const segs = [];
+            let cur = '', curHas = false;
+            for (let i = 0; i < parts.length; i += 2) {
+                const frag = parts[i] || '', delim = parts[i - 1] || '';
+                const has = mentions(frag);
+                if (cur && has && curHas) { segs.push(cur); cur = frag; curHas = has; }
+                else { cur = cur ? cur + delim + frag : frag; curHas = curHas || has; }
+            }
+            if (cur.trim()) segs.push(cur);
+            return segs;
+        }
+        function cleanClause(s) {
+            let t = s.replace(/\s+/g, ' ').trim()
+                .replace(/^(в\s+|во\s+)?(ридинг\S*|рединг\S*|райтинг\S*|листенинг\S*|лисенинг\S*|спикинг\S*|reading|writing|listening|speaking)[\s:,-]*/i, '');
+            let prev;
+            do {
+                prev = t;
+                t = t.replace(/^(и|а|ну|потом|ещё|еще|там|также|кстати|по-моему|вроде|в общем|был|была|было|были|какой[- ]то|какая[- ]то|какое[- ]то)[\s,]+/i, '');
+            } while (t !== prev);
+            return t.replace(/[\s,;:—-]+$/, '');
+        }
+        function aboutPart(s) {
+            // \b в JS не видит границу у русских букв — поэтому (^|\s)
+            const m = s.match(/(?:^|\s)про\s+(.+)$/i) || s.match(/\babout\s+(.+)$/i);
+            if (!m) return '';
+            return m[1].replace(/^то,?\s*(что|как|есть ли)?\s*/i, m2 => /есть ли/i.test(m2) ? 'есть ли ' : '').trim();
+        }
+        function parseMessage(text) {
+            const out = [];
+            let section = null;
+            const clauses = [];
+            String(text || '').split(/[.!?…]+\s*|\n+/).forEach(raw => { if (raw.trim()) segments(raw.trim()).forEach(x => clauses.push(x.trim())); });
+            clauses.forEach(clause => {
+                if (!clause) return;
+                const sw = SECTION_WORDS.find(([, re]) => re.test(clause));
+                if (sw) section = sw[0];
+                let type = null;
+                for (const [t, re, only] of TYPE_WORDS) {
+                    if (!re.test(clause)) continue;
+                    if (only && section && only !== section) continue;
+                    if (only && !section) section = only;
+                    type = t; break;
+                }
+                if (type && !section) section = TYPE[type].section;
+                const about = aboutPart(clause);
+                if (!type && section === 'speaking' && about) type = 'interview';
+                if (!type && !(section && about)) return;   // «Ридинг был сложный» — не задание
+                const desc = about || cleanClause(clause);
+                // «академик был про опалы, социальные роли и про традиции у животных» — три текста
+                let parts = [desc];
+                if ((type === 'academic' || type === 'academic_talk') && about) {
+                    const split = about.split(/\s*[,;]\s*|\s+и\s+(?:ещё\s+|еще\s+)?про\s+|\s+а\s+(?:ещё|еще)\s+про\s+/i)
+                        .map(p => p.replace(/^(про|то)\s+/i, '').trim()).filter(Boolean);
+                    if (split.length > 1 && split.every(p => p.split(/\s+/).length <= 8)) parts = split;
+                }
+                parts.forEach(p => out.push({
+                    id: nid(), section, type: type || '', module: '',
+                    topic: type ? (guessTopic(type, p) || (parts.length === 1 ? guessTopic(type, clause) : '')) : '',
+                    text: p.slice(0, 300), bank: null, match: 'exact'
+                }));
+            });
+            return out;
+        }
+
+        // ---------- Состояние ----------
+        let me = null;
+        let reports = [];
+        let students = [];
+        let draft = null;          // открытый отчёт (новый или правка)
+        let draftConflict = false;
+        let searchFor = null;      // id задания, для которого открыт поиск в базе
+        let searchResults = [];
+        let searchTimer = null;
+        let tab = 'reports';
+        let busy = false;
+
+        const studentName = r => {
+            if (r.student_id) {
+                const s = students.find(x => String(x.id) === String(r.student_id));
+                if (s) return s.name;
+            }
+            return (r.student_name || '').trim() || 'Без имени';
+        };
+        const fmtDate = iso => {
+            const p = String(iso || '').slice(0, 10).split('-').map(Number);
+            if (p.length !== 3 || !p[0]) return '—';
+            return new Date(p[0], p[1] - 1, p[2]).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }).replace(/\s*г\.$/, '');
+        };
+        const shortDate = iso => {
+            const p = String(iso || '').slice(0, 10).split('-').map(Number);
+            if (p.length !== 3 || !p[0]) return '—';
+            return new Date(p[0], p[1] - 1, p[2]).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+        };
+        const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+        const daysAgo = iso => { const p = String(iso).slice(0, 10).split('-').map(Number); return Math.floor((Date.now() - new Date(p[0], p[1] - 1, p[2]).getTime()) / DAY); };
+        const typeLabel = it => it.type && TYPE[it.type] ? TYPE[it.type].label : (SEC[it.section] ? SEC[it.section].label + ' · тип не указан' : 'Тип не указан');
+        const sectionOf = it => it.type && TYPE[it.type] ? TYPE[it.type].section : (it.section || '');
+        const bankKey = b => b ? b.table + ':' + b.id : '';
+        function normItems(items) {
+            return (Array.isArray(items) ? items : []).filter(i => i && typeof i === 'object').map(i => ({
+                id: String(i.id || nid()), section: String(i.section || ''), type: TYPE[i.type] ? i.type : '',
+                module: MODULE_LABEL[i.module] ? i.module : '', topic: String(i.topic || ''), text: String(i.text || ''),
+                bank: i.bank && i.bank.table && i.bank.id !== undefined && i.bank.id !== null && i.bank.id !== '' ? { table: String(i.bank.table), id: String(i.bank.id), title: String(i.bank.title || '') } : null,
+                match: i.match === 'similar' ? 'similar' : 'exact'
+            }));
+        }
+        function missingTable(err) {
+            return err && (err.code === '42P01' || err.code === 'PGRST205' || /does not exist|Could not find the table/i.test(String(err.message || '')));
+        }
+
+        // ---------- Загрузка ----------
+        async function load() {
+            me = await requireAuth();
+            if (!me) return;
+            if (me.role !== 'teacher') { $('state').textContent = 'Эта страница только для преподавателя.'; return; }
+            try {
+                const [r, p] = await Promise.all([
+                    db.from('exam_reports').select('*').order('exam_date', { ascending: false }).order('id', { ascending: false }),
+                    db.from('profiles').select('id, full_name, email, role').eq('role', 'student')
+                ]);
+                if (r.error) throw r.error;
+                reports = (r.data || []).map(x => Object.assign(x, { items: normItems(x.items) }));
+                students = (p.data || []).map(s => ({ id: s.id, name: (s.full_name || '').trim() || String(s.email || '').split('@')[0] || 'Ученица' }))
+                    .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+                $('state').classList.add('hidden');
+                $('body').classList.remove('hidden');
+                renderAll();
+            } catch (err) {
+                $('state').innerHTML = missingTable(err)
+                    ? 'Чтобы вести отчёты, один раз запустите <b>exam_reports.sql</b> в Supabase (SQL Editor).'
+                    : '<span class="text-rose-600 font-medium">Не удалось загрузить отчёты.</span><br><span class="text-xs text-gray-400">' + esc(err.message || err) + '</span>';
+            }
+        }
+
+        // ---------- Сводка ----------
+        function allItems() {
+            const list = [];
+            reports.forEach(r => r.items.forEach(it => list.push({ it, r })));
+            return list;
+        }
+        function bankGroups() {
+            const by = {};
+            allItems().forEach(({ it, r }) => {
+                if (!it.bank) return;
+                const k = bankKey(it.bank);
+                (by[k] = by[k] || { bank: it.bank, type: it.type, hits: [] }).hits.push({ it, r });
+            });
+            return Object.values(by).map(g => {
+                g.reports = new Set(g.hits.map(h => h.r.id)).size;
+                g.last = g.hits.reduce((m, h) => h.r.exam_date > m ? h.r.exam_date : m, '');
+                return g;
+            }).sort((a, b) => (b.reports - a.reports) || (b.last > a.last ? 1 : b.last < a.last ? -1 : 0));
+        }
+        function renderSummary() {
+            const items = allItems();
+            const linked = items.filter(x => x.it.bank).length;
+            const rep = bankGroups().filter(g => g.reports > 1).length;
+            const last = reports[0] ? shortDate(reports[0].exam_date) : '—';
+            const cell = (n, l, sub) => '<div class="p-5 border-gray-100 [&:not(:last-child)]:border-r max-lg:[&:nth-child(2)]:border-r-0 max-lg:[&:nth-child(-n+2)]:border-b">'
+                + '<p class="text-xs font-semibold text-slate-500">' + l + '</p><p class="text-2xl font-extrabold text-slate-900 mt-1 tnum">' + n + '</p>'
+                + '<p class="text-[11px] text-gray-400 mt-0.5">' + sub + '</p></div>';
+            $('summary').innerHTML = cell(reports.length, 'Экзаменов', 'последний — ' + last)
+                + cell(items.length, 'Заданий записано', 'по всем разделам')
+                + cell(linked, 'Найдено в базе', items.length ? Math.round(linked / items.length * 100) + '% от записанных' : 'пока нет')
+                + cell(rep, 'Повторились', 'одно задание у разных экзаменов');
+            const rc = $('repeatCount');
+            rc.textContent = rep ? rep + ' повтор' + (rep === 1 ? '' : rep < 5 ? 'а' : 'ов') : '';
+            rc.style.display = rep ? '' : 'none';   // .ex-chip задаёт display, поэтому не класс hidden
+        }
+
+        // ---------- Редактор отчёта ----------
+        function typeOptions(it) {
+            const cur = it.type || (it.section ? it.section + ':' : '');
+            return '<option value=""' + (!cur ? ' selected' : '') + '>Тип задания…</option>' + SECTIONS.map(s =>
+                '<optgroup label="' + s.label + '">' + s.types.map(t => '<option value="' + t.id + '"' + (cur === t.id ? ' selected' : '') + '>' + esc(t.label) + '</option>').join('')
+                + '<option value="' + s.id + ':"' + (cur === s.id + ':' ? ' selected' : '') + '>' + s.label + ' — тип не помнит</option></optgroup>').join('');
+        }
+        function topicList(type) {
+            const base = (TYPE[type] && TYPE[type].topics) || [];
+            const used = new Set();
+            allItems().forEach(({ it }) => { if (it.type === type && it.topic) used.add(it.topic); });
+            return [...new Set([...base, ...used])];
+        }
+        function itemRow(it, i) {
+            const t = TYPE[it.type];
+            const sec = SEC[sectionOf(it)];
+            const bank = it.bank
+                ? '<span class="inline-flex items-center gap-1 min-w-0 max-w-full rounded-lg border ' + (it.match === 'exact' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800') + ' pl-1 pr-1.5 py-0.5 text-xs">'
+                  + '<button type="button" data-ex="match" class="ex-chip ' + (it.match === 'exact' ? 'bg-emerald-600 text-white' : 'bg-amber-500 text-white') + ' cursor-pointer" title="Нажмите, чтобы переключить">' + (it.match === 'exact' ? '✓ точно оно' : '≈ похоже') + '</button>'
+                  + '<span class="truncate font-semibold" title="' + esc(it.bank.title) + '">' + esc(it.bank.title || ('№ ' + it.bank.id)) + '</span>'
+                  + '<button type="button" data-ex="unlink" class="shrink-0 text-current/60 hover:text-rose-600 cursor-pointer px-0.5" aria-label="Отвязать от задания из базы">×</button></span>'
+                : (t && t.bank ? '<button type="button" data-ex="find" class="text-xs font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer flex items-center gap-1"><i data-lucide="search" class="w-3.5 h-3.5"></i>Найти в базе</button>'
+                               : '<span class="text-[11px] text-gray-300">' + (t ? 'в базе не ищется' : 'выберите тип') + '</span>');
+            const search = searchFor === it.id ? searchPanel(it) : '';
+            return '<li class="rounded-2xl border border-gray-100 bg-gray-50/40 p-3" data-item="' + esc(it.id) + '">'
+                + '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[minmax(0,13fr)_minmax(0,9fr)_minmax(0,11fr)_minmax(0,20fr)_auto] gap-2 items-start">'
+                +   '<div class="flex items-center gap-2 min-w-0"><span class="w-2 h-2 rounded-full shrink-0" style="background:' + (sec ? sec.color : '#d1d5db') + '"></span>'
+                +     '<select data-f="type" class="ex-in" aria-label="Тип задания">' + typeOptions(it) + '</select></div>'
+                +   '<select data-f="module" class="ex-in" aria-label="Модуль">' + MODULES.map(([v, l]) => '<option value="' + v + '"' + (it.module === v ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>'
+                +   '<input data-f="topic" list="dl-' + esc(it.type || 'none') + '" value="' + esc(it.topic) + '" placeholder="Тема" maxlength="80" class="ex-in" aria-label="Тема">'
+                +   '<input data-f="text" value="' + esc(it.text) + '" placeholder="О чём (своими словами)" maxlength="300" class="ex-in" aria-label="О чём">'
+                +   '<button type="button" data-ex="del-item" class="justify-self-end w-8 h-8 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center cursor-pointer" aria-label="Удалить задание"><i data-lucide="x" class="w-4 h-4"></i></button>'
+                + '</div>'
+                + '<div class="mt-2 pl-4 flex items-center gap-2 min-w-0">' + bank + '</div>'
+                + search
+                + '</li>';
+        }
+        function searchPanel(it) {
+            return '<div class="mt-2 ml-4 bg-white border border-indigo-100 rounded-xl p-3">'
+                + '<div class="flex gap-2"><input data-f="q" placeholder="' + (TYPE[it.type].bank.sets ? 'Номер набора или слово из реплики' : 'Название или слово из задания') + '" class="ex-in" aria-label="Поиск в базе">'
+                + '<button type="button" data-ex="close-find" class="text-xs font-bold text-gray-400 hover:text-slate-700 px-2 cursor-pointer">Закрыть</button></div>'
+                + '<ul data-results class="mt-2 space-y-1 max-h-60 overflow-y-auto">' + resultsHtml() + '</ul></div>';
+        }
+        function resultsHtml() {
+            if (searchResults === null) return '<li class="text-xs text-gray-400 py-1">Ищу…</li>';
+            if (searchResults.error) return '<li class="text-xs text-rose-600 py-1">' + esc(searchResults.error) + '</li>';
+            if (!searchResults.length) return '<li class="text-xs text-gray-400 py-1">Начните вводить — покажу похожие задания</li>';
+            return searchResults.map((r, i) => '<li><button type="button" data-ex="pick" data-i="' + i + '" class="w-full text-left text-sm px-2.5 py-1.5 rounded-lg hover:bg-indigo-50 cursor-pointer flex items-center gap-2">'
+                + '<span class="min-w-0 truncate">' + esc(r.title) + '</span>' + (r.topic ? '<span class="ex-chip bg-gray-100 text-gray-500 shrink-0">' + esc(r.topic) + '</span>' : '')
+                + '<span class="ml-auto text-[11px] text-gray-400 shrink-0">№ ' + esc(r.id) + '</span></button></li>').join('');
+        }
+        function renderEditor() {
+            const box = $('editor');
+            if (!draft) { box.innerHTML = ''; return; }
+            const dls = Object.keys(TYPE).map(t => '<datalist id="dl-' + t + '">' + topicList(t).map(x => '<option value="' + esc(x) + '">').join('') + '</datalist>').join('');
+            const studentOther = !draft.student_id && draft.student_name !== undefined && draft.__other;
+            box.innerHTML = '<section class="bg-white rounded-3xl border border-indigo-200 ring-2 ring-indigo-50 p-4 sm:p-6 mb-8" aria-labelledby="edTitle">'
+                + '<div class="flex items-start justify-between gap-3 mb-4"><div>'
+                +   '<h2 id="edTitle" class="text-base font-bold text-slate-900">' + (draft.id ? 'Изменить отчёт' : 'Новый отчёт') + '</h2>'
+                +   '<p class="text-[11px] text-gray-400 mt-0.5">Вставьте сообщение ученицы и нажмите «Разобрать» — задания появятся ниже. Тип и тему можно поправить, задание — найти в базе.</p></div>'
+                +   '<button type="button" data-ex="cancel" class="shrink-0 text-gray-400 hover:text-slate-700 cursor-pointer" aria-label="Закрыть"><i data-lucide="x" class="w-5 h-5"></i></button></div>'
+                + '<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">'
+                +   '<label class="block"><span class="ex-label">Дата экзамена</span><input type="date" data-f="exam_date" value="' + esc(draft.exam_date) + '" class="ex-in mt-1"></label>'
+                +   '<label class="block"><span class="ex-label">Ученица</span><select data-f="student" class="ex-in mt-1">'
+                +     '<option value="">—</option>' + students.map(s => '<option value="' + esc(s.id) + '"' + (String(draft.student_id) === String(s.id) ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('')
+                +     '<option value="__other"' + (studentOther ? ' selected' : '') + '>Другая — вписать имя</option></select>'
+                +     (studentOther ? '<input data-f="student_name" value="' + esc(draft.student_name || '') + '" placeholder="Имя" maxlength="80" class="ex-in mt-2">' : '') + '</label>'
+                +   '<label class="block"><span class="ex-label">Совпал с тестом (если нашли)</span><input data-f="matched_test" value="' + esc(draft.matched_test || '') + '" maxlength="200" placeholder="например, TOEFL 31.07 · набор 099" class="ex-in mt-1"></label>'
+                + '</div>'
+                + '<label class="block mt-3"><span class="ex-label">Сообщение ученицы</span>'
+                +   '<textarea data-f="message" rows="4" maxlength="20000" class="ex-in mt-1 leading-relaxed" placeholder="Ридинг был сложный. Там был медицинский текст, где слова вставлять. Потом статья про привидений в библиотеке…">' + esc(draft.message || '') + '</textarea></label>'
+                + '<div class="flex flex-wrap items-center gap-3 mt-2">'
+                +   '<button type="button" data-ex="parse" class="text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3.5 py-2 rounded-xl transition cursor-pointer flex items-center gap-1.5"><i data-lucide="wand-sparkles" class="w-3.5 h-3.5"></i>Разобрать сообщение</button>'
+                +   '<span data-ex-note class="text-xs text-gray-500"></span></div>'
+                + '<div class="flex items-center justify-between mt-5 mb-2"><h3 class="text-sm font-bold text-slate-900">Задания <span class="text-gray-400 font-semibold">' + draft.items.length + '</span></h3></div>'
+                + (draft.items.length ? '<ul class="space-y-2">' + draft.items.map(itemRow).join('') + '</ul>'
+                                      : '<p class="text-xs text-gray-400 py-3">Пока пусто: разберите сообщение или добавьте задание вручную.</p>')
+                + '<button type="button" data-ex="add-item" class="mt-2 text-xs font-bold text-slate-700 bg-gray-50 hover:bg-gray-100 border border-dashed border-gray-200 w-full py-2.5 rounded-xl transition cursor-pointer">+ задание</button>'
+                + '<div class="flex flex-wrap items-center gap-2 mt-5 pt-4 border-t border-gray-100">'
+                +   (draftConflict
+                        ? '<span class="text-xs font-bold text-rose-700 mr-auto">Этот отчёт изменили в другой вкладке.</span><button type="button" data-ex="force-save" class="text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 px-4 py-2.5 rounded-xl cursor-pointer">Сохранить мой вариант поверх</button>'
+                        : '<span class="mr-auto"></span>')
+                +   '<button type="button" data-ex="cancel" class="text-xs font-bold text-slate-700 bg-gray-100 hover:bg-gray-200 px-4 py-2.5 rounded-xl transition cursor-pointer">Отмена</button>'
+                +   '<button type="button" data-ex="save" class="text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 px-5 py-2.5 rounded-xl shadow-sm transition cursor-pointer">Сохранить</button>'
+                + '</div><p data-ex-msg class="hidden mt-3 text-xs font-medium rounded-xl px-3 py-2"></p>'
+                + dls + '</section>';
+            icons();
+        }
+        function edMsg(text, ok) {
+            const el = $('editor').querySelector('[data-ex-msg]');
+            if (!el) return;
+            el.textContent = text || '';
+            el.className = 'mt-3 text-xs font-medium rounded-xl px-3 py-2 ' + (ok ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700');
+            if (!text) el.classList.add('hidden');
+        }
+        function openDraft(r) {
+            draft = r ? {
+                id: r.id, version: r.version, exam_date: String(r.exam_date).slice(0, 10), student_id: r.student_id || '',
+                student_name: r.student_name || '', __other: !r.student_id && !!(r.student_name || '').trim(),
+                matched_test: r.matched_test || '', message: r.message || '', items: normItems(JSON.parse(JSON.stringify(r.items)))
+            } : { exam_date: today(), student_id: '', student_name: '', __other: false, matched_test: '', message: '', items: [] };
+            draftConflict = false; searchFor = null; searchResults = [];
+            renderEditor();
+            $('editor').scrollIntoView({ block: 'start', behavior: 'smooth' });
+        }
+        function cleanDraftItems() {
+            return draft.items.map(it => ({
+                id: it.id, section: sectionOf(it), type: it.type || '', module: it.module || '',
+                topic: it.topic.trim().slice(0, 80), text: it.text.replace(/\s+/g, ' ').trim().slice(0, 300),
+                bank: it.bank ? { table: it.bank.table, id: it.bank.id, title: String(it.bank.title || '').slice(0, 200) } : null,
+                match: it.bank ? it.match : 'exact'
+            })).filter(it => it.type || it.section || it.topic || it.text || it.bank);
+        }
+        async function saveDraft(force) {
+            if (busy || !draft) return;
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.exam_date || '')) { edMsg('Укажите дату экзамена.'); return; }
+            const items = cleanDraftItems();
+            if (!items.length) { edMsg('Добавьте хотя бы одно задание.'); return; }
+            const row = {
+                exam_date: draft.exam_date, student_id: draft.student_id || null,
+                student_name: draft.student_id ? null : ((draft.student_name || '').trim() || null),
+                matched_test: (draft.matched_test || '').trim() || null, message: (draft.message || '').trim() || null, items
+            };
+            busy = true;
+            try {
+                if (draft.id) {
+                    let q = db.from('exam_reports').update(row).eq('id', draft.id);
+                    if (!force) q = q.eq('version', draft.version);
+                    const r = await q.select('*');
+                    if (r.error) throw r.error;
+                    if (!r.data || !r.data.length) {
+                        const chk = await db.from('exam_reports').select('id, version').eq('id', draft.id).maybeSingle();
+                        if (chk.data && chk.data.version !== draft.version) { draftConflict = true; renderEditor(); return; }
+                        throw new Error(chk.data ? 'база не дала сохранить' : 'отчёт уже удалён');
+                    }
+                    const saved = Object.assign(r.data[0], { items: normItems(r.data[0].items) });
+                    reports = reports.map(x => String(x.id) === String(saved.id) ? saved : x);
+                } else {
+                    const r = await db.from('exam_reports').insert([row]).select('*').single();
+                    if (r.error) throw r.error;
+                    reports.unshift(Object.assign(r.data, { items: normItems(r.data.items) }));
+                }
+                reports.sort((a, b) => (String(b.exam_date) > String(a.exam_date) ? 1 : String(b.exam_date) < String(a.exam_date) ? -1 : Number(b.id) - Number(a.id)));
+                draft = null; draftConflict = false;
+                renderAll();
+                toast('Отчёт сохранён');
+            } catch (err) {
+                edMsg((missingTable(err) ? 'Сначала запустите exam_reports.sql в Supabase.' : 'Не сохранилось: ' + (err.message || err)) + ' Записи остались на странице.');
+            } finally { busy = false; }
+        }
+        async function removeReport(id) {
+            const r = reports.find(x => String(x.id) === String(id));
+            if (!r || !confirm('Удалить отчёт за ' + fmtDate(r.exam_date) + ' (' + studentName(r) + ')? Вернуть будет нельзя.')) return;
+            const res = await db.from('exam_reports').delete().eq('id', id).select('id');
+            if (res.error || !res.data || !res.data.length) { alert('Не удалилось: ' + ((res.error && res.error.message) || 'нет прав')); return; }
+            reports = reports.filter(x => String(x.id) !== String(id));
+            if (draft && String(draft.id) === String(id)) draft = null;
+            renderAll();
+        }
+
+        // ---------- Поиск в базе ----------
+        async function runSearch(it, q) {
+            const t = TYPE[it.type];
+            if (!t || !t.bank) return;
+            const b = t.bank;
+            const clean = String(q || '').replace(/[,()*%\\]/g, ' ').replace(/\s+/g, ' ').trim();
+            if (clean.length < 1) { searchResults = []; paintResults(); return; }
+            searchResults = null; paintResults();
+            const myFor = searchFor;
+            try {
+                let out = [];
+                if (b.sets) {
+                    if (/^\d+$/.test(clean)) {
+                        const r = await db.from('listening_questions').select('set_number').eq('set_number', Number(clean)).limit(1);
+                        if (r.error) throw r.error;
+                        out = (r.data || []).map(x => ({ id: String(x.set_number), title: 'Набор Choose a Response #' + x.set_number }));
+                    } else {
+                        const r = await db.from('listening_questions').select('set_number, transcript').ilike('transcript', '%' + clean + '%').limit(60);
+                        if (r.error) throw r.error;
+                        const seen = new Set();
+                        (r.data || []).forEach(x => { if (x.set_number && !seen.has(x.set_number)) { seen.add(x.set_number); out.push({ id: String(x.set_number), title: 'Набор #' + x.set_number + ' — «' + String(x.transcript || '').slice(0, 60) + '»' }); } });
+                    }
+                } else {
+                    const fields = b.search || ['title'];
+                    const build = cols => {
+                        let qq = db.from(b.table).select(cols).limit(12);
+                        if (b.eq) qq = qq.eq(b.eq[0], b.eq[1]);
+                        if (b.ilikeType) qq = qq.ilike('type', b.ilikeType);
+                        const ors = fields.map(f => f + '.ilike.%' + clean + '%');
+                        if (/^\d+$/.test(clean) && b.table !== 'listening_tests' && b.table !== 'speaking_tests') ors.push('id.eq.' + clean);
+                        return qq.or(ors.join(','));
+                    };
+                    let r = await build(b.cols);
+                    if (r.error && /topic|meta_subject|professor_prompt/.test(r.error.message || '')) r = await build('id, title');
+                    if (r.error) throw r.error;
+                    out = (r.data || []).map(x => ({ id: String(x.id), title: String(x.title || x.meta_subject || ('№ ' + x.id)) + (x.meta_subject && x.title && x.meta_subject !== x.title ? ' — ' + x.meta_subject : ''), topic: x.topic || '' }));
+                }
+                if (searchFor !== myFor) return;
+                searchResults = out;
+            } catch (err) {
+                searchResults = { error: 'Не получилось найти: ' + (err.message || err) };
+            }
+            paintResults();
+        }
+        function paintResults() {
+            const ul = $('editor').querySelector('[data-results]');
+            if (ul) ul.innerHTML = resultsHtml();
+        }
+
+        // ---------- Список отчётов ----------
+        function itemView(it) {
+            const sec = SEC[sectionOf(it)];
+            const t = TYPE[it.type];
+            const link = it.bank && t && t.bank ? t.bank.link(it.bank.id) : '';
+            return '<li class="flex gap-2.5 text-sm leading-relaxed">'
+                + '<span class="mt-[0.5em] w-2 h-2 rounded-full shrink-0" style="background:' + (sec ? sec.color : '#d1d5db') + '"></span>'
+                + '<span class="min-w-0"><span class="font-semibold text-slate-900">' + esc(typeLabel(it)) + '</span>'
+                + (it.module ? ' <span class="ex-chip bg-gray-100 text-gray-500">' + esc(MODULE_LABEL[it.module]) + '</span>' : '')
+                + (it.topic ? ' <span class="ex-chip bg-indigo-50 text-indigo-700">' + esc(it.topic) + '</span>' : '')
+                + (it.text ? '<span class="text-slate-600"> — ' + esc(it.text) + '</span>' : '')
+                + (it.bank ? ' <a href="' + esc(link) + '" target="_blank" rel="noopener" class="ex-chip ' + (it.match === 'exact' ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-amber-50 text-amber-700 hover:bg-amber-100') + '" title="Открыть в практике">'
+                    + (it.match === 'exact' ? '✓ ' : '≈ ') + esc(it.bank.title || ('№ ' + it.bank.id)) + '</a>' : '')
+                + '</span></li>';
+        }
+        function renderList() {
+            const fs = $('fStudent');
+            const cur = fs.value;
+            fs.innerHTML = '<option value="">Все ученицы</option>' + [...new Set(reports.map(studentName))].sort((a, b) => a.localeCompare(b, 'ru'))
+                .map(n => '<option value="' + esc(n) + '"' + (n === cur ? ' selected' : '') + '>' + esc(n) + '</option>').join('');
+            const q = $('fText').value.trim().toLowerCase();
+            const list = reports.filter(r => (!fs.value || studentName(r) === fs.value)
+                && (!q || r.items.some(it => (it.topic + ' ' + it.text + ' ' + typeLabel(it) + ' ' + (it.bank ? it.bank.title : '')).toLowerCase().includes(q))
+                       || String(r.matched_test || '').toLowerCase().includes(q)));
+            const box = $('reportList');
+            if (!reports.length) {
+                box.innerHTML = '<div class="text-center py-12 px-6 text-sm text-gray-500 bg-white rounded-3xl border border-dashed border-gray-200">'
+                    + 'Отчётов пока нет. Нажмите «Новый отчёт» и вставьте сообщение ученицы — задания разберутся сами.</div>';
+                return;
+            }
+            if (!list.length) { box.innerHTML = '<p class="text-sm text-gray-400 py-6 text-center">Ничего не нашлось.</p>'; return; }
+            box.innerHTML = list.map(r => {
+                const bySec = SECTIONS.map(s => ({ s, items: r.items.filter(it => sectionOf(it) === s.id) })).filter(x => x.items.length);
+                const loose = r.items.filter(it => !sectionOf(it));
+                return '<article class="bg-white rounded-3xl border border-gray-100 shadow-xs p-5 sm:p-6">'
+                    + '<div class="flex flex-wrap items-start justify-between gap-3">'
+                    +   '<div class="min-w-0"><h3 class="text-base font-bold text-slate-900">' + esc(fmtDate(r.exam_date)) + '</h3>'
+                    +   '<p class="text-xs text-slate-500 mt-0.5">' + esc(studentName(r)) + (r.matched_test ? ' · совпал с: <b class="text-slate-700">' + esc(r.matched_test) + '</b>' : '') + '</p></div>'
+                    +   '<div class="flex gap-3 shrink-0"><button type="button" data-ex="edit" data-id="' + esc(r.id) + '" class="text-xs font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer">Изменить</button>'
+                    +   '<button type="button" data-ex="del" data-id="' + esc(r.id) + '" class="text-xs font-bold text-gray-400 hover:text-rose-600 cursor-pointer">Удалить</button></div>'
+                    + '</div>'
+                    + '<div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 mt-4">' + bySec.map(x =>
+                        '<div><p class="text-[11px] font-bold mb-1.5" style="color:' + x.s.color + '">' + x.s.label + '</p><ul class="space-y-1.5">' + x.items.map(itemView).join('') + '</ul></div>').join('')
+                    + (loose.length ? '<div><p class="text-[11px] font-bold text-gray-400 mb-1.5">Раздел не указан</p><ul class="space-y-1.5">' + loose.map(itemView).join('') + '</ul></div>' : '')
+                    + '</div>'
+                    + (r.message ? '<details class="mt-4 border-t border-gray-50 pt-3"><summary class="text-xs font-bold text-gray-400 hover:text-slate-700 cursor-pointer">Сообщение ученицы</summary>'
+                        + '<p class="text-xs text-slate-600 leading-relaxed mt-2 whitespace-pre-line">' + esc(r.message) + '</p></details>' : '')
+                    + '</article>';
+            }).join('');
+        }
+
+        // ---------- Темы ----------
+        function renderTopics() {
+            const box = $('tab-topics');
+            const items = allItems();
+            if (!items.length) { box.innerHTML = '<p class="text-sm text-gray-400 py-8 text-center">Появится, когда будут отчёты.</p>'; return; }
+            const html = SECTIONS.map(s => {
+                const cards = s.types.map(t => {
+                    const mine = items.filter(x => x.it.type === t.id);
+                    if (!mine.length) return '';
+                    const by = {};
+                    mine.forEach(x => {
+                        const k = x.it.topic.trim() || '(без темы)';
+                        (by[k] = by[k] || []).push(x);
+                    });
+                    const rows = Object.entries(by).map(([topic, hits]) => ({
+                        topic, hits, n: hits.length,
+                        recent: hits.filter(h => daysAgo(h.r.exam_date) <= 30).length,
+                        last: hits.reduce((m, h) => h.r.exam_date > m ? h.r.exam_date : m, '')
+                    })).sort((a, b) => (a.topic === '(без темы)') - (b.topic === '(без темы)') || b.n - a.n || (b.last > a.last ? 1 : -1));
+                    const max = Math.max(...rows.map(r => r.n));
+                    return '<div class="bg-white rounded-3xl border border-gray-100 shadow-xs p-5">'
+                        + '<div class="flex items-baseline justify-between gap-3 mb-3"><h3 class="text-sm font-bold text-slate-900">' + esc(t.label) + '</h3>'
+                        + '<span class="text-[11px] text-gray-400">' + mine.length + ' раз</span></div>'
+                        + '<div class="grid grid-cols-[minmax(0,1fr)_88px_44px_64px] gap-x-3 text-[10px] font-bold text-gray-400 pb-1.5 border-b border-gray-50"><span>Тема</span><span></span><span class="text-right">30 дней</span><span class="text-right">последний</span></div>'
+                        + rows.map(r => '<details class="group border-b border-gray-50 last:border-0">'
+                            + '<summary class="grid grid-cols-[minmax(0,1fr)_88px_44px_64px] gap-x-3 items-center py-2 cursor-pointer">'
+                            +   '<span class="text-sm ' + (r.topic === '(без темы)' ? 'text-gray-400' : 'text-slate-800 font-medium') + ' truncate">' + esc(r.topic) + '</span>'
+                            +   '<span class="flex items-center gap-2"><span class="h-2 rounded-full" style="width:' + Math.max(8, Math.round(r.n / max * 64)) + 'px;background:' + s.color + '"></span><span class="text-xs font-bold text-slate-700 tnum">' + r.n + '</span></span>'
+                            +   '<span class="text-xs text-right tnum ' + (r.recent ? 'font-bold text-slate-800' : 'text-gray-300') + '">' + r.recent + '</span>'
+                            +   '<span class="text-[11px] text-right text-gray-500 tnum">' + esc(shortDate(r.last)) + '</span></summary>'
+                            + '<ul class="pb-2 pl-1 space-y-1">' + r.hits.sort((a, b) => a.r.exam_date < b.r.exam_date ? 1 : -1).map(h =>
+                                '<li class="text-xs text-slate-600"><span class="text-gray-400 tnum">' + esc(shortDate(h.r.exam_date)) + '</span> · ' + esc(studentName(h.r))
+                                + (h.it.text ? ' — ' + esc(h.it.text) : '') + '</li>').join('') + '</ul></details>').join('')
+                        + '</div>';
+                }).join('');
+                return cards ? '<div><h2 class="text-xs font-bold mb-3" style="color:' + s.color + '">' + s.label + '</h2><div class="grid grid-cols-1 lg:grid-cols-2 gap-4">' + cards + '</div></div>' : '';
+            }).join('');
+            box.innerHTML = '<p class="text-xs text-gray-500 mb-5 max-w-2xl">Сколько раз тема попадалась в каждом типе заданий. «30 дней» — за последний месяц: так виден тренд. Нажмите на тему — покажу, когда и у кого.</p>'
+                + '<div class="space-y-8">' + html + '</div>';
+        }
+
+        // ---------- Задания из базы ----------
+        function renderRepeats() {
+            const box = $('tab-repeats');
+            const groups = bankGroups();
+            if (!groups.length) {
+                box.innerHTML = '<p class="text-sm text-gray-400 py-8 text-center max-w-md mx-auto">Здесь будут задания из базы, которые попадались на экзаменах. Чтобы задание сюда попало, в отчёте нажмите «Найти в базе».</p>';
+                return;
+            }
+            const card = g => {
+                const t = TYPE[g.type];
+                const sec = t ? SEC[t.section] : null;
+                const link = t && t.bank ? t.bank.link(g.bank.id) : '';
+                const hits = g.hits.slice().sort((a, b) => a.r.exam_date < b.r.exam_date ? 1 : -1);
+                return '<div class="bg-white rounded-2xl border ' + (g.reports > 1 ? 'border-amber-200' : 'border-gray-100') + ' p-4 flex flex-col sm:flex-row sm:items-center gap-3">'
+                    + '<div class="min-w-0 flex-1">'
+                    +   '<p class="flex items-center gap-2 text-[11px] font-bold text-gray-400"><span class="w-2 h-2 rounded-full" style="background:' + (sec ? sec.color : '#d1d5db') + '"></span>' + esc(t ? t.label : g.type) + '</p>'
+                    +   '<p class="text-sm font-bold text-slate-900 mt-0.5 truncate" title="' + esc(g.bank.title) + '">' + esc(g.bank.title || ('№ ' + g.bank.id)) + '</p>'
+                    +   '<div class="flex flex-wrap gap-1.5 mt-2">' + hits.map(h => '<span class="ex-chip ' + (h.it.match === 'exact' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700') + '" title="' + (h.it.match === 'exact' ? 'точно это задание' : 'похожее') + '">'
+                        + esc(shortDate(h.r.exam_date)) + ' · ' + esc(studentName(h.r).split(/\s+/)[0]) + '</span>').join('') + '</div>'
+                    + '</div>'
+                    + '<div class="flex items-center gap-3 shrink-0">'
+                    +   '<span class="text-right"><span class="block text-xl font-extrabold tnum ' + (g.reports > 1 ? 'text-amber-600' : 'text-slate-800') + '">' + g.reports + '</span><span class="block text-[10px] text-gray-400">' + (g.reports === 1 ? 'экзамен' : g.reports < 5 ? 'экзамена' : 'экзаменов') + '</span></span>'
+                    +   (link ? '<a href="' + esc(link) + '" target="_blank" rel="noopener" class="text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-2 rounded-xl transition">Открыть</a>' : '')
+                    + '</div></div>';
+            };
+            const rep = groups.filter(g => g.reports > 1), once = groups.filter(g => g.reports <= 1);
+            box.innerHTML = '<p class="text-xs text-gray-500 mb-5 max-w-2xl">Задания из базы, которые ученицы встретили на экзамене. Сверху — те, что попались больше одного раза: зелёная дата — «точно оно», жёлтая — «похоже».</p>'
+                + (rep.length ? '<h2 class="text-sm font-bold text-slate-900 mb-3">Повторились <span class="text-amber-600">' + rep.length + '</span></h2><div class="space-y-3 mb-8">' + rep.map(card).join('') + '</div>'
+                              : '<p class="text-sm text-gray-500 bg-white rounded-2xl border border-gray-100 p-4 mb-8">Пока ни одно задание не попалось дважды.</p>')
+                + (once.length ? '<h2 class="text-sm font-bold text-slate-900 mb-3">Попались один раз <span class="text-gray-400">' + once.length + '</span></h2><div class="space-y-3">' + once.map(card).join('') + '</div>' : '');
+        }
+
+        // ---------- Вкладки ----------
+        function setTab(t) {
+            tab = t;
+            document.querySelectorAll('.ex-tab').forEach(b => {
+                const on = b.getAttribute('data-tab') === t;
+                b.setAttribute('aria-selected', on);
+                b.className = 'ex-tab pb-3 text-sm font-bold border-b-2 transition cursor-pointer flex items-center gap-2 ' + (on ? 'text-slate-900 border-slate-900' : 'text-gray-400 border-transparent hover:text-slate-700');
+            });
+            ['reports', 'topics', 'repeats'].forEach(x => $('tab-' + x).classList.toggle('hidden', x !== t));
+        }
+        function renderAll() {
+            renderSummary(); renderEditor(); renderList(); renderTopics(); renderRepeats(); setTab(tab); icons();
+        }
+        let toastTimer = null;
+        function toast(text) {
+            let el = $('ex-toast');
+            if (!el) {
+                el = document.createElement('div'); el.id = 'ex-toast'; el.setAttribute('role', 'status');
+                el.className = 'fixed left-1/2 -translate-x-1/2 bottom-24 md:bottom-6 z-50 bg-slate-900 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-lg transition-opacity';
+                document.body.appendChild(el);
+            }
+            el.textContent = text; el.style.opacity = '1';
+            clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.style.opacity = '0'; }, 2200);
+        }
+
+        // ---------- События ----------
+        const itemOf = el => { const li = el.closest('[data-item]'); return li && draft ? draft.items.find(x => x.id === li.getAttribute('data-item')) : null; };
+        document.addEventListener('click', e => {
+            const b = e.target.closest && e.target.closest('[data-ex],[data-tab]');
+            if (!b) return;
+            if (b.hasAttribute('data-tab')) { setTab(b.getAttribute('data-tab')); return; }
+            const a = b.getAttribute('data-ex');
+            const it = itemOf(b);
+            switch (a) {
+                case 'new': openDraft(null); break;
+                case 'edit': openDraft(reports.find(x => String(x.id) === b.getAttribute('data-id'))); break;
+                case 'del': removeReport(b.getAttribute('data-id')); break;
+                case 'cancel':
+                    if (draft && (draft.items.length || (draft.message || '').trim()) && !draft.id && !confirm('Закрыть без сохранения?')) break;
+                    draft = null; renderEditor(); break;
+                case 'parse': {
+                    const found = parseMessage(draft.message);
+                    const note = $('editor').querySelector('[data-ex-note]');
+                    if (!found.length) { if (note) note.textContent = 'Не нашла заданий — добавьте вручную.'; break; }
+                    draft.items = draft.items.concat(found);
+                    renderEditor();
+                    const n2 = $('editor').querySelector('[data-ex-note]');
+                    if (n2) n2.textContent = 'Добавлено заданий: ' + found.length + '. Проверьте тип и тему.';
+                    break;
+                }
+                case 'add-item': {
+                    const ni = { id: nid(), section: '', type: '', module: '', topic: '', text: '', bank: null, match: 'exact' };
+                    draft.items.push(ni); renderEditor();
+                    const sel = $('editor').querySelector('[data-item="' + ni.id + '"] [data-f="type"]');
+                    if (sel) sel.focus();
+                    break;
+                }
+                case 'del-item': draft.items = draft.items.filter(x => x !== it); if (searchFor === (it && it.id)) searchFor = null; renderEditor(); break;
+                case 'find': searchFor = it.id; searchResults = []; renderEditor(); {
+                    const q = $('editor').querySelector('[data-item="' + it.id + '"] [data-f="q"]');
+                    if (q) { q.value = it.text.split(/\s+/).slice(0, 3).join(' '); q.focus(); runSearch(it, q.value); }
+                } break;
+                case 'close-find': searchFor = null; renderEditor(); break;
+                case 'pick': {
+                    const r = searchResults && searchResults[Number(b.getAttribute('data-i'))];
+                    if (!r || !it) break;
+                    it.bank = { table: TYPE[it.type].bank.table, id: r.id, title: r.title };
+                    if (!it.topic && r.topic) it.topic = r.topic;
+                    it.match = 'exact'; searchFor = null; renderEditor(); break;
+                }
+                case 'match': if (it) { it.match = it.match === 'exact' ? 'similar' : 'exact'; renderEditor(); } break;
+                case 'unlink': if (it) { it.bank = null; renderEditor(); } break;
+                case 'save': saveDraft(false); break;
+                case 'force-save': saveDraft(true); break;
+            }
+        });
+        document.addEventListener('input', e => {
+            const f = e.target.getAttribute && e.target.getAttribute('data-f');
+            if (!f || !draft || !$('editor').contains(e.target)) return;
+            const it = itemOf(e.target);
+            if (f === 'q' && it) { clearTimeout(searchTimer); const v = e.target.value; searchTimer = setTimeout(() => runSearch(it, v), 250); return; }
+            if (it) { if (f === 'topic' || f === 'text') it[f] = e.target.value; return; }
+            if (['exam_date', 'matched_test', 'message', 'student_name'].includes(f)) draft[f] = e.target.value;
+        });
+        document.addEventListener('change', e => {
+            const f = e.target.getAttribute && e.target.getAttribute('data-f');
+            if (e.target.id === 'fStudent') { renderList(); return; }
+            if (!f || !draft || !$('editor').contains(e.target)) return;
+            const it = itemOf(e.target);
+            if (it && f === 'type') {
+                const v = e.target.value;
+                if (/:$/.test(v)) { it.type = ''; it.section = v.slice(0, -1); } else { it.type = v; it.section = v ? TYPE[v].section : ''; }
+                if (it.bank && (!TYPE[it.type] || !TYPE[it.type].bank || TYPE[it.type].bank.table !== it.bank.table)) it.bank = null;
+                if (!it.topic && it.type) it.topic = guessTopic(it.type, it.text);
+                if (searchFor === it.id) searchFor = null;
+                renderEditor(); return;
+            }
+            if (it && f === 'module') { it.module = e.target.value; return; }
+            if (f === 'student') {
+                draft.__other = e.target.value === '__other';
+                draft.student_id = draft.__other ? '' : e.target.value;
+                renderEditor();
+                if (draft.__other) { const n = $('editor').querySelector('[data-f="student_name"]'); if (n) n.focus(); }
+                return;
+            }
+            if (f === 'exam_date') draft.exam_date = e.target.value;
+        });
+        $('fText').addEventListener('input', () => renderList());
+        window.addEventListener('beforeunload', e => { if (draft && (draft.items.length || (draft.message || '').trim())) { e.preventDefault(); e.returnValue = ''; } });
+
+        window.ExamReports = { parseMessage };   // для проверки разбора
+        document.addEventListener('DOMContentLoaded', load);
+    })();
+    </script>
+</body>
+</html>
