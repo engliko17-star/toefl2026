@@ -40,8 +40,9 @@
     ];
     // Пункты преподавателя — скрыты, пока роль не подтверждена
     const TEACHER_ITEMS = [
-        { href: 'teacher-board.html', icon: 'users',  label: 'Teacher Board', id: 'teacherLinkDesktop' },
-        { href: 'content-lab.html',   icon: 'flask-conical', label: 'Обкатка материала', id: 'teacherLinkLab' }
+        { href: 'teacher-board.html', icon: 'users',  label: 'Teacher Board', id: 'teacherLinkDesktop', mid: 'teacherLinkMobile', short: 'Teacher' },
+        { href: 'content-lab.html',   icon: 'flask-conical', label: 'Обкатка материала', id: 'teacherLinkLab', mid: 'teacherLinkLabMobile', short: 'Обкатка' },
+        { href: 'exam-reports.html',  icon: 'calendar-check', label: 'Экзамены учениц', id: 'teacherLinkExams', mid: 'teacherLinkExamsMobile', short: 'Экзамены' }
     ];
     const TEACHER_ITEM = TEACHER_ITEMS[0];   // для совместимости со старым кодом страниц
 
@@ -245,8 +246,8 @@
     mnav.innerHTML = `<div class="app-mnav-row">
         ${allItems.map(it => `<a href="${it.href}"${it.ge ? ' data-nav-ge="1"' : ''} class="app-mnav-link${it.href === activeHref ? ' is-active' : ''}${it.ge ? ' hidden' : ''}">
             <i data-lucide="${it.icon}"></i><span>${esc(it.label.replace('Speaking Topics', 'Topics').replace('Irregular Verbs', 'Verbs').replace('My Courses', 'Courses'))}</span></a>`).join('')}
-        ${TEACHER_ITEMS.map((it, i) => `<a href="${it.href}" id="${i === 0 ? 'teacherLinkMobile' : 'teacherLinkLabMobile'}" class="app-mnav-link hidden${it.href === activeHref ? ' is-active' : ''}">
-            <i data-lucide="${it.icon}"></i><span>${i === 0 ? 'Teacher' : 'Обкатка'}</span></a>`).join('')}
+        ${TEACHER_ITEMS.map(it => `<a href="${it.href}" id="${it.mid}" class="app-mnav-link hidden${it.href === activeHref ? ' is-active' : ''}">
+            <i data-lucide="${it.icon}"></i><span>${esc(it.short)}</span></a>`).join('')}
         <button type="button" class="app-mnav-link is-logout" onclick="logoutUser()"><i data-lucide="log-out"></i><span>Exit</span></button>
     </div>`;
     document.body.appendChild(mnav);
@@ -285,7 +286,7 @@
     // Страницы и так раскрывают teacherLink* для учителя; дублируем здесь,
     // чтобы ссылка появлялась и там, где страница этого не делает.
     function showTeacher() {
-        ['teacherLinkDesktop', 'teacherLinkMobile', 'teacherLinkLab', 'teacherLinkLabMobile'].forEach(id => {
+        TEACHER_ITEMS.flatMap(it => [it.id, it.mid]).forEach(id => {
             const el = document.getElementById(id);
             if (el) el.classList.remove('hidden');
         });
