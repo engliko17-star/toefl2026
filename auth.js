@@ -129,7 +129,7 @@ const ACCESS_FIELD = {
 //  4) клик по закрытому разделу перехватывается на всей странице, включая
 //     ссылки, которые страница дорисовала позже.
 
-const AUTH_TEACHER_ONLY = ['teacher-board.html', 'student-profile.html', 'content-lab.html', 'mock-lab.html'];
+const AUTH_TEACHER_ONLY = ['teacher-board.html', 'student-profile.html', 'content-lab.html', 'mock-lab.html', 'exam-reports.html'];
 const AUTH_PROFILE_COLS = 'role,is_approved,access_reading,access_listening,access_speaking,access_writing,access_tests';
 const AUTH_STORAGE_KEY = 'sb-' + new URL(AUTH_SB_URL).hostname.split('.')[0] + '-auth-token';
 const AUTH_TIMEOUT_MS = 8000;      // на один запрос
