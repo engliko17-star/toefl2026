@@ -9,6 +9,12 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
+    <script>
+        // Бесплатная версия (auth.js): в списке видны все задания, закрытые — под замочком
+        var gMerge = (table, rows, opts) => (typeof authGuestMerge === 'function' ? authGuestMerge(table, rows, opts) : Promise.resolve(rows || []));
+        var gCard = (html, row) => (typeof authGuestCard === 'function' ? authGuestCard(html, row) : html);
+        var gNote = () => (typeof authL === 'function' ? authL('Available with full access', 'Доступно в полной версии') : 'Available with full access');
+    </script>
     <script src="content-visibility.js"></script>
     
     <style>
@@ -182,7 +188,7 @@
                 if (mocksError) throw mocksError;
 
                 // Скрытые глазиком моки видит только преподаватель
-                const mocks = CV.visibleFor(allMocks, currentUser);
+                const mocks = await gMerge('mini_mock_writing', CV.visibleFor(allMocks, currentUser));
 
                 // 2. Получаем попытки текущего пользователя
                 const { data: attempts, error: attemptsError } = await supabaseClient
@@ -231,7 +237,7 @@
                 container.innerHTML = mocks.map((mock, index) => {
                     const isHiddenMock = mock.is_hidden === true;
                     const mockNumber = isHiddenMock ? null : ++shownNumber;
-                    const attempt = latestAttempts[mock.id];
+                    const attempt = mock.__locked ? null : latestAttempts[mock.id];
                     // Незаконченная попытка на этом устройстве (черновик mini-mock-writing.html)
                     let draftNote = '';
                     try {
@@ -297,7 +303,7 @@
                         `;
                     }
 
-                    return `
+                    return gCard(`
                         <div class="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:border-indigo-200 transition-all duration-300 flex flex-col h-full relative overflow-hidden group ${CV.cardClass(isHiddenMock)}">
                             
                             <!-- Декоративная иконка на фоне -->
@@ -319,7 +325,7 @@
                             ${draftNote}
                             ${actionAreaHTML}
                         </div>
-                    `;
+                    `, mock);
                 }).join('');
 
                 lucide.createIcons();
