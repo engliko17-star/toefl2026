@@ -12,6 +12,12 @@
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
+    <script>
+        // Бесплатная версия (auth.js): в списке видны все задания, закрытые — под замочком
+        var gMerge = (table, rows, opts) => (typeof authGuestMerge === 'function' ? authGuestMerge(table, rows, opts) : Promise.resolve(rows || []));
+        var gCard = (html, row) => (typeof authGuestCard === 'function' ? authGuestCard(html, row) : html);
+        var gNote = () => (typeof authL === 'function' ? authL('Available with full access', 'Доступно в полной версии') : 'Available with full access');
+    </script>
     <script src="content-visibility.js"></script>
 
     <style>
@@ -68,7 +74,7 @@
                 if (testsError) throw testsError;
 
                 // Скрытые глазиком тесты видит только преподаватель
-                const tests = CV.visibleFor(allTests, user);
+                const tests = await gMerge('mock_tests', CV.visibleFor(allTests, user), { order: 'created_at' });
 
                 const { data: results, error: resultsError } = await _supabase
                     .from('mock_test_results')
@@ -94,13 +100,13 @@
 
                 grid.innerHTML = '';
                 tests.forEach(test => {
-                    const result = resultsMap[test.id];
+                    const result = test.__locked ? null : resultsMap[test.id];
                     const isCompleted = !!result; 
                     const bandScore = isCompleted ? parseFloat(result.band_score).toFixed(1) : null;
                     const initial = getAnimalInitial(test.title);
                     const isHiddenTest = test.is_hidden === true;
                     
-                    grid.innerHTML += `
+                    grid.innerHTML += gCard(`
                         <div class="relative bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex flex-col transition hover:shadow-md ${CV.cardClass(isHiddenTest)}">
                             ${isCompleted ? '<div class="absolute top-5 right-5 bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wider">Completed</div>' : ''}
                             <div class="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-black text-2xl mb-5 shadow-sm border border-indigo-100">
@@ -121,7 +127,7 @@
                                 </a>
                             </div>
                         </div>
-                    `;
+                    `, test);
                 });
                 lucide.createIcons();
             } catch (err) {
