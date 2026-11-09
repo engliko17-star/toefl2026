@@ -1,6 +1,10 @@
 // =====================================================================
-// practice-next.js — кнопка «Next test» в практике Reading
-// (Daily Life, Academic, Complete the Words).
+// practice-next.js — кнопка «Next test» в практике:
+//   Reading (Daily Life, Academic, Complete the Words),
+//   Listening (Choose a Response), Writing (Build a Sentence, Email,
+//   Academic Discussion), Speaking (Listen and Repeat, Interview).
+//   Listening Conversation / Announcement / Academic Talk — на самой
+//   practice-view.html (там список и тест на одной странице).
 //
 // Список (read-daily.html и др.) после каждой отрисовки запоминает
 // порядок карточек, как их видит ученица — с учётом фильтра по теме, —
@@ -39,8 +43,62 @@
             table: 'complete_words_tasks', results: 'complete_words_results', resultType: null,
             review: false,
             btn: 'px-5 py-3 bg-slate-900 hover:bg-purple-600 text-white'
-        }
+        },
+        // Listening — Choose a Response: номер набора (?set=), разбор — &review=true
+        response: {
+            list: 'choose-response-list.html', task: 'choose-response-test.html',
+            param: 'set', reviewQuery: 'review=true', review: true, noDashboard: true,
+            fromDb: responseFromDb,
+            btn: 'flex-1 py-3.5 text-sm bg-purple-600 hover:bg-purple-700 text-white'
+        },
+        // Writing: тип в адресе (?type=…&id=…); сделанное — карточка «Review Results»
+        'w-sentence': { list: 'task-list.html?type=sentence', task: 'writing-practice.html', extra: 'type=sentence&', noDashboard: true,
+            btn: 'w-full py-3.5 text-sm bg-emerald-600 hover:bg-emerald-700 text-white' },
+        'w-email': { list: 'task-list.html?type=email', task: 'writing-practice.html', extra: 'type=email&', noDashboard: true,
+            btn: 'w-full py-3.5 text-sm bg-emerald-600 hover:bg-emerald-700 text-white' },
+        'w-academic': { list: 'task-list.html?type=academic', task: 'writing-practice.html', extra: 'type=academic&', noDashboard: true,
+            btn: 'w-full py-3.5 text-sm bg-emerald-600 hover:bg-emerald-700 text-white' },
+        // Speaking: сделанное — в карточке есть ссылка на разбор
+        's-listen_repeat': { list: 'listen_repeat.html', task: 'speaking_player.html', extra: 'type=listen_repeat&', noDashboard: true,
+            doneSel: 'a[href^="speaking_results.html"]',
+            btn: 'px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white' },
+        's-interview': { list: 'interview.html', task: 'speaking_player.html', extra: 'type=interview&', noDashboard: true,
+            doneSel: 'a[href^="interview_results.html"]',
+            btn: 'px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white' }
     };
+
+    // Слова кнопки на языке интерфейса (i18n.js); названия заданий не переводятся
+    function L(en, ru) {
+        var lang = 'en';
+        try { lang = (window.I18N && window.I18N.lang) || window.localStorage.getItem('appLang') || 'en'; } catch (e) { /* по умолчанию */ }
+        return lang === 'ru' ? ru : en;
+    }
+
+    function hrefFor(cfg, id, done) {
+        var reviewQ = cfg.reviewQuery || 'mode=review';
+        return cfg.task + '?' + (cfg.extra || '') + (cfg.param || 'id') + '=' + encodeURIComponent(id) + (done && cfg.review ? '&' + reviewQ : '');
+    }
+
+    // Choose a Response без запомненного порядка: наборы по номеру + сделанные
+    async function responseFromDb(client, userId) {
+        var sets = {}, hidden = {};
+        for (var from = 0; from < 20000; from += 1000) {
+            var r = await client.from('listening_questions').select('set_number, is_hidden')
+                .or('is_mock_only.eq.false,is_mock_only.is.null').order('id', { ascending: true }).range(from, from + 999);
+            if (r && r.error) r = await client.from('listening_questions').select('set_number')
+                .or('is_mock_only.eq.false,is_mock_only.is.null').order('id', { ascending: true }).range(from, from + 999);
+            if (!r || r.error || !Array.isArray(r.data)) return null;
+            r.data.forEach(function (q) { if (q.set_number) { sets[q.set_number] = true; if (q.is_hidden === true) hidden[q.set_number] = true; } });
+            if (r.data.length < 1000) break;
+        }
+        var done = {};
+        if (userId) {
+            var r2 = await client.from('response_results').select('set_number').eq('user_id', userId);
+            if (r2 && !r2.error && Array.isArray(r2.data)) r2.data.forEach(function (x) { done[String(x.set_number)] = true; });
+        }
+        return Object.keys(sets).filter(function (n) { return !hidden[n]; }).map(Number).sort(function (a, b) { return a - b; })
+            .map(function (n) { return { id: String(n), done: !!done[String(n)], title: '', label: 'Set #' + n }; });
+    }
 
     var ARROW = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" '
         + 'stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
@@ -77,10 +135,11 @@
         });
     }
 
-    function idFromHref(href) {
+    function idFromHref(href, cfg) {
         try {
             var u = new URL(href, window.location.href);
-            return { id: u.searchParams.get('id'), review: u.searchParams.get('mode') === 'review' };
+            var rq = ((cfg && cfg.reviewQuery) || 'mode=review').split('=');
+            return { id: u.searchParams.get((cfg && cfg.param) || 'id'), review: u.searchParams.get(rq[0]) === rq[1] };
         } catch (e) { return { id: null, review: false }; }
     }
 
@@ -108,7 +167,7 @@
         var items = [];
         var cards = {};
         listEl.querySelectorAll(selector(cfg)).forEach(function (a) {
-            var p = idFromHref(a.getAttribute('href'));
+            var p = idFromHref(a.getAttribute('href'), cfg);
             if (!p.id || seen[p.id]) return;
             // Закрытое в бесплатной версии в «Next test» не попадает
             if (a.closest && a.closest('[data-guest-locked]')) return;
@@ -122,10 +181,13 @@
                 var spans = card.querySelectorAll('span');
                 for (var i = 0; i < spans.length; i++) {
                     var t = spans[i].textContent.trim();
-                    if (/^Test #\d+$/.test(t)) { label = t; break; }
+                    if (/^(Test|Set) #\d+$/.test(t)) { label = t; break; }
                 }
             }
-            items.push({ id: String(p.id), done: p.review || /review/i.test(a.textContent), title: title, label: label });
+            var reviewSel = 'a[href*="' + (cfg.reviewQuery || 'mode=review') + '"]';
+            var done = p.review || /review/i.test(a.textContent)
+                || !!(card && (card.querySelector(reviewSel) || (cfg.doneSel && card.querySelector(cfg.doneSel))));
+            items.push({ id: String(p.id), done: done, title: title, label: label });
         });
 
         var old = load(kind);
@@ -138,7 +200,7 @@
             listEl.__pnClicks = true;
             listEl.addEventListener('click', function (e) {
                 var a = e.target && e.target.closest ? e.target.closest(selector(cfg)) : null;
-                if (a) setFocus(kind, idFromHref(a.getAttribute('href')).id);
+                if (a) setFocus(kind, idFromHref(a.getAttribute('href'), cfg).id);
             }, true);
         }
 
@@ -166,6 +228,16 @@
 
     async function fromDb(kind, client, userId) {
         var cfg = KINDS[kind];
+        if (cfg.fromDb) {
+            try {
+                var own = await cfg.fromDb(client, userId);
+                if (!own) return null;
+                var prev = load(kind);
+                save(kind, { uid: userId || null, items: own, at: Date.now(), focus: prev && prev.focus, last: prev && prev.last, lastAt: prev && prev.lastAt, source: 'db' });
+                return own;
+            } catch (e) { return null; }
+        }
+        if (!cfg.table) return null;   // без запомненного порядка кнопки нет (откройте тест из списка)
         try {
             // is_hidden — глазик: скрытое в практике не предлагаем (пока колонки нет — без неё)
             var r = await client.from(cfg.table).select('id, title, is_hidden').eq('is_mock_only', false).order('id', { ascending: true });
@@ -200,20 +272,20 @@
         caption.className = 'pn-caption text-[11px] text-slate-400 mt-2.5 truncate ' + (opts.align === 'right' ? 'text-right' : 'text-center');
 
         if (next.none) {
-            caption.textContent = 'Every test in this list is done';
+            caption.textContent = L('Every test in this list is done', 'Все тесты из этого списка сделаны');
         } else {
             var a = document.createElement('a');
             a.className = 'pn-next font-bold text-xs rounded-xl transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ' + cfg.btn
                 + (opts.buttonClass ? ' ' + opts.buttonClass : '');
-            a.href = cfg.task + '?id=' + encodeURIComponent(next.id) + (next.done && cfg.review ? '&mode=review' : '');
-            a.innerHTML = '<span>Next test</span>' + ARROW;
+            a.href = hrefFor(cfg, next.id, next.done);
+            a.innerHTML = '<span>' + L('Next test', 'Следующий тест') + '</span>' + ARROW;
             a.addEventListener('click', function () { setFocus(kind, next.id); });
-            row.appendChild(a);
+            if (opts.prepend) row.insertBefore(a, row.firstChild); else row.appendChild(a);
 
             var name = [next.label, next.title].filter(Boolean).join(' · ');
             if (name) {
                 a.title = name;
-                caption.textContent = 'Next: ' + name;
+                caption.textContent = L('Next: ', 'Дальше: ') + name;
             } else {
                 caption = null;
             }
@@ -221,7 +293,7 @@
         if (caption) row.insertAdjacentElement('afterend', caption);
     }
 
-    // opts: { row: элемент или id ряда кнопок, currentId, client, userId, align, buttonClass }
+    // opts: { row: элемент или id ряда кнопок, currentId, client, userId, align, buttonClass, prepend }
     function mount(kind, opts) {
         var cfg = KINDS[kind];
         opts = opts || {};
@@ -251,6 +323,7 @@
     function suggest(userId) {
         var best = null;
         Object.keys(KINDS).forEach(function (kind) {
+            if (KINDS[kind].noDashboard) return;   // на главной пока только Reading
             var st = load(kind);
             if (!st || !st.last || !Array.isArray(st.items) || !st.items.length) return;
             if (st.uid && userId && st.uid !== userId) return;
@@ -266,7 +339,7 @@
         return {
             kind: best.kind, label: LABELS[best.kind], at: best.st.lastAt || null,
             resume: !!(cur && !cur.done), item: next, list: cfg.list,
-            href: cfg.task + '?id=' + encodeURIComponent(next.id)
+            href: hrefFor(cfg, next.id, false)
         };
     }
 
