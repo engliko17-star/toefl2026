@@ -8,6 +8,12 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
+    <script>
+        // Бесплатная версия (auth.js): в списке видны все задания, закрытые — под замочком
+        var gMerge = (table, rows, opts) => (typeof authGuestMerge === 'function' ? authGuestMerge(table, rows, opts) : Promise.resolve(rows || []));
+        var gCard = (html, row) => (typeof authGuestCard === 'function' ? authGuestCard(html, row) : html);
+        var gNote = () => (typeof authL === 'function' ? authL('Available with full access', 'Доступно в полной версии') : 'Available with full access');
+    </script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
@@ -103,13 +109,14 @@
             
             try {
                 // Загружаем опубликованные mini-mock тесты вместе с количеством вопросов в каждом
-                const { data: tests, error } = await _supabase
+                let { data: tests, error } = await _supabase
                     .from('mini_mock_speaking_tests')
                     .select('*, items:mini_mock_speaking_items!fk_items_mock_test(count)')
                     .eq('is_published', true)
                     .order('created_at', { ascending: true });
 
                 if (error) throw error;
+                tests = await gMerge('mini_mock_speaking_tests', tests, { keep: r => r.is_published === true, order: 'created_at' });
 
                 if (!tests || tests.length === 0) {
                     grid.innerHTML = `
@@ -140,7 +147,7 @@
                     const itemCount = (test.items && test.items[0] && test.items[0].count) || 0;
                     // Последняя ЗАКОНЧЕННАЯ попытка. Брошенная на середине (in_progress)
                     // раньше тоже показывалась как Completed.
-                    const mine = (attempts || []).filter(a => String(a.test_id) === String(test.id));
+                    const mine = test.__locked ? [] : (attempts || []).filter(a => String(a.test_id) === String(test.id));
                     const attempt = mine.find(a => a.status !== 'in_progress') || null;
                     const unfinished = !attempt && mine.length > 0;
                     const reviewed = attempt && attempt.status === 'reviewed' && attempt.overall_score !== null && attempt.overall_score !== undefined;
@@ -151,7 +158,7 @@
                             ? `<span class="text-[10px] font-bold text-teal-600 bg-teal-50 border border-teal-200 px-2.5 py-1 rounded-lg uppercase tracking-wider">Completed</span>`
                             : unfinished
                                 ? `<span class="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg uppercase tracking-wider">Unfinished</span>`
-                                : `<span class="text-xs font-semibold text-slate-400 flex items-center"><i data-lucide="clock" class="w-3.5 h-3.5 mr-1"></i> ~8-10 min</span>`;
+                                : `<span class="text-xs font-semibold text-slate-400 flex items-center ${test.__locked ? 'mr-7' : ''}"><i data-lucide="clock" class="w-3.5 h-3.5 mr-1"></i> ~8-10 min</span>`;
 
                     const actionHTML = attempt
                         ? `<div class="flex items-center space-x-2">
@@ -193,7 +200,7 @@
                             </div>
                         </div>
                     `;
-                    grid.insertAdjacentHTML('beforeend', cardHTML);
+                    grid.insertAdjacentHTML('beforeend', gCard(cardHTML, test));
                 });
 
                 lucide.createIcons();
