@@ -8,6 +8,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
+    <script src="teacher-review.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
@@ -217,16 +218,20 @@
                     lucide.createIcons();
 
                     try {
-                        const { data: oldRes, error: fetchErr } = await db
-                            .from('listening_mini_mock_results')
-                            .select('*')
-                            .eq('user_id', currentUser.id)
-                            .eq('mock_test_id', testId);
+                        // Из профиля ученицы — конкретная попытка (attempt), иначе — своя последняя
+                        const tr = window.TeacherReview && window.TeacherReview.on ? window.TeacherReview.attempt : null;
+                        const { data: oldRes, error: fetchErr } = tr
+                            ? await db.from('listening_mini_mock_results').select('*').eq('id', tr)
+                            : await db
+                                .from('listening_mini_mock_results')
+                                .select('*')
+                                .eq('user_id', currentUser.id)
+                                .eq('mock_test_id', testId);
 
                         if (fetchErr) throw fetchErr;
 
-                        // Ещё не отправленная попытка тоже считается
-                        const all = (oldRes || []).concat(readPending().filter(r => String(r.mock_test_id) === String(testId)));
+                        // Ещё не отправленная попытка тоже считается (только своя)
+                        const all = (oldRes || []).concat(tr ? [] : readPending().filter(r => String(r.mock_test_id) === String(testId)));
                         if (all.length > 0) {
                             const latestResult = all.reduce((latest, current) => isNewer(current, latest) ? current : latest, all[0]);
 
@@ -714,7 +719,7 @@
                             Вопросы в этом мини-тесте подобраны случайно, без калибровки по сложности — поэтому band score здесь лишь примерный ориентир. Смотрите в первую очередь на raw score.
                         </p>
 
-                        <a href="listening-mini-mock.html" class="inline-block bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold px-8 py-3.5 rounded-xl transition">Return to Library</a>
+                        <div data-review-actions><a href="listening-mini-mock.html" class="inline-block bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold px-8 py-3.5 rounded-xl transition">Return to Library</a></div>
                     </div>
 
                     <div class="max-w-6xl mx-auto mt-12">
