@@ -1385,7 +1385,7 @@ function renderResultsUI(tasksArray, finalScore, correctAnswers, totalQuestions)
                             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">Raw Score</div>
                         </div>
                     </div>
-                    <div class="flex justify-center space-x-3">
+                    <div class="flex justify-center space-x-3" data-review-actions>
                         <button onclick="startExamEngine(currentActiveTestId, document.getElementById('dynamic-test-title').innerText)" class="px-6 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition shadow-md text-sm flex items-center">
                             <i data-lucide="rotate-ccw" class="w-4 h-4 mr-2"></i> Retake Test
                         </button>
