@@ -78,7 +78,11 @@
             ],
             mock: { href: 'mini-mock-test.html', table: 'mock_tests',
                     desc: L('All Reading task types in one go, with an exam timer.', 'Все типы заданий Reading подряд, с таймером как на экзамене.') },
-            trainers: []
+            trainers: [
+                { id: 'qt', title: 'Question Type Trainer', icon: 'target', accent: 'emerald', href: 'reading-trainer.html', unit: 'hub.qtypes',
+                  desc: L('Short texts, one question each: drill the question types you miss most.', 'Короткие тексты с одним вопросом: тренируйте типы вопросов, на которых ошибаетесь.'),
+                  count: { table: 'reading_trainer_types', levels: 'question_type' } }
+            ]
         },
         listening: {
             name: 'Listening', icon: 'headphones', goal: 8,
@@ -193,6 +197,7 @@
         'hub.done': ['{a} of {b} done', 'Сделано {a} из {b}'],
         'hub.counting': ['Counting…', 'Считаем…'],
         'hub.levels': { en: ['level', 'levels'], ru: ['уровень', 'уровня', 'уровней'] },
+        'hub.qtypes': { en: ['question type', 'question types'], ru: ['тип вопросов', 'типа вопросов', 'типов вопросов'] },
         'hub.tests': { en: ['test', 'tests'], ru: ['тест', 'теста', 'тестов'] },
         'hub.mockTag': ['Full section', 'Весь раздел'],
         'hub.mockBtn': ['Choose a test', 'Выбрать тест'],
@@ -374,6 +379,10 @@
             + `<g filter="url(#${u}t)"><path d="M146 6 v26" ${AS('stroke', 'var(--c-ink)')} stroke-width="3" stroke-linecap="round"/><path d="M147 7 h18 l-5 6 5 6 h-18 z" fill="${AA(u)}"/></g>` + aspark(24, 72, 6),
         shadow: u => acard(u, 12, 18, 148, 58, 18, 0, [16, 30, 44, 24, 50, 34, 56, 38, 22, 42, 20].map((h, i) => `<rect x="${26 + i * 12}" y="${47 - h / 2}" width="6" height="${h}" rx="3" fill="${AA(u)}"/>`).join(''))
             + acard(u, 24, 86, 148, 52, 18, 0, [16, 30, 44, 24, 50, 34, 56, 38, 22, 42, 20].map((h, i) => `<rect x="${40 + i * 12}" y="${112 - h * .4}" width="6" height="${h * .8}" rx="3" fill="${AM(u)}"/>`).join('')),
+        target: u => acard(u, 14, 16, 112, 118, 16, -4, `<rect x="28" y="30" width="58" height="8" rx="4" fill="${AA(u)}"/>` + abars(28, 48, [80, 64])
+                + [0, 1, 2].map(i => `<rect x="28" y="${76 + i * 17}" width="${[78, 70, 74][i]}" height="12" rx="6" fill="${i === 1 ? AA(u) : '#fff'}" ${i === 1 ? '' : AS('stroke', 'var(--c-line)')} stroke-width="1.5"/>`).join(''))
+            + `<g filter="url(#${u}s)"><circle cx="130" cy="96" r="30" fill="#fff"/><circle cx="130" cy="96" r="21" fill="none" ${AS('stroke', 'var(--c-bar)')} stroke-width="6"/><circle cx="130" cy="96" r="9" fill="${AA(u)}"/></g>`
+            + `<path d="M130 96 L158 68" ${AS('stroke', 'var(--c-ink)')} stroke-width="4" stroke-linecap="round"/><path d="M152 62 l12 -2 -2 12" fill="${AA(u)}"/>` + aspark(150, 30, 8),
         headphones: u => `<g filter="url(#${u}s)"><path d="M34 96 v-16 a52 52 0 0 1 104 0 v16" fill="none" ${AS('stroke', 'var(--c-ink)')} stroke-width="10" stroke-linecap="round"/><rect x="20" y="84" width="32" height="50" rx="14" fill="${AA(u)}"/><rect x="120" y="84" width="32" height="50" rx="14" fill="${AA(u)}"/></g>`
             + ashine(u, 24, 88, 14, 30, 7) + ashine(u, 124, 88, 14, 30, 7) + [12, 26, 38, 22, 14].map((h, i) => `<rect x="${66 + i * 9}" y="${108 - h / 2}" width="5" height="${h}" rx="2.5" ${AS('fill', 'var(--c-bar)')}/>`).join('') + aspark(150, 30, 8),
         mic: u => `<g filter="url(#${u}s)"><rect x="64" y="14" width="44" height="74" rx="22" fill="${AA(u)}"/></g>` + ashine(u, 68, 18, 20, 40, 10) + [0, 1, 2].map(i => `<rect x="74" y="${34 + i * 12}" width="24" height="4" rx="2" fill="#fff" opacity=".45"/>`).join('')
@@ -383,7 +392,7 @@
     // Рисунок к шапке раздела — побольше
     const HERO_ART = { reading: 'sheets', listening: 'headphones', writing: 'email', speaking: 'mic' };
     const ART_FOR = { cw: 'letters', dl: 'chat', ac: 'document', cr: 'reply', conversation: 'conversation', announcement: 'megaphone',
-        sentence: 'blocks', email: 'email', listen_repeat: 'wave', interview: 'interview', sp: 'steps', sh: 'shadow' };
+        sentence: 'blocks', email: 'email', listen_repeat: 'wave', interview: 'interview', sp: 'steps', sh: 'shadow', qt: 'target' };
     const ARTICLE_ART = { 'general-reading.html': 'sheets', 'article-inference.html': 'document', 'article-general-listening.html': 'headphones',
         'article-listen-to-a-conversation.html': 'conversation', 'article-write-an-academic.html': 'sheets', 'article-write-an-email.html': 'email',
         'general-speaking.html': 'mic', 'article-speaking-interview.html': 'interview' };
@@ -737,7 +746,7 @@
             res.week = r.filter(thisWeek).length + (cw || []).filter(thisWeek).length + (mm || []).filter(thisWeek).length;
             const last = latest(mm);
             if (last) res.mock = { at: when(last), score: num(last.band_score) };
-            res.blocks.push(accuracyBlock(accuracyOf(r, readingCategory)));
+            res.blocks.push(accuracyBlock(accuracyOf(r, readingCategory), true));
         }
 
         if (key === 'listening') {
@@ -823,15 +832,18 @@
     }
     const sub = (title, note) => `<div class="min-w-0"><p class="text-xs font-bold text-slate-800">${esc(title)}</p>${note ? `<p class="text-[11px] text-slate-400 mt-0.5">${esc(note)}</p>` : ''}</div>`;
 
-    function accuracyBlock(a) {
+    const TRAINER_TYPES = ['Factual', 'Negative Factual', 'Inference', 'Main Idea', 'Rhetorical Purpose', 'Vocabulary', 'Reference', 'Organization', 'Insert Text', 'Select A Sentence', 'Simplification'];
+    function accuracyBlock(a, trainer) {
         if (a.pct === null && !a.cats.length) return '';
         let html = '';
         if (a.pct !== null) html += `<div>${ring(a.pct, sub(t('hub.accuracy'), t('hub.accuracyNote')))}</div>`;
         if (a.cats.length) html += `<div>${sub(t('hub.byQType'), a.cats.length > 1 ? t('hub.qTypeNote') : '')}
                 <div class="mt-2.5 space-y-2.5">${a.cats.slice(0, 8).map((c, i) => {
                     const col = ACCENT[QCOLOR[c.name] || QCYCLE[i % QCYCLE.length]].bar;
+                    const name = trainer && TRAINER_TYPES.includes(c.name)
+                        ? `<a href="reading-trainer.html?type=${encodeURIComponent(c.name === 'Select A Sentence' ? 'Select a Sentence' : c.name)}" class="hover:underline">${esc(c.name)}</a>` : esc(c.name);
                     return `<div>
-                    <div class="flex items-center justify-between gap-3 text-xs"><span class="text-slate-600 min-w-0 truncate flex items-center gap-2">${dot(col)}${esc(c.name)}</span><span class="font-bold text-slate-800 tnum">${c.pct}%</span></div>
+                    <div class="flex items-center justify-between gap-3 text-xs"><span class="text-slate-600 min-w-0 truncate flex items-center gap-2">${dot(col)}${name}</span><span class="font-bold text-slate-800 tnum">${c.pct}%</span></div>
                     ${bar(c.pct, 0, col)}</div>`;
                 }).join('')}</div></div>`;
         return html;
