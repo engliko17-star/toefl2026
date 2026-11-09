@@ -60,18 +60,21 @@
             
             <!-- ПАПКИ КЛАССИФИКАЦИИ -->
             <div class="flex flex-wrap gap-2 items-center justify-between mb-6">
-                <div class="flex p-1 bg-gray-100 rounded-xl space-x-1">
-                    <button id="btn-in_progress" onclick="setFolder('in_progress')" class="px-4 py-1.5 text-xs font-bold rounded-lg bg-white shadow-sm text-slate-800 transition cursor-pointer">
+                <div class="flex p-1 bg-gray-100 rounded-xl space-x-1 max-w-full overflow-x-auto">
+                    <button id="btn-in_progress" onclick="setFolder('in_progress')" class="px-4 py-1.5 text-xs font-bold rounded-lg bg-white shadow-sm text-slate-800 transition cursor-pointer whitespace-nowrap shrink-0">
                         В процессе
                     </button>
-                    <button id="btn-passed" onclick="setFolder('passed')" class="px-4 py-1.5 text-xs font-bold rounded-lg text-gray-500 hover:text-slate-700 transition cursor-pointer">
+                    <button id="btn-passed" onclick="setFolder('passed')" class="px-4 py-1.5 text-xs font-bold rounded-lg text-gray-500 hover:text-slate-700 transition cursor-pointer whitespace-nowrap shrink-0">
                         Сдали
                     </button>
-                    <button id="btn-paused" onclick="setFolder('paused')" class="px-4 py-1.5 text-xs font-bold rounded-lg text-gray-500 hover:text-slate-700 transition cursor-pointer">
+                    <button id="btn-paused" onclick="setFolder('paused')" class="px-4 py-1.5 text-xs font-bold rounded-lg text-gray-500 hover:text-slate-700 transition cursor-pointer whitespace-nowrap shrink-0">
                         Пауза
                     </button>
-                    <button id="btn-dropped" onclick="setFolder('dropped')" class="px-4 py-1.5 text-xs font-bold rounded-lg text-gray-500 hover:text-slate-700 transition cursor-pointer">
+                    <button id="btn-dropped" onclick="setFolder('dropped')" class="px-4 py-1.5 text-xs font-bold rounded-lg text-gray-500 hover:text-slate-700 transition cursor-pointer whitespace-nowrap shrink-0">
                         Отмена
+                    </button>
+                    <button id="btn-guests" onclick="setFolder('guests')" class="px-4 py-1.5 text-xs font-bold rounded-lg text-gray-500 hover:text-slate-700 transition cursor-pointer whitespace-nowrap shrink-0">
+                        Гости <span id="guestCount" class="text-gray-400"></span>
                     </button>
                 </div>
             </div>
@@ -88,14 +91,14 @@
                 <div class="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center space-x-3">
                     <div class="p-3 bg-emerald-50 text-emerald-600 rounded-xl"><i data-lucide="check-circle-2" class="w-5 h-5"></i></div>
                     <div>
-                        <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Активные доступы</span>
+                        <span id="statLabelActive" class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Активные доступы</span>
                         <div id="statActive" class="text-lg font-extrabold text-slate-900">0</div>
                     </div>
                 </div>
                 <div class="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center space-x-3">
                     <div class="p-3 bg-amber-50 text-amber-600 rounded-xl"><i data-lucide="clock" class="w-5 h-5"></i></div>
                     <div>
-                        <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Ожидают доступа</span>
+                        <span id="statLabelPending" class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Ожидают доступа</span>
                         <div id="statPending" class="text-lg font-extrabold text-slate-900">0</div>
                     </div>
                 </div>
@@ -278,13 +281,13 @@
         function setFolder(folder) {
             currentFolder = folder;
             
-            const buttons = ['in_progress', 'passed', 'paused', 'dropped'];
+            const buttons = ['in_progress', 'passed', 'paused', 'dropped', 'guests'];
             buttons.forEach(b => {
                 const btn = document.getElementById(`btn-${b}`);
                 if (b === folder) {
-                    btn.className = "px-4 py-1.5 text-xs font-bold rounded-lg bg-white shadow-sm text-slate-800 transition cursor-pointer";
+                    btn.className = "px-4 py-1.5 text-xs font-bold rounded-lg bg-white shadow-sm text-slate-800 transition cursor-pointer whitespace-nowrap shrink-0";
                 } else {
-                    btn.className = "px-4 py-1.5 text-xs font-bold rounded-lg text-gray-500 hover:text-slate-700 transition cursor-pointer";
+                    btn.className = "px-4 py-1.5 text-xs font-bold rounded-lg text-gray-500 hover:text-slate-700 transition cursor-pointer whitespace-nowrap shrink-0";
                 }
             });
 
@@ -292,9 +295,12 @@
                 'in_progress': 'Учеников в процессе',
                 'passed': 'Учеников сдали',
                 'paused': 'Учеников на паузе',
-                'dropped': 'Отменили занятия'
+                'dropped': 'Отменили занятия',
+                'guests': 'Гостей (бесплатная версия)'
             };
             document.getElementById('statLabelTotal').innerText = labels[folder];
+            document.getElementById('statLabelActive').innerText = folder === 'guests' ? 'Прошли пробный тест' : 'Активные доступы';
+            document.getElementById('statLabelPending').innerText = folder === 'guests' ? 'Оставили Telegram' : 'Ожидают доступа';
 
             document.getElementById('searchInput').dispatchEvent(new Event('input'));
         }
@@ -303,7 +309,7 @@
             const { data: students, error } = await _supabase
                 .from('profiles')
                 .select('*')
-                .eq('role', 'student');
+                .in('role', ['student', 'guest']);   // гости — в своей папке
 
             if (error) {
                 console.error("Ошибка загрузки учеников:", error);
@@ -316,12 +322,22 @@
             allStudents.forEach(s => {
                 if (!s.status) s.status = 'in_progress';
             });
+            // Новые гости — сверху
+            allStudents.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+            const nGuests = allStudents.filter(s => s.role === 'guest').length;
+            document.getElementById('guestCount').innerText = nGuests ? nGuests : '';
 
             document.getElementById('searchInput').dispatchEvent(new Event('input'));
         }
 
         function updateStats(filteredStudents) {
             document.getElementById('statTotal').innerText = filteredStudents.length;
+            if (currentFolder === 'guests') {
+                document.getElementById('statActive').innerText = filteredStudents.filter(s => s.guest_completed_demo).length;
+                document.getElementById('statPending').innerText = filteredStudents.filter(s => String(s.guest_telegram || '').trim()).length;
+                updateAverageStats(filteredStudents);
+                return;
+            }
             document.getElementById('statActive').innerText = filteredStudents.filter(s => s.is_approved).length;
             document.getElementById('statPending').innerText = filteredStudents.filter(s => !s.is_approved).length;
             
@@ -395,6 +411,7 @@
             }
 
             studentsToRender.forEach(student => {
+                if (student.role === 'guest') { grid.appendChild(guestCard(student)); return; }
                 const displayName = student.full_name || student.name || (student.email ? student.email.split('@')[0] : 'Без имени');
                 const initial = displayName.charAt(0).toUpperCase();
 
@@ -496,6 +513,58 @@
             lucide.createIcons();
         }
 
+        // ---------- Гости (бесплатная версия) ----------
+        function tgLink(handle) {
+            const h = String(handle || '').trim().replace(/^https?:\/\/t\.me\//i, '').replace(/^@/, '');
+            return /^[A-Za-z0-9_]{3,32}$/.test(h) ? 'https://t.me/' + h : null;
+        }
+        function guestCard(g) {
+            const name = g.full_name || g.guest_name || (g.email ? g.email.split('@')[0] : 'Гость без имени');
+            const since = g.created_at ? new Date(g.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) : '';
+            const tg = String(g.guest_telegram || '').trim();
+            const tgUrl = tgLink(tg);
+            const card = document.createElement('div');
+            card.className = 'bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between gap-4';
+            card.innerHTML = `
+                <div class="space-y-3">
+                    <div class="flex items-start gap-3">
+                        <div class="w-11 h-11 rounded-2xl bg-amber-50 text-amber-600 font-extrabold flex items-center justify-center text-base border border-amber-100 shrink-0">${tbEsc(name.charAt(0).toUpperCase())}</div>
+                        <div class="min-w-0">
+                            <h3 class="text-sm font-bold text-slate-900 truncate" title="${tbEsc(name)}">${tbEsc(name)}</h3>
+                            <p class="text-xs text-gray-500 truncate">${tbEsc(g.email || 'без почты (старый вход «гость»)')}</p>
+                        </div>
+                    </div>
+                    <div class="flex flex-wrap gap-2 text-[10px] font-bold">
+                        ${since ? `<span class="px-2 py-1 bg-gray-50 text-gray-500 rounded-lg border border-gray-100">С ${tbEsc(since)}</span>` : ''}
+                        <span class="px-2 py-1 rounded-lg border ${g.guest_completed_demo ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-gray-50 text-gray-500 border-gray-100'}">
+                            ${g.guest_completed_demo ? 'Пробный тест пройден' : 'Пробный тест не пройден'}</span>
+                        ${tg ? (tgUrl ? `<a href="${tgUrl}" target="_blank" rel="noopener" class="px-2 py-1 bg-sky-50 text-sky-700 rounded-lg border border-sky-100 hover:bg-sky-100">${tbEsc(tg)}</a>`
+                                      : `<span class="px-2 py-1 bg-sky-50 text-sky-700 rounded-lg border border-sky-100">${tbEsc(tg)}</span>`) : ''}
+                    </div>
+                </div>
+                <div class="flex flex-wrap items-center justify-end gap-2 pt-1">
+                    <a href="student-profile.html?id=${encodeURIComponent(g.id)}" class="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-slate-700 text-xs font-semibold rounded-xl transition">Карточка</a>
+                    <button type="button" onclick="makeStudent('${g.id}')" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition cursor-pointer">Сделать ученицей</button>
+                </div>`;
+            return card;
+        }
+
+        // Гость → ученица: подтверждена, все разделы открыты (лишние можно закрыть на карточке)
+        async function makeStudent(id) {
+            const g = allStudents.find(s => s.id === id);
+            if (!g) return;
+            const name = g.full_name || g.email || 'гостя';
+            if (!confirm(`Перевести «${name}» в ученицы? Откроются все разделы — лишние потом можно закрыть на карточке.`)) return;
+            const patch = { role: 'student', is_approved: true, status: 'in_progress',
+                            access_reading: true, access_listening: true, access_writing: true, access_speaking: true, access_tests: true };
+            const { error } = await _supabase.from('profiles').update(patch).eq('id', id);
+            if (error) { console.error('Не удалось перевести в ученицы:', error); alert('Не удалось перевести в ученицы: ' + (error.message || error)); return; }
+            Object.assign(g, patch);
+            const nGuests = allStudents.filter(s => s.role === 'guest').length;
+            document.getElementById('guestCount').innerText = nGuests ? nGuests : '';
+            document.getElementById('searchInput').dispatchEvent(new Event('input'));
+        }
+
         function renderModuleBadge(studentId, field, fullName, label, isEnabled) {
             return `
                 <button title="${fullName}: ${isEnabled ? 'Доступен' : 'Закрыт'}" 
@@ -568,7 +637,7 @@
             const term = document.getElementById('searchInput').value.toLowerCase().trim();
             
             const filtered = allStudents.filter(s => {
-                const matchesFolder = s.status === currentFolder;
+                const matchesFolder = currentFolder === 'guests' ? s.role === 'guest' : (s.role !== 'guest' && s.status === currentFolder);
                 const searchStr = `${s.email || ''} ${s.full_name || ''}`.toLowerCase();
                 const matchesSearch = searchStr.includes(term);
                 return matchesFolder && matchesSearch;
