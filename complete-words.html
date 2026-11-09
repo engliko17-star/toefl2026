@@ -13,6 +13,12 @@
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
+    <script>
+        // Бесплатная версия (auth.js): в списке видны все задания, закрытые — под замочком
+        var gMerge = (table, rows, opts) => (typeof authGuestMerge === 'function' ? authGuestMerge(table, rows, opts) : Promise.resolve(rows || []));
+        var gCard = (html, row) => (typeof authGuestCard === 'function' ? authGuestCard(html, row) : html);
+        var gNote = () => (typeof authL === 'function' ? authL('Available with full access', 'Доступно в полной версии') : 'Available with full access');
+    </script>
     <script src="content-visibility.js"></script>
     <script src="topic-filter.js"></script>
     <script src="practice-next.js"></script>
@@ -183,7 +189,7 @@
                 if (testsError) throw new Error(testsError.message);
 
                 // Скрытые глазиком задания видит только преподаватель
-                const tests = CV.visibleFor(allTests, currentUser);
+                const tests = await gMerge('complete_words_tasks', CV.visibleFor(allTests, currentUser));
 
                 // Загружаем прогресс пользователя из новой таблицы
                 const { data: progressData, error: progressError } = await db
@@ -263,7 +269,7 @@
                     // С этикеткой верхняя строка сдвигается левее, чтобы лента в углу
                     // не наезжала на номер теста и круг с процентом
                     const isRealToefl = test.is_real_toefl === true;
-                    const headerRightPadding = isRealToefl ? 'pr-12' : '';
+                    const headerRightPadding = isRealToefl ? 'pr-12' : (test.__locked ? 'pr-8' : '');   // место под замочек
                     const isHiddenTask = test.is_hidden === true;
 
                     const html = `
@@ -291,12 +297,12 @@
                             </div>
 
                             <h3 class="text-sm font-bold text-slate-900 mb-1 group-hover:text-purple-600 transition tracking-tight ${isRealToefl ? 'pr-6' : ''}">${test.title}</h3>
-                            <p class="text-[11px] text-gray-500 mb-5 flex-1">${wordCount} words • ${blanksCount} missing letters</p>
+                            <p class="text-[11px] text-gray-500 mb-5 flex-1">${test.__locked ? gNote() : `${wordCount} words • ${blanksCount} missing letters`}</p>
                             
                             ${CV.withEye(actionButton, 'complete_words_tasks', [test.id], isHiddenTask)}
                         </div>
                     `;
-                    cards.push({ topic, html });
+                    cards.push({ topic, html: gCard(html, test) });
                 });
 
                 showCards(cards);
