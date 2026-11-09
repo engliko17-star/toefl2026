@@ -159,6 +159,7 @@
                             <p id="resultScore" class="text-lg font-extrabold text-slate-900">0 / 0</p>
                         </div>
                         <button onclick="showList()" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold py-2 px-4 rounded-xl text-xs transition">Back to List</button>
+                        <button id="nextTestBtn" type="button" onclick="goNextTest()" class="hidden bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-xl text-xs transition items-center gap-1.5 whitespace-nowrap"></button>
                     </div>
                 </div>
 
@@ -752,6 +753,34 @@
             showSaveError(error ? (error.message || String(error)) : null);
         }
 
+        // «Следующий тест»: следующий несделанный в этом списке (после текущего, потом с начала).
+        // Закрытое в бесплатной версии и пустые задания пропускаем.
+        function nextPracticeTest(curId) {
+            const list = (mockTests || []).filter(t => !t.__locked && Array.isArray(t.questions) && t.questions.length);
+            const idx = list.findIndex(t => String(t.id) === String(curId));
+            if (idx < 0) return null;
+            const notDone = t => !latestResults[String(t.id)];
+            for (let j = idx + 1; j < list.length; j++) if (notDone(list[j])) return list[j];
+            for (let k = 0; k < idx; k++) if (notDone(list[k])) return list[k];
+            return null;
+        }
+        function paintNextTest(curId) {
+            const btn = document.getElementById('nextTestBtn');
+            if (!btn) return;
+            const n = nextPracticeTest(curId);
+            let ru = false;
+            try { ru = ((window.I18N && I18N.lang) || localStorage.getItem('appLang')) === 'ru'; } catch (e) { /* английский */ }
+            if (!n) { btn.classList.add('hidden'); btn.classList.remove('inline-flex'); return; }
+            btn.innerHTML = (ru ? 'Следующий тест' : 'Next test') + ' <span aria-hidden="true">→</span>';
+            btn.title = n.title || '';
+            btn.dataset.next = String(n.id);
+            btn.classList.remove('hidden'); btn.classList.add('inline-flex');
+        }
+        function goNextTest() {
+            const id = document.getElementById('nextTestBtn').dataset.next;
+            if (id) startTest(id);
+        }
+
         function showResults(testId) {
             currentTest = mockTests.find(t => String(t.id) === String(testId));
             const savedResult = latestResults[String(testId)];
@@ -764,6 +793,7 @@
             document.getElementById('pageTitle').innerText = "Results: " + currentTest.title;
 
             document.getElementById('resultScore').innerText = `${savedResult.score_earned} / ${savedResult.score_total}`;
+            paintNextTest(testId);
             showSaveError(savedResult._unsaved ? 'нет связи с базой' : null);
             
             document.getElementById('reviewImage').src = currentTest.image_url || '';
@@ -846,4 +876,4 @@
         }
     </script>
 </body>
-                    </html>
+</html>
