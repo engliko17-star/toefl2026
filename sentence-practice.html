@@ -10,6 +10,12 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
+    <script>
+        // Бесплатная версия (auth.js): в списке видны все задания, закрытые — под замочком
+        var gMerge = (table, rows, opts) => (typeof authGuestMerge === 'function' ? authGuestMerge(table, rows, opts) : Promise.resolve(rows || []));
+        var gCard = (html, row) => (typeof authGuestCard === 'function' ? authGuestCard(html, row) : html);
+        var gNote = () => (typeof authL === 'function' ? authL('Available with full access', 'Доступно в полной версии') : 'Available with full access');
+    </script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -223,7 +229,7 @@
                     .order('level_order', { ascending: true });
 
                 if (error) throw error;
-                LEVELS_DATA = data || [];
+                LEVELS_DATA = await gMerge('trainer_sentence_levels', data || [], { keep: r => r.is_published === true, order: 'level_order' });
             } catch (err) {
                 console.error("Error fetching levels:", err);
                 document.getElementById('levelsGrid').innerHTML = `<p class="text-rose-500 text-sm">Failed to load levels from database.</p>`;
@@ -248,6 +254,7 @@
                 const card = document.createElement('div');
                 card.className = `bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between hover:border-rose-500/40 hover:shadow-md transition-all cursor-pointer group relative overflow-hidden`;
                 card.onclick = () => startLevel(level.id);
+                if (level.__locked) card.setAttribute('data-guest-locked', '');   // гость: в полной версии
 
                 let badgeHTML = `<span class="text-[9px] font-extrabold px-2 py-0.5 rounded uppercase tracking-wider bg-slate-100 text-slate-600">${spEsc(level.badge || 'Practice')}</span>`;
                 
