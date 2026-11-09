@@ -1049,7 +1049,7 @@ function renderListeningReview(finalScore, correctAnswers, totalQuestions) {
                         </div>
                     </div>
                     
-                    <div class="flex justify-center space-x-3">
+                    <div class="flex justify-center space-x-3" data-review-actions>
                         <button onclick="startListeningEngine(currentActiveTestId, document.getElementById('dynamic-test-title').innerText)" class="px-6 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-emerald-600 transition shadow-md text-sm flex items-center cursor-pointer">
                             <i data-lucide="rotate-ccw" class="w-4 h-4 mr-2"></i> Retake Listening
                         </button>
