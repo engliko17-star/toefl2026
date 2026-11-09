@@ -12,6 +12,12 @@
     <!-- Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
+    <script>
+        // Бесплатная версия (auth.js): в списке видны все задания, закрытые — под замочком
+        var gMerge = (table, rows, opts) => (typeof authGuestMerge === 'function' ? authGuestMerge(table, rows, opts) : Promise.resolve(rows || []));
+        var gCard = (html, row) => (typeof authGuestCard === 'function' ? authGuestCard(html, row) : html);
+        var gNote = () => (typeof authL === 'function' ? authL('Available with full access', 'Доступно в полной версии') : 'Available with full access');
+    </script>
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -234,10 +240,17 @@
 
                 if (error) throw error;
 
+                // Гость: все упражнения, закрытые — под замочком (порядок — как у запроса)
+                let rows = await gMerge('shadowing_exercises', data || []);
+                if (rows.some(r => r.__locked)) {
+                    rows = rows.slice().sort((a, b) => String(a.level_name || '').localeCompare(String(b.level_name || ''))
+                        || String(a.created_at || '').localeCompare(String(b.created_at || '')));
+                }
+
                 const colors = ['emerald', 'blue', 'indigo', 'rose', 'amber', 'purple'];
                 let colorIndex = 0;
 
-                data.forEach(item => {
+                rows.forEach(item => {
                     if (!db[item.level_name]) {
                         db[item.level_name] = {
                             title: item.level_name,
@@ -251,7 +264,8 @@
                         id: item.id,
                         title: item.title,
                         text: item.transcript,
-                        audioSrc: item.audio_url // Может быть null
+                        audioSrc: item.audio_url, // Может быть null
+                        locked: !!item.__locked
                     });
                 });
 
@@ -374,7 +388,7 @@
                 }
 
                 const card = `
-                    <div class="${bgClass} p-5 rounded-2xl border shadow-sm flex flex-col transition cursor-pointer hover:shadow-md" onclick="openExercise(${index})">
+                    <div ${ex.locked ? 'data-guest-locked ' : ''}class="${bgClass} p-5 rounded-2xl border shadow-sm flex flex-col transition cursor-pointer hover:shadow-md" onclick="openExercise(${index})">
                         <div class="flex justify-between items-center">
                             <h3 class="font-bold text-sm ${textClass}">${shEsc(ex.title || `Audio #${index + 1}`)}</h3>
                             ${hasScore 
@@ -460,9 +474,15 @@
 
         function changeExercise(step) {
             const levelData = db[currentLevel];
+            const prevIndex = currentIndex;
             currentIndex += step;
             if (currentIndex < 0) currentIndex = levelData.exercises.length - 1;
             if (currentIndex >= levelData.exercises.length) currentIndex = 0;
+            if (levelData.exercises[currentIndex] && levelData.exercises[currentIndex].locked) {
+                currentIndex = prevIndex;       // гость: следующее упражнение — в полной версии
+                if (typeof authShowUpsell === 'function') authShowUpsell();
+                return;
+            }
             stopTargetAudio();
             loadExercise();
         }
