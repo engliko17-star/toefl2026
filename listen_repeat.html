@@ -14,6 +14,12 @@
     
     <!-- Подключаем auth.js для получения текущего пользователя и _supabase -->
     <script src="auth.js"></script>
+    <script>
+        // Бесплатная версия (auth.js): в списке видны все задания, закрытые — под замочком
+        var gMerge = (table, rows, opts) => (typeof authGuestMerge === 'function' ? authGuestMerge(table, rows, opts) : Promise.resolve(rows || []));
+        var gCard = (html, row) => (typeof authGuestCard === 'function' ? authGuestCard(html, row) : html);
+        var gNote = () => (typeof authL === 'function' ? authL('Available with full access', 'Доступно в полной версии') : 'Available with full access');
+    </script>
     <script src="topic-filter.js"></script>
     <script src="content-visibility.js"></script>
     
@@ -101,7 +107,8 @@
                 if (testsError) throw testsError;
                 // Скрытый глазиком набор ученице не показываем (в мок-тестах его вопросы остаются)
                 CV.init({ user: currentUser, reload: loadTests });
-                const tests = CV.visibleFor(testsAll || [], currentUser);
+                const tests = await gMerge('speaking_tests', CV.visibleFor(testsAll || [], currentUser),
+                    { keep: r => String(r.type || '') === 'listen_repeat', order: 'created_at' });
 
                 // 3. Запрашиваем попытки текущего пользователя, чтобы знать, что он уже решал
                 const { data: attempts, error: attemptsError } = await _supabase
@@ -210,7 +217,7 @@
                             ${buttonsHTML}
                         </div>
                     `;
-                    cards.push({ topic, html: cardHTML });
+                    cards.push({ topic, html: gCard(cardHTML, test) });
                 });
 
                 showCards(cards);
