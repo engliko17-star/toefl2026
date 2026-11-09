@@ -9,6 +9,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <script src="auth.js"></script>
+    <script src="practice-next.js"></script>
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -28,9 +29,13 @@
                 <h1 class="text-2xl font-bold text-slate-800">Interview Review</h1>
                 <p class="text-sm text-slate-500 mt-1">Analyze your performance, listen to your answers, and check the interviewer's questions.</p>
             </div>
-            <a href="interview.html" class="inline-flex items-center justify-center px-6 py-3 bg-slate-900 hover:bg-indigo-600 text-white font-bold rounded-xl transition shadow-md">
-                <i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i> Exit Review
-            </a>
+            <div class="flex flex-col items-stretch sm:items-end gap-1 min-w-0">
+                <div id="pnRow" class="flex flex-wrap gap-3">
+                    <a href="interview.html" class="inline-flex items-center justify-center px-6 py-3 bg-slate-900 hover:bg-indigo-600 text-white font-bold rounded-xl transition shadow-md">
+                        <i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i> Exit Review
+                    </a>
+                </div>
+            </div>
         </header>
 
         <!-- Контейнер с карточками вопросов и ответов -->
@@ -87,6 +92,17 @@
 
         const isVideoUrl = u => /\.(mp4|webm|mov|m4v)(\?|$)/i.test(String(u || ''));
 
+
+        // «Следующий тест»: набор этой попытки → следующий несделанный в списке (practice-next.js)
+        async function mountNextSpeaking(attemptId, type) {
+            if (!window.PracticeNext || !attemptId) return;
+            try {
+                const { data } = await _supabase.from('speaking_attempts').select('test_id').eq('id', attemptId).maybeSingle();
+                if (!data || data.test_id === null || data.test_id === undefined) return;
+                PracticeNext.mount('s-' + type, { row: 'pnRow', currentId: data.test_id, userId: currentUser && currentUser.id, prepend: true, align: 'right' });
+            } catch (e) { /* без кнопки */ }
+        }
+
         async function loadInterviewResults() {
             try {
                 if (typeof requireAuth !== 'function') throw new Error("auth.js is missing.");
@@ -97,6 +113,7 @@
                 const attemptId = urlParams.get('attempt_id');
 
                 if (!attemptId) throw new Error("No interview attempt ID found in URL.");
+                mountNextSpeaking(attemptId, 'interview');
 
                 // Исправлено: запрашиваем существующее поле transcript вместо question_text
                 const { data, error } = await _supabase
