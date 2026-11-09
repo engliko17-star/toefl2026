@@ -14,6 +14,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
+    <script src="teacher-review.js"></script>
     <script src="content-visibility.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -1061,6 +1062,9 @@
                     } catch (e) { console.warn('guest_completed_demo не загрузился:', e); }
                 }
 
+                // Из профиля ученицы: сразу разбор её попытки (Reading или Listening)
+                if (await openTeacherReview()) return;
+
                 mtRenderBanner();
                 mtFlushPending();
                 loadTestsGrid();
@@ -1068,6 +1072,26 @@
                 console.error("Auth error on tests.html:", err);
             }
         }
+        // tests.html?review=reading|listening&test=<тест>&attempt=<попытка>&back=student-profile.html?id=…
+        async function openTeacherReview() {
+            const tr = window.TeacherReview;
+            if (!tr || !tr.on) return false;
+            const q = new URLSearchParams(location.search);
+            const fn = { reading: window.loadReviewMode, listening: window.loadListeningReviewMode }[q.get('review')];
+            const testId = q.get('test');
+            if (typeof fn !== 'function' || !testId) return false;
+            let title = '';
+            try {
+                const { data } = await supabaseClient.from('full_tests').select('title').eq('id', testId).maybeSingle();
+                title = (data && data.title) || '';
+            } catch (e) { /* без названия */ }
+            // Закрыть разбор — вернуться к ученице, а не к списку своих тестов
+            const exit = window.exitExamEngine;
+            window.exitExamEngine = function () { try { if (typeof exit === 'function') exit(); } catch (e) { /* уходим всё равно */ } tr.exit(); };
+            fn(tr.attempt, testId, title);
+            return true;
+        }
+
         document.addEventListener('DOMContentLoaded', initTestsPage);
     </script>
 </body>
