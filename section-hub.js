@@ -657,6 +657,17 @@
         if (k === 'Gist Purpose') return String(row && row.task_type).toLowerCase() === 'academic' ? 'Rhetorical Purpose' : 'Main Idea';
         return READING_ALIAS[k] || k;
     }
+    // Listening: только официальные типы — Detail, Inference, Purpose, Main Idea, Attitude.
+    // Старые попытки сохранены со старыми названиями — считаем их в новые; «Other» не показываем.
+    const LISTENING_ALIAS = {
+        'Gist Content': 'Main Idea', 'Gist Purpose': 'Purpose', 'Rhetorical Purpose': 'Purpose', 'Function': 'Purpose',
+        'Method': 'Purpose', 'Speaker Attitude': 'Attitude', 'Prediction': 'Inference'
+    };
+    function listeningCategory(name) {
+        const k = normCategory(name);
+        if (k === 'Other' || k === 'General') return null;
+        return LISTENING_ALIAS[k] || k;
+    }
     function accuracyOf(rows, catOf) {
         let e = 0, tt = 0;
         const cats = {};
@@ -665,6 +676,7 @@
             const st = parseStats(r.category_stats);
             if (st) Object.entries(st).forEach(([name, v]) => {
                 const k = catOf ? catOf(name, r) : normCategory(name);
+                if (!k) return;
                 cats[k] = cats[k] || { e: 0, t: 0 };
                 cats[k].e += Number(v && (v.earned !== undefined ? v.earned : v.correct)) || 0;
                 cats[k].t += Number(v && v.total) || 0;
@@ -742,7 +754,7 @@
             res.week = l.filter(thisWeek).length + (rs || []).filter(thisWeek).length + (mm || []).filter(thisWeek).length;
             const last = latest(mm);
             if (last) res.mock = { at: when(last), score: num(last.final_calculated_score) };
-            res.blocks.push(accuracyBlock(accuracyOf(l.concat(rs || []))));
+            res.blocks.push(accuracyBlock(accuracyOf(l.concat(rs || []), listeningCategory)));
         }
 
         if (key === 'writing') {
