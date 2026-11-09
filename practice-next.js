@@ -110,6 +110,8 @@
         listEl.querySelectorAll(selector(cfg)).forEach(function (a) {
             var p = idFromHref(a.getAttribute('href'));
             if (!p.id || seen[p.id]) return;
+            // Закрытое в бесплатной версии в «Next test» не попадает
+            if (a.closest && a.closest('[data-guest-locked]')) return;
             seen[p.id] = true;
             var card = cardOf(a, listEl);
             var title = '', label = '';
