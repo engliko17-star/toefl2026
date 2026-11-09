@@ -9,6 +9,12 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
+    <script>
+        // Бесплатная версия (auth.js): в списке видны все задания, закрытые — под замочком
+        var gMerge = (table, rows, opts) => (typeof authGuestMerge === 'function' ? authGuestMerge(table, rows, opts) : Promise.resolve(rows || []));
+        var gCard = (html, row) => (typeof authGuestCard === 'function' ? authGuestCard(html, row) : html);
+        var gNote = () => (typeof authL === 'function' ? authL('Available with full access', 'Доступно в полной версии') : 'Available with full access');
+    </script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -121,7 +127,7 @@ function unitCard(u) {
     return `
     <a href="lesson-unit.html?unit=${encodeURIComponent(u.slug)}"
        class="unit-card block bg-white p-5 rounded-2xl border border-gray-100 shadow-xs hover:border-indigo-100 hover:shadow-md">
-        <div class="flex items-start justify-between gap-3 mb-3">
+        <div class="flex items-start justify-between gap-3 mb-3 ${u.__locked ? 'pr-8' : ''}">
             <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
                 <i data-lucide="${esc(u.cover_icon || 'book-open')}" class="w-5 h-5"></i>
             </div>
@@ -147,7 +153,7 @@ function unitCard(u) {
 
 function renderGrid() {
     const list = activeCategory === 'all' ? allUnits : allUnits.filter(u => u.category === activeCategory);
-    document.getElementById('grid').innerHTML = list.map(unitCard).join('');
+    document.getElementById('grid').innerHTML = list.map(u => gCard(unitCard(u), u)).join('');
     safeCreateIcons();
 }
 
@@ -169,9 +175,11 @@ async function load() {
         db = getDb();
         if (!db) throw new Error('Не найден клиент Supabase. Посмотри, как он называется в auth.js, и добавь это имя в getDb().');
 
-        const { data: units, error: uErr } = await db
+        const { data: unitsRaw, error: uErr } = await db
             .from('lesson_units').select('*').eq('is_published', true).order('order_num');
         if (uErr) throw uErr;
+        // Гость: все темы, закрытые — под замочком
+        const units = await gMerge('lesson_units', unitsRaw || [], { keep: r => r.is_published === true, order: 'order_num' });
 
         if (!units || !units.length) {
             state.innerHTML = '<p class="mb-1">Здесь пока пусто.</p><p class="text-xs text-gray-400">Первая тема появится, как только её опубликует преподаватель.</p>';
@@ -188,7 +196,7 @@ async function load() {
             const mine = (steps || []).filter(s => s.unit_id === u.id);
             return {
                 ...u,
-                stepCount: mine.length,
+                stepCount: u.__locked ? (Number(u.step_count) || 0) : mine.length,
                 skills: mine.map(s => s.skill),
                 doneCount: (progress || []).filter(p => p.unit_id === u.id).length
             };
