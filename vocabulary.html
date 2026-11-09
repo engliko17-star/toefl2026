@@ -27,6 +27,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Serif+Display&family=Lexend:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="auth.js"></script>
+    <script>
+        // Бесплатная версия (auth.js): в списке видны все задания, закрытые — под замочком
+        var gMerge = (table, rows, opts) => (typeof authGuestMerge === 'function' ? authGuestMerge(table, rows, opts) : Promise.resolve(rows || []));
+        var gCard = (html, row) => (typeof authGuestCard === 'function' ? authGuestCard(html, row) : html);
+        var gNote = () => (typeof authL === 'function' ? authL('Available with full access', 'Доступно в полной версии') : 'Available with full access');
+    </script>
 <style>
 /* ============================================================
    Токены. Палитра и шрифт платформы (indigo + emerald, Plus Jakarta Sans).
@@ -234,6 +240,9 @@ body.dyslexia-mode .wotd{background:#fffaf1}
 .lvl small{font-size:11px;font-weight:700;opacity:.8;white-space:nowrap}
 .lvl .lvl-fill{position:absolute;left:0;bottom:0;height:4px;background:currentColor;opacity:.55;border-radius:0 2px 2px 0}
 .lvl.on::after{content:'';position:absolute;top:8px;right:8px;width:8px;height:8px;border-radius:50%;background:currentColor}
+/* Гость: закрытые уровни и темы (замочек рисует auth.js) */
+.lvl > .guest-lock{top:6px;right:6px;width:20px;height:20px}
+.lvl > .guest-lock svg{width:11px;height:11px}
 .thumb{width:50px;height:50px;border-radius:15px;flex:none;background:#c7d2fe center/cover no-repeat;display:grid;place-items:center;font-weight:800;font-size:15px;color:#fff;overflow:hidden;position:relative}
 .thumb .ph{position:absolute;inset:0;background-size:cover;background-position:center}
 .mock-chips{display:flex;flex-wrap:wrap;gap:8px}
@@ -856,9 +865,40 @@ function setWords(rows) {
     });
   });
 }
+// Копия словаря — своя у каждого аккаунта: на общем устройстве гость не увидит
+// словарь, загруженный под другим входом (и наоборот)
+function wordsCacheKey() { return WORDS_CACHE_KEY + ':' + ((S.user && S.user.id) || 'anon'); }
+// Гость: категории словаря, которые откроются в полной версии (название и число слов)
+async function loadGuestCats() {
+  S.guestCats = new Map();
+  if (!S.user || S.user.role !== 'guest' || typeof authGuestCatalog !== 'function') return;
+  try {
+    const cat = await authGuestCatalog('words');
+    (cat || []).forEach(c => {
+      if (c.__open) return;
+      const k = normCat(c.category);
+      S.guestCats.set(k, (S.guestCats.get(k) || 0) + (Number(c.count) || 0));
+    });
+  } catch (e) { console.warn('Каталог словаря:', e); }
+}
+// Закрытые категории, которых нет среди открытых слов
+function guestLockedCats() {
+  const out = new Map();
+  (S.guestCats || new Map()).forEach((n, k) => { if (!S.byCat.has(k)) out.set(k, n); });
+  return out;
+}
+function lockedTopicTile(cat, n) {
+  const m = catMeta(cat);
+  return `<button class="ttile" data-guest-locked style="background:${gradCss(cat)}" aria-label="${esc(cat)}: ${words(n)}">
+      <span class="ltr" aria-hidden="true">${esc(initial(cat))}</span>
+      ${m.img ? `<span class="ph" style="background-image:url('${imgUrl(m.img, 400)}')"></span>` : ''}
+      <span class="shade"></span>
+      <span class="txt"><b>${esc(cat)}</b><small>${m.ru ? esc(m.ru) + ' · ' : ''}${words(n)}</small></span>
+    </button>`;
+}
 function readWordsCache() {
   try {
-    const raw = sessionStorage.getItem(WORDS_CACHE_KEY);
+    const raw = sessionStorage.getItem(wordsCacheKey());
     if (!raw) return null;
     const c = JSON.parse(raw);
     if (!c || !Array.isArray(c.rows) || Date.now() - c.t > WORDS_CACHE_TTL) return null;
@@ -876,7 +916,7 @@ async function loadWords() {
     from += PAGE; if (from > 100000) break;
   }
   setWords(rows);
-  try { sessionStorage.setItem(WORDS_CACHE_KEY, JSON.stringify({ t: Date.now(), rows })); } catch (e) {}
+  try { sessionStorage.setItem(wordsCacheKey(), JSON.stringify({ t: Date.now(), rows })); } catch (e) {}
 }
 async function loadProgress() {
   const PAGE = 1000; let rows = [], from = 0;
@@ -1557,23 +1597,30 @@ function updateDictBody() {
 }
 function renderCatsPane() {
   const sources = getSources();
-  const cats = Array.from(S.byCat.keys());
-  const levels = LEVELS.filter(l => S.byCat.has(l));
+  const gl = guestLockedCats();   // гость: закрытые категории
+  const cats = Array.from(S.byCat.keys()).concat(Array.from(gl.keys()));
+  const levels = LEVELS.filter(l => S.byCat.has(l) || gl.has(l));
   const daily = legacyDailyCats();
+  const dailyLocked = Array.from(gl.keys()).filter(c => !isLevelCat(c) && catMeta(c).group === 'daily');
   const dailyTopics = sortedTopics('daily'), langTopics = sortedTopics('lang');
   const topics = cats.filter(c => !isLevelCat(c) && catMeta(c).group !== 'daily').sort((a, b) => a.localeCompare(b));
+  const catTile = c => (gl.has(c) ? lockedTopicTile(c, gl.get(c)) : topicTile(c, sources));
   const mocks = new Set(); S.words.forEach(w => mockNumbers(w).forEach(n => mocks.add(n)));
   let html = '';
   if (levels.length) {
     html += `<div class="sec-title">По уровню</div><div class="levels">` + levels.map(l => {
+      if (gl.has(l)) {
+        const [lbg, lfg] = LEVEL_STYLE[l];
+        return `<button class="lvl" data-guest-locked style="background:${lbg};color:${lfg}" aria-label="${l}: ${words(gl.get(l))}"><b>${l}</b><small>${gl.get(l)} сл.</small></button>`;
+      }
       const cs = catStats(S.byCat.get(l)), [bg, fg] = LEVEL_STYLE[l];
       return `<button class="lvl ${sources.includes('cat:' + l) ? 'on' : ''}" style="background:${bg};color:${fg}" data-act="open" data-arg="#dict/cat/${l}" aria-label="${l}: ${words(cs.total)}">
         <b>${l}</b><small>${cs.total} сл.</small>${cs.pct ? `<span class="lvl-fill" style="width:${cs.pct}%"></span>` : ''}</button>`;
     }).join('') + `</div>`;
   }
-  if (dailyTopics.length || daily.length) html += `<div class="sec-title">Повседневные темы<small>${dailyTopics.length || ''}</small></div><div class="ttiles">${dailyTopics.map(t => topicTileT(t, sources)).join('')}${daily.map(c => topicTile(c, sources)).join('')}</div>`;
+  if (dailyTopics.length || daily.length || dailyLocked.length) html += `<div class="sec-title">Повседневные темы<small>${dailyTopics.length || ''}</small></div><div class="ttiles">${dailyTopics.map(t => topicTileT(t, sources)).join('')}${daily.map(c => topicTile(c, sources)).join('')}${dailyLocked.map(catTile).join('')}</div>`;
   if (langTopics.length) html += `<div class="sec-title">Язык<small>связки, идиомы, сленг</small></div><div class="ttiles">${langTopics.map(t => topicTileT(t, sources)).join('')}</div>`;
-  if (topics.length) html += `<div class="sec-title">Академические темы TOEFL<small>${topics.length}</small></div><div class="ttiles">${topics.map(c => topicTile(c, sources)).join('')}</div>`;
+  if (topics.length) html += `<div class="sec-title">Академические темы TOEFL<small>${topics.length}</small></div><div class="ttiles">${topics.map(catTile).join('')}</div>`;
   if (mocks.size) {
     html += `<div class="sec-title">Из пробных тестов</div><div class="mock-chips">` +
       Array.from(mocks).sort((a, b) => Number(a) - Number(b)).map(n => `<button class="chip" data-act="open" data-arg="#dict/mock/${encodeURIComponent(n)}">${ic('listCheck', 16)}Тест ${esc(n)}</button>`).join('') + `</div>`;
@@ -2713,7 +2760,7 @@ async function boot() {
   const cached = readWordsCache();
   if (cached) setWords(cached);
   try {
-    await Promise.all([cached ? Promise.resolve() : loadWords(), loadProgress(), loadLists(), loadSettings(), loadActivity()]);
+    await Promise.all([cached ? Promise.resolve() : loadWords(), loadProgress(), loadLists(), loadSettings(), loadActivity(), loadGuestCats()]);
   } catch (e) { console.error(e); fatal('Не удалось загрузить словарь'); return; }
   S.ready = true;
   checkDesktopSiteMode();
