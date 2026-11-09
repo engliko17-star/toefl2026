@@ -644,14 +644,27 @@
         if (!s || /^question$/i.test(s)) return 'Other';
         return s.toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase());
     }
-    function accuracyOf(rows) {
+    // Reading: типы вопросов — только как в официальных заданиях. Старые попытки
+    // сохранены со старыми названиями — считаем их в официальные типы.
+    const READING_ALIAS = {
+        'Detail': 'Factual', 'Factual Information': 'Factual', 'Not Mentioned': 'Negative Factual',
+        'Negative Factual Information': 'Negative Factual', 'Sentence Simplification': 'Simplification',
+        'Vocabulary In Context': 'Vocabulary', 'Purpose': 'Main Idea'
+    };
+    function readingCategory(name, row) {
+        const k = normCategory(name);
+        // Gist Purpose: в Daily — цель всего текста, в Academic — зачем нужен абзац
+        if (k === 'Gist Purpose') return String(row && row.task_type).toLowerCase() === 'academic' ? 'Rhetorical Purpose' : 'Main Idea';
+        return READING_ALIAS[k] || k;
+    }
+    function accuracyOf(rows, catOf) {
         let e = 0, tt = 0;
         const cats = {};
         rows.forEach(r => {
             e += Number(r.score_earned) || 0; tt += Number(r.score_total) || 0;
             const st = parseStats(r.category_stats);
             if (st) Object.entries(st).forEach(([name, v]) => {
-                const k = normCategory(name);
+                const k = catOf ? catOf(name, r) : normCategory(name);
                 cats[k] = cats[k] || { e: 0, t: 0 };
                 cats[k].e += Number(v && (v.earned !== undefined ? v.earned : v.correct)) || 0;
                 cats[k].t += Number(v && v.total) || 0;
@@ -712,7 +725,7 @@
             res.week = r.filter(thisWeek).length + (cw || []).filter(thisWeek).length + (mm || []).filter(thisWeek).length;
             const last = latest(mm);
             if (last) res.mock = { at: when(last), score: num(last.band_score) };
-            res.blocks.push(accuracyBlock(accuracyOf(r)));
+            res.blocks.push(accuracyBlock(accuracyOf(r, readingCategory)));
         }
 
         if (key === 'listening') {
