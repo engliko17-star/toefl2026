@@ -47,6 +47,24 @@
             .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
     function str(v) { return v === null || v === undefined ? '' : String(v); }
+
+    // Язык того, что видит ученица (дашборд, панель чек-листа, Writing и Speaking):
+    // из i18n.js, иначе выбор в меню или язык браузера (как в nav.js).
+    // Редактор преподавателя остаётся на русском.
+    var RU = (function () {
+        if (window.I18N) return window.I18N.lang === 'ru';
+        try { var s = localStorage.getItem('appLang'); if (s === 'en' || s === 'ru') return s === 'ru'; } catch (e) { /* по браузеру */ }
+        var list = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || 'en'];
+        for (var i = 0; i < list.length; i++) {
+            if (/^(ru|be|uk|kk)\b/i.test(list[i])) return true;
+            if (/^en\b/i.test(list[i])) return false;
+        }
+        return false;
+    })();
+    function L(en, ru) { return RU ? ru : en; }
+    // «5 points to watch» / «5 пунктов на контроле»
+    function toWatch(n) { return RU ? plural(n, W_ITEM) + ' на контроле' : n + (n === 1 ? ' point' : ' points') + ' to watch'; }
+    function fixedN(n) { return RU ? 'исправлено: ' + n : n + ' fixed'; }
     function nid(p) { return p + Math.random().toString(36).slice(2, 10); }
     function icons() { if (window.lucide) try { lucide.createIcons(); } catch (e) { /* без иконок */ } }
     function missingTable(err) {
@@ -302,12 +320,12 @@
                 + '<div class="px-5 sm:px-6 pt-5 pb-4 border-b border-gray-100 shrink-0">'
                 +   '<div class="flex items-start justify-between gap-3">'
                 +     '<div class="min-w-0">'
-                +       '<p class="text-xs font-semibold text-slate-500">' + esc(opts.preview ? 'Как видит ученица' : 'My checklist') + '</p>'
+                +       '<p class="text-xs font-semibold text-slate-500">' + esc(opts.preview ? 'Как видит ученица' : L('My checklist', 'Мой чек-лист')) + '</p>'
                 +       '<h2 id="ckDrawerTitle" class="text-lg font-extrabold text-slate-900 tracking-tight mt-0.5">' + esc(l.title || sc.en) + '</h2>'
-                +       '<p class="text-xs text-slate-500 mt-1">' + (sameAsScope ? '' : esc(sc.en) + ' · ') + s.active + (s.active === 1 ? ' point' : ' points') + ' to watch'
-                +         (s.fixed ? ' · ' + s.fixed + ' fixed' : '') + '</p>'
+                +       '<p class="text-xs text-slate-500 mt-1">' + (sameAsScope ? '' : esc(sc.en) + ' · ') + toWatch(s.active)
+                +         (s.fixed ? ' · ' + fixedN(s.fixed) : '') + '</p>'
                 +     '</div>'
-                +     '<button type="button" data-ck-close class="shrink-0 w-9 h-9 rounded-xl bg-gray-50 hover:bg-gray-100 text-slate-500 hover:text-slate-900 flex items-center justify-center transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300" aria-label="Close">'
+                +     '<button type="button" data-ck-close class="shrink-0 w-9 h-9 rounded-xl bg-gray-50 hover:bg-gray-100 text-slate-500 hover:text-slate-900 flex items-center justify-center transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300" aria-label="' + L('Close', 'Закрыть') + '">'
                 +       '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>'
                 +   '</div>'
                 +   (lists.length > 1 ? '<div class="flex gap-1.5 mt-4 overflow-x-auto -mx-1 px-1 pb-0.5" role="tablist">' + lists.map(function (x, i) {
@@ -328,7 +346,7 @@
                 var isSection = !g.items.length;
                 var finalBox = g.final && active.length;
                 return '<section class="' + (isSection ? 'pt-3 first:pt-0 mb-3' : 'mb-6') + (finalBox ? ' bg-indigo-50/60 border border-indigo-100 rounded-2xl p-4' : '') + '">'
-                    + (finalBox ? '<p class="text-[11px] font-bold text-indigo-600 mb-1">' + (sc.sec === 'speaking' ? 'Before you start' : 'Before you submit') + '</p>' : '')
+                    + (finalBox ? '<p class="text-[11px] font-bold text-indigo-600 mb-1">' + (sc.sec === 'speaking' ? L('Before you start', 'Перед началом') : L('Before you submit', 'Перед отправкой')) + '</p>' : '')
                     + (g.title ? '<h3 class="' + (isSection ? 'text-base font-extrabold text-slate-900 tracking-tight' : 'text-sm font-bold text-slate-900') + '">' + esc(g.title) + '</h3>' : '')
                     + (g.note ? '<p class="text-xs text-slate-500 leading-relaxed mt-1 whitespace-pre-line">' + fmt(g.note) + '</p>' : '')
                     + (active.length ? '<ul class="mt-2.5 space-y-2">' + active.map(function (i) {
@@ -336,15 +354,15 @@
                     }).join('') + '</ul>' : '')
                     + '</section>';
             }).join('');
-            if (!html.trim()) html = '<p class="text-sm text-slate-500">Everything here is fixed. Nice work!</p>';
+            if (!html.trim()) html = '<p class="text-sm text-slate-500">' + L('Everything here is fixed. Nice work!', 'Здесь всё исправлено. Отличная работа!') + '</p>';
             if (fixed.length) {
                 html += '<details class="mt-2 border-t border-gray-100 pt-4 group">'
                     + '<summary class="cursor-pointer select-none text-xs font-bold text-emerald-700 list-none flex items-center gap-1.5">'
-                    + '<span class="w-4 h-4 rounded bg-emerald-500 text-white text-[10px] font-black flex items-center justify-center">✓</span>Fixed (' + fixed.length + ')'
-                    + '<span class="text-gray-400 font-semibold">· your teacher marked these as done</span></summary>'
+                    + '<span class="w-4 h-4 rounded bg-emerald-500 text-white text-[10px] font-black flex items-center justify-center">✓</span>' + L('Fixed', 'Исправлено') + ' (' + fixed.length + ')'
+                    + '<span class="text-gray-400 font-semibold">· ' + L('your teacher marked these as done', 'преподаватель отметил их как исправленные') + '</span></summary>'
                     + '<ul class="mt-3 space-y-1.5">' + fixed.map(function (i) {
                         return '<li class="flex gap-2.5 text-sm text-slate-400 leading-relaxed"><span class="text-emerald-500 shrink-0">✓</span><span class="ck-txt min-w-0">' + fmt(i.text)
-                            + (i.fixedAt ? ' <span class="text-[11px] text-gray-300 whitespace-nowrap">' + esc(shortDate(i.fixedAt, true)) + '</span>' : '') + '</span></li>';
+                            + (i.fixedAt ? ' <span class="text-[11px] text-gray-300 whitespace-nowrap">' + esc(shortDate(i.fixedAt, !RU)) + '</span>' : '') + '</span></li>';
                     }).join('') + '</ul></details>';
             }
             return html;
@@ -381,8 +399,8 @@
             box.innerHTML = '<div class="bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-xs">'
                 + '<div class="flex items-center gap-3 mb-4">'
                 +   '<div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0"><i data-lucide="list-checks" class="w-5 h-5"></i></div>'
-                +   '<div><h3 class="text-base font-bold text-slate-900 tracking-tight">My checklist</h3>'
-                +   '<p class="text-xs text-gray-500 mt-0.5">What your teacher wants you to watch for. It also opens in Writing and Speaking tasks.</p></div>'
+                +   '<div><h3 class="text-base font-bold text-slate-900 tracking-tight">' + L('My checklist', 'Мой чек-лист') + '</h3>'
+                +   '<p class="text-xs text-gray-500 mt-0.5">' + L('What your teacher wants you to watch for. It also opens in Writing and Speaking tasks.', 'На что преподаватель просит обращать внимание. Чек-лист открывается и в заданиях Writing и Speaking.') + '</p></div>'
                 + '</div>'
                 + '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">' + shown.map(function (l) {
                     var s = stats(l.content), sc = scopeOf(l.scope);
@@ -393,9 +411,9 @@
                         + '<span class="block text-sm font-bold text-slate-900 mt-1 truncate">' + esc(l.title || sc.en) + '</span>'
                         + (heads.length ? '<span class="block text-xs text-slate-500 mt-1 truncate">' + esc(heads.slice(0, 4).join(' · ')) + '</span>' : '')
                         + '<span class="flex items-center justify-between gap-2 mt-3">'
-                        +   '<span class="text-xs font-bold text-slate-700">' + s.active + (s.active === 1 ? ' point' : ' points') + ' to watch'
-                        +   (s.fixed ? '<span class="text-emerald-600"> · ' + s.fixed + ' fixed</span>' : '') + '</span>'
-                        +   '<span class="text-xs font-bold text-indigo-600">Open</span>'
+                        +   '<span class="text-xs font-bold text-slate-700">' + toWatch(s.active)
+                        +   (s.fixed ? '<span class="text-emerald-600"> · ' + fixedN(s.fixed) + '</span>' : '') + '</span>'
+                        +   '<span class="text-xs font-bold text-indigo-600">' + L('Open', 'Открыть') + '</span>'
                         + '</span></button>';
                 }).join('') + '</div></div>';
             icons();
@@ -443,9 +461,9 @@
         var n = writingLists.reduce(function (s, l) { return s + stats(l.content).active; }, 0);
         document.querySelectorAll('[data-ck-slot]:not([data-ck-filled])').forEach(function (slot) {
             slot.setAttribute('data-ck-filled', '1');
-            slot.innerHTML = '<button type="button" data-ck-writing title="Open your checklist" class="flex items-center gap-1.5 py-1 px-2 rounded bg-white border border-indigo-100 text-indigo-600 hover:bg-indigo-50 shadow-sm transition cursor-pointer">'
+            slot.innerHTML = '<button type="button" data-ck-writing title="' + L('Open your checklist', 'Открыть чек-лист') + '" class="flex items-center gap-1.5 py-1 px-2 rounded bg-white border border-indigo-100 text-indigo-600 hover:bg-indigo-50 shadow-sm transition cursor-pointer">'
                 + '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>'
-                + '<span>Checklist</span><span class="text-indigo-300 font-semibold">' + n + '</span></button>';
+                + '<span>' + L('Checklist', 'Чек-лист') + '</span><span class="text-indigo-300 font-semibold">' + n + '</span></button>';
         });
     }
     function finalGroups(lists) {
@@ -477,8 +495,8 @@
             var multi = fg.length > 1;
             m.innerHTML = '<div class="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] flex flex-col">'
                 + '<div class="px-5 sm:px-6 pt-5 pb-3 shrink-0">'
-                +   '<h2 id="ckFinalTitle" class="text-lg font-extrabold text-slate-900 tracking-tight">Final check</h2>'
-                +   '<p class="text-xs text-slate-500 mt-1">Read your text once more with your teacher\'s list. Tick what you\'ve checked.</p>'
+                +   '<h2 id="ckFinalTitle" class="text-lg font-extrabold text-slate-900 tracking-tight">' + L('Final check', 'Финальная проверка') + '</h2>'
+                +   '<p class="text-xs text-slate-500 mt-1">' + L('Read your text once more with your teacher\'s list. Tick what you\'ve checked.', 'Перечитайте текст по списку преподавателя и отметьте, что проверили.') + '</p>'
                 + '</div>'
                 + '<div class="flex-1 overflow-y-auto px-5 sm:px-6 pb-2">' + fg.map(function (f) {
                     return '<div class="mb-4">'
@@ -492,12 +510,12 @@
                 }).join('') + '</div>'
                 + '<div class="px-5 sm:px-6 py-4 border-t border-gray-100 flex flex-wrap items-center gap-3 shrink-0">'
                 +   '<span data-ck-count class="text-xs font-bold text-slate-500 mr-auto"></span>'
-                +   '<button type="button" data-ck-back class="text-sm font-bold text-slate-700 bg-gray-100 hover:bg-gray-200 px-4 py-2.5 rounded-xl transition cursor-pointer">Back to my text</button>'
+                +   '<button type="button" data-ck-back class="text-sm font-bold text-slate-700 bg-gray-100 hover:bg-gray-200 px-4 py-2.5 rounded-xl transition cursor-pointer">' + L('Back to my text', 'Вернуться к тексту') + '</button>'
                 +   '<button type="button" data-ck-go class="text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 px-5 py-2.5 rounded-xl shadow-sm transition cursor-pointer">Submit</button>'
                 + '</div></div>';
             function count() {
                 var n = all.filter(function (id) { return ticks[id]; }).length;
-                m.querySelector('[data-ck-count]').textContent = n + ' of ' + all.length + ' checked';
+                m.querySelector('[data-ck-count]').textContent = RU ? 'Отмечено ' + n + ' из ' + all.length : n + ' of ' + all.length + ' checked';
             }
             function done(v) {
                 m.remove();
@@ -534,15 +552,16 @@
             var fg = finalGroups(lists);
             var n = lists.reduce(function (s, l) { return s + stats(l.content).active; }, 0);
             box.innerHTML = '<div class="w-full text-left bg-indigo-50/60 border border-indigo-100 rounded-2xl p-4">'
-                + (fg.length ? '<p class="text-xs font-bold text-indigo-700">Before you start</p>'
+                + (fg.length ? '<p class="text-xs font-bold text-indigo-700">' + L('Before you start', 'Перед началом') + '</p>'
                     + '<div class="max-h-[38vh] overflow-y-auto mt-2 pr-1">' + fg.map(function (f) {
                         return (f.group.title && fg.length > 1 ? '<p class="text-[11px] font-bold text-slate-700 mt-2">' + esc(f.group.title) + '</p>' : '')
                             + '<ul class="space-y-1.5 mt-1">' + f.items.map(function (i) {
                                 return '<li class="flex gap-2 text-sm text-slate-700 leading-relaxed"><span class="mt-[0.55em] w-1.5 h-1.5 rounded-full bg-indigo-300 shrink-0"></span><span class="ck-txt min-w-0">' + fmt(i.text) + '</span></li>';
                             }).join('') + '</ul>';
                     }).join('') + '</div>'
-                    : '<p class="text-sm text-slate-700">Your teacher left you a checklist: <b>' + n + (n === 1 ? ' point' : ' points') + '</b> to watch.</p>')
-                + '<button type="button" data-ck-speak class="mt-3 text-xs font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer">Open my full checklist</button>'
+                    : '<p class="text-sm text-slate-700">' + (RU ? 'Преподаватель оставил вам чек-лист: <b>' + plural(n, W_ITEM) + '</b> на контроле.'
+                                               : 'Your teacher left you a checklist: <b>' + n + (n === 1 ? ' point' : ' points') + '</b> to watch.') + '</p>')
+                + '<button type="button" data-ck-speak class="mt-3 text-xs font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer">' + L('Open my full checklist', 'Открыть весь чек-лист') + '</button>'
                 + '</div>';
             box.classList.remove('hidden');
             box.addEventListener('click', function (e) {
