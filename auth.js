@@ -18,6 +18,18 @@ window.SUPABASE_URL = AUTH_SB_URL;
 window.SUPABASE_ANON_KEY = AUTH_SB_KEY;
 window.supabaseClient = window.supabaseClient || _supabase;
 
+// Перевод страниц учениц (RU / EN): i18n-pages.js подключается здесь, чтобы не
+// вписывать его в каждую страницу. Какие страницы переводить — решает сам файл.
+(function authLoadPageTranslations() {
+    try {
+        if (document.querySelector('script[src*="i18n-pages.js"]')) return;
+        const s = document.createElement('script');
+        s.src = 'i18n-pages.js';
+        s.async = true;
+        (document.head || document.documentElement).appendChild(s);
+    } catch (e) { /* без перевода */ }
+})();
+
 // Карта «страница -> секция». ЕСЛИ ДОБАВЛЯЕТЕ НОВУЮ СТРАНИЦУ С ЗАДАНИЯМИ —
 // впишите её сюда, иначе она будет открыта всем и ссылка на неё не заблокируется.
 const PAGE_SECTIONS = {
