@@ -13,6 +13,12 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <script src="auth.js"></script>
+    <script>
+        // Бесплатная версия (auth.js): в списке видны все задания, закрытые — под замочком
+        var gMerge = (table, rows, opts) => (typeof authGuestMerge === 'function' ? authGuestMerge(table, rows, opts) : Promise.resolve(rows || []));
+        var gCard = (html, row) => (typeof authGuestCard === 'function' ? authGuestCard(html, row) : html);
+        var gNote = () => (typeof authL === 'function' ? authL('Available with full access', 'Доступно в полной версии') : 'Available with full access');
+    </script>
     <script src="content-visibility.js"></script>
     <script src="topic-filter.js"></script>
     <script src="practice-next.js"></script>
@@ -178,7 +184,7 @@
                 if (tasksError) throw tasksError;
 
                 // Скрытые глазиком задания видит только преподаватель
-                const tasksData = CV.visibleFor(allTasks, currentUser);
+                const tasksData = await gMerge('academic_tasks', CV.visibleFor(allTasks, currentUser));
 
                 // Запрашиваем результаты текущего пользователя для академических тестов
                 if (currentUser) {
@@ -198,14 +204,8 @@
                     }
                 }
 
-                // Демо-режим гостя: только 1 текст, остальные заблокированы
-                const isGuestDemo = currentUser && currentUser.role === 'guest';
-                let visibleTasks = tasksData;
-                let lockedCount = 0;
-                if (isGuestDemo && tasksData.length > 1) {
-                    lockedCount = tasksData.length - 1;
-                    visibleTasks = tasksData.slice(0, 1);
-                }
+                // Гостю видны все тексты: открытые — как обычно, остальные под замочком
+                const visibleTasks = tasksData;
 
                 // Номер теста считаем только по видимым ученикам заданиям: так у вас
                 // и у учеников «Test #3» — одно и то же задание. Скрытое — без номера.
@@ -276,9 +276,9 @@
                         : '';
                     // Сразу закладываем отступ справа у верхней строки, чтобы "Test #X" не залезал под ленту,
                     // и у названия (pr-6): длинное название первой строкой доходило почти до ленты
-                    const headerRightPadding = test.is_real_toefl ? 'pr-12' : '';
+                    const headerRightPadding = test.is_real_toefl ? 'pr-12' : (test.__locked ? 'pr-8' : '');   // место под замочек
 
-                    cards.push({ topic, html: `
+                    cards.push({ topic, html: gCard(`
                         <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col group hover:border-indigo-200 hover:shadow-md transition relative overflow-hidden ${CV.cardClass(isHiddenTask)}">
                             ${realToeflRibbon}
                             <div class="flex justify-between items-start mb-4 ${headerRightPadding}">
@@ -301,18 +301,14 @@
                             </div>
                             
                             <h3 class="text-sm font-bold text-slate-900 mb-1 group-hover:text-indigo-600 transition tracking-tight ${test.is_real_toefl ? 'pr-6' : ''}">${test.title}</h3>
-                            <p class="text-[11px] text-gray-500 mb-5">${test.questions_count} Questions • Advanced Level</p>
+                            <p class="text-[11px] text-gray-500 mb-5">${test.__locked ? gNote() : `${test.questions_count} Questions • Advanced Level`}</p>
                             
                             ${CV.withEye(actionButton, 'academic_tasks', [test.id], isHiddenTask)}
                         </div>
-                    ` });
+                    `, test) });
                 });
 
-                const lockedCard = (isGuestDemo && lockedCount > 0 && typeof renderGuestLockedCard === 'function')
-                    ? renderGuestLockedCard(lockedCount, 'текстов') : '';
-
-                // Гостю с одним текстом фильтр не нужен
-                showCards(cards, { enabled: !isGuestDemo, tail: lockedCard });
+                showCards(cards);
             } catch (err) {
                 if (loadingMsg) {
                     loadingMsg.innerHTML = `<span class="text-red-600 font-bold">Error:</span> ${err.message}`;
