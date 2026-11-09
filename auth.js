@@ -533,8 +533,14 @@ function authLockRule(href) {
 
 function authDecorateLink(link) {
     const rule = authLockRule(link.getAttribute('href') || '');
-    if (!rule || link.querySelector('.section-lock-badge')) return;
-    link.style.opacity = rule.guest ? '0.6' : '0.4';
+    if (!rule) return;
+    if (rule.guest) {                      // гость: тот же вид, что у закрытых заданий
+        if (!link.hasAttribute('data-guest-locked')) link.setAttribute('data-guest-locked', '');
+        authGuestDecorate(link);
+        return;
+    }
+    if (link.querySelector('.section-lock-badge')) return;
+    link.style.opacity = '0.4';
     link.style.cursor = 'not-allowed';
     link.setAttribute('aria-disabled', 'true');
     link.setAttribute('title', rule.guest ? authL('Available with full access', 'Доступно в полной версии')
@@ -550,6 +556,104 @@ function authDecorateAll(root) {
     if (!root || !root.querySelectorAll) return;
     if (root.matches && root.matches('a[href]')) authDecorateLink(root);
     root.querySelectorAll('a[href]').forEach(authDecorateLink);
+    if (root.matches && root.matches('[data-guest-locked]')) authGuestDecorate(root);
+    root.querySelectorAll('[data-guest-locked]').forEach(authGuestDecorate);
+}
+
+// ==========================================
+// Гость: закрытые карточки (задания, статьи, мини-моки, категории словаря).
+// Страница помечает карточку атрибутом data-guest-locked, остальное — здесь:
+// карточка видна, но приглушена, в углу замочек, клик открывает окно «Полный доступ».
+// ==========================================
+function authGuestStyle() {
+    if (document.getElementById('auth-guest-style')) return;
+    const st = document.createElement('style');
+    st.id = 'auth-guest-style';
+    // !important: у части карточек есть анимация появления, она перебивала обычную прозрачность
+    st.textContent = '[data-guest-locked]{cursor:pointer}'
+        + '[data-guest-locked]>:not(.guest-lock){opacity:.42 !important;filter:grayscale(.6)}'
+        + '[data-guest-locked].gl-text{opacity:.5 !important}'
+        + '.guest-lock{position:absolute;top:8px;right:8px;z-index:30;width:26px;height:26px;border-radius:999px;background:#fff;'
+        + 'border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(15,23,42,.12);display:flex;align-items:center;justify-content:center;color:#475569;pointer-events:none}'
+        + '.guest-lock svg{width:13px;height:13px}';
+    (document.head || document.documentElement).appendChild(st);
+}
+function authGuestDecorate(el) {
+    if (!el || el.__guestDone) return;
+    el.__guestDone = true;
+    authGuestStyle();
+    try { if (getComputedStyle(el).position === 'static') el.style.position = 'relative'; } catch (e) { /* без стилей */ }
+    if (!el.children.length) el.classList.add('gl-text');
+    el.setAttribute('aria-disabled', 'true');
+    el.setAttribute('title', authL('Available with full access', 'Доступно в полной версии'));
+    // innerHTML += копирует карточку вместе с уже добавленным замочком — второй не нужен
+    if (Array.prototype.some.call(el.children, c => c.classList && c.classList.contains('guest-lock'))) return;
+    const lock = document.createElement('span');
+    lock.className = 'guest-lock';
+    lock.setAttribute('aria-hidden', 'true');
+    lock.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+    el.appendChild(lock);
+}
+
+// Каталог списка для гостя: все задания с названиями, открытые помечены __open
+// (guest_access_v2.sql). Без этого SQL — null, страница показывает то, что пришло.
+const _authCatalog = {};
+function authGuestCatalog(table) {
+    if (!_authCatalog[table]) {
+        _authCatalog[table] = (async () => {
+            try {
+                const { data, error } = await _supabase.rpc('guest_catalog', { p_table: table });
+                if (error) { console.warn('[auth] каталог ' + table + ':', error.message || error); return null; }
+                return Array.isArray(data) ? data : null;
+            } catch (e) { return null; }
+        })();
+    }
+    return _authCatalog[table];
+}
+async function authIsGuest() {
+    try { const a = await authLoadAccess(); return !!(a && a.profile && a.profile.role === 'guest'); } catch (e) { return false; }
+}
+
+// Список для страницы: гостю — все задания списка, закрытые с пометкой __locked
+// (только название и номер), открытые — строки, пришедшие из базы.
+// Задания, которых нет в каталоге (из мини-мока и пробного теста), в список не попадают.
+// opts.key — поле-ключ (по умолчанию id); opts.keep(row) — фильтр страницы (тип задания);
+// opts.order — 'created_at' или имя поля для сортировки (иначе — порядок каталога).
+async function authGuestMerge(table, rows, opts) {
+    opts = opts || {};
+    rows = rows || [];
+    if (!(await authIsGuest())) return rows;
+    const cat = await authGuestCatalog(table);
+    if (!cat) return rows;
+    const key = opts.key || 'id';
+    const norm = v => String(v === null || v === undefined ? '' : v).trim();
+    const real = new Map(rows.map(r => [norm(r[key]), r]));
+    const out = [];
+    cat.forEach(c => {
+        if (opts.keep && !opts.keep(c)) return;
+        const r = real.get(norm(c[key]));
+        if (c.__open) { if (r) out.push(r); }
+        else out.push(Object.assign({}, c, { __locked: true }));
+    });
+    if (opts.order) {
+        const f = opts.order;
+        const num = r => (/^\d+$/.test(norm(r.id)) ? Number(r.id) : 0);
+        const cmp = (x, y) => {
+            if (x === y) return 0;
+            if (x === '') return 1;                     // без значения — в конец
+            if (y === '') return -1;
+            if (/^-?\d+(\.\d+)?$/.test(x) && /^-?\d+(\.\d+)?$/.test(y)) return Number(x) - Number(y);
+            return f === 'v1' ? x.toLowerCase().localeCompare(y.toLowerCase()) : (x < y ? -1 : 1);
+        };
+        out.sort((a, b) => cmp(norm(a[f]), norm(b[f])) || (num(a) - num(b)));
+    }
+    return out;
+}
+
+// Карточка закрытого задания: в первый тег разметки — data-guest-locked
+function authGuestCard(html, row) {
+    if (!row || !row.__locked) return html;
+    return String(html).replace(/<([a-zA-Z][a-zA-Z0-9-]*)(\s|>)/, (m, tag, sp) => '<' + tag + ' data-guest-locked' + sp);
 }
 
 function applySectionLocks(profile) {
@@ -561,6 +665,9 @@ function applySectionLocks(profile) {
         applySectionLocks._installed = true;
 
         document.addEventListener('click', e => {
+            // Гость: любая закрытая карточка (и всё, что внутри неё)
+            const locked = e.target && e.target.closest ? e.target.closest('[data-guest-locked]') : null;
+            if (locked) { e.preventDefault(); e.stopPropagation(); authShowUpsell(); return; }
             const link = e.target && e.target.closest ? e.target.closest('a[href]') : null;
             if (!link) return;
             const rule = authLockRule(link.getAttribute('href') || '');
