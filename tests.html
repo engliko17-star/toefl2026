@@ -794,6 +794,9 @@
         // ==========================================
         // СЕТКА ТЕСТОВ
         // ==========================================
+        // Тексты гостя на его языке (auth.js); без auth.js — по-русски
+        function gL(en, ru) { return typeof authL === 'function' ? authL(en, ru) : ru; }
+
         async function loadTestsGrid() {
             const container = document.getElementById('tests-container');
             try {
@@ -801,22 +804,18 @@
 
                 const isGuest = window.currentUser && window.currentUser.role === 'guest';
 
-                // Гостю, который уже использовал бесплатную попытку — показываем
-                // заглушку вместо сетки тестов, дальше идти некуда.
-                if (isGuest && window.currentUser.profile && window.currentUser.profile.guest_completed_demo) {
-                    container.innerHTML = `
-                        <div class="col-span-full bg-white rounded-3xl border border-gray-100 shadow-sm p-10 text-center">
-                            <div class="w-14 h-14 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <i data-lucide="clock" class="w-7 h-7"></i>
+                // Гость уже прошёл бесплатный тест: сверху — предложение полного доступа,
+                // ниже — сам тест, чтобы можно было открыть свои результаты
+                const guestUsed = isGuest && window.currentUser.profile && window.currentUser.profile.guest_completed_demo;
+                const usedCard = !guestUsed ? '' : `
+                        <div class="col-span-full bg-white rounded-3xl border border-gray-100 shadow-sm p-8 text-center">
+                            <div class="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <i data-lucide="badge-check" class="w-7 h-7"></i>
                             </div>
-                            <h3 class="font-bold text-slate-800 text-lg mb-2">Бесплатная попытка уже использована</h3>
-                            <p class="text-sm text-gray-500 mb-6 max-w-sm mx-auto">Чтобы пройти ещё раз или получить доступ ко всей платформе, свяжитесь с преподавателем.</p>
-                            <a href="https://t.me/" target="_blank" class="inline-flex items-center justify-center bg-slate-900 hover:bg-indigo-600 transition text-white px-6 py-3 rounded-xl font-bold shadow-md">Написать в Telegram</a>
-                        </div>
-                    `;
-                    if (typeof lucide !== 'undefined') lucide.createIcons();
-                    return;
-                }
+                            <h3 class="font-bold text-slate-800 text-lg mb-2">${gL('You’ve used your free practice test', 'Бесплатный пробный тест уже пройден')}</h3>
+                            <p class="text-sm text-gray-500 mb-6 max-w-sm mx-auto">${gL('Your teacher checks Writing and Speaking. To take more tests and open the whole platform, get full access.', 'Writing и Speaking проверит преподаватель. Чтобы проходить другие тесты и открыть всю платформу, получите полный доступ.')}</p>
+                            <a href="${typeof AUTH_FULL_ACCESS_URL !== 'undefined' ? AUTH_FULL_ACCESS_URL : 'https://t.me/LIKO_17'}" target="_blank" rel="noopener" class="inline-flex items-center justify-center bg-slate-900 hover:bg-indigo-600 transition text-white px-6 py-3 rounded-xl font-bold shadow-md">${gL('Get full access', 'Получить полный доступ')}</a>
+                        </div>`;
 
                 let query = supabaseClient.from('full_tests').select('*').order('created_at', { ascending: false });
                 if (isGuest) query = query.eq('is_free_demo', true); // гостю — только помеченный бесплатный тест
@@ -829,12 +828,12 @@
 
                 if (!tests || tests.length === 0) {
                     container.innerHTML = isGuest
-                        ? `<div class="col-span-full text-center text-slate-500 py-10">Бесплатный тест сейчас недоступен. Загляните позже.</div>`
+                        ? `<div class="col-span-full text-center text-slate-500 py-10">${gL('The free practice test isn’t available right now. Please check back later.', 'Бесплатный тест сейчас недоступен. Загляните позже.')}</div>`
                         : `<div class="col-span-full text-center text-slate-500 py-10">No tests found in 'full_tests' table.</div>`;
                     return;
                 }
 
-                container.innerHTML = tests.map(test => `
+                container.innerHTML = usedCard + tests.map(test => `
                     <div onclick="if (event.target.closest('.cv-eye')) return; openTestView(${mtJsArg(test.id)}, ${mtJsArg(test.title)}, ${mtJsArg(test.emoji || '📝')})" class="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm hover:shadow-md hover:-translate-y-1 hover:border-indigo-200 transition-all cursor-pointer group flex flex-col h-full ${CV ? CV.cardClass(CV.isHidden(test)) : ''}">
                         <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center text-3xl mb-5 group-hover:scale-110 transition-transform">${mtEsc(test.emoji || '📝')}</div>
                         <h3 class="text-xl font-bold text-slate-900 mb-1">${mtEsc(test.title)}</h3>
@@ -1049,14 +1048,9 @@
                 window.currentUser = await requireAuth();
                 if (!window.currentUser) return; // requireAuth сам перенаправит на логин
 
-                // Гостю прячем ссылки на разделы, которые ему всё равно не откроются
-                // (и в боковом меню, и в нижнем мобильном — раньше прятался только боковой)
+                // Гость теперь ходит по всем разделам (бесплатные задания отдаёт база),
+                // поэтому меню ему больше не прячем
                 if (window.currentUser.role === 'guest') {
-                    document.querySelectorAll('aside nav a, #mobileBottomNav a').forEach(a => {
-                        if (!a.getAttribute('href') || !a.getAttribute('href').includes('tests.html')) {
-                            a.style.display = 'none';
-                        }
-                    });
                     // auth.js загружает профиль без поля guest_completed_demo, поэтому
                     // экран «бесплатная попытка уже использована» не появлялся никогда —
                     // гость мог проходить бесплатный тест сколько угодно раз.
