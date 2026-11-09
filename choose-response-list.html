@@ -8,6 +8,12 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
+    <script>
+        // Бесплатная версия (auth.js): в списке видны все задания, закрытые — под замочком
+        var gMerge = (table, rows, opts) => (typeof authGuestMerge === 'function' ? authGuestMerge(table, rows, opts) : Promise.resolve(rows || []));
+        var gCard = (html, row) => (typeof authGuestCard === 'function' ? authGuestCard(html, row) : html);
+        var gNote = () => (typeof authL === 'function' ? authL('Available with full access', 'Доступно в полной версии') : 'Available with full access');
+    </script>
     <script src="content-visibility.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -137,12 +143,13 @@
         async function loadSetsList() {
             try {
                 // ИСКЛЮЧАЕМ вопросы для мок-тестов из подсчета практики
-                const questionsData = await fetchAllQuestionSets();
+                const questionsData = await gMerge('listening_questions', await fetchAllQuestionSets());
 
                 const setCounts = {};
                 const setIsToefl = {};   // набор TOEFL, только если помечены все его вопросы
                 const setIds = {};       // id вопросов набора — глазик скрывает набор целиком
                 const setHidden = {};    // скрыт глазиком (хотя бы один вопрос набора)
+                const setLocked = {};    // гость: набор доступен в полной версии
                 if (questionsData && questionsData.length > 0) {
                     questionsData.forEach(q => {
                         const sn = q.set_number;
@@ -151,6 +158,7 @@
                             setIsToefl[sn] = (setIsToefl[sn] !== false) && q.is_real_toefl === true;
                             (setIds[sn] = setIds[sn] || []).push(q.id);
                             if (q.is_hidden === true) setHidden[sn] = true;
+                            if (q.__locked) setLocked[sn] = true;
                         }
                     });
                 }
@@ -180,6 +188,7 @@
                     if (!prev || isNewer(res, prev)) resultMap[res.set_number] = res;
                 });
                 availableSets.forEach(sn => {
+                    if (setLocked[sn]) return;
                     const res = resultMap[sn];
                     if (!res) return;
                     totalEarned += Number(res.score_earned) || 0;
@@ -212,7 +221,7 @@
                     const eyeBtn = CV.eye('listening_questions', setIds[i] || [], isHiddenSet, { compact: true });
                     let cardHtml = '';
 
-                    if (userResult) {
+                    if (userResult && !setLocked[i]) {
                         const pct = Number(userResult.score_total) > 0
                             ? Math.round((userResult.score_earned / userResult.score_total) * 100) : 0;
                         
@@ -246,9 +255,9 @@
                                 <div>
                                     <div class="flex justify-between items-start mb-3 ${headerPad}">
                                         <h3 class="font-bold text-slate-800 text-sm">Practice Set #${i}</h3>
-                                        <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Ready</span>
+                                        ${setLocked[i] ? '' : '<span class="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Ready</span>'}
                                     </div>
-                                    <p class="text-[11px] text-gray-400 mb-6">Contains ${qCount} interactive audio responses.</p>
+                                    <p class="text-[11px] text-gray-400 mb-6">Contains ${qCount} interactive audio responses.${setLocked[i] ? '<br>' + gNote() : ''}</p>
                                 </div>
                                 
                                 <div class="flex items-center justify-between pt-4 border-t border-gray-50 mt-auto">
@@ -263,7 +272,7 @@
                         `;
                     }
 
-                    grid.innerHTML += cardHtml;
+                    grid.innerHTML += setLocked[i] ? gCard(cardHtml, { __locked: true }) : cardHtml;
                 });
 
                 document.getElementById('loadingState').classList.add('hidden');
