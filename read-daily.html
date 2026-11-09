@@ -13,6 +13,12 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <script src="auth.js"></script>
+    <script>
+        // Бесплатная версия (auth.js): в списке видны все задания, закрытые — под замочком
+        var gMerge = (table, rows, opts) => (typeof authGuestMerge === 'function' ? authGuestMerge(table, rows, opts) : Promise.resolve(rows || []));
+        var gCard = (html, row) => (typeof authGuestCard === 'function' ? authGuestCard(html, row) : html);
+        var gNote = () => (typeof authL === 'function' ? authL('Available with full access', 'Доступно в полной версии') : 'Available with full access');
+    </script>
     <script src="content-visibility.js"></script>
     <script src="topic-filter.js"></script>
     <script src="practice-next.js"></script>
@@ -204,7 +210,7 @@
                     // ошибка — сообщение, пусто — «пока нет заданий».
                     if (tasksError) throw tasksError;
                     // Скрытые глазиком задания видит только преподаватель
-                    tests = CV.visibleFor(tasksData, currentUser);
+                    tests = await gMerge('daily_life_tasks', CV.visibleFor(tasksData, currentUser));
 
                     // Шаг Б: Тянем результаты только текущего авторизованного пользователя
                     if (currentUser) {
@@ -293,10 +299,10 @@
                     // С этикеткой верхняя строка сдвигается левее, чтобы лента в углу
                     // не наезжала на номер теста и круг с процентом
                     const isRealToefl = test.is_real_toefl === true;
-                    const headerRightPadding = isRealToefl ? 'pr-12' : '';
+                    const headerRightPadding = isRealToefl ? 'pr-12' : (test.__locked ? 'pr-8' : '');   // место под замочек
                     const isHiddenTask = test.is_hidden === true;
 
-                    cards.push({ topic: textType, html: `
+                    cards.push({ topic: textType, html: gCard(`
                         <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col group hover:border-emerald-200 hover:shadow-md transition relative overflow-hidden ${CV.cardClass(isHiddenTask)}">
                             ${isRealToefl ? REAL_TOEFL_RIBBON : ''}
                             <div class="flex justify-between items-start mb-4 ${headerRightPadding}">
@@ -319,11 +325,11 @@
                             </div>
                             
                             <h3 class="text-sm font-bold text-slate-900 mb-1 group-hover:text-emerald-600 transition tracking-tight ${isRealToefl ? 'pr-6' : ''}">${test.title}</h3>
-                            <p class="text-[11px] text-gray-500 mb-5">${test.questions_count || 4} Questions • 1 answer type</p>
+                            <p class="text-[11px] text-gray-500 mb-5">${test.__locked ? gNote() : `${test.questions_count || 4} Questions • 1 answer type`}</p>
                             
                             ${CV.withEye(actionButton, 'daily_life_tasks', [test.id], isHiddenTask)}
                         </div>
-                    ` });
+                    `, test) });
                 });
                 showCards(cards);
 
