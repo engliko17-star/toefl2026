@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Question Type Trainer — Reading</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        if (!window.lucide || typeof window.lucide.createIcons !== 'function') window.lucide = { createIcons: function () {} };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="i18n.js"></script>
+    <script src="auth.js"></script>
+    <script src="passage-markup.js"></script>
+    <script src="daily-layouts.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        /* Цвета раздела Reading — как на странице раздела */
+        :root { --r-bg: #f0f8f4; --r-line: #d5ece0; --r-chip: #d9f0e4; --r-ink: #22775a; --r-bar: #6cc3a0; --r-deep: #155640; }
+        .r-ink { color: var(--r-ink); } .r-bg { background: var(--r-bg); } .r-chip { background: var(--r-chip); }
+        .r-btn { background: var(--r-deep); color: #fff; } .r-btn:hover { background: var(--r-ink); }
+        .r-btn:disabled { opacity: .4; cursor: not-allowed; }
+        .r-ring { border-color: var(--r-line); }
+        .tr-card { transition: box-shadow .15s, transform .15s; }
+        .tr-card:hover { box-shadow: 0 6px 18px rgba(15, 23, 42, .08); transform: translateY(-1px); }
+        .tr-card:focus-visible, .tr-opt:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid var(--r-ink); outline-offset: 2px; }
+        .tr-opt[aria-pressed="true"] { border-color: var(--r-ink); background: var(--r-bg); }
+        .tr-opt.is-right { border-color: #16a34a; background: #f0fdf4; }
+        .tr-opt.is-wrong { border-color: #dc2626; background: #fef2f2; }
+        .tr-steps li { counter-increment: st; }
+        .tr-steps li::before { content: counter(st); display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: 999px; background: var(--r-chip); color: var(--r-deep); font-weight: 700; font-size: .78rem; flex: none; margin-top: .05rem; }
+        .tr-passage .clickable-sentence { cursor: pointer; border-radius: 4px; transition: background-color .15s; }
+        .tr-passage.select-mode .clickable-sentence:hover { background: #ecfdf5; }
+        .tr-passage .clickable-sentence.selected { background: var(--r-deep); color: #fff; }
+        .tr-passage .clickable-sentence.review-correct { background: #dcfce7; box-shadow: 0 0 0 1px #86efac; }
+        .tr-passage .clickable-sentence.review-wrong { background: #fee2e2; box-shadow: 0 0 0 1px #fca5a5; }
+        .tr-passage .insert-square.review-correct { background: #16a34a; color: #fff; border-color: #16a34a; }
+        .tr-passage p { margin-bottom: 1rem; }
+        @media (prefers-reduced-motion: reduce) { .tr-card { transition: none; } .tr-card:hover { transform: none; } }
+    </style>
+</head>
+<body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex flex-col md:flex-row">
+
+    <div id="app-sidebar"></div>
+    <script src="nav.js"></script>
+
+    <main class="flex-1 min-w-0 overflow-y-auto pb-28 md:pb-10">
+        <div class="max-w-6xl mx-auto px-4 sm:px-8 pt-5 sm:pt-10" id="trainer" data-i18n-skip>
+            <p class="text-sm text-slate-400" id="trLoading">Loading…</p>
+        </div>
+    </main>
+
+<script>
+(function () {
+    'use strict';
+    // =====================================================================
+    // Тренажёр Reading по типам вопросов.
+    // Задания — свои (таблица reading_trainer_items), не из практики.
+    // Ученица выбирает тип → карточка со стратегией → 10 вопросов подряд.
+    // Режим «учебный» — разбор сразу после ответа, «экзамен» — в конце подхода.
+    // Сам экзамен (текст, вопрос, варианты) — на английском; интерфейс вокруг — RU / EN.
+    // =====================================================================
+    const SESSION = 10;
+    const lang = (window.I18N && window.I18N.lang) || (function () { try { return localStorage.getItem('appLang') === 'ru' ? 'ru' : 'en'; } catch (e) { return 'en'; } })();
+    const RU = lang === 'ru';
+    const TXT = {
+        back: ['Reading', 'Reading'],
+        title: ['Question Type Trainer', 'Тренажёр по типам вопросов'],
+        lead: ['Short texts with one question each. Pick a question type and practise it ten times in a row.', 'Короткие тексты, к каждому один вопрос. Выберите тип вопроса и потренируйте его десять раз подряд.'],
+        tasks: [['task', 'tasks'], ['задание', 'задания', 'заданий']],
+        soon: ['Coming soon', 'Скоро'],
+        accuracy: ['Your accuracy', 'Ваша точность'],
+        notYet: ['Not practised yet', 'Ещё не тренировали'],
+        weak: ['Weak spot', 'Слабое место'],
+        allTypes: ['All question types', 'Все типы вопросов'],
+        how: ['How to solve it', 'Как решать'],
+        article: ['Read the full guide', 'Подробный разбор в статье'],
+        mode: ['Mode', 'Режим'],
+        learn: ['Learning', 'Учебный'],
+        learnNote: ['See the answer and explanation after each question', 'Ответ и разбор — сразу после каждого вопроса'],
+        exam: ['Exam', 'Экзамен'],
+        examNote: ['Ten questions without hints, review at the end', 'Десять вопросов без подсказок, разбор в конце'],
+        start: ['Start', 'Начать'],
+        qs: [['question', 'questions'], ['вопрос', 'вопроса', 'вопросов']],
+        none: ['Tasks for this question type are on their way.', 'Задания этого типа скоро появятся.'],
+        hint: ['Hint', 'Подсказка'],
+        check: ['Check', 'Проверить'],
+        next: ['Next', 'Дальше'],
+        finish: ['Finish', 'Завершить'],
+        right: ['Correct', 'Верно'],
+        wrong: ['Not quite', 'Неверно'],
+        answer: ['Correct answer', 'Верный ответ'],
+        yours: ['Your answer', 'Ваш ответ'],
+        why: ['Why', 'Почему'],
+        options: ['About each option', 'Про каждый вариант'],
+        pickSentence: ['Click the sentence in the text.', 'Нажмите на предложение в тексте.'],
+        pickSquare: ['Choose where the sentence fits best.', 'Выберите, где предложение подходит лучше всего.'],
+        position: ['Position', 'Позиция'],
+        sentence: ['Sentence', 'Предложение'],
+        done: ['Set complete', 'Подход завершён'],
+        score: ['{a} of {b} correct', 'Верно {a} из {b}'],
+        again: ['10 more', 'Ещё 10'],
+        other: ['Another type', 'Другой тип'],
+        review: ['Review', 'Разбор'],
+        noAnswer: ['No answer', 'Без ответа'],
+        saveFail: ['The result was not saved — check your connection.', 'Результат не сохранился — проверьте интернет.'],
+        loadFail: ['Could not load the trainer. Refresh the page.', 'Не удалось загрузить тренажёр. Обновите страницу.'],
+        guestMore: ['More tasks of this type are in the full version.', 'Больше заданий этого типа — в полной версии.'],
+        q: ['Question {a} of {b}', 'Вопрос {a} из {b}'],
+        level: ['Level', 'Уровень']
+    };
+    function t(k, v) {
+        let s = TXT[k] ? TXT[k][RU ? 1 : 0] : k;
+        if (v) Object.keys(v).forEach(x => { s = s.replace('{' + x + '}', v[x]); });
+        return s;
+    }
+    function plural(n, k) {
+        const f = TXT[k][RU ? 1 : 0];
+        if (!RU) return n + ' ' + (n === 1 ? f[0] : f[1]);
+        const a = Math.abs(n) % 100, b = a % 10;
+        return n + ' ' + (a > 10 && a < 20 ? f[2] : b === 1 ? f[0] : b >= 2 && b <= 4 ? f[1] : f[2]);
+    }
+    const esc = s => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const db = () => window.supabaseClient || (typeof _supabase !== 'undefined' ? _supabase : null);
+    const icons = () => { try { lucide.createIcons(); } catch (e) { /* без иконок */ } };
+    const root = document.getElementById('trainer');
+    const arr = v => { if (Array.isArray(v)) return v; if (typeof v === 'string') { try { const x = JSON.parse(v); return Array.isArray(x) ? x : []; } catch (e) { return []; } } return []; };
+    const shuffle = a => { const b = a.slice(); for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; };
+
+    let user = null, guest = false, types = [], counts = {}, results = [];
+    let S = null;   // текущий подход
+
+    // ---------------------------------------------------------------
+    // Данные
+    // ---------------------------------------------------------------
+    async function loadAll() {
+        const [ty, it, rs] = await Promise.all([
+            db().from('reading_trainer_types').select('*').order('sort_order'),
+            db().from('reading_trainer_items').select('id, question_type').range(0, 9999),
+            db().from('reading_trainer_results').select('question_type, item_ids, score_earned, score_total, created_at').eq('user_id', user.id).order('created_at', { ascending: false }).range(0, 1999)
+        ]);
+        if (ty.error) throw ty.error;
+        types = ty.data || [];
+        counts = {};
+        (it.data || []).forEach(i => { counts[i.question_type] = (counts[i.question_type] || 0) + 1; });
+        results = rs.error ? [] : (rs.data || []);
+    }
+    function accOf(type) {
+        const rs = results.filter(r => r.question_type === type);
+        const e = rs.reduce((s, r) => s + (Number(r.score_earned) || 0), 0), n = rs.reduce((s, r) => s + (Number(r.score_total) || 0), 0);
+        return n ? Math.round(e / n * 100) : null;
+    }
+
+    // ---------------------------------------------------------------
+    // Экран 1: все типы
+    // ---------------------------------------------------------------
+    function header(sub) {
+        return `<a href="reading.html" class="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-slate-800"><i data-lucide="arrow-left" class="w-4 h-4"></i>${esc(t('back'))}</a>
+            <h1 class="mt-3 text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">${esc(t('title'))}</h1>
+            ${sub ? `<p class="mt-2 text-slate-500 max-w-2xl leading-relaxed">${esc(sub)}</p>` : ''}`;
+    }
+    function showTypes() {
+        S = null;
+        history.replaceState(null, '', location.pathname);
+        const cards = types.map(x => {
+            const n = counts[x.question_type] || 0;
+            const acc = accOf(x.question_type);
+            const summary = RU ? x.summary_ru : (x.summary_en || x.summary_ru);
+            return `<button type="button" data-type="${esc(x.question_type)}" class="tr-card text-left bg-white border border-slate-200 rounded-2xl p-5 flex flex-col gap-3 ${n ? '' : 'opacity-70'}">
+                <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                        <p class="font-bold text-slate-900 leading-snug">${esc(x.question_type)}</p>
+                        ${RU ? `<p class="text-sm text-slate-500">${esc(x.title_ru)}</p>` : ''}
+                    </div>
+                    ${acc !== null && acc < 60 ? `<span class="shrink-0 text-[11px] font-bold text-rose-700 bg-rose-50 rounded-full px-2 py-0.5">${esc(t('weak'))}</span>` : ''}
+                </div>
+                ${summary ? `<p class="text-sm text-slate-600 leading-relaxed">${esc(summary)}</p>` : ''}
+                <div class="mt-auto flex items-center justify-between gap-3 text-xs font-semibold text-slate-500 pt-1">
+                    <span>${n ? esc(plural(n, 'tasks')) : esc(t('soon'))}</span>
+                    <span class="${acc === null ? '' : 'r-ink'}">${acc === null ? esc(t('notYet')) : esc(t('accuracy')) + ' ' + acc + '%'}</span>
+                </div>
+                ${acc !== null ? `<div class="h-1.5 rounded-full bg-slate-100 overflow-hidden"><div class="h-full rounded-full" style="width:${acc}%;background:var(--r-bar)"></div></div>` : ''}
+            </button>`;
+        }).join('');
+        root.innerHTML = `${header(t('lead'))}
+            <div class="mt-7 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">${cards}</div>`;
+        root.querySelectorAll('[data-type]').forEach(b => b.addEventListener('click', () => showStart(b.dataset.type)));
+        icons();
+    }
+
+    // ---------------------------------------------------------------
+    // Экран 2: стратегия + режим
+    // ---------------------------------------------------------------
+    let mode = (function () { try { return localStorage.getItem('trainerMode') === 'exam' ? 'exam' : 'learn'; } catch (e) { return 'learn'; } })();
+    function typeInfo(type) { return types.find(x => x.question_type === type) || { question_type: type, strategy_ru: [], strategy_en: [] }; }
+    function stepsOf(info) { const ru = arr(info.strategy_ru), en = arr(info.strategy_en); return RU ? ru : (en.length ? en : ru); }
+    function showStart(type) {
+        const info = typeInfo(type);
+        const n = counts[type] || 0;
+        history.replaceState(null, '', '?type=' + encodeURIComponent(type));
+        const steps = stepsOf(info);
+        const modeBtn = (m, title, note) => `<button type="button" data-mode="${m}" aria-pressed="${mode === m}" class="tr-opt text-left border-2 border-slate-200 rounded-xl p-3.5 bg-white">
+            <span class="block font-bold text-slate-900 text-sm">${esc(title)}</span><span class="block text-xs text-slate-500 mt-0.5">${esc(note)}</span></button>`;
+        root.innerHTML = `<button type="button" id="trAll" class="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-slate-800"><i data-lucide="arrow-left" class="w-4 h-4"></i>${esc(t('allTypes'))}</button>
+            <div class="mt-4 grid grid-cols-1 lg:grid-cols-5 gap-5 items-start">
+                <section class="lg:col-span-3 bg-white border border-slate-200 rounded-2xl p-6 sm:p-7">
+                    <p class="text-xs font-bold r-ink">${esc(t('title'))}</p>
+                    <h1 class="mt-1 text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">${esc(type)}</h1>
+                    ${RU ? `<p class="text-slate-500 mt-1">${esc(info.title_ru || '')}</p>` : ''}
+                    <h2 class="mt-6 font-bold text-slate-900">${esc(t('how'))}</h2>
+                    ${steps.length ? `<ol class="tr-steps mt-3 space-y-3 list-none p-0">${steps.map(s => `<li class="flex gap-3 text-slate-700 leading-relaxed">${esc(s)}</li>`).join('')}</ol>` : ''}
+                    ${info.article_url ? `<a href="${esc(info.article_url)}" class="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold r-ink hover:underline">${esc(t('article'))}<i data-lucide="arrow-up-right" class="w-4 h-4"></i></a>` : ''}
+                </section>
+                <aside class="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-6">
+                    <h2 class="font-bold text-slate-900">${esc(t('mode'))}</h2>
+                    <div class="mt-3 grid gap-2.5">${modeBtn('learn', t('learn'), t('learnNote'))}${modeBtn('exam', t('exam'), t('examNote'))}</div>
+                    ${n ? `<button type="button" id="trGo" class="r-btn mt-5 w-full rounded-xl py-3 font-bold">${esc(t('start'))} · ${esc(plural(Math.min(SESSION, n), 'qs'))}</button>`
+                        : `<p class="mt-5 text-sm text-slate-500 r-bg rounded-xl p-4">${esc(t('none'))}</p>`}
+                </aside>
+            </div>`;
+        root.querySelector('#trAll').addEventListener('click', showTypes);
+        root.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => {
+            mode = b.dataset.mode;
+            try { localStorage.setItem('trainerMode', mode); } catch (e) { /* только на этот раз */ }
+            root.querySelectorAll('[data-mode]').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.mode === mode)));
+        }));
+        const go = root.querySelector('#trGo');
+        if (go) go.addEventListener('click', () => startSession(type));
+        icons();
+        window.scrollTo(0, 0);
+    }
+
+    // ---------------------------------------------------------------
+    // Подход: 10 заданий одного типа, сначала те, что ещё не встречались
+    // ---------------------------------------------------------------
+    async function startSession(type) {
+        root.innerHTML = `<p class="text-sm text-slate-400">${esc(RU ? 'Загрузка…' : 'Loading…')}</p>`;
+        try {
+            const { data, error } = await db().from('reading_trainer_items').select('*').eq('question_type', type).range(0, 1999);
+            if (error) throw error;
+            const seen = new Set();
+            results.filter(r => r.question_type === type).forEach(r => (r.item_ids || []).forEach(id => seen.add(String(id))));
+            const all = data || [];
+            const fresh = shuffle(all.filter(x => !seen.has(String(x.id))));
+            const old = shuffle(all.filter(x => seen.has(String(x.id))));
+            const items = fresh.concat(old).slice(0, SESSION);
+            if (!items.length) { showStart(type); return; }
+            S = { type: type, mode: mode, items: items, i: 0, answers: {}, checked: {}, total: all.length };
+            showItem();
+        } catch (e) {
+            console.error(e);
+            root.innerHTML = `<p class="text-rose-600">${esc(t('loadFail'))}</p>`;
+        }
+    }
+
+    const quoted = text => { const m = String(text || '').match(/["“]([^"”]{1,60})["”]/); return m ? m[1] : ''; };
+    function kindOf(it) { return it.question_type === 'Select a Sentence' ? 'select' : it.question_type === 'Insert Text' ? 'insert' : 'mc'; }
+    function isRight(it, a) { return a !== undefined && a !== null && Number(a) === Number(it.correct); }
+
+    function renderPassage(it, box) {
+        if (it.source === 'daily' && window.DailyLayouts) box.innerHTML = DailyLayouts.render(it.passage, it.layout_type, '');
+        else box.innerHTML = window.PassageMarkup ? PassageMarkup.parsePassage(it.passage) : esc(it.passage).replace(/\n\n/g, '<br><br>');
+        // подсветка: заданный фрагмент или слово в кавычках из вопроса (Vocabulary, Reference)
+        const hl = it.highlight || (['Vocabulary', 'Reference'].includes(it.question_type) ? quoted(it.question) : '');
+        if (hl && window.PassageMarkup) PassageMarkup.applyHighlight(box, { type: it.question_type === 'Reference' ? 'Reference' : 'Simplification', highlight: hl, highlight_occurrence: it.highlight_occurrence });
+    }
+
+    function showItem() {
+        const it = S.items[S.i];
+        const k = kindOf(it);
+        const ans = S.answers[it.id];
+        const checked = S.mode === 'learn' && S.checked[it.id];
+        const last = S.i === S.items.length - 1;
+        const opts = arr(it.options);
+        const steps = stepsOf(typeInfo(S.type));
+        root.innerHTML = `
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <button type="button" id="trAll" class="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-slate-800"><i data-lucide="arrow-left" class="w-4 h-4"></i>${esc(S.type)}</button>
+                <div class="flex items-center gap-3">
+                    <span class="text-sm font-semibold text-slate-500">${S.i + 1} / ${S.items.length}</span>
+                    <div class="w-28 h-1.5 rounded-full bg-slate-200 overflow-hidden"><div class="h-full rounded-full" style="width:${Math.round((S.i + 1) / S.items.length * 100)}%;background:var(--r-bar)"></div></div>
+                    ${steps.length ? `<button type="button" id="trHint" aria-expanded="false" class="inline-flex items-center gap-1.5 text-sm font-semibold r-ink border r-ring rounded-lg px-3 py-1.5 bg-white"><i data-lucide="lightbulb" class="w-4 h-4"></i>${esc(t('hint'))}</button>` : ''}
+                </div>
+            </div>
+            <div id="trHintBox" class="hidden mt-3 r-bg border r-ring rounded-xl p-4"><ol class="tr-steps space-y-2 list-none p-0">${steps.map(s => `<li class="flex gap-3 text-sm text-slate-700">${esc(s)}</li>`).join('')}</ol></div>
+            <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
+                <section class="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 min-w-0">
+                    <div id="trPassage" class="tr-passage text-[15px] leading-relaxed text-slate-800 ${k === 'select' && !checked ? 'select-mode' : ''}"></div>
+                </section>
+                <section class="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 min-w-0 md:sticky md:top-4">
+                    <p class="text-xs font-bold text-slate-400">${esc(t('q', { a: S.i + 1, b: S.items.length }))}</p>
+                    <p class="mt-2 font-semibold text-slate-900 leading-snug">${esc(it.question)}</p>
+                    ${k === 'select' ? `<p class="mt-2 text-xs text-slate-500">${esc(t('pickSentence'))}</p>` : ''}
+                    ${k === 'insert' ? `<p class="mt-2 text-xs text-slate-500">${esc(t('pickSquare'))}</p>` : ''}
+                    <div id="trOpts" class="mt-4 grid gap-2.5"></div>
+                    <div id="trFeedback"></div>
+                    <div class="mt-5 flex justify-end">
+                        <button type="button" id="trNext" class="r-btn rounded-xl px-5 py-2.5 font-bold text-sm" ${ans === undefined ? 'disabled' : ''}>${esc(S.mode === 'learn' && !checked ? t('check') : last ? t('finish') : t('next'))}</button>
+                    </div>
+                </section>
+            </div>`;
+        const box = root.querySelector('#trPassage');
+        renderPassage(it, box);
+        const optsBox = root.querySelector('#trOpts');
+        if (k === 'mc') {
+            optsBox.innerHTML = opts.map((o, i) => `<button type="button" data-i="${i}" aria-pressed="${ans === i}" class="tr-opt text-left border-2 border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 bg-white flex gap-3">
+                <span class="font-bold text-slate-400">${String.fromCharCode(65 + i)}</span><span>${esc(o)}</span></button>`).join('');
+            optsBox.querySelectorAll('[data-i]').forEach(b => b.addEventListener('click', () => { if (!checked) choose(Number(b.dataset.i)); }));
+        } else if (k === 'insert') {
+            optsBox.innerHTML = window.PassageMarkup ? PassageMarkup.positionButtons(box, it.insert_sentence || '', '__trInsert') : '';
+            optsBox.querySelectorAll('.insert-option span:last-child').forEach(s => { s.textContent = s.textContent.replace('Позиция', t('position')); });
+            box.querySelectorAll('.insert-square').forEach((sq, i) => sq.addEventListener('click', () => { if (!checked) choose(i); }));
+            if (ans !== undefined) PassageMarkup.choosePosition(box, Number(ans), it.insert_sentence || '', { silent: true });
+        } else {
+            box.querySelectorAll('.clickable-sentence').forEach(sp => sp.addEventListener('click', () => { if (!checked) choose(Number(sp.dataset.id)); }));
+            if (ans !== undefined) { const s = box.querySelector(`.clickable-sentence[data-id="${ans}"]`); if (s) s.classList.add('selected'); }
+        }
+        if (checked) paintFeedback(it, box);
+        root.querySelector('#trAll').addEventListener('click', () => showStart(S.type));
+        const hint = root.querySelector('#trHint');
+        if (hint) hint.addEventListener('click', () => { const h = root.querySelector('#trHintBox'); h.classList.toggle('hidden'); hint.setAttribute('aria-expanded', String(!h.classList.contains('hidden'))); });
+        root.querySelector('#trNext').addEventListener('click', next);
+        icons();
+    }
+    window.__trInsert = pos => { if (S && !(S.mode === 'learn' && S.checked[S.items[S.i].id])) choose(pos); };
+
+    function choose(a) {
+        const it = S.items[S.i];
+        S.answers[it.id] = a;
+        const k = kindOf(it);
+        const box = root.querySelector('#trPassage');
+        if (k === 'mc') root.querySelectorAll('#trOpts [data-i]').forEach(b => b.setAttribute('aria-pressed', String(Number(b.dataset.i) === a)));
+        else if (k === 'insert') PassageMarkup.choosePosition(box, a, it.insert_sentence || '', { silent: true });
+        else box.querySelectorAll('.clickable-sentence').forEach(s => s.classList.toggle('selected', Number(s.dataset.id) === a));
+        root.querySelector('#trNext').disabled = false;
+    }
+
+    function answerText(it, a) {
+        const k = kindOf(it);
+        if (a === undefined || a === null) return t('noAnswer');
+        if (k === 'mc') { const o = arr(it.options)[a]; return (String.fromCharCode(65 + Number(a))) + '. ' + (o || ''); }
+        if (k === 'insert') return t('position') + ' ' + String.fromCharCode(65 + Number(a));
+        const tmp = document.createElement('div');
+        tmp.innerHTML = window.PassageMarkup ? PassageMarkup.parsePassage(it.passage) : '';
+        const s = tmp.querySelector(`.clickable-sentence[data-id="${a}"]`);
+        return s ? s.textContent.trim() : t('sentence') + ' ' + a;
+    }
+
+    // Разбор одного задания: верно/неверно, верный ответ, почему, про каждый вариант
+    function feedbackHtml(it) {
+        const a = S.answers[it.id];
+        const ok = isRight(it, a);
+        const expl = RU ? it.explanation : (it.explanation_en || it.explanation);
+        const notes = arr(RU ? it.option_notes : (arr(it.option_notes_en).length ? it.option_notes_en : it.option_notes));
+        const opts = arr(it.options);
+        return `<div class="mt-4 rounded-xl border ${ok ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50'} p-4">
+            <p class="font-bold ${ok ? 'text-emerald-800' : 'text-rose-800'}">${esc(ok ? t('right') : t('wrong'))}</p>
+            ${ok ? '' : `<p class="mt-1 text-sm text-slate-700"><span class="font-semibold">${esc(t('answer'))}:</span> ${esc(answerText(it, it.correct))}</p>`}
+            ${expl ? `<p class="mt-2 text-sm text-slate-700 leading-relaxed"><span class="font-semibold">${esc(t('why'))}:</span> ${esc(expl)}</p>` : ''}
+            ${notes.length && kindOf(it) === 'mc' ? `<details class="mt-2 text-sm"><summary class="cursor-pointer font-semibold text-slate-700">${esc(t('options'))}</summary>
+                <ul class="mt-2 space-y-1.5">${notes.map((n, i) => `<li class="flex gap-2 text-slate-600"><span class="font-bold ${i === Number(it.correct) ? 'text-emerald-700' : 'text-slate-400'}">${String.fromCharCode(65 + i)}</span><span>${esc(n || opts[i] || '')}</span></li>`).join('')}</ul></details>` : ''}
+        </div>`;
+    }
+    function paintFeedback(it, box) {
+        const a = S.answers[it.id];
+        const k = kindOf(it);
+        if (k === 'mc') root.querySelectorAll('#trOpts [data-i]').forEach(b => {
+            const i = Number(b.dataset.i);
+            b.classList.toggle('is-right', i === Number(it.correct));
+            b.classList.toggle('is-wrong', i === Number(a) && i !== Number(it.correct));
+            b.disabled = true;
+        });
+        if (k === 'select') {
+            box.classList.remove('select-mode');
+            const c = box.querySelector(`.clickable-sentence[data-id="${it.correct}"]`); if (c) c.classList.add('review-correct');
+            if (!isRight(it, a)) { const w = box.querySelector(`.clickable-sentence[data-id="${a}"]`); if (w) { w.classList.remove('selected'); w.classList.add('review-wrong'); } }
+        }
+        if (k === 'insert') { const sq = box.querySelectorAll('.insert-square')[Number(it.correct)]; if (sq) sq.classList.add('review-correct'); }
+        root.querySelector('#trFeedback').innerHTML = feedbackHtml(it);
+    }
+
+    function next() {
+        const it = S.items[S.i];
+        if (S.answers[it.id] === undefined) return;
+        if (S.mode === 'learn' && !S.checked[it.id]) {
+            S.checked[it.id] = true;
+            showItem();
+            const f = root.querySelector('#trFeedback'); if (f && f.scrollIntoView) f.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            return;
+        }
+        if (S.i < S.items.length - 1) { S.i++; showItem(); window.scrollTo(0, 0); return; }
+        finish();
+    }
+
+    // ---------------------------------------------------------------
+    // Итог подхода
+    // ---------------------------------------------------------------
+    async function finish() {
+        const items = S.items;
+        const earned = items.filter(it => isRight(it, S.answers[it.id])).length;
+        let saveErr = false;
+        try {
+            const row = { user_id: user.id, question_type: S.type, mode: S.mode, item_ids: items.map(it => it.id), answers: S.answers, score_earned: earned, score_total: items.length };
+            const { error } = await db().from('reading_trainer_results').insert([row]);
+            if (error) throw error;
+            results.unshift(Object.assign({ created_at: new Date().toISOString() }, row));
+        } catch (e) { console.error(e); saveErr = true; }
+        const pct = Math.round(earned / items.length * 100);
+        root.innerHTML = `
+            <section class="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center gap-6">
+                <div class="relative w-28 h-28 shrink-0">
+                    <svg viewBox="0 0 36 36" class="w-28 h-28 -rotate-90"><circle cx="18" cy="18" r="15.5" fill="none" stroke="#eef2f7" stroke-width="3.5"/>
+                    <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--r-ink)" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="${(pct * 0.974).toFixed(1)} 100"/></svg>
+                    <span class="absolute inset-0 flex items-center justify-center text-2xl font-extrabold text-slate-900">${pct}%</span>
+                </div>
+                <div class="min-w-0">
+                    <p class="text-xs font-bold r-ink">${esc(S.type)}</p>
+                    <h1 class="mt-1 text-2xl font-extrabold text-slate-900">${esc(t('done'))}</h1>
+                    <p class="mt-1 text-slate-600">${esc(t('score', { a: earned, b: items.length }))}</p>
+                    ${saveErr ? `<p class="mt-2 text-sm text-rose-600">${esc(t('saveFail'))}</p>` : ''}
+                    ${guest ? `<p class="mt-2 text-sm text-slate-600">${esc(t('guestMore'))}</p>` : ''}
+                    <div class="mt-4 flex flex-wrap gap-2.5">
+                        <button type="button" id="trAgain" class="r-btn rounded-xl px-5 py-2.5 font-bold text-sm">${esc(t('again'))}</button>
+                        <button type="button" id="trOther" class="rounded-xl px-5 py-2.5 font-bold text-sm border border-slate-200 bg-white text-slate-700 hover:bg-slate-50">${esc(t('other'))}</button>
+                    </div>
+                </div>
+            </section>
+            <h2 class="mt-8 font-bold text-slate-900">${esc(t('review'))}</h2>
+            <div class="mt-3 grid gap-3">${items.map((it, i) => {
+                const a = S.answers[it.id], ok = isRight(it, a);
+                return `<details class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5" ${!ok && S.mode === 'exam' ? 'open' : ''}>
+                    <summary class="cursor-pointer flex items-start gap-3 list-none">
+                        <span class="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${ok ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">${i + 1}</span>
+                        <span class="min-w-0"><span class="block font-semibold text-slate-900 text-sm leading-snug">${esc(it.question)}</span>
+                        <span class="block text-xs text-slate-500 mt-1">${esc(t('yours'))}: ${esc(answerText(it, a))}</span></span>
+                    </summary>
+                    <div class="mt-3 pl-10">${feedbackHtml(it)}</div>
+                </details>`;
+            }).join('')}</div>`;
+        root.querySelector('#trAgain').addEventListener('click', () => { if (guest && S.total <= items.length && typeof authShowUpsell === 'function') authShowUpsell(); else startSession(S.type); });
+        root.querySelector('#trOther').addEventListener('click', showTypes);
+        icons();
+        window.scrollTo(0, 0);
+    }
+
+    // ---------------------------------------------------------------
+    async function init() {
+        try {
+            user = typeof requireAuth === 'function' ? await requireAuth() : null;
+            if (!user) return;
+            guest = typeof authIsGuest === 'function' ? await authIsGuest() : false;
+            await loadAll();
+            const want = new URLSearchParams(location.search).get('type');
+            if (want && types.some(x => x.question_type === want)) showStart(want); else showTypes();
+        } catch (e) {
+            console.error(e);
+            root.innerHTML = `<p class="text-rose-600">${esc(t('loadFail'))}</p>`;
+        }
+    }
+    init();
+})();
+</script>
+</body>
+</html>
