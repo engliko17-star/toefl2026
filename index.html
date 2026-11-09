@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard — TOEFL Prep</title>
+    <!-- Язык интерфейса: подключается первым, до меню и скриптов страницы -->
+    <script src="i18n.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
 
@@ -16,12 +18,44 @@
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        :root { --page: #f8f9fa; }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--page); }
         .tnum { font-variant-numeric: tabular-nums; }
 
         /* Скрываем скроллбар для мобильного меню, чтобы было аккуратно */
         .mobile-nav-scroll::-webkit-scrollbar { display: none; }
         .mobile-nav-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* ===== Билет на экзамен: сколько дней до TOEFL и шкала баллов 1–6 ===== */
+        .ticket { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); overflow: hidden;
+                  border-radius: 28px; background: #312e81; color: #fff; }
+        .ticket-stub { position: relative; background: #2a2770; border-top: 2px dashed rgba(199, 210, 254, .28); }
+        /* вырезы по краям линии отрыва — цвета фона страницы */
+        .ticket-stub::before, .ticket-stub::after { content: ''; position: absolute; width: 26px; height: 26px; border-radius: 50%;
+                  background: var(--page); top: -14px; }
+        .ticket-stub::before { left: -13px; }
+        .ticket-stub::after { right: -13px; }
+        @media (min-width: 1024px) {
+            .ticket { grid-template-columns: minmax(0, 1fr) 360px; }
+            .ticket-stub { border-top: 0; border-left: 2px dashed rgba(199, 210, 254, .28); }
+            .ticket-stub::before, .ticket-stub::after { left: -14px; right: auto; }
+            .ticket-stub::before { top: -13px; }
+            .ticket-stub::after { top: auto; bottom: -13px; }
+        }
+        .ticket.no-stub { grid-template-columns: minmax(0, 1fr); }
+        .ticket-count { font-size: 64px; line-height: .85; letter-spacing: -0.03em; }
+        @media (min-width: 640px) { .ticket-count { font-size: 92px; } }
+
+        /* Шкала баллов TOEFL: 1–6 с шагом 0.5 */
+        .band { position: relative; height: 44px; }
+        .band-track { position: absolute; left: 0; right: 0; top: 10px; height: 8px; border-radius: 99px; background: rgba(199, 210, 254, .16); }
+        .band-fill { position: absolute; left: 0; top: 10px; height: 8px; border-radius: 99px; background: #a5b4fc; }
+        .band-tick { position: absolute; top: 22px; width: 1px; height: 4px; background: rgba(199, 210, 254, .35); transform: translateX(-50%); }
+        .band-tick.major { height: 7px; background: rgba(199, 210, 254, .6); }
+        .band-num { position: absolute; top: 30px; transform: translateX(-50%); font-size: 11px; font-weight: 600; color: #a5b4fc; }
+        .band-now { position: absolute; top: 6px; width: 16px; height: 16px; border-radius: 50%; background: #fff;
+                    border: 3px solid #312e81; box-shadow: 0 0 0 2px #fff; transform: translateX(-50%); }
+        .band-goal { position: absolute; top: 1px; width: 4px; height: 26px; border-radius: 2px; background: #fcd34d; transform: translateX(-50%); }
 
         /* Карта активности */
         .heat { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 1fr); gap: 3px; }
@@ -35,38 +69,40 @@
         a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visible {
             outline: 2px solid #4f46e5; outline-offset: 2px;
         }
+        .ticket a:focus-visible { outline-color: #fcd34d; }
+        @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
     </style>
 </head>
-<body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex flex-col md:flex-row">
+<body class="text-slate-800 min-h-screen flex flex-col md:flex-row">
 
     <div id="app-sidebar"></div>
     <script src="nav.js"></script>
 
     <main class="flex-1 min-w-0 overflow-y-auto pb-28 md:pb-10">
-        <div class="max-w-6xl mx-auto px-4 sm:px-8 pt-6 sm:pt-10 space-y-10">
+        <div class="max-w-6xl mx-auto px-4 sm:px-8 pt-5 sm:pt-10 space-y-8 sm:space-y-10">
 
-            <!-- ============ ГЛАВНОЕ: сколько до экзамена и где сейчас балл ============ -->
-            <header class="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
-                <div class="min-w-0">
-                    <p id="userGreeting" class="text-sm font-semibold text-slate-500">Welcome back</p>
-                    <h1 id="heroTitle" class="mt-1 text-[30px] sm:text-[40px] leading-[1.1] font-extrabold tracking-tight text-slate-900 tnum">Your TOEFL preparation</h1>
-                    <p id="heroSub" class="mt-2 text-sm text-slate-500">&nbsp;</p>
+            <!-- ============ БИЛЕТ: сколько дней до экзамена и где сейчас балл ============ -->
+            <header id="ticket" class="ticket">
+                <div class="p-6 sm:p-8 min-w-0 flex flex-col justify-between gap-6">
+                    <p id="userGreeting" class="text-sm font-semibold text-indigo-200" data-i18n="d.welcome">Welcome back</p>
+                    <h1 id="heroTitle" class="text-[30px] sm:text-[40px] leading-[1.1] font-extrabold tracking-tight" data-i18n="d.heroDefault">Your TOEFL preparation</h1>
+                    <p id="heroSub" class="text-sm text-indigo-200 leading-relaxed">&nbsp;</p>
                 </div>
-                <div id="heroScore" class="hidden self-start lg:self-auto bg-white rounded-2xl border border-gray-100 shadow-xs divide-x divide-gray-100 flex"></div>
+                <div id="ticketStub" class="ticket-stub p-6 sm:p-8 hidden"></div>
             </header>
 
             <!-- ============ ЦИФРЫ ПРАКТИКИ ============ -->
-            <section aria-label="Practice stats">
+            <section data-i18n-attr="aria-label:d.statsAria" aria-label="Practice stats">
                 <div id="statsStrip" class="bg-white rounded-3xl border border-gray-100 shadow-xs grid grid-cols-2 lg:grid-cols-4">
-                    <div class="p-5 text-xs text-gray-400">Loading stats…</div>
+                    <div class="p-5 text-xs text-gray-400" data-i18n="d.statsLoading">Loading stats…</div>
                 </div>
             </section>
 
             <!-- ============ СЕГОДНЯ: домашка, продолжить, расписание ============ -->
             <section class="space-y-4" aria-labelledby="todayTitle">
                 <div>
-                    <h2 id="todayTitle" class="text-lg font-bold text-slate-900 tracking-tight">Today</h2>
-                    <p class="text-sm text-slate-500 mt-0.5">Your homework and where you left off</p>
+                    <h2 id="todayTitle" class="text-xl font-extrabold text-slate-900 tracking-tight" data-i18n="d.today">Today</h2>
+                    <p class="text-sm text-slate-500 mt-0.5" data-i18n="d.todaySub">Your homework and where you left off</p>
                 </div>
 
                 <!-- Домашнее задание (homework.js): появляется, когда преподаватель выдал задание -->
@@ -75,31 +111,35 @@
                 <!-- Чек-лист ошибок (checklist.js): появляется, когда преподаватель его заполнил -->
                 <div id="checklistCard" class="hidden"></div>
 
-                <!-- General English: появляется только у учеников с назначенным курсом -->
-                <div id="geCard" class="hidden"></div>
-
                 <!-- Карточки в ряду одной высоты — без пустых мест сбоку -->
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <!-- Продолжить, слова на повторение, проверки, ближайший урок -->
                     <div id="todayList" class="lg:col-span-2 bg-white rounded-3xl border border-gray-100 shadow-xs divide-y divide-gray-100 overflow-hidden self-start lg:self-stretch">
-                        <div class="p-5 text-xs text-gray-400">Loading…</div>
+                        <div class="p-5 text-xs text-gray-400" data-i18n="common.loading">Loading…</div>
                     </div>
 
                     <aside class="bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-xs space-y-4" aria-labelledby="scheduleTitle">
                         <div class="flex justify-between items-baseline gap-3">
-                            <h2 id="scheduleTitle" class="text-base font-bold text-slate-900">Schedule</h2>
+                            <h2 id="scheduleTitle" class="text-base font-bold text-slate-900" data-i18n="d.schedule">Schedule</h2>
                             <span id="calMonthLabel" class="text-sm font-semibold text-indigo-600">—</span>
                         </div>
-                        <div class="grid grid-cols-7 gap-1 text-center text-[11px] font-medium text-gray-400">
-                            <div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div>Sa</div><div>Su</div>
-                        </div>
+                        <div id="calWeekdays" class="grid grid-cols-7 gap-1 text-center text-[11px] font-medium text-gray-400"></div>
                         <div id="calGrid" class="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-700"></div>
                         <div id="calLegend" class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-400"></div>
                         <div id="upcomingLessons" class="space-y-2 border-t border-gray-100 pt-4">
-                            <p class="text-xs text-gray-400 text-center py-2">Loading schedule…</p>
+                            <p class="text-xs text-gray-400 text-center py-2" data-i18n="d.loadingSchedule">Loading schedule…</p>
                         </div>
                     </aside>
                 </div>
+            </section>
+
+            <!-- ============ РАЗДЕЛЫ ============ -->
+            <section class="space-y-4" aria-labelledby="sectionsTitle">
+                <div>
+                    <h2 id="sectionsTitle" class="text-xl font-extrabold text-slate-900 tracking-tight" data-i18n="d.sections">Practice by section</h2>
+                    <p class="text-sm text-slate-500 mt-0.5" data-i18n="d.sectionsSub">How much of each section you've done</p>
+                </div>
+                <div id="sectionCards" class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4"></div>
             </section>
 
             <!-- ============ МОК-ТЕСТЫ + АКТИВНОСТЬ ============ -->
@@ -107,64 +147,45 @@
                 <section class="lg:col-span-2 bg-white p-5 sm:p-7 rounded-3xl border border-gray-100 shadow-xs space-y-5" aria-labelledby="scoresTitle">
                     <div class="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                            <h2 id="scoresTitle" class="text-lg font-bold text-slate-900 tracking-tight">Mock test scores</h2>
-                            <p class="text-sm text-slate-500 mt-0.5">Every full mock test, with your target for each section</p>
+                            <h2 id="scoresTitle" class="text-lg font-bold text-slate-900 tracking-tight" data-i18n="d.scores">Mock test scores</h2>
+                            <p class="text-sm text-slate-500 mt-0.5" data-i18n="d.scoresSub">Every full mock test, with your target for each section</p>
                         </div>
                         <div class="flex items-center gap-2">
-                            <div class="flex p-1 bg-gray-100 rounded-xl" role="group" aria-label="View">
-                                <button type="button" data-scores-view="table" aria-pressed="true" class="px-3 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer">Table</button>
-                                <button type="button" data-scores-view="chart" aria-pressed="false" class="px-3 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer">Chart</button>
+                            <div class="flex p-1 bg-gray-100 rounded-xl" role="group" data-i18n-attr="aria-label:d.view" aria-label="View">
+                                <button type="button" data-scores-view="table" aria-pressed="true" class="px-3 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer" data-i18n="d.table">Table</button>
+                                <button type="button" data-scores-view="chart" aria-pressed="false" class="px-3 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer" data-i18n="d.chart">Chart</button>
                             </div>
                             <button id="saveGoalsBtn" onclick="saveGoals()" class="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer">
                                 <i data-lucide="save" class="w-3.5 h-3.5"></i>
-                                <span id="saveGoalsLabel">Save targets</span>
+                                <span id="saveGoalsLabel" data-i18n="d.saveTargets">Save targets</span>
                             </button>
                         </div>
                     </div>
 
                     <div id="scoreMatrix" class="overflow-x-auto -mx-1 px-1">
-                        <p class="text-xs text-gray-400 text-center py-8">Loading scores…</p>
+                        <p class="text-xs text-gray-400 text-center py-8" data-i18n="d.loadingScores">Loading scores…</p>
                     </div>
                     <div id="progressChart" class="hidden w-full"></div>
-
-                    <div class="pt-1">
-                        <div class="flex justify-between text-xs font-semibold mb-1.5 gap-3">
-                            <span class="text-slate-500">To your target: <span id="points-diff" class="text-slate-800">—</span></span>
-                            <span id="percent-achieved" class="text-indigo-600">—</span>
-                        </div>
-                        <div class="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                            <div id="goal-progress-bar" class="bg-indigo-500 h-2 rounded-full transition-all duration-500 ease-out" style="width: 0%"></div>
-                        </div>
-                    </div>
 
                     <div id="focusArea"></div>
                 </section>
 
                 <section class="bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-xs flex flex-col gap-5 lg:justify-between" aria-labelledby="activityTitle">
                     <div class="flex justify-between items-baseline gap-3">
-                        <h2 id="activityTitle" class="text-base font-bold text-slate-900">Activity</h2>
-                        <span class="text-xs text-gray-400">Last 18 weeks</span>
+                        <h2 id="activityTitle" class="text-base font-bold text-slate-900" data-i18n="d.activity">Activity</h2>
+                        <span class="text-xs text-gray-400" data-i18n="d.last18">Last 18 weeks</span>
                     </div>
-                    <div id="activityHeat"><p class="text-xs text-gray-400 py-6 text-center">Loading…</p></div>
+                    <div id="activityHeat"><p class="text-xs text-gray-400 py-6 text-center" data-i18n="common.loading">Loading…</p></div>
                     <div id="activityVocab" class="border-t border-gray-100 pt-4"></div>
                     <div id="activityMonth" class="border-t border-gray-100 pt-4 space-y-2.5"></div>
                 </section>
             </div>
 
-            <!-- ============ РАЗДЕЛЫ ============ -->
-            <section class="space-y-4" aria-labelledby="sectionsTitle">
-                <div>
-                    <h2 id="sectionsTitle" class="text-lg font-bold text-slate-900 tracking-tight">Practice by section</h2>
-                    <p class="text-sm text-slate-500 mt-0.5">How much of each section you've done</p>
-                </div>
-                <div id="sectionCards" class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4"></div>
-            </section>
-
             <!-- ============ ЧАСТЫЕ ВОПРОСЫ (вопросы и ответы — в faq.js) ============ -->
             <section class="space-y-4" id="faqSection" aria-labelledby="faqTitle">
                 <div>
-                    <h2 id="faqTitle" class="text-lg font-bold text-slate-900 tracking-tight">Frequently asked questions</h2>
-                    <p class="text-sm text-slate-500 mt-0.5">About the exam, the Home Edition, preparing and this platform</p>
+                    <h2 id="faqTitle" class="text-xl font-extrabold text-slate-900 tracking-tight" data-i18n="d.faq">Frequently asked questions</h2>
+                    <p class="text-sm text-slate-500 mt-0.5" data-i18n="d.faqSub">About the exam, the Home Edition, preparing and this platform</p>
                 </div>
                 <div id="faqList"></div>
             </section>
@@ -174,6 +195,172 @@
 
 
     <script>
+        // Если i18n.js не загрузился — страница всё равно работает (по-английски)
+        if (!window.I18N) {
+            window.I18N = (function () {
+                const d = {};
+                const t = (k, v) => { const e = d[k]; let s = e ? e.en : k; if (Array.isArray(s)) s = s[1]; return v ? String(s).replace(/\{(\w+)\}/g, (m, x) => v[x] !== undefined ? v[x] : m) : s; };
+                return { lang: 'en', add: o => Object.keys(o).forEach(k => { d[k] = Array.isArray(o[k]) ? { en: o[k][0], ru: o[k][1] } : o[k]; }),
+                         t, apply() {}, plural: (n, f) => (Math.abs(n) === 1 ? f[0] : f[f.length - 1]),
+                         count: (n, k) => { const f = d[k] && d[k].en; return n + ' ' + (Array.isArray(f) ? (Math.abs(n) === 1 ? f[0] : f[1]) : t(k)); },
+                         date: (x, o) => new Date(x).toLocaleDateString('en-US', o || { day: 'numeric', month: 'short' }) };
+            })();
+        }
+
+        // ==========================================
+        // Тексты страницы: [английский, русский]
+        // ==========================================
+        I18N.add({
+            'd.title': ['Dashboard — TOEFL Prep', 'Главная — подготовка к TOEFL'],
+            'd.welcome': ['Welcome back', 'С возвращением'],
+            'd.heroDefault': ['Your TOEFL preparation', 'Подготовка к TOEFL'],
+            'd.morning': ['Good morning', 'Доброе утро'],
+            'd.afternoon': ['Good afternoon', 'Добрый день'],
+            'd.evening': ['Good evening', 'Добрый вечер'],
+            'd.teachTitle': ['Your teaching dashboard', 'Панель преподавателя'],
+            'd.teachSub': ['Students see their homework, progress and stats here.', 'Здесь ученики видят домашку, прогресс и статистику.'],
+            'd.keepGoing': ['Let’s keep going', 'Продолжаем подготовку'],
+            'd.noExamDate': ['Your exam date isn’t set yet. Your teacher can add it.', 'Дата экзамена пока не указана. Её может добавить преподаватель.'],
+            'd.daysUntil': { en: ['day until your\u00a0TOEFL', 'days until your\u00a0TOEFL'], ru: ['день до TOEFL', 'дня до TOEFL', 'дней до TOEFL'] },
+            'd.finalStretch': ['Final stretch: keep doing full mock tests.', 'Финишная прямая: проходите полные мок-тесты.'],
+            'd.tomorrow': ['Your TOEFL is tomorrow', 'TOEFL уже завтра'],
+            'd.tomorrowSub': ['Rest well and check your setup tonight.', 'Хорошо отдохните и вечером проверьте компьютер и связь.'],
+            'd.todayExam': ['Your TOEFL is today. Good luck!', 'TOEFL сегодня. Удачи!'],
+            'd.behind': ['Your TOEFL is behind you', 'TOEFL позади'],
+            'd.behindSub': ['You took it on {date}. Well done for getting there.', 'Экзамен был {date}. Вы молодец, что дошли до него.'],
+
+            'd.score': ['Score', 'Балл'],
+            'd.latest': ['Latest score', 'Последний балл'],
+            'd.target': ['Target', 'Цель'],
+            'd.bandAria': ['TOEFL score scale from 1 to 6', 'Шкала баллов TOEFL от 1 до 6'],
+            'd.toGo': ['{d} to go to your target', 'До цели осталось {d}'],
+            'd.reached': ['Target reached. Keep it steady or raise it.', 'Цель достигнута. Удерживайте уровень или поднимите цель.'],
+            'd.firstMock': ['Your first mock test will show where you start.', 'Первый мок-тест покажет, с чего вы начинаете.'],
+            'd.setTargets': ['Set a target for each section', 'Укажите цель по каждой секции'],
+            'd.setTargetsSub': ['in the mock test table below', 'в таблице мок-тестов ниже'],
+
+            'd.statsAria': ['Practice stats', 'Статистика практики'],
+            'd.statsLoading': ['Loading stats…', 'Загружаю статистику…'],
+            'd.streak': ['Day streak', 'Дней подряд'],
+            'd.best': ['Best: {n}', 'Рекорд: {n}'],
+            'd.startStreak': ['Practice today to start one', 'Позанимайтесь сегодня, чтобы начать серию'],
+            'd.week': ['This week', 'За неделю'],
+            'd.moreThan': ['{n} more than last week', 'На {n} больше, чем на прошлой неделе'],
+            'd.fewerThan': ['{n} fewer than last week', 'На {n} меньше, чем на прошлой неделе'],
+            'd.sameAs': ['Same as last week', 'Столько же, сколько на прошлой неделе'],
+            'd.last7': ['Tasks finished in the last 7 days', 'Задания за последние 7 дней'],
+            'd.accuracy': ['{s} accuracy', 'Точность в {s}'],
+            'd.acc30': ['Last 30 days, {n}', 'За 30 дней, {n}'],
+            'd.noAcc': ['No {s} practice in 30 days', 'За 30 дней не было практики {s}'],
+            'd.days': { en: ['day', 'days'], ru: ['день', 'дня', 'дней'] },
+            'd.hours': { en: ['hour', 'hours'], ru: ['час', 'часа', 'часов'] },
+            'd.words': { en: ['word', 'words'], ru: ['слово', 'слова', 'слов'] },
+            'd.wd1': ['S,M,T,W,T,F,S', 'В,П,В,С,Ч,П,С'],              // с воскресенья, как getDay()
+            'd.wdMon': ['Mo,Tu,We,Th,Fr,Sa,Su', 'Пн,Вт,Ср,Чт,Пт,Сб,Вс'], // календарь с понедельника
+
+            'd.today': ['Today', 'Сегодня'],
+            'd.todaySub': ['Your homework and where you left off', 'Домашка и то, на чём вы остановились'],
+            'd.teacherBoardSub': ['Submissions to review, students and access', 'Работы на проверку, ученики и доступ'],
+            'd.finishMock': ['Finish your mock test', 'Закончите мок-тест'],
+            'd.mockTest': ['Mock test', 'Мок-тест'],
+            'd.secPart': ['{s} section, ', 'секция {s}, '],
+            'd.saved': ['saved {ago}', 'сохранено {ago}'],
+            'd.resume': ['Resume', 'Продолжить'],
+            'd.allDoneType': ['You’ve done every {s} test', 'Вы прошли все тесты {s}'],
+            'd.pickAnother': ['Pick another task type on the Reading page', 'Выберите другой тип заданий на странице Reading'],
+            'd.continueType': ['Continue {s}', 'Продолжить {s}'],
+            'd.nextUp': ['Next up in {s}', 'Дальше в {s}'],
+            'd.nextTest': ['Next test', 'Следующий тест'],
+            'd.continue': ['Continue', 'Продолжить'],
+            'd.start': ['Start', 'Начать'],
+            'd.toReview': ['{n} to review', '{n} на повторение'],
+            'd.inProgress': ['{a} in progress, {b} mastered', 'Изучается: {a}, выучено: {b}'],
+            'd.review': ['Review', 'Повторить'],
+            'd.noReview': ['No words to review today', 'Сегодня слов на повторение нет'],
+            'd.noReviewSub': ['Come back tomorrow, or learn some new words', 'Загляните завтра или выучите новые слова'],
+            'd.learn': ['Learn', 'Учить'],
+            'd.startVocab': ['Start your vocabulary', 'Начните учить слова'],
+            'd.startVocabSub': ['A few new words a day add up fast', 'Несколько новых слов в день — и словарь быстро растёт'],
+            'd.reviewed': ['Your teacher reviewed your work', 'Ваша работа проверена'],
+            'd.seeFeedback': ['See feedback', 'Открыть разбор'],
+            'd.nextLesson': ['Next lesson {when}', 'Следующий урок: {when}'],
+            'd.whenToday': ['today', 'сегодня'],
+            'd.whenTomorrow': ['tomorrow', 'завтра'],
+            'd.nothing': ['Nothing waiting for you', 'Пока ничего не ждёт'],
+            'd.nothingSub': ['Pick a section below and start a practice task', 'Выберите раздел ниже и начните задание'],
+            'ago.now': ['just now', 'только что'],
+            'ago.min': ['{n} min ago', '{n} мин назад'],
+            'ago.n': ['{n} ago', '{n} назад'],
+            'ago.yesterday': ['yesterday', 'вчера'],
+
+            'd.schedule': ['Schedule', 'Расписание'],
+            'd.loadingSchedule': ['Loading schedule…', 'Загружаю расписание…'],
+            'd.calToday': ['today', 'сегодня'],
+            'd.calLesson': ['lesson', 'урок'],
+            'd.calExam': ['exam', 'экзамен'],
+            'd.calExamDay': ['exam day', 'день экзамена'],
+            'd.upcoming': ['Upcoming lessons', 'Ближайшие уроки'],
+            'd.noLessons': ['No lessons scheduled.', 'Уроков в расписании пока нет.'],
+            'd.lesson': ['Lesson', 'Урок'],
+            'd.fromLast': ['From your last lesson', 'С прошлого урока'],
+
+            'd.scores': ['Mock test scores', 'Баллы за мок-тесты'],
+            'd.scoresSub': ['Every full mock test, with your target for each section', 'Все полные мок-тесты и ваша цель по каждой секции'],
+            'd.view': ['View', 'Вид'],
+            'd.table': ['Table', 'Таблица'],
+            'd.chart': ['Chart', 'График'],
+            'd.saveTargets': ['Save targets', 'Сохранить цели'],
+            'd.saving': ['Saving…', 'Сохраняю…'],
+            'd.savedOk': ['Saved ✓', 'Сохранено ✓'],
+            'd.notSaved': ['Not saved, try again', 'Не сохранилось, попробуйте ещё раз'],
+            'd.loadingScores': ['Loading scores…', 'Загружаю баллы…'],
+            'd.noMocks': ['No mock tests yet', 'Мок-тестов пока нет'],
+            'd.noMocksSub': ['Your first scores will appear here as soon as you finish one.', 'Баллы появятся здесь, как только вы пройдёте первый тест.'],
+            'd.takeMock': ['Take a mock test', 'Пройти мок-тест'],
+            'd.section': ['Section', 'Секция'],
+            'd.total': ['Total', 'Итог'],
+            'd.inReview': ['in review', 'на проверке'],
+            'd.testN': ['Test {n}', 'Тест {n}'],
+            'd.legReached': ['target reached', 'цель достигнута'],
+            'd.legClose': ['within 0.5', 'до цели 0.5 и меньше'],
+            'd.legWork': ['needs work', 'нужно подтянуть'],
+            'd.targetFor': ['Target for {s}', 'Цель по {s}'],
+            'd.chartNeeds': ['The chart appears after your second scored section', 'График появится после второй оценённой секции'],
+            'd.chartSoFar': ['Scored so far: {n}.', 'Пока оценено: {n}.'],
+            'd.chartAria': ['Mock test scores over time', 'Баллы за мок-тесты по датам'],
+            'd.allAtTarget': ['<b>Every section is at its target.</b> Raise a target or keep your level steady.', '<b>Все секции на уровне цели.</b> Поднимите цель или удерживайте уровень.'],
+            'd.focusOn': ['<b>Focus on {s}.</b> You’re at {got}, your target is {goal}.', '<b>Фокус на {s}.</b> Сейчас {got}, цель {goal}.'],
+            'd.practice': ['Practice', 'Практика'],
+
+            'd.activity': ['Activity', 'Активность'],
+            'd.last18': ['Last 18 weeks', 'Последние 18 недель'],
+            'd.activeDays': { en: ['active day', 'active days'], ru: ['активный день', 'активных дня', 'активных дней'] },
+            'd.less': ['Less', 'Меньше'],
+            'd.more': ['More', 'Больше'],
+            'd.noTasks': ['no tasks', 'нет заданий'],
+            'd.plusVocab': [', vocabulary', ', словарь'],
+            'd.heatAria': ['Practice activity: active on {a} of the last {b} days', 'Активность: занятия в {a} из последних {b} дней'],
+            'd.vocabWeek': ['Vocabulary this week', 'Словарь за неделю'],
+            'd.wordsReviewed': { en: ['word reviewed', 'words reviewed'], ru: ['слово повторено', 'слова повторено', 'слов повторено'] },
+            'd.newWords': { en: ['new word', 'new words'], ru: ['новое слово', 'новых слова', 'новых слов'] },
+            'd.monthTasks': ['Tasks in {m}', 'Задания в этом месяце'],
+
+            'd.sections': ['Practice by section', 'Практика по разделам'],
+            'd.sectionsSub': ['How much of each section you’ve done', 'Сколько заданий сделано в каждом разделе'],
+            'd.ofTasks': ['<b>{a}</b> of {b} tasks done', 'Сделано <b>{a}</b> из {b}'],
+            'd.counting': ['Counting…', 'Считаю…'],
+            'd.askAccess': ['Ask your teacher for access', 'Попросите доступ у преподавателя'],
+            'd.openPractice': ['Open practice', 'Открыть практику'],
+
+            'd.faq': ['Frequently asked questions', 'Частые вопросы'],
+            'd.faqSub': ['About the exam, the Home Edition, preparing and this platform', 'Об экзамене, Home Edition, подготовке и платформе']
+        });
+        const t = (k, v) => I18N.t(k, v);
+        const RU = I18N.lang === 'ru';
+        const cnt = (n, k) => I18N.count(n, k);                         // «3 дня»
+        const form = (n, k) => I18N.count(n, k).replace(/^\S+\s/, '');   // только слово: «дня»
+        document.title = t('d.title');
+
         lucide.createIcons();
 
         let currentUser = null;
@@ -205,16 +392,21 @@
             const t = new Date(iso);
             return isNaN(t) ? null : ymd(t);
         }
-        function shortDate(d) { return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
-        function ago(t) {
-            const m = Math.round((Date.now() - t) / 60000);
-            if (m < 60) return m <= 1 ? 'just now' : m + ' min ago';
+        const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+        // Дата на языке интерфейса; у русских дат убираем хвост « г.»
+        const fmtDate = (d, opts) => I18N.date(d, opts).replace(/\s*г\.$/, '');
+        function shortDate(d) { return fmtDate(d, { month: 'short', day: 'numeric' }); }
+        function ago(ts) {
+            const m = Math.round((Date.now() - ts) / 60000);
+            if (m <= 1) return t('ago.now');
+            if (m < 60) return t('ago.min', { n: m });
             const h = Math.round(m / 60);
-            if (h < 24) return h + (h === 1 ? ' hour ago' : ' hours ago');
+            if (h < 24) return t('ago.n', { n: cnt(h, 'd.hours') });
             const d = Math.round(h / 24);
-            return d === 1 ? 'yesterday' : d + ' days ago';
+            return d === 1 ? t('ago.yesterday') : t('ago.n', { n: cnt(d, 'd.days') });
         }
         const isTeacher = () => currentUser && currentUser.role === 'teacher';
+        const parseDay = s => { const p = String(s).slice(0, 10).split('-').map(Number); return new Date(p[0], p[1] - 1, p[2]); };
 
         window.onload = async () => {
             currentUser = await requireAuth();
@@ -228,7 +420,6 @@
             // не должен обнулять весь дашборд.
             const mocks = mocksReady = loadMockScores();
             const schedule = loadSchedule();
-            loadGeCard();
             if (window.Homework) Homework.student(document.getElementById('homeworkCard'), currentUser);
             if (window.Checklist) Checklist.studentCard(document.getElementById('checklistCard'), currentUser);
             loadSectionProgress();
@@ -270,60 +461,92 @@
         function renderGreeting() {
             const name = firstName();
             const h = new Date().getHours();
-            const part = h < 12 ? 'Good morning' : (h < 18 ? 'Good afternoon' : 'Good evening');
+            const part = t(h < 12 ? 'd.morning' : (h < 18 ? 'd.afternoon' : 'd.evening'));
             document.getElementById('userGreeting').innerText = name ? `${part}, ${name}` : part;
-
-            if (isTeacher()) {
-                ['teacherLinkDesktop', 'teacherLinkMobile'].forEach(id => {
-                    const el = document.getElementById(id);
-                    if (el) { el.classList.remove('hidden'); el.classList.add('flex'); }
-                });
-            }
         }
 
-        // Заголовок страницы — сколько дней до экзамена
+        // Билет: сколько дней до экзамена
         function renderHero() {
             const title = document.getElementById('heroTitle');
             const sub = document.getElementById('heroSub');
             if (!profileData || !profileData.exam_date) {
-                title.innerText = isTeacher() ? 'Your teaching dashboard' : 'Let’s keep going';
-                sub.innerText = isTeacher() ? 'Students see their homework, progress and stats here.' : 'Your exam date isn’t set yet. Your teacher can add it.';
+                title.innerText = isTeacher() ? t('d.teachTitle') : t('d.keepGoing');
+                sub.innerText = isTeacher() ? t('d.teachSub') : t('d.noExamDate');
                 return;
             }
-            const p = String(profileData.exam_date).slice(0, 10).split('-').map(Number);
-            const exam = new Date(p[0], p[1] - 1, p[2]);
+            const exam = parseDay(profileData.exam_date);
             const today = new Date(); today.setHours(0, 0, 0, 0);
             const days = Math.round((exam - today) / DAY);
-            const when = exam.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+            const when = cap(fmtDate(exam, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }));
 
             if (days > 1) {
-                title.innerText = `${days} days until your TOEFL`;
-                sub.innerText = when + (days <= 14 ? '. Final stretch: keep doing full mock tests.' : '');
+                // большое число + подпись: «23 days until your TOEFL» / «23 дня до TOEFL»
+                title.innerHTML = `<span class="flex items-end gap-x-4 gap-y-2 flex-wrap">
+                        <span class="ticket-count font-extrabold tnum">${days}</span>
+                        <span class="text-xl sm:text-2xl font-bold leading-tight max-w-[12ch] pb-0.5 sm:pb-1.5">${esc(form(days, 'd.daysUntil'))}</span>
+                    </span>`;
+                sub.innerHTML = `<span class="font-semibold text-white">${esc(when)}</span>${days <= 14 ? '<br>' + esc(t('d.finalStretch')) : ''}`;
             } else if (days === 1) {
-                title.innerText = 'Your TOEFL is tomorrow';
-                sub.innerText = when + '. Rest well and check your setup tonight.';
+                title.innerText = t('d.tomorrow');
+                sub.innerHTML = `<span class="font-semibold text-white">${esc(when)}</span><br>${esc(t('d.tomorrowSub'))}`;
             } else if (days === 0) {
-                title.innerText = 'Your TOEFL is today. Good luck!';
+                title.innerText = t('d.todayExam');
                 sub.innerText = when;
             } else {
-                title.innerText = 'Your TOEFL is behind you';
-                sub.innerText = 'You took it on ' + when + '. Well done for getting there.';
+                title.innerText = t('d.behind');
+                sub.innerText = t('d.behindSub', { date: fmtDate(exam, { month: 'long', day: 'numeric', year: 'numeric' }) });
             }
         }
 
-        function renderHeroScore() {
-            const box = document.getElementById('heroScore');
+        // Корешок билета: последний балл, цель и шкала TOEFL 1–6
+        function renderStub() {
+            const stub = document.getElementById('ticketStub');
+            const ticket = document.getElementById('ticket');
+            if (isTeacher()) { stub.classList.add('hidden'); ticket.classList.add('no-stub'); return; }
             const avg = currentAverage();
+            const latest = avg === null ? null : Math.round(avg * 2) / 2;
             const target = targetTotal();
-            if (avg === null && target === null) { box.classList.add('hidden'); return; }
-            const cell = (label, value, cls) => `
-                <div class="px-5 py-3 min-w-[104px]">
-                    <div class="text-xs font-medium text-slate-500">${label}</div>
-                    <div class="text-2xl font-extrabold tnum ${cls}">${value}</div>
+            const pos = v => (Math.max(0, Math.min(5, v - 1)) / 5 * 100).toFixed(2) + '%';
+
+            let ticks = '';
+            for (let i = 0; i <= 10; i++) {
+                const v = 1 + i * 0.5, major = i % 2 === 0;
+                ticks += `<span class="band-tick${major ? ' major' : ''}" style="left:${pos(v)}"></span>`;
+                if (major) ticks += `<span class="band-num" style="left:${pos(v)}">${v}</span>`;
+            }
+            const band = `<div class="band mt-5" role="img" aria-label="${esc(t('d.bandAria'))}${latest !== null ? ': ' + latest.toFixed(1) : ''}${target !== null ? ', ' + esc(t('d.target')) + ' ' + target.toFixed(1) : ''}">
+                    <span class="band-track"></span>
+                    ${latest !== null ? `<span class="band-fill" style="width:${pos(latest)}"></span>` : ''}
+                    ${ticks}
+                    ${target !== null ? `<span class="band-goal" style="left:${pos(target)}"></span>` : ''}
+                    ${latest !== null ? `<span class="band-now" style="left:${pos(latest)}"></span>` : ''}
                 </div>`;
-            box.innerHTML = cell('Latest score', avg === null ? '—' : (Math.round(avg * 2) / 2).toFixed(1), 'text-slate-900')
-                          + cell('Target', target === null ? '—' : target.toFixed(1), 'text-indigo-600');
-            box.classList.remove('hidden');
+
+            const figure = (label, value, cls, dot) => `<div>
+                    <div class="text-xs font-semibold text-indigo-200 flex items-center gap-1.5">${dot}${esc(label)}</div>
+                    <div class="mt-1 text-[34px] leading-none font-extrabold tnum ${cls}">${value}</div>
+                </div>`;
+
+            let note;
+            if (latest !== null && target !== null) {
+                // сравниваем с итоговым баллом так, как его считает TOEFL (округление до 0.5)
+                const diff = target - latest;
+                note = esc(diff > 0 ? t('d.toGo', { d: diff.toFixed(1) }) : t('d.reached'));
+            } else if (target !== null) {
+                note = esc(t('d.firstMock'));
+            } else {
+                note = `<a href="#scoresTitle" class="font-bold text-white underline decoration-indigo-300/60 underline-offset-4 hover:decoration-amber-300">${esc(t('d.setTargets'))}</a> ${esc(t('d.setTargetsSub'))}`;
+            }
+
+            stub.innerHTML = `
+                <div class="flex items-start gap-8">
+                    ${figure(t('d.latest'), latest === null ? '—' : latest.toFixed(1), 'text-white', '<span class="w-2.5 h-2.5 rounded-full bg-white"></span>')}
+                    ${figure(t('d.target'), target === null ? '—' : target.toFixed(1), 'text-amber-300', '<span class="w-1 h-3 rounded-sm bg-amber-300"></span>')}
+                </div>
+                ${band}
+                <p class="mt-4 text-sm text-indigo-200 leading-relaxed">${note}</p>`;
+            stub.classList.remove('hidden');
+            ticket.classList.remove('no-stub');
         }
 
         // ==========================================
@@ -366,10 +589,10 @@
             if (ids.length) {
                 try {
                     const { data: tests } = await _supabase.from('full_tests').select('id, title').in('id', ids);
-                    (tests || []).forEach(t => { titles[String(t.id)] = t.title; });
+                    (tests || []).forEach(x => { titles[String(x.id)] = x.title; });
                 } catch (err) { /* без названий */ }
             }
-            columns.forEach((c, i) => { c.title = titles[c.testId] || ('Test ' + (i + 1)); });
+            columns.forEach((c, i) => { c.title = titles[c.testId] || t('d.testN', { n: i + 1 }); });
 
             matrixData = columns;
             renderMatrix();
@@ -411,22 +634,22 @@
             if (!matrixData || !matrixData.length) {
                 box.innerHTML = `
                     <div class="text-center py-8">
-                        <p class="text-sm font-bold text-slate-700">No mock tests yet</p>
-                        <p class="text-xs text-slate-500 mt-1 mb-4">Your first scores will appear here as soon as you finish one.</p>
-                        <a href="tests.html" class="inline-block bg-slate-900 text-white text-xs font-bold px-5 py-2.5 rounded-xl hover:bg-indigo-600 transition">Take a mock test</a>
+                        <p class="text-sm font-bold text-slate-700">${esc(t('d.noMocks'))}</p>
+                        <p class="text-xs text-slate-500 mt-1 mb-4">${esc(t('d.noMocksSub'))}</p>
+                        <a href="tests.html" class="inline-block bg-slate-900 text-white text-xs font-bold px-5 py-2.5 rounded-xl hover:bg-indigo-600 transition">${esc(t('d.takeMock'))}</a>
                     </div>
                     ${goalRowsOnly()}`;
                 return;
             }
 
-            let head = `<th class="sticky left-0 bg-white z-10 text-left text-xs font-semibold text-slate-500 py-2 pr-3">Section</th>`;
+            let head = `<th class="sticky left-0 bg-white z-10 text-left text-xs font-semibold text-slate-500 py-2 pr-3">${esc(t('d.section'))}</th>`;
             matrixData.forEach(c => {
                 head += `<th class="px-2 py-2 min-w-[68px] font-normal">
                             <div class="text-xs font-bold text-slate-700 truncate max-w-[84px] mx-auto" title="${esc(c.title)}">${esc(c.title)}</div>
-                            <div class="text-[11px] text-gray-400">${shortDate(new Date(c.firstAt))}</div>
+                            <div class="text-[11px] text-gray-400">${esc(shortDate(new Date(c.firstAt)))}</div>
                          </th>`;
             });
-            head += `<th class="px-2 py-2 min-w-[76px] border-l-2 border-indigo-100 text-xs font-bold text-indigo-600">Target</th>`;
+            head += `<th class="px-2 py-2 min-w-[76px] border-l-2 border-indigo-100 text-xs font-bold text-indigo-600">${esc(t('d.target'))}</th>`;
 
             let rows = '';
             SECTIONS.forEach(sec => {
@@ -441,7 +664,7 @@
                     if (!cell) {
                         tds += `<td class="px-2 py-1.5 text-center"><span class="text-xs text-gray-300">—</span></td>`;
                     } else if (cell.total_score === null || cell.total_score === undefined) {
-                        tds += `<td class="px-2 py-1.5 text-center"><span class="text-[11px] font-bold text-amber-600 leading-tight">in review</span></td>`;
+                        tds += `<td class="px-2 py-1.5 text-center"><span class="text-[11px] font-bold text-amber-600 leading-tight">${esc(t('d.inReview'))}</span></td>`;
                     } else {
                         const v = parseFloat(cell.total_score);
                         tds += `<td class="px-2 py-1.5 text-center"><span data-score="${sec.key}" data-v="${v}" class="${SCORE_BASE}${cellClasses(v, goal)}">${v.toFixed(1)}</span></td>`;
@@ -451,7 +674,7 @@
                 rows += `<tr class="border-t border-gray-50">${tds}</tr>`;
             });
 
-            let totalTds = `<td class="sticky left-0 bg-white z-10 py-2 pr-3"><span class="text-sm font-extrabold text-slate-900">Total</span></td>`;
+            let totalTds = `<td class="sticky left-0 bg-white z-10 py-2 pr-3"><span class="text-sm font-extrabold text-slate-900">${esc(t('d.total'))}</span></td>`;
             matrixData.forEach(c => {
                 const vals = SECTIONS.map(s => c.cells[s.key])
                     .filter(x => x && x.total_score !== null && x.total_score !== undefined)
@@ -468,15 +691,15 @@
                     <tbody>${rows}<tr class="border-t-2 border-gray-100">${totalTds}</tr></tbody>
                 </table>
                 <div class="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-[11px] text-slate-500">
-                    <span class="inline-flex items-center"><span class="w-2.5 h-2.5 rounded bg-emerald-100 border border-emerald-200 mr-1.5"></span>target reached</span>
-                    <span class="inline-flex items-center"><span class="w-2.5 h-2.5 rounded bg-amber-100 border border-amber-200 mr-1.5"></span>within 0.5</span>
-                    <span class="inline-flex items-center"><span class="w-2.5 h-2.5 rounded bg-rose-100 border border-rose-200 mr-1.5"></span>needs work</span>
+                    <span class="inline-flex items-center"><span class="w-2.5 h-2.5 rounded bg-emerald-100 border border-emerald-200 mr-1.5"></span>${esc(t('d.legReached'))}</span>
+                    <span class="inline-flex items-center"><span class="w-2.5 h-2.5 rounded bg-amber-100 border border-amber-200 mr-1.5"></span>${esc(t('d.legClose'))}</span>
+                    <span class="inline-flex items-center"><span class="w-2.5 h-2.5 rounded bg-rose-100 border border-rose-200 mr-1.5"></span>${esc(t('d.legWork'))}</span>
                 </div>`;
         }
 
         function goalInput(key) {
             const goal = goals[key];
-            return `<input type="number" min="1.0" max="6.0" step="0.5" value="${goal !== null ? goal : ''}" placeholder="—" aria-label="Target for ${SEC[key].name}"
+            return `<input type="number" min="1.0" max="6.0" step="0.5" value="${goal !== null ? goal : ''}" placeholder="—" aria-label="${esc(t('d.targetFor', { s: SEC[key].name }))}"
                         oninput="onGoalInput('${key}', this.value)"
                         class="w-14 text-center py-1 bg-white border border-gray-200 rounded-lg text-xs font-bold text-indigo-600 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition">`;
         }
@@ -529,8 +752,8 @@
             if (scored.length < 2) {
                 box.innerHTML = `
                     <div class="text-center py-10">
-                        <p class="text-sm font-bold text-slate-700">The chart appears after your second scored section</p>
-                        <p class="text-xs text-slate-500 mt-1">Scored so far: ${scored.length}.</p>
+                        <p class="text-sm font-bold text-slate-700">${esc(t('d.chartNeeds'))}</p>
+                        <p class="text-xs text-slate-500 mt-1">${esc(t('d.chartSoFar', { n: scored.length }))}</p>
                     </div>`;
                 return;
             }
@@ -541,7 +764,7 @@
             const xOf = d => dates.length === 1 ? padL + plotW / 2 : padL + (dates.indexOf(d) / (dates.length - 1)) * plotW;
             const yOf = v => padT + plotH - ((v - 1) / 5) * plotH;
 
-            let svg = `<svg viewBox="0 0 ${W} ${H}" class="w-full" style="max-height:240px" role="img" aria-label="Mock test scores over time">`;
+            let svg = `<svg viewBox="0 0 ${W} ${H}" class="w-full" style="max-height:240px" role="img" aria-label="${esc(t('d.chartAria'))}">`;
             for (let b = 1; b <= 6; b++) {
                 svg += `<line x1="${padL}" y1="${yOf(b)}" x2="${W - padR}" y2="${yOf(b)}" stroke="#f1f5f9" stroke-width="1"/>`;
                 svg += `<text x="${padL - 6}" y="${yOf(b) + 3}" text-anchor="end" font-size="10" fill="#94a3b8">${b}.0</text>`;
@@ -549,16 +772,15 @@
             let legend = '';
             SECTIONS.forEach(sec => {
                 const pts = scored.filter(a => a.key === sec.key)
-                    .map(a => ({ x: xOf(a.completed_at.slice(0, 10)), y: yOf(parseFloat(a.total_score)), v: parseFloat(a.total_score) }))
+                    .map(a => ({ x: xOf(a.completed_at.slice(0, 10)), y: yOf(parseFloat(a.total_score)), v: parseFloat(a.total_score), d: a.completed_at.slice(0, 10) }))
                     .sort((a, b) => a.x - b.x);
                 if (!pts.length) return;
                 if (pts.length > 1) svg += `<polyline points="${pts.map(p => p.x + ',' + p.y).join(' ')}" fill="none" stroke="${sec.color}" stroke-width="2" stroke-linejoin="round"/>`;
-                pts.forEach(p => { svg += `<circle cx="${p.x}" cy="${p.y}" r="3.5" fill="white" stroke="${sec.color}" stroke-width="2"><title>${sec.name}: ${p.v.toFixed(1)}</title></circle>`; });
+                pts.forEach(p => { svg += `<circle cx="${p.x}" cy="${p.y}" r="3.5" fill="white" stroke="${sec.color}" stroke-width="2"><title>${sec.name}: ${p.v.toFixed(1)}, ${esc(shortDate(parseDay(p.d)))}</title></circle>`; });
                 legend += `<span class="inline-flex items-center mr-4"><span class="w-2 h-2 rounded-full mr-1.5" style="background:${sec.color}"></span><span class="text-xs text-slate-600 font-medium">${sec.name}</span></span>`;
             });
             dates.forEach(d => {
-                const p = d.split('-').map(Number);
-                svg += `<text x="${xOf(d)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="#94a3b8">${shortDate(new Date(p[0], p[1] - 1, p[2]))}</text>`;
+                svg += `<text x="${xOf(d)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="#94a3b8">${esc(shortDate(parseDay(d)))}</text>`;
             });
             svg += '</svg>';
             box.innerHTML = svg + `<div class="mt-3 flex flex-wrap">${legend}</div>`;
@@ -568,27 +790,7 @@
         // Цели: пересчёт и сохранение
         // ==========================================
         function updateGoals() {
-            const totalTarget = targetTotal();
-            const avg = currentAverage();
-            const diffEl = document.getElementById('points-diff');
-            const pctEl = document.getElementById('percent-achieved');
-            const bar = document.getElementById('goal-progress-bar');
-            renderHeroScore();
-
-            if (avg === null || totalTarget === null) {
-                diffEl.innerText = avg === null ? 'no scores yet' : 'set your targets in the table';
-                pctEl.innerText = '';
-                bar.style.width = '0%';
-                renderFocusArea();
-                return;
-            }
-            const diff = totalTarget - avg;
-            const percent = Math.min(100, totalTarget > 0 ? Math.round((avg / totalTarget) * 100) : 0);
-            if (diff > 0) diffEl.innerText = `${diff.toFixed(1)} points to go`;
-            else if (diff === 0) diffEl.innerText = 'target reached';
-            else diffEl.innerText = `${Math.abs(diff).toFixed(1)} above your target`;
-            pctEl.innerText = `${percent}% of the way`;
-            bar.style.width = `${percent}%`;
+            renderStub();
             renderFocusArea();
         }
 
@@ -607,13 +809,13 @@
             if (worst.gap <= 0) {
                 box.innerHTML = `<div class="flex items-center gap-3 p-4 rounded-2xl bg-emerald-50/60 border border-emerald-100">
                         <i data-lucide="party-popper" class="w-5 h-5 text-emerald-600 shrink-0"></i>
-                        <p class="text-sm text-slate-700"><b>Every section is at its target.</b> Raise a target or keep your level steady.</p></div>`;
+                        <p class="text-sm text-slate-700">${t('d.allAtTarget')}</p></div>`;
             } else {
-                box.innerHTML = `<a href="${worst.link}" class="flex items-center gap-3 p-4 rounded-2xl bg-gray-50 border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50/40 transition">
+                box.innerHTML = `<a href="${worst.link}" class="flex items-center gap-3 p-4 rounded-2xl border transition hover:shadow-sm" style="background:${worst.color}0d;border-color:${worst.color}26">
                         <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:${worst.color}"></span>
-                        <p class="text-sm text-slate-700 flex-1"><b>Focus on ${worst.name}.</b> You're at ${worst.got.toFixed(1)}, your target is ${worst.goal.toFixed(1)}.</p>
-                        <span class="text-xs font-bold text-indigo-600 shrink-0">Practice</span>
-                        <i data-lucide="chevron-right" class="w-4 h-4 text-indigo-400 shrink-0"></i></a>`;
+                        <p class="text-sm text-slate-700 flex-1">${t('d.focusOn', { s: worst.name, got: worst.got.toFixed(1), goal: worst.goal.toFixed(1) })}</p>
+                        <span class="text-xs font-bold shrink-0" style="color:${worst.color}">${esc(t('d.practice'))}</span>
+                        <i data-lucide="chevron-right" class="w-4 h-4 shrink-0" style="color:${worst.color}"></i></a>`;
             }
             icons();
         }
@@ -621,20 +823,20 @@
         async function saveGoals() {
             const btn = document.getElementById('saveGoalsBtn');
             const label = document.getElementById('saveGoalsLabel');
-            label.innerText = 'Saving…';
+            label.innerText = t('d.saving');
             btn.disabled = true;
             try {
                 const { error } = await _supabase.from('profiles').update({
                     target_r: goals.r, target_l: goals.l, target_s: goals.s, target_w: goals.w
                 }).eq('id', currentUser.id);
                 if (error) throw error;
-                label.innerText = 'Saved ✓';
+                label.innerText = t('d.savedOk');
             } catch (err) {
                 console.error('Не удалось сохранить цели:', err);
-                label.innerText = 'Not saved, try again';
+                label.innerText = t('d.notSaved');
             } finally {
                 btn.disabled = false;
-                setTimeout(() => { label.innerText = 'Save targets'; }, 2200);
+                setTimeout(() => { label.innerText = t('d.saveTargets'); }, 2200);
             }
         }
 
@@ -662,7 +864,8 @@
             const grid = document.getElementById('calGrid');
             const now = new Date();
             const year = now.getFullYear(), month = now.getMonth();
-            document.getElementById('calMonthLabel').innerText = now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+            document.getElementById('calMonthLabel').innerText = cap(fmtDate(now, { month: 'long', year: 'numeric' }));
+            document.getElementById('calWeekdays').innerHTML = t('d.wdMon').split(',').map(d => `<div>${d}</div>`).join('');
 
             const todayStr = ymd(now);
             const examStr = (profileData && profileData.exam_date) ? String(profileData.exam_date).slice(0, 10) : null;
@@ -675,19 +878,18 @@
             for (let d = 1; d <= daysInMonth; d++) {
                 const dateStr = ymd(new Date(year, month, d));
                 const isToday = dateStr === todayStr, isExam = examStr === dateStr, hasLesson = lessonDays.has(dateStr);
-                let cls = 'relative h-7 flex items-center justify-center';
                 let inner = d;
                 if (isExam) inner = `<span class="w-7 h-7 rounded-full bg-rose-500 text-white flex items-center justify-center">${d}</span>`;
                 else if (isToday) inner = `<span class="w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center">${d}</span>`;
                 const dot = (hasLesson && !isToday && !isExam) ? '<span class="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 bg-purple-500 rounded-full"></span>' : '';
-                const label = [isToday && 'today', isExam && 'exam day', hasLesson && 'lesson'].filter(Boolean).join(', ');
-                html += `<div class="${cls}" title="${dateStr}${label ? ': ' + label : ''}">${inner}${dot}</div>`;
+                const label = [isToday && t('d.calToday'), isExam && t('d.calExamDay'), hasLesson && t('d.calLesson')].filter(Boolean).join(', ');
+                html += `<div class="relative h-7 flex items-center justify-center" title="${esc(shortDate(new Date(year, month, d)))}${label ? ': ' + esc(label) : ''}">${inner}${dot}</div>`;
             }
             grid.innerHTML = html;
 
-            let leg = '<span class="inline-flex items-center"><span class="w-2 h-2 bg-indigo-600 rounded-full mr-1.5"></span>today</span>';
-            if (lessonDays.size) leg += '<span class="inline-flex items-center"><span class="w-1.5 h-1.5 bg-purple-500 rounded-full mr-1.5"></span>lesson</span>';
-            if (examStr) leg += '<span class="inline-flex items-center"><span class="w-2 h-2 bg-rose-500 rounded-full mr-1.5"></span>exam</span>';
+            let leg = `<span class="inline-flex items-center"><span class="w-2 h-2 bg-indigo-600 rounded-full mr-1.5"></span>${esc(t('d.calToday'))}</span>`;
+            if (lessonDays.size) leg += `<span class="inline-flex items-center"><span class="w-1.5 h-1.5 bg-purple-500 rounded-full mr-1.5"></span>${esc(t('d.calLesson'))}</span>`;
+            if (examStr) leg += `<span class="inline-flex items-center"><span class="w-2 h-2 bg-rose-500 rounded-full mr-1.5"></span>${esc(t('d.calExam'))}</span>`;
             document.getElementById('calLegend').innerHTML = leg;
         }
 
@@ -703,19 +905,15 @@
             const past = lessonsData.filter(l => l.lesson_date && l.lesson_date.slice(0, 10) < todayStr);
             const lastWithHw = past.reverse().find(l => (l.homework || '').trim());
 
-            let html = '<h3 class="text-sm font-bold text-slate-800">Upcoming lessons</h3>';
-            html += upcoming.length ? upcoming.map(l => {
-                const p = l.lesson_date.slice(0, 10).split('-').map(Number);
-                const dt = new Date(p[0], p[1] - 1, p[2]);
-                return `<div class="flex items-center gap-3 text-sm py-1">
-                            <span class="w-14 shrink-0 text-xs font-bold text-slate-800">${shortDate(dt)}</span>
-                            <span class="text-slate-600 truncate">${esc(l.topic || l.section || 'Lesson')}</span>
-                        </div>`;
-            }).join('') : '<p class="text-xs text-slate-500">No lessons scheduled.</p>';
+            let html = `<h3 class="text-sm font-bold text-slate-800">${esc(t('d.upcoming'))}</h3>`;
+            html += upcoming.length ? upcoming.map(l => `<div class="flex items-center gap-3 text-sm py-1">
+                            <span class="w-14 shrink-0 text-xs font-bold text-slate-800">${esc(shortDate(parseDay(l.lesson_date)))}</span>
+                            <span class="text-slate-600 truncate">${esc(l.topic || l.section || t('d.lesson'))}</span>
+                        </div>`).join('') : `<p class="text-xs text-slate-500">${esc(t('d.noLessons'))}</p>`;
 
             if (lastWithHw) {
                 html += `<div class="mt-2 p-3 rounded-xl bg-amber-50/60 border border-amber-100">
-                            <div class="text-xs font-bold text-amber-700 mb-1">From your last lesson</div>
+                            <div class="text-xs font-bold text-amber-700 mb-1">${esc(t('d.fromLast'))}</div>
                             <p class="text-xs text-slate-700 leading-relaxed whitespace-pre-line">${esc(lastWithHw.homework)}</p>
                          </div>`;
             }
@@ -742,42 +940,42 @@
             const rows = [];
 
             if (isTeacher()) {
-                rows.push(todayRow({ icon: 'inbox', title: 'Teacher Board', sub: 'Submissions to review, students and access', href: 'teacher-board.html?tab=review', action: 'Open', primary: true }));
+                rows.push(todayRow({ icon: 'inbox', title: 'Teacher Board', sub: esc(t('d.teacherBoardSub')), href: 'teacher-board.html?tab=review', action: esc(t('common.open')), primary: true }));
             }
 
             // 1) Незаконченный мок-тест (сохраняется на этом устройстве, tests.html)
             try {
                 const mt = JSON.parse(localStorage.getItem('mt_progress_v1:' + currentUser.id) || 'null');
-                const t = mt && Date.parse(mt.savedAt || '');
-                if (mt && mt.testId && !isNaN(t) && Date.now() - t < 30 * DAY) {
-                    const sec = mt.section ? mt.section.charAt(0).toUpperCase() + mt.section.slice(1) + ' section, ' : '';
-                    rows.push(todayRow({ icon: 'timer', tone: 'bg-rose-50 text-rose-600', title: 'Finish your mock test',
-                        sub: `${esc(mt.testEmoji || '')} ${esc(mt.testTitle || 'Mock test')}: ${esc(sec)}saved ${ago(t)}`, href: 'tests.html', action: 'Resume', primary: true }));
+                const ts = mt && Date.parse(mt.savedAt || '');
+                if (mt && mt.testId && !isNaN(ts) && Date.now() - ts < 30 * DAY) {
+                    const sec = mt.section ? t('d.secPart', { s: mt.section.charAt(0).toUpperCase() + mt.section.slice(1) }) : '';
+                    rows.push(todayRow({ icon: 'timer', tone: 'bg-rose-50 text-rose-600', title: esc(t('d.finishMock')),
+                        sub: `${esc(mt.testEmoji || '')} ${esc(mt.testTitle || t('d.mockTest'))}: ${esc(sec)}${esc(t('d.saved', { ago: ago(ts) }))}`, href: 'tests.html', action: esc(t('d.resume')), primary: true }));
                 }
             } catch (e) { /* без памяти браузера */ }
 
             // 2) Следующий тест в практике Reading (practice-next.js)
             const s = window.PracticeNext && PracticeNext.suggest ? PracticeNext.suggest(currentUser.id) : null;
             if (s && s.allDone) {
-                rows.push(todayRow({ icon: 'trophy', tone: 'bg-emerald-50 text-emerald-600', title: `You've done every ${esc(s.label)} test`, sub: 'Pick another task type on the Reading page', href: 'reading.html', action: 'Reading' }));
+                rows.push(todayRow({ icon: 'trophy', tone: 'bg-emerald-50 text-emerald-600', title: esc(t('d.allDoneType', { s: s.label })), sub: esc(t('d.pickAnother')), href: 'reading.html', action: 'Reading' }));
             } else if (s && s.item) {
                 const name = [s.item.label, s.item.title].filter(Boolean).map(esc).join(': ');
                 rows.push(todayRow({ icon: 'book-open', tone: 'bg-blue-50 text-blue-600',
-                    title: s.resume ? `Continue ${esc(s.label)}` : `Next up in ${esc(s.label)}`, sub: name || 'Next test', href: s.href, action: s.resume ? 'Continue' : 'Start' }));
+                    title: esc(t(s.resume ? 'd.continueType' : 'd.nextUp', { s: s.label })), sub: name || esc(t('d.nextTest')), href: s.href, action: esc(t(s.resume ? 'd.continue' : 'd.start')) }));
             }
 
             // 3) Слова на повторение
             const v = ctx.vocab;
             if (v && v.ok && !isTeacher()) {
                 if (v.due > 0) {
-                    rows.push(todayRow({ icon: 'layers', tone: 'bg-amber-50 text-amber-600', title: `${v.due} ${v.due === 1 ? 'word' : 'words'} to review`,
-                        sub: `${v.learning} in progress, ${v.mastered} mastered`, href: 'review.html', action: 'Review' }));
+                    rows.push(todayRow({ icon: 'layers', tone: 'bg-amber-50 text-amber-600', title: esc(t('d.toReview', { n: cnt(v.due, 'd.words') })),
+                        sub: esc(t('d.inProgress', { a: v.learning, b: v.mastered })), href: 'review.html', action: esc(t('d.review')) }));
                 } else if (v.learning + v.mastered > 0) {
-                    rows.push(todayRow({ icon: 'layers', tone: 'bg-amber-50 text-amber-600', title: 'No words to review today',
-                        sub: 'Come back tomorrow, or learn some new words', href: 'vocabulary.html', action: 'Learn' }));
+                    rows.push(todayRow({ icon: 'layers', tone: 'bg-amber-50 text-amber-600', title: esc(t('d.noReview')),
+                        sub: esc(t('d.noReviewSub')), href: 'vocabulary.html', action: esc(t('d.learn')) }));
                 } else {
-                    rows.push(todayRow({ icon: 'layers', tone: 'bg-amber-50 text-amber-600', title: 'Start your vocabulary',
-                        sub: 'A few new words a day add up fast', href: 'vocabulary.html', action: 'Start' }));
+                    rows.push(todayRow({ icon: 'layers', tone: 'bg-amber-50 text-amber-600', title: esc(t('d.startVocab')),
+                        sub: esc(t('d.startVocabSub')), href: 'vocabulary.html', action: esc(t('d.start')) }));
                 }
             }
 
@@ -786,25 +984,24 @@
                 && (a.key === 'w' || a.key === 's') && Date.now() - Date.parse(a.completed_at) < 30 * DAY)
                 .sort((a, b) => String(b.completed_at).localeCompare(String(a.completed_at))).slice(0, 2);
             if (reviewed.length) {
-                rows.push(todayRow({ icon: 'message-square-text', tone: 'bg-emerald-50 text-emerald-600', title: 'Your teacher reviewed your work',
-                    sub: reviewed.map(a => `${a.name} ${parseFloat(a.total_score).toFixed(1)}`).join(', '), href: 'tests.html', action: 'See feedback' }));
+                rows.push(todayRow({ icon: 'message-square-text', tone: 'bg-emerald-50 text-emerald-600', title: esc(t('d.reviewed')),
+                    sub: reviewed.map(a => `${a.name} ${parseFloat(a.total_score).toFixed(1)}`).join(', '), href: 'tests.html', action: esc(t('d.seeFeedback')) }));
             }
 
             // 5) Ближайший урок — если в ближайшую неделю
             const next = upcomingLessons()[0];
             if (next) {
-                const p = next.lesson_date.slice(0, 10).split('-').map(Number);
-                const dt = new Date(p[0], p[1] - 1, p[2]);
+                const dt = parseDay(next.lesson_date);
                 const today = new Date(); today.setHours(0, 0, 0, 0);
                 const days = Math.round((dt - today) / DAY);
                 if (days <= 7) {
-                    const when = days === 0 ? 'today' : days === 1 ? 'tomorrow' : dt.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
-                    rows.push(todayRow({ icon: 'calendar-days', tone: 'bg-purple-50 text-purple-600', title: `Next lesson ${when}`, sub: esc(next.topic || next.section || '') }));
+                    const when = days === 0 ? t('d.whenToday') : days === 1 ? t('d.whenTomorrow') : fmtDate(dt, RU ? { weekday: 'long', month: 'long', day: 'numeric' } : { weekday: 'long', month: 'short', day: 'numeric' });
+                    rows.push(todayRow({ icon: 'calendar-days', tone: 'bg-purple-50 text-purple-600', title: esc(t('d.nextLesson', { when })), sub: esc(next.topic || next.section || '') }));
                 }
             }
 
             if (!rows.length) {
-                rows.push(todayRow({ icon: 'sparkles', title: 'Nothing waiting for you', sub: 'Pick a section below and start a practice task' }));
+                rows.push(todayRow({ icon: 'sparkles', title: esc(t('d.nothing')), sub: esc(t('d.nothingSub')) }));
             }
             box.innerHTML = rows.join('');
             icons();
@@ -842,8 +1039,8 @@
             return r.data || [];
         }
         const pctOf = r => {
-            const e = Number(r.score_earned), t = Number(r.score_total);
-            if (r.score_total !== null && r.score_total !== undefined && t > 0 && isFinite(e)) return Math.max(0, Math.min(100, e / t * 100));
+            const e = Number(r.score_earned), tt = Number(r.score_total);
+            if (r.score_total !== null && r.score_total !== undefined && tt > 0 && isFinite(e)) return Math.max(0, Math.min(100, e / tt * 100));
             if (r.score_percent !== null && r.score_percent !== undefined && isFinite(Number(r.score_percent))) return Math.max(0, Math.min(100, Number(r.score_percent)));
             return null;
         };
@@ -932,20 +1129,26 @@
             const allDays = [...new Set([...perDay.keys(), ...vocabDays.keys()])].sort();
             let best = 0, run = 0, prev = null;
             allDays.forEach(d => {
-                const p = d.split('-').map(Number);
-                const t = new Date(p[0], p[1] - 1, p[2]).getTime();
-                run = (prev !== null && Math.round((t - prev) / DAY) === 1) ? run + 1 : 1;
-                best = Math.max(best, run); prev = t;
+                const tm = parseDay(d).getTime();
+                run = (prev !== null && Math.round((tm - prev) / DAY) === 1) ? run + 1 : 1;
+                best = Math.max(best, run); prev = tm;
             });
 
-            const daysAgo = d => { const p = d.split('-').map(Number); return Math.round((today - new Date(p[0], p[1] - 1, p[2])) / DAY); };
+            const daysAgo = d => Math.round((today - parseDay(d)) / DAY);
             const week = events.filter(e => daysAgo(e.day) >= 0 && daysAgo(e.day) < 7).length;
             const lastWeek = events.filter(e => daysAgo(e.day) >= 7 && daysAgo(e.day) < 14).length;
             const acc = sec => {
                 const list = events.filter(e => e.sec === sec && e.pct !== null && daysAgo(e.day) < 30);
                 return list.length ? { pct: Math.round(list.reduce((a, e) => a + e.pct, 0) / list.length), n: list.length } : null;
             };
-            renderStats({ streak, best, week, lastWeek, r: acc('r'), l: acc('l') });
+            // последние 7 дней (с самого раннего до сегодня) — для точек и столбиков
+            const days7 = [];
+            for (let i = 6; i >= 0; i--) {
+                const d = new Date(today); d.setDate(d.getDate() - i);
+                const k = ymd(d);
+                days7.push({ date: d, n: perDay.get(k) || 0, active: active(k), today: i === 0 });
+            }
+            renderStats({ streak, best, week, lastWeek, r: acc('r'), l: acc('l'), days7 });
             renderHeat(perDay, vocabDays, today);
             renderMonth(events, today);
             renderVocabWeek(vocabWeek);
@@ -954,32 +1157,65 @@
         function renderVocabWeek(v) {
             const tile = (n, label) => `<div class="rounded-2xl bg-gray-50 px-4 py-3">
                     <div class="text-xl font-extrabold text-slate-900 tnum">${n}</div>
-                    <div class="text-xs text-slate-500">${label}</div></div>`;
+                    <div class="text-xs text-slate-500">${esc(label)}</div></div>`;
             document.getElementById('activityVocab').innerHTML = `
                 <div class="flex items-baseline justify-between gap-3 mb-3">
-                    <h3 class="text-sm font-bold text-slate-800">Vocabulary this week</h3>
-                    <a href="vocabulary.html" class="text-xs font-bold text-indigo-600 hover:text-indigo-800">Open</a>
+                    <h3 class="text-sm font-bold text-slate-800">${esc(t('d.vocabWeek'))}</h3>
+                    <a href="vocabulary.html" class="text-xs font-bold text-indigo-600 hover:text-indigo-800">${esc(t('common.open'))}</a>
                 </div>
-                <div class="grid grid-cols-2 gap-3">${tile(v.reviews, v.reviews === 1 ? 'word reviewed' : 'words reviewed')}${tile(v.learned, v.learned === 1 ? 'new word' : 'new words')}</div>`;
+                <div class="grid grid-cols-2 gap-3">${tile(v.reviews, form(v.reviews, 'd.wordsReviewed'))}${tile(v.learned, form(v.learned, 'd.newWords'))}</div>`;
         }
 
+        // Четыре цифры с маленькими графиками: точки дней подряд, столбики недели, полоски точности
         function renderStats(s) {
-            const cell = (label, value, sub, extra) => `
-                <div class="p-5 sm:p-6 ${extra || ''}">
-                    <div class="text-sm font-semibold text-slate-500">${label}</div>
-                    <div class="mt-1 text-[28px] leading-tight font-extrabold text-slate-900 tnum">${value}</div>
-                    <div class="mt-1 text-xs text-slate-500">${sub}</div>
+            const letters = t('d.wd1').split(',');
+            const dayLabel = d => `<span class="text-[10px] leading-none font-semibold ${d.today ? 'text-slate-900' : 'text-gray-400'}">${letters[d.date.getDay()]}</span>`;
+            const cell = (o) => `
+                <div class="p-4 sm:p-6 min-w-0 flex flex-col ${o.cls}">
+                    <div class="flex items-center gap-2 text-[13px] sm:text-sm font-semibold text-slate-500 leading-tight min-h-8">
+                        <span class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style="background:${o.color}14;color:${o.color}"><i data-lucide="${o.icon}" class="w-4 h-4"></i></span>
+                        <span class="min-w-0">${esc(o.label)}</span>
+                    </div>
+                    <div class="mt-3 text-[24px] sm:text-[28px] leading-none font-extrabold text-slate-900 tnum whitespace-nowrap">${o.value}</div>
+                    <div class="mt-3 h-9 flex items-end" aria-hidden="true">${o.visual}</div>
+                    <div class="mt-2 text-xs text-slate-500">${esc(o.sub)}</div>
                 </div>`;
+
+            // дни подряд: 7 точек, закрашены дни с занятиями
+            const dots = `<div class="w-full flex justify-between max-w-[200px]">${s.days7.map(d => `
+                    <span class="flex flex-col items-center gap-1.5">
+                        <span class="w-4 h-4 rounded-full ${d.active ? 'bg-amber-400' : 'bg-gray-100'} ${d.today ? 'ring-2 ring-offset-2 ring-slate-300' : ''}"></span>
+                        ${dayLabel(d)}
+                    </span>`).join('')}</div>`;
+
+            // неделя: столбики заданий по дням
+            const max = Math.max(1, ...s.days7.map(d => d.n));
+            const bars = `<div class="w-full flex justify-between items-end max-w-[200px] h-full">${s.days7.map(d => `
+                    <span class="flex flex-col items-center justify-end gap-1.5 h-full">
+                        <span class="w-3 rounded-[3px] ${d.n ? (d.today ? 'bg-indigo-600' : 'bg-indigo-400') : 'bg-gray-100'}" style="height:${d.n ? 4 + Math.round(d.n / max * 16) : 3}px"></span>
+                        ${dayLabel(d)}
+                    </span>`).join('')}</div>`;
+
+            // точность: полоска цвета секции
+            const meter = (a, color) => `<div class="w-full pb-2"><div class="h-2 rounded-full bg-gray-100 overflow-hidden">
+                    <div class="h-full rounded-full" style="width:${a ? a.pct : 0}%;background:${color}"></div></div></div>`;
+
             const diff = s.week - s.lastWeek;
-            const accCell = (name, a) => a
-                ? [a.pct + '%', `Last 30 days, ${a.n} ${a.n === 1 ? 'task' : 'tasks'}`]
-                : ['—', `No ${name} practice in 30 days`];
-            const [rv, rs] = accCell('Reading', s.r), [lv, ls] = accCell('Listening', s.l);
+            const accCell = (sec, a, extra) => cell({
+                label: t('d.accuracy', { s: sec.name }), icon: 'target', color: sec.color, cls: extra,
+                value: a ? a.pct + '%' : '—', visual: meter(a, sec.color),
+                sub: a ? t('d.acc30', { n: cnt(a.n, 'common.tasks') }) : t('d.noAcc', { s: sec.name })
+            });
             document.getElementById('statsStrip').innerHTML =
-                cell('Day streak', `${s.streak} ${s.streak === 1 ? 'day' : 'days'}`, s.streak ? `Best: ${s.best} ${s.best === 1 ? 'day' : 'days'}` : 'Practice today to start one', 'border-b lg:border-b-0 border-r border-gray-100')
-                + cell('This week', `${s.week} ${s.week === 1 ? 'task' : 'tasks'}`, s.lastWeek || s.week ? (diff > 0 ? `${diff} more than last week` : diff < 0 ? `${-diff} fewer than last week` : 'Same as last week') : 'Tasks finished in the last 7 days', 'border-b lg:border-b-0 lg:border-r border-gray-100')
-                + cell('Reading accuracy', rv, rs, 'border-r border-gray-100')
-                + cell('Listening accuracy', lv, ls, '');
+                cell({ label: t('d.streak'), icon: 'flame', color: '#d97706', cls: 'border-b lg:border-b-0 border-r border-gray-100',
+                       value: cnt(s.streak, 'd.days'), visual: dots,
+                       sub: s.streak ? t('d.best', { n: cnt(s.best, 'd.days') }) : t('d.startStreak') })
+                + cell({ label: t('d.week'), icon: 'bar-chart-3', color: '#4f46e5', cls: 'border-b lg:border-b-0 lg:border-r border-gray-100',
+                       value: cnt(s.week, 'common.tasks'), visual: bars,
+                       sub: s.lastWeek || s.week ? (diff > 0 ? t('d.moreThan', { n: diff }) : diff < 0 ? t('d.fewerThan', { n: -diff }) : t('d.sameAs')) : t('d.last7') })
+                + accCell(SEC.r, s.r, 'border-r border-gray-100')
+                + accCell(SEC.l, s.l, '');
+            icons();
         }
 
         function renderHeat(perDay, vocabDays, today) {
@@ -995,14 +1231,14 @@
                 const n = perDay.get(key) || 0, w = vocabDays.get(key) || 0;
                 const lvl = n >= 4 ? 'l3' : n >= 2 ? 'l2' : (n >= 1 || w > 0) ? 'l1' : '';
                 if (lvl) activeDays++;
-                const tip = shortDate(d) + ': ' + (n ? n + (n === 1 ? ' task' : ' tasks') : 'no tasks') + (w ? ', vocabulary' : '');
-                cells += `<span class="${lvl}${key === ymd(today) ? ' today' : ''}" title="${tip}"></span>`;
+                const tip = shortDate(d) + ': ' + (n ? cnt(n, 'common.tasks') : t('d.noTasks')) + (w ? t('d.plusVocab') : '');
+                cells += `<span class="${lvl}${key === ymd(today) ? ' today' : ''}" title="${esc(tip)}"></span>`;
             }
             document.getElementById('activityHeat').innerHTML = `
-                <div class="heat" style="grid-template-columns: repeat(${WEEKS}, minmax(0, 1fr))" role="img" aria-label="Practice activity: active on ${activeDays} of the last ${WEEKS * 7} days">${cells}</div>
+                <div class="heat" style="grid-template-columns: repeat(${WEEKS}, minmax(0, 1fr))" role="img" aria-label="${esc(t('d.heatAria', { a: activeDays, b: WEEKS * 7 }))}">${cells}</div>
                 <div class="flex items-center justify-between mt-3 text-[11px] text-slate-500">
-                    <span>${activeDays} active ${activeDays === 1 ? 'day' : 'days'}</span>
-                    <span class="flex items-center gap-1">Less <span class="w-2.5 h-2.5 rounded-[3px] bg-[#eef0f4]"></span><span class="w-2.5 h-2.5 rounded-[3px] bg-[#c7d2fe]"></span><span class="w-2.5 h-2.5 rounded-[3px] bg-[#818cf8]"></span><span class="w-2.5 h-2.5 rounded-[3px] bg-[#4f46e5]"></span> More</span>
+                    <span>${esc(cnt(activeDays, 'd.activeDays'))}</span>
+                    <span class="flex items-center gap-1">${esc(t('d.less'))} <span class="w-2.5 h-2.5 rounded-[3px] bg-[#eef0f4]"></span><span class="w-2.5 h-2.5 rounded-[3px] bg-[#c7d2fe]"></span><span class="w-2.5 h-2.5 rounded-[3px] bg-[#818cf8]"></span><span class="w-2.5 h-2.5 rounded-[3px] bg-[#4f46e5]"></span> ${esc(t('d.more'))}</span>
                 </div>`;
         }
 
@@ -1012,7 +1248,7 @@
             events.forEach(e => { if (e.day.startsWith(prefix) && counts[e.sec] !== undefined) counts[e.sec]++; });
             const max = Math.max(1, ...Object.values(counts));
             const month = today.toLocaleDateString('en-US', { month: 'long' });
-            document.getElementById('activityMonth').innerHTML = `<h3 class="text-sm font-bold text-slate-800">Tasks in ${month}</h3>`
+            document.getElementById('activityMonth').innerHTML = `<h3 class="text-sm font-bold text-slate-800">${esc(t('d.monthTasks', { m: month }))}</h3>`
                 + SECTIONS.map(sec => `
                     <div class="flex items-center gap-3 text-xs">
                         <span class="w-16 shrink-0 font-semibold text-slate-600">${sec.name}</span>
@@ -1056,27 +1292,35 @@
             return sets.size;
         }
 
+        // Карточка раздела: фон и цифры в цвете раздела
+        function sectionCard(sec, body, locked) {
+            const style = locked ? '' : `background:${sec.color}0b;border-color:${sec.color}24`;
+            return `<a href="${sec.link}" class="block p-4 sm:p-5 rounded-3xl border ${locked ? 'bg-white border-gray-100' : ''} shadow-xs hover:shadow-md transition group min-w-0" style="${style}">
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-2 sm:gap-2.5 min-w-0">
+                            <span class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 ${locked ? 'bg-gray-100 text-gray-400' : 'text-white'}" style="${locked ? '' : 'background:' + sec.color}"><i data-lucide="${sec.icon}" class="w-4 h-4 sm:w-[18px] sm:h-[18px]"></i></span>
+                            <h3 class="text-[15px] sm:text-base font-bold text-slate-900 truncate">${sec.name}</h3>
+                        </div>
+                        <i data-lucide="chevron-right" class="hidden sm:block w-4 h-4 text-gray-300 group-hover:text-gray-500 transition shrink-0"></i>
+                    </div>
+                    ${body}
+                </a>`;
+        }
+        const lockedBody = () => `<p class="mt-5 text-xs text-slate-500 flex items-center gap-1.5"><i data-lucide="lock" class="w-3.5 h-3.5 shrink-0"></i>${esc(t('d.askAccess'))}</p>`;
+        function progressBody(sec, done, total) {
+            const pct = total ? Math.min(100, Math.round(done / total * 100)) : 0;
+            return `<div class="mt-5 text-[34px] leading-none font-extrabold tnum" style="color:${sec.color}">${pct}%</div>
+                    <div class="mt-3 h-1.5 rounded-full overflow-hidden" style="background:${sec.color}1f"><div class="h-full rounded-full" style="width:${pct}%;background:${sec.color}"></div></div>
+                    <p class="mt-2.5 text-xs text-slate-600 tnum">${t('d.ofTasks', { a: done, b: total })}</p>`;
+        }
+
         async function loadSectionProgress() {
             const box = document.getElementById('sectionCards');
             const prof = currentUser.profile || {};
             const open = sec => isTeacher() || prof[sec.access] === true;
-            const card = (sec, body) => `
-                <a href="${sec.link}" class="block bg-white p-5 rounded-3xl border border-gray-100 shadow-xs hover:border-gray-200 hover:shadow-sm transition group">
-                    <div class="flex items-center justify-between">
-                        <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background:${sec.color}14;color:${sec.color}"><i data-lucide="${sec.icon}" class="w-5 h-5"></i></div>
-                        <i data-lucide="chevron-right" class="w-4 h-4 text-gray-300 group-hover:text-gray-500 transition"></i>
-                    </div>
-                    <h3 class="mt-4 text-base font-bold text-slate-900">${sec.name}</h3>
-                    ${body}
-                </a>`;
-            const bar = (sec, done, total) => {
-                const pct = total ? Math.min(100, Math.round(done / total * 100)) : 0;
-                return `<p class="text-xs text-slate-500 mt-0.5"><span class="font-bold text-slate-800 tnum">${done}</span> of <span class="tnum">${total}</span> tasks done</p>
-                        <div class="mt-3 h-1.5 bg-gray-100 rounded-full overflow-hidden"><div class="h-full rounded-full" style="width:${pct}%;background:${sec.color}"></div></div>`;
-            };
-            box.innerHTML = SECTIONS.map(sec => card(sec, open(sec)
-                ? '<p class="text-xs text-gray-400 mt-0.5">Counting…</p><div class="mt-3 h-1.5 bg-gray-100 rounded-full"></div>'
-                : '<p class="text-xs text-slate-500 mt-0.5 flex items-center gap-1"><i data-lucide="lock" class="w-3 h-3"></i> Ask your teacher for access</p>')).join('');
+            box.innerHTML = SECTIONS.map(sec => open(sec)
+                ? sectionCard(sec, `<div class="mt-5 text-[34px] leading-none font-extrabold text-gray-200">—</div><div class="mt-3 h-1.5 rounded-full bg-gray-100"></div><p class="mt-2.5 text-xs text-gray-400">${esc(t('d.counting'))}</p>`)
+                : sectionCard(sec, lockedBody(), true)).join('');
             icons();
 
             const totals = {};
@@ -1092,95 +1336,12 @@
             const doneCount = { r: done.reading.size, l: done.listening.size, w: done.writing.size, s: done.speaking.size };
 
             box.innerHTML = SECTIONS.map(sec => {
-                if (!open(sec)) return card(sec, '<p class="text-xs text-slate-500 mt-0.5 flex items-center gap-1"><i data-lucide="lock" class="w-3 h-3"></i> Ask your teacher for access</p>');
+                if (!open(sec)) return sectionCard(sec, lockedBody(), true);
                 const total = totals[sec.key];
-                if (total === null || total === undefined) return card(sec, '<p class="text-xs text-slate-500 mt-0.5">Open practice</p>');
-                return card(sec, bar(sec, Math.min(doneCount[sec.key], total), total));
+                if (total === null || total === undefined) return sectionCard(sec, `<p class="mt-5 text-sm font-bold" style="color:${sec.color}">${esc(t('d.openPractice'))}</p>`);
+                return sectionCard(sec, progressBody(sec, Math.min(doneCount[sec.key], total), total));
             }).join('');
             icons();
-        }
-
-        // ==========================================
-        // General English: открытые уроки и домашка
-        // Карточка появляется только у ученика, которому назначен курс GE.
-        // ==========================================
-        async function loadGeCard() {
-            const box = document.getElementById('geCard');
-            if (!box || !currentUser || currentUser.role === 'teacher' || currentUser.role === 'guest') return;
-            try {
-                const { count: nCourses, error: cErr } = await _supabase.from('ge_course_students')
-                    .select('course_id', { count: 'exact', head: true }).eq('student_id', currentUser.id);
-                if (cErr || !nCourses) return;
-
-                const { data: acc, error: aErr } = await _supabase.from('ge_lesson_access')
-                    .select('lesson_id, class_open, homework_open, updated_at').eq('student_id', currentUser.id);
-                if (aErr) throw aErr;
-                const open = (acc || []).filter(a => a.class_open || a.homework_open);
-                const ids = open.map(a => a.lesson_id);
-
-                let lessons = [], tasks = [], answers = [];
-                if (ids.length) {
-                    const [l, t, a] = await Promise.all([
-                        _supabase.from('ge_lessons').select('id, title, unit:ge_units(title, course:ge_courses(title))').in('id', ids),
-                        _supabase.from('ge_tasks').select('id, lesson_id, part, type').in('lesson_id', ids),
-                        _supabase.from('ge_answers').select('task_id, status, feedback, reviewed_at').eq('student_id', currentUser.id)
-                    ]);
-                    lessons = l.data || []; tasks = t.data || []; answers = a.data || [];
-                }
-                const ansBy = new Map(answers.map(a => [a.task_id, a]));
-                const weekAgo = Date.now() - 7 * DAY;
-                const fresh = answers.filter(a => a.status === 'reviewed' && a.feedback && a.reviewed_at && new Date(a.reviewed_at).getTime() > weekAgo).length;
-
-                const rows = open.map(a => {
-                    const lesson = lessons.find(x => x.id === a.lesson_id);
-                    if (!lesson) return null;
-                    const parts = [['class', 'Class', a.class_open], ['homework', 'Homework', a.homework_open]]
-                        .filter(p => p[2])
-                        .map(([part, label]) => {
-                            const work = tasks.filter(t => t.lesson_id === lesson.id && t.part === part && t.type !== 'info');
-                            const done = work.filter(t => ansBy.has(t.id)).length;
-                            return { part, label, done, total: work.length };
-                        });
-                    const todo = parts.find(p => p.total && p.done < p.total);
-                    return { lesson, parts, todo, updated: a.updated_at || '' };
-                }).filter(Boolean)
-                  .sort((x, y) => (!!y.todo - !!x.todo) || y.updated.localeCompare(x.updated))
-                  .slice(0, 3);
-
-                const rowHtml = r => {
-                    const u = r.lesson.unit || {}, c = u.course || {};
-                    const part = (r.todo || r.parts[0] || {}).part || 'class';
-                    const chips = r.parts.map(p => {
-                        const full = p.total && p.done === p.total;
-                        return `<span class="text-[11px] font-bold px-2 py-1 rounded-lg ${full ? 'bg-emerald-50 text-emerald-700' : 'bg-indigo-50 text-indigo-600'}">${full ? '✓ ' : ''}${p.label}${p.total ? ' ' + p.done + '/' + p.total : ''}</span>`;
-                    }).join('');
-                    return `<a href="ge-lesson.html?lesson=${encodeURIComponent(r.lesson.id)}&part=${part}" class="flex items-center justify-between gap-3 p-3 rounded-2xl border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50/30 transition">
-                                <div class="min-w-0">
-                                    <div class="text-xs text-slate-500 truncate">${esc(c.title)}${u.title ? ', ' + esc(u.title) : ''}</div>
-                                    <div class="text-sm font-bold text-slate-800 truncate">${esc(r.lesson.title)}</div>
-                                </div>
-                                <div class="flex flex-wrap justify-end gap-1.5 shrink-0">${chips}</div>
-                            </a>`;
-                };
-
-                box.className = 'bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-xs space-y-3';
-                box.innerHTML = `
-                    <div class="flex items-center justify-between gap-3">
-                        <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center"><i data-lucide="graduation-cap" class="w-5 h-5"></i></div>
-                            <div>
-                                <h3 class="text-base font-bold text-slate-900 tracking-tight">General English</h3>
-                                <p class="text-xs text-slate-500 mt-0.5">Open lessons and homework</p>
-                            </div>
-                        </div>
-                        <a href="ge-courses.html" class="text-xs font-bold text-indigo-600 hover:text-indigo-800 whitespace-nowrap">All courses</a>
-                    </div>
-                    ${fresh ? `<a href="ge-courses.html" class="block text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">Your teacher left comments on ${fresh} ${fresh === 1 ? 'answer' : 'answers'}</a>` : ''}
-                    ${rows.length ? rows.map(rowHtml).join('') : '<p class="text-xs text-slate-500 py-2">Lessons open when your teacher starts a class.</p>'}`;
-                icons();
-            } catch (err) {
-                console.error('Не удалось загрузить General English:', err);
-            }
         }
     </script>
 </body>
