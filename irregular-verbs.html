@@ -8,6 +8,12 @@
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="auth.js"></script>
+    <script>
+        // Бесплатная версия (auth.js): в списке видны все задания, закрытые — под замочком
+        var gMerge = (table, rows, opts) => (typeof authGuestMerge === 'function' ? authGuestMerge(table, rows, opts) : Promise.resolve(rows || []));
+        var gCard = (html, row) => (typeof authGuestCard === 'function' ? authGuestCard(html, row) : html);
+        var gNote = () => (typeof authL === 'function' ? authL('Available with full access', 'Доступно в полной версии') : 'Available with full access');
+    </script>
   
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -25,6 +31,8 @@
       grid-template-columns: 80px minmax(160px, 1.5fr) 1fr 1fr 1fr;
       min-width: 750px;
     }
+    /* Гость: закрытая строка — замочек по центру справа */
+    .table-layout[data-guest-locked] > .guest-lock { top: 50%; right: 16px; transform: translateY(-50%); }
   </style>
 </head>
 <body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex flex-col md:flex-row invisible" id="pageBody">
@@ -204,6 +212,16 @@
           return;
         }
         container.innerHTML = dataToRender.map((verb, i) => {
+          if (verb.__locked) {
+            // Гость: глагол виден, формы и перевод — в полной версии
+            return `<div data-guest-locked class="table-layout bg-white items-center">
+            <div class="px-6 py-4 border-r border-slate-100"></div>
+            <div class="px-6 py-4 border-r border-slate-100 flex items-center gap-3"><span class="w-5"></span><span class="font-bold text-slate-900">${ivEsc(verb.v1)}</span></div>
+            <div class="px-6 py-4 border-r border-slate-100 text-slate-300 tracking-widest">•••</div>
+            <div class="px-6 py-4 border-r border-slate-100 text-slate-300 tracking-widest">•••</div>
+            <div class="px-6 py-4 text-right text-sm text-slate-300 tracking-widest pr-12">•••</div>
+          </div>`;
+          }
           const isSaved = savedVerbs.has(verb.v1);
           const bookmarkIcon = isSaved
             ? `<svg class="w-5 h-5 text-indigo-600 fill-indigo-600 drop-shadow-sm transition-transform hover:scale-110" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>`
@@ -246,7 +264,7 @@
           if (verbsError) throw verbsError;
           if (savedError) throw savedError;
 
-          irregularVerbs = (verbsData || []).filter(v => v.v1 && String(v.v1).trim());
+          irregularVerbs = await gMerge('irregular_verbs', (verbsData || []).filter(v => v.v1 && String(v.v1).trim()), { key: 'v1', order: 'v1' });
           savedVerbs = new Set((savedData || []).map(row => row.v1));
           render();
         } catch (error) {
