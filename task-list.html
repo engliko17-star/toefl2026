@@ -8,6 +8,12 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
+    <script>
+        // Бесплатная версия (auth.js): в списке видны все задания, закрытые — под замочком
+        var gMerge = (table, rows, opts) => (typeof authGuestMerge === 'function' ? authGuestMerge(table, rows, opts) : Promise.resolve(rows || []));
+        var gCard = (html, row) => (typeof authGuestCard === 'function' ? authGuestCard(html, row) : html);
+        var gNote = () => (typeof authL === 'function' ? authL('Available with full access', 'Доступно в полной версии') : 'Available with full access');
+    </script>
     <script src="content-visibility.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -332,7 +338,8 @@
                     .order('id', { ascending: true }));
 
                 // Скрытые глазиком задания видит только преподаватель
-                const tasks = CV.visibleFor(allTasks, user);
+                const tasks = await gMerge('writing_tasks', CV.visibleFor(allTasks, user),
+                    { keep: r => String(r.type || '').toLowerCase() === String(taskType).toLowerCase() });
 
                 // Сначала новые: если на задание несколько ответов, берётся последний
                 // Тоже порциями: у активной ученицы ответов на Build a Sentence бывает больше 1000
@@ -399,6 +406,7 @@
                     // Набор скрыт, если скрыт хоть один его вопрос: глазик скрывает
                     // и открывает набор целиком
                     const isHiddenGroup = groupTasks.some(t => t.is_hidden === true);
+                    const isLockedGroup = groupTasks.some(t => t.__locked);   // гость: в полной версии
                     if (!isHiddenGroup) visibleIndex++;
                     const testNumberLabel = isHiddenGroup ? 'Draft' : `Test #${visibleIndex}`;
                     
@@ -406,7 +414,7 @@
                     currentTestGroups[groupId] = groupTasks.map(t => t.id);
 
                     // Ищем ответы студента для текущей группы вопросов
-                    const groupResponses = groupTasks.map(t => responses.find(r => String(r.task_id) === String(t.id))).filter(r => r);
+                    const groupResponses = isLockedGroup ? [] : groupTasks.map(t => responses.find(r => String(r.task_id) === String(t.id))).filter(r => r);
                     currentGroupResponses[groupId] = groupResponses;
                     const completedCount = groupResponses.length;
                     
@@ -419,7 +427,7 @@
                     let attemptTrail = '';
 
                     // Эссе из одного задания: все его попытки (у Build a Sentence попыток нет)
-                    const attempts = (taskType !== 'sentence' && totalQuestions === 1)
+                    const attempts = (!isLockedGroup && taskType !== 'sentence' && totalQuestions === 1)
                         ? (attemptsByTask[String(firstTask.id)] || []) : null;
                     currentGroupAttempts[groupId] = attempts || [];
 
@@ -593,9 +601,10 @@
                     const metaParts = [`<span class="font-bold text-slate-500">${testNumberLabel}</span>`];
                     if (taskType !== 'sentence' && topic !== NO_TOPIC) metaParts.push(tlEsc(topic));
                     if (taskType === 'sentence' || totalQuestions > 1) metaParts.push(`${totalQuestions} Question${totalQuestions > 1 ? 's' : ''}`);
+                    if (isLockedGroup) metaParts.push(gNote());
                     if (attemptTrail) metaParts.push(`<span class="font-bold text-slate-600" title="Score of each attempt">${attemptTrail}</span>`);
 
-                    cards.push({ topic, html: `
+                    cards.push({ topic, html: gCard(`
                         <div class="relative overflow-hidden bg-white p-6 rounded-[1.5rem] border border-gray-100 shadow-sm hover:shadow-md transition-all flex flex-col justify-between min-h-[190px] ${CV.cardClass(isHiddenGroup)}">
                             ${realToeflRibbon}
                             <div>
@@ -613,7 +622,7 @@
                             </div>
                             ${CV.withEye(actionButton, 'writing_tasks', groupTasks.map(t => t.id), isHiddenGroup)}
                         </div>
-                    ` });
+                    `, isLockedGroup ? { __locked: true } : null) });
                     groupIndex++;
                 });
 
