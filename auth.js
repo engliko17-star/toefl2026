@@ -130,7 +130,43 @@ const ACCESS_FIELD = {
 //     ссылки, которые страница дорисовала позже.
 
 const AUTH_TEACHER_ONLY = ['teacher-board.html', 'student-profile.html', 'content-lab.html', 'mock-lab.html', 'exam-reports.html'];
-const AUTH_PROFILE_COLS = 'role,is_approved,access_reading,access_listening,access_speaking,access_writing,access_tests';
+const AUTH_PROFILE_COLS = 'role,is_approved,access_reading,access_listening,access_speaking,access_writing,access_tests,guest_completed_demo';
+
+// ---------- Язык экранов доступа ----------
+// Тот же выбор, что у меню (nav.js) и i18n.js: сохранённый в браузере, иначе язык браузера
+const AUTH_LANG = (function () {
+    if (window.I18N) return window.I18N.lang;
+    try { const s = localStorage.getItem('appLang'); if (s === 'en' || s === 'ru') return s; } catch (e) { /* по браузеру */ }
+    const list = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || 'en'];
+    for (const l of list) {
+        if (/^(ru|be|uk|kk)\b/i.test(l)) return 'ru';
+        if (/^en\b/i.test(l)) return 'en';
+    }
+    return 'en';
+})();
+const authL = (en, ru) => (AUTH_LANG === 'ru' ? ru : en);
+
+// ---------- Гость (бесплатная версия) ----------
+// Куда ведёт «Получить полный доступ». Сейчас — Telegram преподавателя,
+// потом сюда встанет страница оплаты.
+const AUTH_FULL_ACCESS_URL = 'https://t.me/LIKO_17';
+// Задания гостю ограничивает база (guest_access.sql). Статьи — обычные файлы,
+// поэтому их ограничивает страница: открыты две статьи каждого раздела —
+// те, что стоят карточками на главной странице раздела.
+const AUTH_GUEST_FREE_ARTICLES = [
+    'general-reading.html', 'article-inference.html',
+    'article-general-listening.html', 'article-listen-to-a-conversation.html',
+    'article-write-an-academic.html', 'article-write-an-email.html',
+    'general-speaking.html', 'article-speaking-interview.html'
+];
+const AUTH_GUEST_BLOCKED = ['listening-import.html', 'speaking-import.html'];   // инструменты преподавателя
+function authIsArticle(file) {
+    return /^article-/.test(file) || ['general-reading.html', 'general-speaking.html', 'reading-logic.html',
+        'reading-time-management.html', 'writing-article-view.html', 'listening-article-view.html'].includes(file);
+}
+function authGuestLockedFile(file) {
+    return authIsArticle(file) && !AUTH_GUEST_FREE_ARTICLES.includes(file);
+}
 const AUTH_STORAGE_KEY = 'sb-' + new URL(AUTH_SB_URL).hostname.split('.')[0] + '-auth-token';
 const AUTH_TIMEOUT_MS = 8000;      // на один запрос
 const AUTH_GATE_LIMIT_MS = 15000;  // на всю проверку: дольше — экран ошибки
@@ -224,8 +260,14 @@ function authDecide(profile) {
     const isTeacher = profile && profile.role === 'teacher';
     const isGuest = profile && profile.role === 'guest';
 
-    // Гость: только tests.html (демо-режим «гулять по разделам» отложен)
-    if (isGuest) return authFileName() === 'tests.html' ? { kind: 'allow' } : { kind: 'redirect', to: 'tests.html' };
+    // Гость ходит по страницам ученицы; задания ему ограничивает база
+    // (guest_access.sql), статьи кроме бесплатных — закрыты здесь
+    if (isGuest) {
+        const file = authFileName();
+        if (AUTH_TEACHER_ONLY.includes(file) || AUTH_GUEST_BLOCKED.includes(file)) return { kind: 'redirect', to: 'index.html' };
+        if (authGuestLockedFile(file)) return { kind: 'guestLocked' };
+        return { kind: 'allow' };
+    }
 
     // Ученик без подтверждения преподавателем
     if (!isTeacher && (!profile || !profile.is_approved)) return { kind: 'pending' };
@@ -277,11 +319,12 @@ function authShowPending() {
     authScreen(`
         <div style="${AUTH_SCREEN_STYLE}">
             <div style="font-size:64px;margin-bottom:16px;">⏳</div>
-            <h2 style="margin:0 0 12px 0;color:#1a1a1a;font-size:22px;font-weight:700;">Аккаунт на проверке</h2>
-            <p style="margin:0 0 32px 0;color:#666;font-size:14px;max-width:280px;line-height:1.5;">
-                Доступ к платформе TOEFL появится сразу после подтверждения преподавателем. Обычно это занимает совсем немного времени!
+            <h2 style="margin:0 0 12px 0;color:#1a1a1a;font-size:22px;font-weight:700;">${authL('Your account is being reviewed', 'Аккаунт на проверке')}</h2>
+            <p style="margin:0 0 32px 0;color:#666;font-size:14px;max-width:300px;line-height:1.5;">
+                ${authL('You will get access to the platform as soon as your teacher confirms your account. It usually doesn’t take long.',
+                        'Доступ к платформе появится сразу после подтверждения преподавателем. Обычно это занимает совсем немного времени.')}
             </p>
-            <button onclick="logoutUser()" style="${AUTH_BTN_STYLE}">Выйти из аккаунта</button>
+            <button onclick="logoutUser()" style="${AUTH_BTN_STYLE}">${authL('Log out', 'Выйти из аккаунта')}</button>
         </div>`);
 }
 
@@ -289,11 +332,12 @@ function authShowBlocked(sectionName) {
     authScreen(`
         <div style="${AUTH_SCREEN_STYLE}">
             <div style="font-size:64px;margin-bottom:16px;">🔒</div>
-            <h2 style="margin:0 0 12px 0;color:#1a1a1a;font-size:22px;font-weight:700;">Раздел закрыт</h2>
-            <p style="margin:0 0 32px 0;color:#666;font-size:14px;max-width:280px;line-height:1.5;">
-                Доступ к разделу <strong>${sectionName}</strong> пока не активирован преподавателем. Вы можете продолжить работу в других открытых вкладках.
+            <h2 style="margin:0 0 12px 0;color:#1a1a1a;font-size:22px;font-weight:700;">${authL('This section is closed', 'Раздел закрыт')}</h2>
+            <p style="margin:0 0 32px 0;color:#666;font-size:14px;max-width:300px;line-height:1.5;">
+                ${authL('Your teacher hasn’t opened <strong>' + sectionName + '</strong> for you yet. You can keep working in the other sections.',
+                        'Доступ к разделу <strong>' + sectionName + '</strong> пока не открыт преподавателем. Вы можете продолжить работу в других разделах.')}
             </p>
-            <a href="index.html" style="${AUTH_BTN_STYLE}">На главную</a>
+            <a href="index.html" style="${AUTH_BTN_STYLE}">${authL('Back to dashboard', 'На главную')}</a>
         </div>`);
 }
 
@@ -301,20 +345,96 @@ function authShowError() {
     authScreen(`
         <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Plus Jakarta Sans',sans-serif;background:#f8f9fa;padding:24px;">
             <div style="max-width:420px;text-align:center;background:#fff;padding:32px;border-radius:24px;border:1px solid #f0f0f0;">
-                <h2 style="margin:0 0 12px;font-size:20px;font-weight:700;color:#1a1a1a;">Не удалось проверить доступ</h2>
+                <h2 style="margin:0 0 12px;font-size:20px;font-weight:700;color:#1a1a1a;">${authL('Couldn’t check your access', 'Не удалось проверить доступ')}</h2>
                 <p style="margin:0 0 20px;color:#666;font-size:14px;line-height:1.5;">
-                    Связь с базой прервалась. Это не значит, что с аккаунтом что-то не так — просто попробуйте ещё раз.
+                    ${authL('The connection to the server dropped. Your account is fine, just try again.',
+                            'Связь с базой прервалась. Это не значит, что с аккаунтом что-то не так — просто попробуйте ещё раз.')}
                 </p>
                 <button onclick="location.reload()" style="background:#0f172a;color:#fff;border:0;padding:12px 24px;border-radius:12px;font-weight:700;font-size:14px;cursor:pointer;">
-                    Обновить страницу
+                    ${authL('Refresh the page', 'Обновить страницу')}
                 </button>
             </div>
         </div>`);
 }
 
+// Текст о бесплатной версии — один на баннер, окно и экран
+function authGuestOffer() {
+    return authL('The free version includes two tasks of every type, a mini mock in each section and one full practice test. Full access opens every task, article and mock test, plus your teacher’s feedback.',
+                 'В бесплатной версии — по два задания каждого типа, мини-мок в каждом разделе и один полный пробный тест. Полный доступ открывает все задания, статьи и мок-тесты, а ещё проверку преподавателем.');
+}
+const AUTH_CTA_STYLE = 'display:inline-block;text-decoration:none;text-align:center;padding:13px 22px;font-size:14px;font-weight:700;color:#fff;background:#4f46e5;border:0;border-radius:12px;cursor:pointer;';
+const AUTH_GHOST_STYLE = 'display:inline-block;text-decoration:none;text-align:center;padding:13px 22px;font-size:14px;font-weight:700;color:#334155;background:#f1f5f9;border:0;border-radius:12px;cursor:pointer;';
+
+function authShowGuestLocked() {
+    authScreen(`
+        <div style="${AUTH_SCREEN_STYLE}">
+            <div style="max-width:420px;background:#fff;padding:32px 28px;border-radius:24px;border:1px solid #eef0f4;">
+                <div style="font-size:44px;margin-bottom:12px;">🔒</div>
+                <h2 style="margin:0 0 12px;color:#0f172a;font-size:21px;font-weight:800;">${authL('This article is in the full version', 'Эта статья — в полной версии')}</h2>
+                <p style="margin:0 0 24px;color:#64748b;font-size:14px;line-height:1.6;">${authGuestOffer()}</p>
+                <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;">
+                    <a href="${AUTH_FULL_ACCESS_URL}" target="_blank" rel="noopener" style="${AUTH_CTA_STYLE}">${authL('Get full access', 'Получить полный доступ')}</a>
+                    <a href="index.html" style="${AUTH_GHOST_STYLE}">${authL('Back to dashboard', 'На главную')}</a>
+                </div>
+            </div>
+        </div>`);
+}
+
+// Окно «Полный доступ» поверх страницы (клик по закрытой статье и т. п.)
+function authShowUpsell(title) {
+    let m = document.getElementById('auth-upsell');
+    if (m) m.remove();
+    m = document.createElement('div');
+    m.id = 'auth-upsell';
+    m.setAttribute('role', 'dialog');
+    m.setAttribute('aria-modal', 'true');
+    m.style.cssText = 'position:fixed;inset:0;z-index:99990;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:16px;font-family:\'Plus Jakarta Sans\',-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;';
+    m.innerHTML = `
+        <div style="max-width:420px;width:100%;background:#fff;border-radius:24px;padding:28px 24px;text-align:center;box-shadow:0 20px 50px rgba(15,23,42,.25);">
+            <div style="font-size:40px;margin-bottom:10px;">🔒</div>
+            <h2 style="margin:0 0 10px;color:#0f172a;font-size:20px;font-weight:800;">${title || authL('Available with full access', 'Доступно в полной версии')}</h2>
+            <p style="margin:0 0 22px;color:#64748b;font-size:14px;line-height:1.6;">${authGuestOffer()}</p>
+            <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;">
+                <a href="${AUTH_FULL_ACCESS_URL}" target="_blank" rel="noopener" style="${AUTH_CTA_STYLE}">${authL('Get full access', 'Получить полный доступ')}</a>
+                <button type="button" data-auth-close style="${AUTH_GHOST_STYLE}">${authL('Not now', 'Не сейчас')}</button>
+            </div>
+        </div>`;
+    m.addEventListener('click', e => { if (e.target === m || e.target.closest('[data-auth-close]')) m.remove(); });
+    document.addEventListener('keydown', function esc(e) { if (e.key === 'Escape') { m.remove(); document.removeEventListener('keydown', esc); } });
+    document.body.appendChild(m);
+    const b = m.querySelector('a');
+    if (b) b.focus();
+}
+
+// Полоска «бесплатная версия» вверху страниц с меню (на экранах заданий её нет)
+function authGuestBanner() {
+    authWhenBody(() => {
+        if (document.getElementById('auth-guest-bar') || !document.querySelector('.app-nav, #mainSidebar')) return;
+        if (authFileName() === 'index.html') return;   // на главной то же самое говорит билет вверху
+        try { if (sessionStorage.getItem('authGuestBarClosed') === '1') return; } catch (e) { /* показываем */ }
+        const bar = document.createElement('div');
+        bar.id = 'auth-guest-bar';
+        bar.setAttribute('role', 'region');
+        bar.setAttribute('aria-label', authL('Free version', 'Бесплатная версия'));
+        bar.style.cssText = 'display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 16px;padding:12px 14px 12px 16px;border-radius:16px;background:#eef2ff;border:1px solid #e0e7ff;color:#312e81;font-size:13px;line-height:1.45;font-family:inherit;';
+        bar.innerHTML = `
+            <span style="flex:1 1 260px;min-width:0;"><b>${authL('Free version.', 'Бесплатная версия.')}</b> ${authL('Two tasks of every type, a mini mock in each section and one full practice test.', 'По два задания каждого типа, мини-мок в каждом разделе и один полный пробный тест.')}</span>
+            <a href="${AUTH_FULL_ACCESS_URL}" target="_blank" rel="noopener" style="flex-shrink:0;text-decoration:none;font-weight:700;color:#fff;background:#4f46e5;padding:8px 14px;border-radius:10px;">${authL('Get full access', 'Получить полный доступ')}</a>
+            <button type="button" aria-label="${authL('Hide', 'Скрыть')}" style="flex-shrink:0;border:0;background:transparent;color:#6366f1;font-size:18px;line-height:1;cursor:pointer;padding:4px 6px;border-radius:8px;">×</button>`;
+        bar.querySelector('button').addEventListener('click', () => {
+            bar.remove();
+            try { sessionStorage.setItem('authGuestBarClosed', '1'); } catch (e) { /* только до перезагрузки */ }
+        });
+        const main = document.querySelector('main');
+        const host = main ? (main.firstElementChild && main.firstElementChild.matches('div[class*="max-w"]') ? main.firstElementChild : main) : document.body;
+        host.insertBefore(bar, host.firstChild);
+    });
+}
+
 // Применить решение. Возвращает true, если страницу можно показывать.
 function authApply(decision) {
     if (decision.kind === 'redirect') { window.location.href = decision.to; return false; }
+    if (decision.kind === 'guestLocked') { authShowGuestLocked(); return false; }
     if (decision.kind === 'pending') { authShowPending(); return false; }
     if (decision.kind === 'blocked') { authShowBlocked(decision.label); return false; }
     authReveal();
@@ -334,7 +454,7 @@ if (AUTH_GATED) {
         const w = document.createElement('div');
         w.id = 'auth-gate-wait';
         w.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;color:#64748b;font-size:14px;background:#f8f9fa;z-index:99998;';
-        w.textContent = 'Проверяем доступ…';
+        w.textContent = authL('Checking access…', 'Проверяем доступ…');
         document.body.appendChild(w);
     }), 700);
 
@@ -378,6 +498,7 @@ async function requireAuth() {
     if (!authApply(authDecide(profile))) return null;
 
     if (profile && profile.role === 'guest') {
+        applySectionLocks(profile);   // для гостя: замки на закрытых статьях и полоска «бесплатная версия»
         return { ...access.user, role: 'guest', profile: profile };
     }
 
@@ -403,6 +524,7 @@ let _authLockProfile = null;
 function authLockRule(href) {
     if (!_authLockProfile || !href || href.startsWith('#') || href.startsWith('http') || href.startsWith('mailto:')) return null;
     const file = authNormalizeFile(href.split('?')[0].split('#')[0].split('/').pop());
+    if (_authLockProfile.role === 'guest') return authGuestLockedFile(file) ? { guest: true } : null;
     const section = PAGE_SECTIONS[file];
     if (!section) return null;
     const rule = ACCESS_FIELD[section];
@@ -412,10 +534,11 @@ function authLockRule(href) {
 function authDecorateLink(link) {
     const rule = authLockRule(link.getAttribute('href') || '');
     if (!rule || link.querySelector('.section-lock-badge')) return;
-    link.style.opacity = '0.4';
+    link.style.opacity = rule.guest ? '0.6' : '0.4';
     link.style.cursor = 'not-allowed';
     link.setAttribute('aria-disabled', 'true');
-    link.setAttribute('title', 'Раздел ' + rule.label + ' пока не открыт преподавателем');
+    link.setAttribute('title', rule.guest ? authL('Available with full access', 'Доступно в полной версии')
+                                          : authL(rule.label + ' isn’t open for you yet', 'Раздел ' + rule.label + ' пока не открыт преподавателем'));
     const badge = document.createElement('span');
     badge.className = 'section-lock-badge';
     badge.textContent = ' 🔒';
@@ -430,8 +553,9 @@ function authDecorateAll(root) {
 }
 
 function applySectionLocks(profile) {
-    if (!profile || profile.role === 'teacher' || profile.role === 'guest') return;
+    if (!profile || profile.role === 'teacher') return;
     _authLockProfile = profile;
+    if (profile.role === 'guest') authGuestBanner();
 
     if (!applySectionLocks._installed) {
         applySectionLocks._installed = true;
@@ -443,7 +567,8 @@ function applySectionLocks(profile) {
             if (!rule) return;
             e.preventDefault();
             e.stopPropagation();
-            alert('Раздел «' + rule.label + '» пока не открыт преподавателем.');
+            if (rule.guest) authShowUpsell();
+            else alert(authL('The ' + rule.label + ' section isn’t open for you yet.', 'Раздел «' + rule.label + '» пока не открыт преподавателем.'));
         }, true);
 
         new MutationObserver(mutations => {
@@ -495,10 +620,10 @@ function renderGuestLockedCard(lockedCount, sectionLabel) {
             <div class="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center mx-auto mb-4">
                 <i data-lucide="lock" class="w-6 h-6"></i>
             </div>
-            <h3 class="font-bold text-lg mb-2">Ещё ${lockedCount} ${sectionLabel} по подписке</h3>
-            <p class="text-sm text-white/70 mb-6 max-w-sm mx-auto">Вы попробовали демо-версию платформы. Оформите подписку, чтобы открыть весь материал.</p>
-            <a href="https://t.me/" target="_blank" class="inline-flex items-center justify-center bg-white text-slate-900 px-6 py-3 rounded-xl font-bold hover:bg-gray-100 transition">
-                Оформить подписку
+            <h3 class="font-bold text-lg mb-2">${authL(lockedCount + ' more in the full version', 'Ещё ' + lockedCount + ' ' + sectionLabel + ' в полной версии')}</h3>
+            <p class="text-sm text-white/70 mb-6 max-w-sm mx-auto">${authGuestOffer()}</p>
+            <a href="${AUTH_FULL_ACCESS_URL}" target="_blank" rel="noopener" class="inline-flex items-center justify-center bg-white text-slate-900 px-6 py-3 rounded-xl font-bold hover:bg-gray-100 transition">
+                ${authL('Get full access', 'Получить полный доступ')}
             </a>
         </div>
     `;
@@ -537,7 +662,10 @@ async function getCachedProfile() {
     const profile = await getCachedProfile();
     if (!profile) return;
     if (profile.role === 'teacher') return;   // учителю доступно всё
-    if (profile.role === 'guest') return;     // у гостя свои правила
 
-    applySectionLocks(profile);
+    // Статьи, которых нет в PAGE_SECTIONS, не прячутся до проверки (у ученицы
+    // они открываются сразу). Гостю закрытую статью закрываем, как только узнали роль.
+    if (profile.role === 'guest' && !AUTH_GATED && authGuestLockedFile(here)) { authShowGuestLocked(); return; }
+
+    applySectionLocks(profile);               // гостю — замки статей и полоска «бесплатная версия»
 })();
