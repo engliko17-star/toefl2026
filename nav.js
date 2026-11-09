@@ -16,29 +16,43 @@
 // =============================================================
 (function () {
 
+    // ---------- Язык меню ----------
+    // Берётся из i18n.js, если он подключён на странице; иначе тот же выбор
+    // из браузера (сохранённый в меню или язык браузера).
+    const LANG = (function () {
+        if (window.I18N) return window.I18N.lang;
+        try { const s = localStorage.getItem('appLang'); if (s === 'en' || s === 'ru') return s; } catch (e) {}
+        const list = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || 'en'];
+        for (const l of list) { if (/^(ru|be|uk|kk)\b/i.test(l)) return 'ru'; if (/^en\b/i.test(l)) return 'en'; }
+        return 'en';
+    })();
+    const L = (en, ru) => (LANG === 'ru' ? ru : en);
+    function setLang(l) {
+        if (window.I18N) { window.I18N.setLang(l); return; }
+        try { localStorage.setItem('appLang', l); } catch (e) {}
+        location.reload();
+    }
+
     // ---------- ПУНКТЫ МЕНЮ. Новый пункт добавляется только здесь. ----------
+    // Названия разделов TOEFL (Reading, Listening…) не переводятся — как на экзамене.
     const NAV_GROUPS = [
-        { title: 'Главное', items: [
-            { href: 'index.html',  icon: 'home',       label: 'Dashboard' },
-            { href: 'tests.html',  icon: 'file-check', label: 'Mock Tests' }
+        { title: L('Main', 'Главное'), items: [
+            { href: 'index.html',  icon: 'home',       label: L('Dashboard', 'Главная'),  short: L('Home', 'Главная') },
+            { href: 'tests.html',  icon: 'file-check', label: L('Mock Tests', 'Мок-тесты'), short: L('Mocks', 'Мок-тесты') }
         ]},
-        // ge: true — группа видна только преподавателю и ученикам, которым назначен курс General English
-        { title: 'General English', ge: true, items: [
-            { href: 'ge-courses.html', icon: 'graduation-cap', label: 'My Courses', ge: true }
-        ]},
-        { title: 'Секции TOEFL', items: [
+        { title: L('TOEFL Sections', 'Разделы TOEFL'), items: [
             { href: 'reading.html',   icon: 'book-text',  label: 'Reading' },
             { href: 'listening.html', icon: 'headphones', label: 'Listening' },
             { href: 'writing.html',   icon: 'pen-tool',   label: 'Writing' },
             { href: 'speaking.html',  icon: 'mic',        label: 'Speaking' }
         ]},
-        { title: 'Практика', items: [
-            { href: 'vocabulary.html',      icon: 'book-open',      label: 'Vocabulary' },
-            { href: 'irregular-verbs.html', icon: 'repeat',         label: 'Irregular Verbs' },
-            { href: 'lessons.html',         icon: 'message-circle', label: 'Speaking Topics' }
+        { title: L('Practice', 'Практика'), items: [
+            { href: 'vocabulary.html',      icon: 'book-open',      label: L('Vocabulary', 'Словарь') },
+            { href: 'irregular-verbs.html', icon: 'repeat',         label: L('Irregular Verbs', 'Неправильные глаголы'), short: L('Verbs', 'Глаголы') },
+            { href: 'lessons.html',         icon: 'message-circle', label: L('Speaking Topics', 'Темы для Speaking'), short: L('Topics', 'Темы') }
         ]}
     ];
-    // Пункты преподавателя — скрыты, пока роль не подтверждена
+    // Пункты преподавателя — скрыты, пока роль не подтверждена (страницы преподавателя на русском)
     const TEACHER_ITEMS = [
         { href: 'teacher-board.html', icon: 'users',  label: 'Teacher Board', id: 'teacherLinkDesktop', mid: 'teacherLinkMobile', short: 'Teacher' },
         { href: 'content-lab.html',   icon: 'flask-conical', label: 'Обкатка материала', id: 'teacherLinkLab', mid: 'teacherLinkLabMobile', short: 'Обкатка' },
@@ -75,8 +89,6 @@
         'review.html': 'vocabulary.html',
         'lesson-unit.html': 'lessons.html',
         'student-profile.html': 'teacher-board.html', 'mock-lab.html': 'content-lab.html',
-        // --- General English ---
-        'ge-lesson.html': 'ge-courses.html', 'ge-builder.html': 'ge-courses.html', 'ge-students.html': 'ge-courses.html',
 
         // Статьи обеих секций начинаются на article-, поэтому по префиксу их
         // не различить — каждая вписана явно. Новую статью добавлять сюда.
@@ -132,6 +144,17 @@
         color:#f43f5e;background:transparent;border:1px dashed transparent;font:inherit;font-size:14px;font-weight:500;cursor:pointer;white-space:nowrap;width:100%}
     .app-nav-logout:hover{background:rgba(255,241,242,.6);border-color:#ffe4e6}
     .app-nav-logout svg{width:20px;height:20px;flex-shrink:0}
+    .app-nav-lang{margin-top:auto;margin-bottom:6px;display:flex;align-items:center;gap:10px;padding:6px 12px}
+    .app-nav-lang svg{width:18px;height:18px;color:#9ca3af;flex-shrink:0}
+    .app-nav-lang-seg{display:inline-flex;background:#f3f4f6;border-radius:10px;padding:3px}
+    .app-nav-lang-seg button{border:0;background:transparent;font:inherit;font-size:12px;font-weight:700;color:#6b7280;
+        padding:4px 10px;border-radius:8px;cursor:pointer;letter-spacing:.02em}
+    .app-nav-lang-seg button:hover{color:#0f172a}
+    .app-nav-lang-seg button.is-on{background:#fff;color:#0f172a;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+    .app-nav-lang-seg button:focus-visible,.app-nav-lang-mini:focus-visible{outline:2px solid #4f46e5;outline-offset:1px}
+    .app-nav-lang-mini{display:none;border:0;background:#f3f4f6;color:#334155;font:inherit;font-size:11px;font-weight:800;
+        width:36px;height:30px;border-radius:9px;cursor:pointer;margin:0 auto}
+    .app-nav-lang + .app-nav-logout{margin-top:0}
 
     /* Свёрнутое меню — полоса с иконками */
     .app-nav.is-collapsed{width:76px;padding:24px 12px}
@@ -140,6 +163,9 @@
     .app-nav.is-collapsed .app-nav-label{display:none}
     .app-nav.is-collapsed .app-nav-title{font-size:0;height:1px;background:#f3f4f6;margin:4px 8px 10px;padding:0}
     .app-nav.is-collapsed .app-nav-link,.app-nav.is-collapsed .app-nav-logout{justify-content:center;padding:12px 0}
+    .app-nav.is-collapsed .app-nav-lang{justify-content:center;padding:6px 0}
+    .app-nav.is-collapsed .app-nav-lang svg,.app-nav.is-collapsed .app-nav-lang-seg{display:none}
+    .app-nav.is-collapsed .app-nav-lang-mini{display:block}
 
     /* Мобильное меню */
     .app-mnav{position:fixed;left:0;right:0;bottom:0;z-index:50;background:#fff;border-top:1px solid #f3f4f6;
@@ -154,6 +180,7 @@
     .app-mnav-link.is-active{color:#0f172a}
     .app-mnav-link.is-active svg{stroke-width:2.5}
     .app-mnav-link.is-logout{color:#fb7185}
+    .app-mnav-link.is-lang b{font-size:12px;font-weight:800;line-height:20px;height:20px;color:#334155}
     /* Место под мобильное меню ДОБАВЛЯЕТСЯ к отступу страницы, а не заменяет его:
        у некоторых страниц свой большой отступ (например, под таймер урока). */
     @media (max-width:767px){ body.app-has-mnav main::after{content:'';display:block;height:calc(72px + env(safe-area-inset-bottom))} }
@@ -201,9 +228,7 @@
 
     function linkHtml(item, extraClass, id) {
         const active = item.href === activeHref ? ' is-active' : '';
-        const geAttr = item.ge ? ' data-nav-ge="1"' : '';
-        const geCls = item.ge ? ' hidden' : '';
-        return `<a href="${item.href}" ${id ? `id="${id}"` : ''}${geAttr} class="app-nav-link${active}${extraClass || ''}${geCls}" title="${esc(item.label)}">
+        return `<a href="${item.href}" ${id ? `id="${id}"` : ''} class="app-nav-link${active}${extraClass || ''}" title="${esc(item.label)}">
                     <i data-lucide="${item.icon}"></i><span class="app-nav-label">${esc(item.label)}</span>
                 </a>`;
     }
@@ -218,19 +243,27 @@
     aside.innerHTML = `
         <div class="app-nav-brand">
             <a href="index.html" class="app-nav-logo"><span>TOEFL</span><i></i></a>
-            <button type="button" class="app-nav-toggle" aria-label="Свернуть меню" title="Свернуть меню">
+            <button type="button" class="app-nav-toggle" aria-label="${esc(L('Collapse menu', 'Свернуть меню'))}" title="${esc(L('Collapse menu', 'Свернуть меню'))}">
                 <i data-lucide="panel-left-close"></i>
             </button>
         </div>
         <nav class="app-nav-body">
             ${NAV_GROUPS.map(g => `
-                <div class="app-nav-group${g.ge ? ' hidden' : ''}"${g.ge ? ' data-nav-ge="1"' : ''}>
+                <div class="app-nav-group">
                     <p class="app-nav-title">${esc(g.title)}</p>
                     ${g.items.map(it => linkHtml(it)).join('')}
                 </div>`).join('')}
             ${TEACHER_ITEMS.map(it => linkHtml(it, ' is-teacher hidden', it.id)).join('')}
-            <button type="button" class="app-nav-logout" onclick="logoutUser()" title="Log Out">
-                <i data-lucide="log-out"></i><span class="app-nav-label">Log Out</span>
+            <div class="app-nav-lang" role="group" aria-label="${esc(L('Language', 'Язык'))}">
+                <i data-lucide="globe"></i>
+                <span class="app-nav-lang-seg">
+                    <button type="button" data-app-lang="en" class="${LANG === 'en' ? 'is-on' : ''}" aria-pressed="${LANG === 'en'}" lang="en">EN</button>
+                    <button type="button" data-app-lang="ru" class="${LANG === 'ru' ? 'is-on' : ''}" aria-pressed="${LANG === 'ru'}" lang="ru">RU</button>
+                </span>
+                <button type="button" class="app-nav-lang-mini" data-app-lang="${LANG === 'ru' ? 'en' : 'ru'}" title="${esc(L('Switch to Russian', 'Switch to English'))}">${LANG === 'ru' ? 'RU' : 'EN'}</button>
+            </div>
+            <button type="button" class="app-nav-logout" onclick="logoutUser()" title="${esc(L('Log Out', 'Выйти'))}">
+                <i data-lucide="log-out"></i><span class="app-nav-label">${esc(L('Log Out', 'Выйти'))}</span>
             </button>
         </nav>`;
 
@@ -244,20 +277,27 @@
     mnav.className = 'app-mnav';
     mnav.id = 'mobileBottomNav';
     mnav.innerHTML = `<div class="app-mnav-row">
-        ${allItems.map(it => `<a href="${it.href}"${it.ge ? ' data-nav-ge="1"' : ''} class="app-mnav-link${it.href === activeHref ? ' is-active' : ''}${it.ge ? ' hidden' : ''}">
-            <i data-lucide="${it.icon}"></i><span>${esc(it.label.replace('Speaking Topics', 'Topics').replace('Irregular Verbs', 'Verbs').replace('My Courses', 'Courses'))}</span></a>`).join('')}
+        ${allItems.map(it => `<a href="${it.href}" class="app-mnav-link${it.href === activeHref ? ' is-active' : ''}">
+            <i data-lucide="${it.icon}"></i><span>${esc(it.short || it.label)}</span></a>`).join('')}
         ${TEACHER_ITEMS.map(it => `<a href="${it.href}" id="${it.mid}" class="app-mnav-link hidden${it.href === activeHref ? ' is-active' : ''}">
             <i data-lucide="${it.icon}"></i><span>${esc(it.short)}</span></a>`).join('')}
-        <button type="button" class="app-mnav-link is-logout" onclick="logoutUser()"><i data-lucide="log-out"></i><span>Exit</span></button>
+        <button type="button" class="app-mnav-link is-lang" data-app-lang="${LANG === 'ru' ? 'en' : 'ru'}" aria-label="${esc(L('Switch to Russian', 'Switch to English'))}"><b>${LANG === 'ru' ? 'EN' : 'RU'}</b><span>${esc(L('Language', 'Язык'))}</span></button>
+        <button type="button" class="app-mnav-link is-logout" onclick="logoutUser()"><i data-lucide="log-out"></i><span>${esc(L('Exit', 'Выйти'))}</span></button>
     </div>`;
     document.body.appendChild(mnav);
     document.body.classList.add('app-has-mnav');
+
+    // ---------- Переключатель языка ----------
+    [aside, mnav].forEach(root => root.addEventListener('click', e => {
+        const b = e.target.closest('[data-app-lang]');
+        if (b) setLang(b.getAttribute('data-app-lang'));
+    }));
 
     // ---------- Сворачивание ----------
     const toggleBtn = aside.querySelector('.app-nav-toggle');
     function applyCollapsed(collapsed) {
         aside.classList.toggle('is-collapsed', collapsed);
-        const label = collapsed ? 'Развернуть меню' : 'Свернуть меню';
+        const label = collapsed ? L('Expand menu', 'Развернуть меню') : L('Collapse menu', 'Свернуть меню');
         toggleBtn.setAttribute('aria-label', label);
         toggleBtn.title = label;
         toggleBtn.innerHTML = `<i data-lucide="${collapsed ? 'panel-left-open' : 'panel-left-close'}"></i>`;
@@ -297,31 +337,4 @@
         }
     } catch (e) {}
 
-    // ---------- General English ----------
-    // Пункт виден преподавателю и ученикам, которым назначен хотя бы один курс GE.
-    // Чтобы пункт не «мигал», последний ответ запоминается и показывается сразу,
-    // а проверка в базе уточняет его в фоне.
-    const GE_CACHE_KEY = 'appNavGeVisible';
-    function showGe(on) {
-        document.querySelectorAll('[data-nav-ge]').forEach(el => el.classList.toggle('hidden', !on));
-    }
-    try { if (localStorage.getItem(GE_CACHE_KEY) === '1') showGe(true); } catch (e) {}
-    if (activeHref === 'ge-courses.html') showGe(true);
-    try {
-        if (typeof getCachedProfile === 'function') {
-            getCachedProfile().then(async p => {
-                if (!p) return;
-                let on = false;
-                if (p.role === 'teacher') on = true;
-                else if (p.role !== 'guest' && window.supabaseClient) {
-                    const { count, error } = await window.supabaseClient
-                        .from('ge_course_students').select('course_id', { count: 'exact', head: true });
-                    if (error) return;            // таблицы ещё нет — пункт просто не показываем
-                    on = (count || 0) > 0;
-                }
-                showGe(on || activeHref === 'ge-courses.html');
-                try { localStorage.setItem(GE_CACHE_KEY, on ? '1' : '0'); } catch (e) {}
-            }).catch(() => {});
-        }
-    } catch (e) {}
 })();
