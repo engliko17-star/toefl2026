@@ -8,6 +8,12 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
+    <script>
+        // Бесплатная версия (auth.js): в списке видны все задания, закрытые — под замочком
+        var gMerge = (table, rows, opts) => (typeof authGuestMerge === 'function' ? authGuestMerge(table, rows, opts) : Promise.resolve(rows || []));
+        var gCard = (html, row) => (typeof authGuestCard === 'function' ? authGuestCard(html, row) : html);
+        var gNote = () => (typeof authL === 'function' ? authL('Available with full access', 'Доступно в полной версии') : 'Available with full access');
+    </script>
     <script src="content-visibility.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -423,7 +429,8 @@
             }
 
             // Скрытое глазиком ученице не показываем (в мок-тестах оно остаётся)
-            mockTests = CV.visibleFor(data || [], currentUser);
+            mockTests = await gMerge('listening_tests', CV.visibleFor(data || [], currentUser),
+                { keep: r => String(r.task_type || '') === currentType });
             showList(); 
         }
 
@@ -497,7 +504,7 @@
                 const strokeDashoffset = isCompleted ? circumference - (scorePct / 100) * circumference : circumference;
                 let strokeColor = scorePct >= 80 ? '#10b981' : (scorePct >= 50 ? '#f59e0b' : '#f43f5e');
                 
-                const questionCount = Array.isArray(test.questions) ? test.questions.length : 0;
+                const questionCount = Array.isArray(test.questions) ? test.questions.length : (Number(test.questions_count) || 0);
                 const displayBadge = currentType.toUpperCase();
 
                 // Лента TOEFL в углу — как в Reading, Writing и Speaking: задание с настоящего экзамена
@@ -522,7 +529,7 @@
                                 </svg>
                                 <span class="absolute text-[11px] font-bold text-slate-800">${scorePct}%</span>
                             </div>
-                            ` : `<span class="text-xs font-bold text-gray-300">Test #${index + 1}</span>`}
+                            ` : `<span class="text-xs font-bold text-gray-300 ${test.__locked ? 'mr-7' : ''}">Test #${index + 1}</span>`}
                         </div>
                         
                         <h3 class="text-lg font-bold text-slate-900 mb-1.5">${test.title}</h3>
@@ -547,7 +554,7 @@
                         `}
                     </div>
                 `;
-                grid.innerHTML += cardHTML;
+                grid.innerHTML += gCard(cardHTML, test);
             });
             lucide.createIcons();
         }
