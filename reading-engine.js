@@ -228,6 +228,8 @@ function numberingTotal(i) {
 
 function renderDailyLifeLayout(passage, layoutType, taskTitle) {
     if (!passage) return "";
+    // Вид текста (письмо, чек, этикетка, форма…) — общий файл daily-layouts.js
+    if (window.DailyLayouts) return DailyLayouts.render(passage, layoutType, taskTitle);
     const cleanPassage = passage.replace(/[\[\]]/g, ''); 
     
     // БЕЗОПАСНО: Если макет пустой или не задан, откатываемся на дефолтный 'notice'
