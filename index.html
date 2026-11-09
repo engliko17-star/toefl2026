@@ -353,7 +353,21 @@
             'd.openPractice': ['Open practice', 'Открыть практику'],
 
             'd.faq': ['Frequently asked questions', 'Частые вопросы'],
-            'd.faqSub': ['About the exam, the Home Edition, preparing and this platform', 'Об экзамене, Home Edition, подготовке и платформе']
+            'd.faqSub': ['About the exam, the Home Edition, preparing and this platform', 'Об экзамене, Home Edition, подготовке и платформе'],
+
+            // Бесплатная версия (гость)
+            'd.guestTitle': ['Try the platform for free', 'Попробуйте платформу бесплатно'],
+            'd.guestSub': ['Every section is open to you: two tasks of each type, a mini mock and one full practice test.',
+                           'Все разделы открыты: по два задания каждого типа, мини-мок и один полный пробный тест.'],
+            'd.guestTest': ['Take the practice test', 'Пройти пробный тест'],
+            'd.guestResults': ['Practice test results', 'Результаты пробного теста'],
+            'd.guestFull': ['Get full access', 'Получить полный доступ'],
+            'd.freeTest': ['Free practice test', 'Бесплатный пробный тест'],
+            'd.freeTestSub': ['All four sections, about 1.5 hours with breaks', 'Все четыре секции, около 1,5 часа с перерывами'],
+            'd.freeTestDone': ['You’ve taken the free practice test', 'Бесплатный пробный тест пройден'],
+            'd.freeTestDoneSub': ['Writing and Speaking are checked by the teacher', 'Writing и Speaking проверит преподаватель'],
+            'd.ofFree': ['<b>{a}</b> of {b} free tasks done', 'Сделано <b>{a}</b> из {b} бесплатных'],
+            'd.free': ['Free', 'Бесплатно']
         });
         const t = (k, v) => I18N.t(k, v);
         const RU = I18N.lang === 'ru';
@@ -406,6 +420,9 @@
             return d === 1 ? t('ago.yesterday') : t('ago.n', { n: cnt(d, 'd.days') });
         }
         const isTeacher = () => currentUser && currentUser.role === 'teacher';
+        const isGuest = () => currentUser && currentUser.role === 'guest';
+        // «Получить полный доступ» — адрес из auth.js (там же поменяется на страницу оплаты)
+        const fullAccessUrl = () => (typeof AUTH_FULL_ACCESS_URL !== 'undefined' ? AUTH_FULL_ACCESS_URL : 'https://t.me/LIKO_17');
         const parseDay = s => { const p = String(s).slice(0, 10).split('-').map(Number); return new Date(p[0], p[1] - 1, p[2]); };
 
         window.onload = async () => {
@@ -415,6 +432,12 @@
             await loadProfile();
             renderGreeting();
             renderHero();
+            if (isGuest()) {
+                // У гостя нет уроков — расписание не показываем, «Сегодня» на всю ширину
+                const sched = document.querySelector('[aria-labelledby="scheduleTitle"]');
+                if (sched) sched.classList.add('hidden');
+                document.getElementById('todayList').classList.replace('lg:col-span-2', 'lg:col-span-3');
+            }
 
             // Каждый блок грузится независимо: сбой одной таблицы
             // не должен обнулять весь дашборд.
@@ -469,6 +492,20 @@
         function renderHero() {
             const title = document.getElementById('heroTitle');
             const sub = document.getElementById('heroSub');
+            if (isGuest()) {
+                // Бесплатная версия: что открыто и куда идти дальше
+                const used = !!(currentUser.profile && currentUser.profile.guest_completed_demo);
+                title.innerText = t('d.guestTitle');
+                sub.innerHTML = `${esc(t('d.guestSub'))}
+                    <span class="flex flex-wrap gap-2 mt-4">
+                        <a href="tests.html" class="inline-flex items-center gap-2 bg-white text-indigo-900 hover:bg-indigo-50 font-bold text-sm px-4 py-2.5 rounded-xl transition">
+                            <i data-lucide="file-check" class="w-4 h-4"></i>${esc(t(used ? 'd.guestResults' : 'd.guestTest'))}</a>
+                        <a href="${esc(fullAccessUrl())}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 border border-indigo-300/50 text-white hover:bg-white/10 font-bold text-sm px-4 py-2.5 rounded-xl transition">
+                            ${esc(t('d.guestFull'))}</a>
+                    </span>`;
+                icons();
+                return;
+            }
             if (!profileData || !profileData.exam_date) {
                 title.innerText = isTeacher() ? t('d.teachTitle') : t('d.keepGoing');
                 sub.innerText = isTeacher() ? t('d.teachSub') : t('d.noExamDate');
@@ -939,6 +976,13 @@
             const box = document.getElementById('todayList');
             const rows = [];
 
+            if (isGuest()) {
+                const used = !!(currentUser.profile && currentUser.profile.guest_completed_demo);
+                rows.push(todayRow(used
+                    ? { icon: 'file-check', tone: 'bg-emerald-50 text-emerald-600', title: esc(t('d.freeTestDone')), sub: esc(t('d.freeTestDoneSub')), href: 'tests.html', action: esc(t('common.open')) }
+                    : { icon: 'file-check', tone: 'bg-indigo-50 text-indigo-600', title: esc(t('d.freeTest')), sub: esc(t('d.freeTestSub')), href: 'tests.html', action: esc(t('d.start')), primary: true }));
+            }
+
             if (isTeacher()) {
                 rows.push(todayRow({ icon: 'inbox', title: 'Teacher Board', sub: esc(t('d.teacherBoardSub')), href: 'teacher-board.html?tab=review', action: esc(t('common.open')), primary: true }));
             }
@@ -1323,13 +1367,14 @@
             const c = SOFT[sec.key];
             return `<div class="mt-5 text-[34px] leading-none font-extrabold tnum" style="color:${c.ink}">${pct}%</div>
                     <div class="mt-3 h-1.5 rounded-full overflow-hidden" style="background:${c.track}"><div class="h-full rounded-full" style="width:${pct}%;background:${c.bar}"></div></div>
-                    <p class="mt-2.5 text-xs text-slate-600 tnum">${t('d.ofTasks', { a: done, b: total })}</p>`;
+                    <p class="mt-2.5 text-xs text-slate-600 tnum">${t(isGuest() ? 'd.ofFree' : 'd.ofTasks', { a: done, b: total })}</p>`;
         }
 
         async function loadSectionProgress() {
             const box = document.getElementById('sectionCards');
             const prof = currentUser.profile || {};
-            const open = sec => isTeacher() || prof[sec.access] === true;
+            // Гостю открыты все разделы: база отдаёт ему только бесплатные задания
+            const open = sec => isTeacher() || isGuest() || prof[sec.access] === true;
             box.innerHTML = SECTIONS.map(sec => open(sec)
                 ? sectionCard(sec, `<div class="mt-5 text-[34px] leading-none font-extrabold text-gray-200">—</div><div class="mt-3 h-1.5 rounded-full bg-gray-100"></div><p class="mt-2.5 text-xs text-gray-400">${esc(t('d.counting'))}</p>`)
                 : sectionCard(sec, lockedBody(), true)).join('');
