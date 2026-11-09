@@ -14,6 +14,20 @@
     'use strict';
 
     function db() { return typeof _supabase !== 'undefined' ? _supabase : null; }
+
+    // Язык карточки ученицы: из i18n.js, иначе выбор в меню или язык браузера (как в nav.js).
+    // Вкладка преподавателя в профиле ученицы остаётся на русском.
+    var RU = (function () {
+        if (window.I18N) return window.I18N.lang === 'ru';
+        try { var s = localStorage.getItem('appLang'); if (s === 'en' || s === 'ru') return s === 'ru'; } catch (e) { /* по браузеру */ }
+        var list = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || 'en'];
+        for (var i = 0; i < list.length; i++) {
+            if (/^(ru|be|uk|kk)\b/i.test(list[i])) return true;
+            if (/^en\b/i.test(list[i])) return false;
+        }
+        return false;
+    })();
+    function L(en, ru) { return RU ? ru : en; }
     function esc(s) {
         return String(s === null || s === undefined ? '' : s)
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -53,25 +67,28 @@
     }
 
     var MONTHS = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+    var MONTHS_FULL = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
     var MONTHS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     function fmtDate(iso, en) {
         var p = String(iso || '').split('-');
         if (p.length !== 3) return '';
         return en ? MONTHS_EN[(+p[1]) - 1] + ' ' + (+p[2]) : (+p[2]) + ' ' + MONTHS[(+p[1]) - 1];
     }
-    // en — подписи для ученицы (дашборд на английском), иначе по-русски (профиль)
-    function dueChip(iso, allDone, en) {
+    // forStudent — подписи для ученицы (на её языке), иначе коротко по-русски (профиль, преподаватель)
+    function dueChip(iso, allDone, forStudent) {
         if (!iso) return '';
         var p = String(iso).split('-').map(Number);
         var due = new Date(p[0], p[1] - 1, p[2]);
         var t = new Date(); t.setHours(0, 0, 0, 0);
         var days = Math.round((due - t) / 864e5);
-        var text = en ? 'Due ' + fmtDate(iso, true) : 'до ' + fmtDate(iso);
+        var en = forStudent && !RU, ruSt = forStudent && RU;
+        var dayRu = (+p[2]) + ' ' + MONTHS_FULL[(+p[1]) - 1];
+        var text = en ? 'Due ' + fmtDate(iso, true) : ruSt ? 'Срок: ' + dayRu : 'до ' + fmtDate(iso);
         var cls = 'bg-gray-50 text-gray-500 border-gray-100';
         if (!allDone) {
-            if (days < 0) { text = en ? 'Overdue, was due ' + fmtDate(iso, true) : 'просрочено · ' + fmtDate(iso); cls = 'bg-rose-50 text-rose-600 border-rose-100'; }
-            else if (days === 0) { text = en ? 'Due today' : 'сегодня'; cls = 'bg-amber-50 text-amber-700 border-amber-100'; }
-            else if (days === 1) { text = en ? 'Due tomorrow' : 'до завтра'; cls = 'bg-amber-50 text-amber-700 border-amber-100'; }
+            if (days < 0) { text = en ? 'Overdue, was due ' + fmtDate(iso, true) : ruSt ? 'Просрочено, срок был ' + dayRu : 'просрочено · ' + fmtDate(iso); cls = 'bg-rose-50 text-rose-600 border-rose-100'; }
+            else if (days === 0) { text = en ? 'Due today' : ruSt ? 'Сдать сегодня' : 'сегодня'; cls = 'bg-amber-50 text-amber-700 border-amber-100'; }
+            else if (days === 1) { text = en ? 'Due tomorrow' : ruSt ? 'Сдать завтра' : 'до завтра'; cls = 'bg-amber-50 text-amber-700 border-amber-100'; }
         }
         return '<span class="shrink-0 text-[10px] font-bold px-2 py-1 rounded-lg border ' + cls + '">' + esc(text) + '</span>';
     }
@@ -122,14 +139,14 @@
             box.innerHTML = '<div class="bg-white p-5 sm:p-6 rounded-3xl border border-amber-100 shadow-sm">'
                 + '<div class="flex items-center justify-between gap-3 mb-4">'
                 +   '<div class="flex items-center gap-3"><div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0"><i data-lucide="notebook-pen" class="w-5 h-5"></i></div>'
-                +   '<div><h3 class="text-base font-bold text-slate-900 tracking-tight">Homework</h3>'
-                +   '<p class="text-xs text-gray-500 mt-0.5">Tick each task when it\'s done, your teacher sees your progress</p></div></div>'
-                +   (left ? '<span class="shrink-0 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-100 px-2.5 py-1 rounded-lg">' + left + ' left</span>'
-                          : '<span class="shrink-0 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-lg">All done ✓</span>')
+                +   '<div><h3 class="text-base font-bold text-slate-900 tracking-tight">' + L('Homework', 'Домашнее задание') + '</h3>'
+                +   '<p class="text-xs text-gray-500 mt-0.5">' + L('Tick each task when it\'s done, your teacher sees your progress', 'Отмечайте задания, когда сделаете: преподаватель видит ваш прогресс') + '</p></div></div>'
+                +   (left ? '<span class="shrink-0 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-100 px-2.5 py-1 rounded-lg">' + L(left + ' left', 'осталось ' + left) + '</span>'
+                          : '<span class="shrink-0 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-lg">' + L('All done ✓', 'Всё сделано ✓') + '</span>')
                 + '</div>'
                 + '<div class="space-y-3">' + active.map(card).join('') + '</div>'
                 + (done.length ? '<button type="button" data-hw-showdone class="mt-3 text-xs font-bold text-gray-400 hover:text-slate-700 transition cursor-pointer">'
-                    + (showDone ? 'Hide completed' : 'Completed earlier (' + done.length + ')') + '</button>'
+                    + (showDone ? L('Hide completed', 'Скрыть выполненные') : L('Completed earlier', 'Выполненные раньше') + ' (' + done.length + ')') + '</button>'
                     + (showDone ? '<div class="space-y-3 mt-3">' + done.map(card).join('') + '</div>' : '') : '')
                 + '<p data-hw-msg class="hidden mt-3 text-xs font-medium text-rose-600"></p>'
                 + '</div>';
@@ -140,12 +157,12 @@
             var pct = h.items.length ? Math.round(h.nDone / h.items.length * 100) : 0;
             return '<div class="rounded-2xl border ' + (h.allDone ? 'border-emerald-100 bg-emerald-50/30' : 'border-gray-100 bg-gray-50/40') + ' p-4">'
                 + '<div class="flex items-start justify-between gap-3">'
-                +   '<div class="min-w-0"><h4 class="text-sm font-bold text-slate-900">' + esc(h.title || 'Homework') + '</h4>'
+                +   '<div class="min-w-0"><h4 class="text-sm font-bold text-slate-900">' + esc(h.title || L('Homework', 'Домашнее задание')) + '</h4>'
                 +   (h.note ? '<p class="text-xs text-slate-500 mt-1 whitespace-pre-line leading-relaxed">' + esc(h.note) + '</p>' : '') + '</div>'
                 +   dueChip(h.due_date, h.allDone, true)
                 + '</div>'
                 + '<div class="flex items-center gap-3 mt-3"><div class="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden"><div class="h-full ' + (h.allDone ? 'bg-emerald-500' : 'bg-amber-500') + ' rounded-full transition-all" style="width:' + pct + '%"></div></div>'
-                +   '<span class="text-[11px] font-bold text-gray-400">' + h.nDone + ' of ' + h.items.length + '</span></div>'
+                +   '<span class="text-[11px] font-bold text-gray-400">' + h.nDone + L(' of ', ' из ') + h.items.length + '</span></div>'
                 + '<ul class="mt-3 space-y-1">' + h.items.map(function (i) {
                     var url = safeUrl(i.url);
                     return '<li class="flex items-center gap-3 py-1">'
@@ -154,7 +171,7 @@
                         +   '<span class="text-sm ' + (i.done ? 'text-gray-400 line-through' : 'text-slate-700') + '">' + esc(i.text) + '</span>'
                         + '</label>'
                         + (url ? '<a href="' + esc(url) + '"' + (/^https?:/i.test(url) ? ' target="_blank" rel="noopener"' : '')
-                            + ' class="shrink-0 text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg transition flex items-center gap-1">Open <i data-lucide="arrow-right" class="w-3 h-3"></i></a>' : '')
+                            + ' class="shrink-0 text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg transition flex items-center gap-1">' + L('Open', 'Открыть') + ' <i data-lucide="arrow-right" class="w-3 h-3"></i></a>' : '')
                         + '</li>';
                 }).join('') + '</ul></div>';
         }
@@ -179,7 +196,7 @@
             if (r.error) {
                 cb.checked = !want;
                 cb.disabled = false;
-                msg('The tick wasn\'t saved. Check your connection and try again.');
+                msg(L('The tick wasn\'t saved. Check your connection and try again.', 'Отметка не сохранилась. Проверьте интернет и попробуйте ещё раз.'));
                 return;
             }
             item.done = want;
