@@ -118,7 +118,7 @@
     // ---------- Стили меню ----------
     const css = `
     .app-nav{box-sizing:border-box;width:256px;background:#fff;border-right:1px solid #f3f4f6;
-        padding:24px 16px;height:100vh;position:sticky;top:0;flex-shrink:0;display:none;
+        padding:24px 16px;height:100vh;height:100dvh;position:sticky;top:0;flex-shrink:0;display:none;
         flex-direction:column;font-size:14px;line-height:1.25;transition:width .2s ease;z-index:10;
         overflow:hidden}
     @media (min-width:768px){.app-nav{display:flex}}
@@ -289,6 +289,13 @@
                 <i data-lucide="log-out"></i><span class="app-nav-label">${esc(L('Log Out', 'Выйти'))}</span>
             </button>
         </div>`;
+
+    // Старые браузеры без 100dvh: высота меню = видимая высота окна
+    if (!(window.CSS && CSS.supports && CSS.supports('height', '100dvh'))) {
+        const fitHeight = () => { aside.style.height = window.innerHeight + 'px'; };
+        fitHeight();
+        window.addEventListener('resize', fitHeight);
+    }
 
     const placeholder = document.getElementById('app-sidebar');
     if (placeholder) placeholder.replaceWith(aside);
