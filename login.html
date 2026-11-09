@@ -3,117 +3,222 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login — TOEFL Practice</title>
+    <title>Log in — TOEFL Prep</title>
+    <script src="i18n.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f8f9fa; }
+        .field { width: 100%; padding: 12px 16px; border-radius: 12px; border: 1px solid #e5e7eb; background: #f9fafb; color: #334155; font-size: 15px; transition: border-color .15s, box-shadow .15s, background .15s; }
+        .field:focus { outline: none; border-color: #818cf8; box-shadow: 0 0 0 3px #eef2ff; background: #fff; }
+        /* Выбор «бесплатно / с преподавателем» */
+        .kind { display: block; cursor: pointer; border: 1.5px solid #e5e7eb; border-radius: 16px; padding: 14px 16px; transition: border-color .15s, background .15s; }
+        .kind:hover { border-color: #c7d2fe; }
+        .kind input { position: absolute; opacity: 0; pointer-events: none; }
+        .kind .dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #cbd5e1; flex-shrink: 0; margin-top: 2px; display: flex; align-items: center; justify-content: center; }
+        .kind.is-on { border-color: #4f46e5; background: #f5f5ff; }
+        .kind.is-on .dot { border-color: #4f46e5; }
+        .kind.is-on .dot::after { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #4f46e5; }
+        .kind:focus-within { box-shadow: 0 0 0 3px #e0e7ff; }
+        a:focus-visible, button:focus-visible { outline: 2px solid #4f46e5; outline-offset: 2px; }
     </style>
 </head>
-<body class="bg-[#f8f9fa] min-h-screen flex items-center justify-center p-4">
+<body class="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6">
 
-    <div class="bg-white w-full max-w-md rounded-3xl p-8 border border-gray-100 shadow-sm relative overflow-hidden">
-        <div class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-400 via-indigo-400 to-emerald-400"></div>
+    <!-- Язык -->
+    <div class="w-full max-w-md flex justify-end mb-3">
+        <div class="inline-flex bg-white border border-gray-200 rounded-xl p-1 text-xs font-bold" role="group" data-i18n-attr="aria-label:lang.switch" aria-label="Language">
+            <button type="button" data-lang-btn="en" class="px-3 py-1.5 rounded-lg">EN</button>
+            <button type="button" data-lang-btn="ru" class="px-3 py-1.5 rounded-lg">RU</button>
+        </div>
+    </div>
 
-        <div class="text-center mb-8 mt-2">
-            <div class="font-bold text-3xl tracking-tighter flex items-center justify-center space-x-2 mb-2">
+    <main class="bg-white w-full max-w-md rounded-3xl p-6 sm:p-8 border border-gray-100 shadow-sm">
+        <div class="text-center mb-6">
+            <div class="font-bold text-3xl tracking-tighter flex items-center justify-center gap-2 mb-2">
                 <span>TOEFL</span><span class="w-2 h-2 bg-indigo-600 rounded-full mt-2"></span>
             </div>
-            <p id="subtitle" class="text-sm text-gray-500">Войдите, чтобы продолжить занятия</p>
+            <p id="subtitle" class="text-sm text-gray-500"></p>
 
-            <!-- Явный выбор режима: раньше обе кнопки были в одной форме,
-                 и человек не понимал, регистрируется он или входит. -->
-            <div class="mt-5 bg-gray-100 p-1 rounded-2xl flex text-sm font-bold">
-                <button type="button" id="tabLogin" onclick="setMode('login')"
-                        class="flex-1 py-2 rounded-xl transition bg-white text-slate-900 shadow-xs">Вход</button>
-                <button type="button" id="tabSignup" onclick="setMode('signup')"
-                        class="flex-1 py-2 rounded-xl transition text-gray-500">Регистрация</button>
+            <div class="mt-5 bg-gray-100 p-1 rounded-2xl flex text-sm font-bold" role="tablist">
+                <button type="button" id="tabLogin" role="tab" onclick="setMode('login')" class="flex-1 py-2 rounded-xl transition" data-i18n="lg.tabLogin">Log in</button>
+                <button type="button" id="tabSignup" role="tab" onclick="setMode('signup')" class="flex-1 py-2 rounded-xl transition" data-i18n="lg.tabSignup">Sign up</button>
             </div>
         </div>
 
-        <form id="authForm" class="space-y-5" onsubmit="event.preventDefault(); submitForm();">
-            
-            <div id="errorMsg" class="hidden bg-rose-50 text-rose-600 text-sm p-3 rounded-xl border border-rose-100 text-center font-medium">
-                Error message goes here
+        <!-- Письмо отправлено (если в Supabase включено подтверждение почты) -->
+        <div id="checkMail" class="hidden text-center py-4">
+            <div class="w-14 h-14 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-4">
+                <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
             </div>
+            <h2 class="text-lg font-bold text-slate-900 mb-2" data-i18n="lg.checkTitle">Check your email</h2>
+            <p id="checkText" class="text-sm text-gray-500 leading-relaxed"></p>
+            <button type="button" onclick="setMode('login')" class="mt-6 text-sm font-bold text-indigo-600 hover:text-indigo-800" data-i18n="lg.toLogin">Go to log in</button>
+        </div>
+
+        <form id="authForm" class="space-y-4" onsubmit="event.preventDefault(); submitForm();" novalidate>
+            <div id="errorMsg" role="alert" class="hidden bg-rose-50 text-rose-600 text-sm p-3 rounded-xl border border-rose-100 text-center font-medium"></div>
+
+            <!-- Кто регистрируется -->
+            <fieldset id="kindField" class="hidden space-y-2.5">
+                <legend class="sr-only" data-i18n="lg.kindLegend">How do you want to start?</legend>
+                <label class="kind relative" data-kind="guest">
+                    <input type="radio" name="kind" value="guest">
+                    <span class="flex gap-3">
+                        <span class="dot"></span>
+                        <span class="min-w-0">
+                            <span class="block text-sm font-bold text-slate-900" data-i18n="lg.trialTitle">Try it free</span>
+                            <span class="block text-xs text-slate-500 mt-1 leading-relaxed" data-i18n="lg.trialText">Start right away. Two tasks of every type, a mini mock in each section and one full practice test.</span>
+                        </span>
+                    </span>
+                </label>
+                <label class="kind relative" data-kind="student">
+                    <input type="radio" name="kind" value="student">
+                    <span class="flex gap-3">
+                        <span class="dot"></span>
+                        <span class="min-w-0">
+                            <span class="block text-sm font-bold text-slate-900" data-i18n="lg.studentTitle">I study with a teacher</span>
+                            <span class="block text-xs text-slate-500 mt-1 leading-relaxed" data-i18n="lg.studentText">Full access. Your teacher confirms your account and opens the sections.</span>
+                        </span>
+                    </span>
+                </label>
+            </fieldset>
 
             <div id="nameField" class="hidden">
-                <label class="block text-sm font-bold text-slate-700 mb-1.5">Имя и фамилия</label>
-                <input type="text" id="fullName"
-                       class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-50 transition text-slate-700 bg-gray-50 focus:bg-white"
-                       placeholder="Анна Иванова">
-                <p class="text-[11px] text-gray-400 mt-1">Чтобы преподаватель узнал вас в списке</p>
+                <label for="fullName" class="block text-sm font-bold text-slate-700 mb-1.5" data-i18n="lg.name">Your name</label>
+                <input type="text" id="fullName" autocomplete="name" class="field" data-i18n-attr="placeholder:lg.namePh" placeholder="Anna Ivanova">
+                <p id="nameHint" class="text-[11px] text-gray-400 mt-1"></p>
             </div>
 
             <div>
-                <label class="block text-sm font-bold text-slate-700 mb-1.5">Email</label>
-                <input type="email" id="email" required 
-                       class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-50 transition text-slate-700 bg-gray-50 focus:bg-white" 
-                       placeholder="student@example.com">
+                <label for="email" class="block text-sm font-bold text-slate-700 mb-1.5" data-i18n="lg.email">Email</label>
+                <input type="email" id="email" autocomplete="email" class="field" placeholder="you@example.com">
             </div>
 
             <div>
-                <label class="block text-sm font-bold text-slate-700 mb-1.5">Password</label>
-                <input type="password" id="password" required 
-                       class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-50 transition text-slate-700 bg-gray-50 focus:bg-white" 
-                       placeholder="••••••••">
-                <p id="passHint" class="hidden text-[11px] text-gray-400 mt-1">Не короче шести символов</p>
+                <label for="password" class="block text-sm font-bold text-slate-700 mb-1.5" data-i18n="lg.password">Password</label>
+                <input type="password" id="password" autocomplete="current-password" class="field" placeholder="••••••••">
+                <p id="passHint" class="hidden text-[11px] text-gray-400 mt-1" data-i18n="lg.passHint">At least 6 characters</p>
             </div>
 
-            <div id="signupNote" class="hidden bg-indigo-50 border border-indigo-100 text-indigo-900 text-xs p-3 rounded-xl leading-relaxed">
-                После регистрации преподаватель откроет вам доступ к разделам.
-                Обычно это занимает несколько часов.
+            <div id="tgField" class="hidden">
+                <label for="telegram" class="block text-sm font-bold text-slate-700 mb-1.5">Telegram <span class="font-medium text-gray-400" data-i18n="lg.optional">(optional)</span></label>
+                <input type="text" id="telegram" autocomplete="off" class="field" placeholder="@username">
+                <p class="text-[11px] text-gray-400 mt-1" data-i18n="lg.tgHint">So your teacher can answer questions about the platform</p>
             </div>
 
-            <div class="pt-2">
-                <button type="submit" id="submitBtn"
-                        class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 rounded-2xl transition text-sm flex justify-center items-center disabled:opacity-60">
-                    <span id="submitText">Войти</span>
-                    <i data-lucide="arrow-right" class="w-4 h-4 ml-2"></i>
+            <div class="pt-1">
+                <button type="submit" id="submitBtn" class="w-full bg-slate-900 hover:bg-indigo-600 text-white font-bold py-3.5 rounded-2xl transition text-sm flex justify-center items-center gap-2 disabled:opacity-60 cursor-pointer">
+                    <span id="submitText">Log in</span>
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
                 </button>
             </div>
         </form>
-    </div>
+    </main>
 
     <script>
-        lucide.createIcons();
+        I18N.add({
+            'lg.title': ['Log in — TOEFL Prep', 'Вход — подготовка к TOEFL'],
+            'lg.tabLogin': ['Log in', 'Вход'],
+            'lg.tabSignup': ['Sign up', 'Регистрация'],
+            'lg.subLogin': ['Log in to continue your practice', 'Войдите, чтобы продолжить занятия'],
+            'lg.subSignup': ['Create an account in a minute', 'Создайте аккаунт — это займёт минуту'],
+            'lg.kindLegend': ['How do you want to start?', 'Как вы хотите начать?'],
+            'lg.trialTitle': ['Try it free', 'Попробовать бесплатно'],
+            'lg.trialText': ['Start right away. Two tasks of every type, a mini mock in each section and one full practice test.',
+                             'Сразу, без ожидания: по два задания каждого типа, мини-мок в каждом разделе и один полный пробный тест.'],
+            'lg.studentTitle': ['I study with a teacher', 'Я занимаюсь с преподавателем'],
+            'lg.studentText': ['Full access. Your teacher confirms your account and opens the sections.',
+                               'Полный доступ. Преподаватель подтвердит аккаунт и откроет разделы.'],
+            'lg.name': ['Your name', 'Как вас зовут'],
+            'lg.namePh': ['Anna Ivanova', 'Анна Иванова'],
+            'lg.nameHintStudent': ['First and last name, so your teacher finds you in the list', 'Имя и фамилия — чтобы преподаватель нашёл вас в списке'],
+            'lg.email': ['Email', 'Почта'],
+            'lg.password': ['Password', 'Пароль'],
+            'lg.passHint': ['At least 6 characters', 'Не короче шести символов'],
+            'lg.optional': ['(optional)', '(необязательно)'],
+            'lg.tgHint': ['So your teacher can answer questions about the platform', 'Чтобы преподаватель мог ответить на вопросы о платформе'],
+            'lg.btnLogin': ['Log in', 'Войти'],
+            'lg.btnTrial': ['Start free', 'Начать бесплатно'],
+            'lg.btnStudent': ['Create account', 'Зарегистрироваться'],
+            'lg.busyLogin': ['Logging in…', 'Входим…'],
+            'lg.busySignup': ['Creating your account…', 'Создаём аккаунт…'],
+            'lg.checkTitle': ['Check your email', 'Проверьте почту'],
+            'lg.checkText': ['We sent a link to {email}. Open it to finish signing up, then log in here.',
+                             'Мы отправили ссылку на {email}. Откройте её, чтобы завершить регистрацию, и войдите здесь.'],
+            'lg.toLogin': ['Go to log in', 'Перейти ко входу'],
+            'lg.errFill': ['Enter your email and password.', 'Введите почту и пароль.'],
+            'lg.errName': ['Enter your name.', 'Укажите имя.'],
+            'lg.errKind': ['Choose how you want to start.', 'Выберите, как вы хотите начать.'],
+            'lg.errShort': ['The password must be at least 6 characters.', 'Пароль должен быть не короче шести символов.'],
+            'lg.errWrong': ['Wrong email or password.', 'Неверная почта или пароль.'],
+            'lg.errExists': ['This email is already registered. Switch to Log in.', 'Такая почта уже зарегистрирована. Переключитесь на «Вход».'],
+            'lg.errEmail': ['Check the email address: it looks like a typo.', 'Проверьте адрес почты: похоже, в нём опечатка.'],
+            'lg.errRate': ['Too many attempts. Wait a minute and try again.', 'Слишком много попыток подряд. Подождите минуту.'],
+            'lg.errConfirm': ['Confirm your email first: open the link from the email we sent.', 'Сначала подтвердите почту: откройте ссылку из письма.'],
+            'lg.errClosed': ['Sign-up is closed right now. Please contact your teacher.', 'Регистрация сейчас закрыта. Напишите преподавателю.'],
+            'lg.errGeneric': ['Something went wrong. Please try again.', 'Что-то пошло не так. Попробуйте ещё раз.']
+        });
+        const t = (k, v) => I18N.t(k, v);
+        document.title = t('lg.title');
 
         let mode = 'login';
+        let kind = null;   // 'guest' | 'student'
 
-        // Проверяем сессию при загрузке
-        window.onload = async () => {
-            const { data: { session } } = await _supabase.auth.getSession();
-            if (session) window.location.href = 'index.html';
-        };
+        // Язык
+        document.querySelectorAll('[data-lang-btn]').forEach(b => {
+            const on = b.getAttribute('data-lang-btn') === I18N.lang;
+            b.className = 'px-3 py-1.5 rounded-lg transition ' + (on ? 'bg-slate-900 text-white' : 'text-gray-500 hover:text-slate-900');
+            b.setAttribute('aria-pressed', on ? 'true' : 'false');
+            b.addEventListener('click', () => I18N.setLang(b.getAttribute('data-lang-btn')));
+        });
 
-        // Переключение режима. Раньше обе кнопки жили в одной форме, и человек
-        // нажимал «Sign Up», не понимая, что поля заполняются заранее.
+        // Уже вошли — сразу на главную
+        window.addEventListener('load', async () => {
+            try {
+                const { data: { session } } = await _supabase.auth.getSession();
+                if (session) window.location.href = 'index.html';
+            } catch (e) { /* остаёмся на странице входа */ }
+        });
+
+        function setKind(k) {
+            kind = k;
+            document.querySelectorAll('.kind').forEach(el => {
+                const on = el.getAttribute('data-kind') === k;
+                el.classList.toggle('is-on', on);
+                el.querySelector('input').checked = on;
+            });
+            document.getElementById('tgField').classList.toggle('hidden', !(mode === 'signup' && k === 'guest'));
+            const hint = document.getElementById('nameHint');
+            hint.textContent = k === 'student' ? t('lg.nameHintStudent') : '';
+            hint.classList.toggle('hidden', k !== 'student');
+            setBusy(false);
+        }
+        document.querySelectorAll('.kind input').forEach(inp => inp.addEventListener('change', () => setKind(inp.value)));
+
         function setMode(next) {
             mode = next;
             const signup = next === 'signup';
-
-            document.getElementById('tabLogin').className =
-                'flex-1 py-2 rounded-xl transition ' + (signup ? 'text-gray-500' : 'bg-white text-slate-900 shadow-xs');
-            document.getElementById('tabSignup').className =
-                'flex-1 py-2 rounded-xl transition ' + (signup ? 'bg-white text-slate-900 shadow-xs' : 'text-gray-500');
-
-            document.getElementById('subtitle').innerText = signup
-                ? 'Создайте аккаунт — это займёт минуту'
-                : 'Войдите, чтобы продолжить занятия';
-            document.getElementById('submitText').innerText = signup ? 'Зарегистрироваться' : 'Войти';
-
-            ['nameField', 'passHint', 'signupNote'].forEach(id =>
-                document.getElementById(id).classList.toggle('hidden', !signup));
-
+            const tabOn = 'flex-1 py-2 rounded-xl transition bg-white text-slate-900 shadow-sm';
+            const tabOff = 'flex-1 py-2 rounded-xl transition text-gray-500 hover:text-slate-800';
+            document.getElementById('tabLogin').className = signup ? tabOff : tabOn;
+            document.getElementById('tabSignup').className = signup ? tabOn : tabOff;
+            document.getElementById('tabLogin').setAttribute('aria-selected', String(!signup));
+            document.getElementById('tabSignup').setAttribute('aria-selected', String(signup));
+            document.getElementById('subtitle').textContent = t(signup ? 'lg.subSignup' : 'lg.subLogin');
+            ['kindField', 'nameField', 'passHint'].forEach(id => document.getElementById(id).classList.toggle('hidden', !signup));
+            document.getElementById('password').setAttribute('autocomplete', signup ? 'new-password' : 'current-password');
+            document.getElementById('authForm').classList.remove('hidden');
+            document.getElementById('checkMail').classList.add('hidden');
+            setKind(kind);
             hideError();
         }
 
         function showError(msg) {
             const el = document.getElementById('errorMsg');
-            el.innerText = msg;
+            el.textContent = msg;
             el.classList.remove('hidden');
             setBusy(false);
         }
@@ -122,9 +227,10 @@
         function setBusy(on) {
             const btn = document.getElementById('submitBtn');
             btn.disabled = on;
-            document.getElementById('submitText').innerText = on
-                ? (mode === 'signup' ? 'Создаём аккаунт…' : 'Входим…')
-                : (mode === 'signup' ? 'Зарегистрироваться' : 'Войти');
+            let label;
+            if (mode === 'login') label = on ? 'lg.busyLogin' : 'lg.btnLogin';
+            else label = on ? 'lg.busySignup' : (kind === 'student' ? 'lg.btnStudent' : 'lg.btnTrial');
+            document.getElementById('submitText').textContent = t(label);
         }
 
         function submitForm() {
@@ -134,22 +240,21 @@
 
         // Понятные сообщения вместо английских от Supabase
         function humanError(error) {
-            const m = (error && error.message || '').toLowerCase();
-            if (m.includes('invalid login')) return 'Неверная почта или пароль.';
-            if (m.includes('already registered') || m.includes('already exists'))
-                return 'Такая почта уже зарегистрирована. Переключитесь на «Вход».';
-            if (m.includes('password') && m.includes('6')) return 'Пароль должен быть не короче шести символов.';
-            if (m.includes('email') && (m.includes('invalid') || m.includes('validate')))
-                return 'Проверьте адрес почты — похоже, он введён с опечаткой.';
-            if (m.includes('rate limit')) return 'Слишком много попыток подряд. Подождите минуту.';
-            return error && error.message ? error.message : 'Что-то пошло не так. Попробуйте ещё раз.';
+            const m = String((error && error.message) || '').toLowerCase();
+            if (m.includes('invalid login')) return t('lg.errWrong');
+            if (m.includes('already registered') || m.includes('already exists')) return t('lg.errExists');
+            if (m.includes('not confirmed')) return t('lg.errConfirm');
+            if (m.includes('signups not allowed') || m.includes('signup is disabled')) return t('lg.errClosed');
+            if (m.includes('password') && m.includes('6')) return t('lg.errShort');
+            if (m.includes('email') && (m.includes('invalid') || m.includes('validate'))) return t('lg.errEmail');
+            if (m.includes('rate limit') || m.includes('too many')) return t('lg.errRate');
+            return t('lg.errGeneric');
         }
 
         async function handleLogin() {
             const email = document.getElementById('email').value.trim();
             const password = document.getElementById('password').value;
-            if (!email || !password) return showError('Введите почту и пароль.');
-
+            if (!email || !password) return showError(t('lg.errFill'));
             setBusy(true);
             const { error } = await _supabase.auth.signInWithPassword({ email, password });
             if (error) return showError(humanError(error));
@@ -160,34 +265,44 @@
             const name = document.getElementById('fullName').value.trim();
             const email = document.getElementById('email').value.trim();
             const password = document.getElementById('password').value;
-
-            if (!name) return showError('Укажите имя и фамилию — так преподаватель найдёт вас в списке.');
-            if (!email || !password) return showError('Введите почту и пароль.');
-            if (password.length < 6) return showError('Пароль должен быть не короче шести символов.');
+            const telegram = document.getElementById('telegram').value.trim();
+            if (!kind) return showError(t('lg.errKind'));
+            if (!name) return showError(t('lg.errName'));
+            if (!email || !password) return showError(t('lg.errFill'));
+            if (password.length < 6) return showError(t('lg.errShort'));
 
             setBusy(true);
-            // Имя передаём сразу при регистрации, чтобы оно попало в профиль
-            const { data, error } = await _supabase.auth.signUp({
-                email, password, options: { data: { full_name: name } }
-            });
+            // Роль ставит база по signup_kind (guest_access.sql): гость открыт сразу,
+            // ученица ждёт подтверждения преподавателя
+            const meta = { full_name: name, signup_kind: kind };
+            if (kind === 'guest' && telegram) meta.telegram = telegram.slice(0, 64);
+            const { data, error } = await _supabase.auth.signUp({ email, password, options: { data: meta } });
             if (error) return showError(humanError(error));
 
-            const { error: loginError } = await _supabase.auth.signInWithPassword({ email, password });
-            if (loginError) {
-                setMode('login');
-                return showError('Аккаунт создан. Теперь войдите с этой почтой и паролем.');
+            // С включённым подтверждением почты Supabase не говорит «уже есть»,
+            // а возвращает пользователя без входа и без identities
+            if (data && data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+                return showError(t('lg.errExists'));
             }
-
-            // Записываем имя в профиль: триггер мог создать строку без него
-            try {
-                const { data: { user } } = await _supabase.auth.getUser();
-                if (user) await _supabase.from('profiles').update({ full_name: name }).eq('id', user.id);
-            } catch (e) { console.warn('Имя не сохранилось в профиль:', e); }
-
+            if (!data || !data.session) {
+                // Ждём подтверждения почты
+                document.getElementById('authForm').classList.add('hidden');
+                document.getElementById('checkText').textContent = t('lg.checkText', { email });
+                document.getElementById('checkMail').classList.remove('hidden');
+                return;
+            }
             window.location.href = 'index.html';
         }
 
-        setMode('login');
+        // Ссылка «попробовать бесплатно»: login.html?signup=trial (и старая guest.html)
+        (function () {
+            const p = new URLSearchParams(location.search);
+            const s = (p.get('signup') || '').toLowerCase();
+            if (s === 'trial' || s === 'guest') { kind = 'guest'; setMode('signup'); }
+            else if (s === 'student') { kind = 'student'; setMode('signup'); }
+            else if (s) setMode('signup');
+            else setMode('login');
+        })();
     </script>
 </body>
 </html>
