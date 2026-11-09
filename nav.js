@@ -120,7 +120,7 @@
     .app-nav{box-sizing:border-box;width:256px;background:#fff;border-right:1px solid #f3f4f6;
         padding:24px 16px;height:100vh;position:sticky;top:0;flex-shrink:0;display:none;
         flex-direction:column;font-size:14px;line-height:1.25;transition:width .2s ease;z-index:10;
-        overflow-y:auto;overflow-x:hidden}
+        overflow:hidden}
     @media (min-width:768px){.app-nav{display:flex}}
     .app-nav *{box-sizing:border-box}
     .app-nav-brand{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding:0 8px;min-height:32px}
@@ -129,7 +129,9 @@
     .app-nav-toggle{border:0;background:transparent;color:#9ca3af;cursor:pointer;padding:6px;border-radius:8px;display:flex}
     .app-nav-toggle:hover{background:#f9fafb;color:#334155}
     .app-nav-toggle svg{width:18px;height:18px}
-    .app-nav-body{flex:1;display:flex;flex-direction:column}
+    .app-nav-body{flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden;
+        margin:0 -6px;padding:0 6px;scrollbar-width:thin;scrollbar-color:#e5e7eb transparent}
+    .app-nav-foot{flex-shrink:0;margin-top:8px;padding-top:10px;border-top:1px solid #f3f4f6}
     .app-nav-group{margin-bottom:16px}
     .app-nav-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;padding:0 12px;margin-bottom:6px;white-space:nowrap}
     .app-nav-link{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;color:#9ca3af;
@@ -140,11 +142,11 @@
     .app-nav-link.is-teacher{background:#eef2ff;color:#4338ca;font-weight:700;border:1px solid #c7d2fe}
     .app-nav-link.is-teacher:hover{background:#e0e7ff}
     .app-nav-link.is-teacher.is-active{background:#4338ca;color:#fff}
-    .app-nav-logout{margin-top:auto;display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;
+    .app-nav-logout{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;
         color:#f43f5e;background:transparent;border:1px dashed transparent;font:inherit;font-size:14px;font-weight:500;cursor:pointer;white-space:nowrap;width:100%}
     .app-nav-logout:hover{background:rgba(255,241,242,.6);border-color:#ffe4e6}
     .app-nav-logout svg{width:20px;height:20px;flex-shrink:0}
-    .app-nav-lang{margin-top:auto;margin-bottom:6px;display:flex;align-items:center;gap:10px;padding:6px 12px}
+    .app-nav-lang{margin-bottom:4px;display:flex;align-items:center;gap:10px;padding:6px 12px}
     .app-nav-lang svg{width:18px;height:18px;color:#9ca3af;flex-shrink:0}
     .app-nav-lang-seg{display:inline-flex;background:#f3f4f6;border-radius:10px;padding:3px}
     .app-nav-lang-seg button{border:0;background:transparent;font:inherit;font-size:12px;font-weight:700;color:#6b7280;
@@ -154,8 +156,6 @@
     .app-nav-lang-seg button:focus-visible,.app-nav-lang-mini:focus-visible{outline:2px solid #4f46e5;outline-offset:1px}
     .app-nav-lang-mini{display:none;border:0;background:#f3f4f6;color:#334155;font:inherit;font-size:11px;font-weight:800;
         width:36px;height:30px;border-radius:9px;cursor:pointer;margin:0 auto}
-    .app-nav-lang + .app-nav-logout{margin-top:0}
-
     /* Свёрнутое меню — полоса с иконками */
     .app-nav.is-collapsed{width:76px;padding:24px 12px}
     .app-nav.is-collapsed .app-nav-brand{justify-content:center;padding:0}
@@ -166,6 +166,27 @@
     .app-nav.is-collapsed .app-nav-lang{justify-content:center;padding:6px 0}
     .app-nav.is-collapsed .app-nav-lang svg,.app-nav.is-collapsed .app-nav-lang-seg{display:none}
     .app-nav.is-collapsed .app-nav-lang-mini{display:block}
+
+    /* Невысокий экран (ноутбук): пункты плотнее, чтобы всё помещалось без прокрутки */
+    @media (max-height:860px){
+        .app-nav{padding:18px 14px}
+        .app-nav-brand{margin-bottom:14px}
+        .app-nav-group{margin-bottom:10px}
+        .app-nav-title{margin-bottom:4px}
+        .app-nav-link,.app-nav-logout{padding:8px 12px}
+        .app-nav.is-collapsed{padding:18px 12px}
+        .app-nav.is-collapsed .app-nav-link,.app-nav.is-collapsed .app-nav-logout{padding:10px 0}
+    }
+    @media (max-height:720px){
+        .app-nav{padding:14px 12px}
+        .app-nav-brand{margin-bottom:10px}
+        .app-nav-group{margin-bottom:6px}
+        .app-nav-link,.app-nav-logout{padding:6px 12px}
+        .app-nav-foot{margin-top:6px;padding-top:6px}
+        .app-nav.is-collapsed{padding:14px 12px}
+        .app-nav.is-collapsed .app-nav-link,.app-nav.is-collapsed .app-nav-logout{padding:8px 0}
+        .app-nav.is-collapsed .app-nav-title{margin:2px 8px 6px}
+    }
 
     /* Мобильное меню */
     .app-mnav{position:fixed;left:0;right:0;bottom:0;z-index:50;background:#fff;border-top:1px solid #f3f4f6;
@@ -254,6 +275,8 @@
                     ${g.items.map(it => linkHtml(it)).join('')}
                 </div>`).join('')}
             ${TEACHER_ITEMS.map(it => linkHtml(it, ' is-teacher hidden', it.id)).join('')}
+        </nav>
+        <div class="app-nav-foot">
             <div class="app-nav-lang" role="group" aria-label="${esc(L('Language', 'Язык'))}">
                 <i data-lucide="globe"></i>
                 <span class="app-nav-lang-seg">
@@ -265,7 +288,7 @@
             <button type="button" class="app-nav-logout" onclick="logoutUser()" title="${esc(L('Log Out', 'Выйти'))}">
                 <i data-lucide="log-out"></i><span class="app-nav-label">${esc(L('Log Out', 'Выйти'))}</span>
             </button>
-        </nav>`;
+        </div>`;
 
     const placeholder = document.getElementById('app-sidebar');
     if (placeholder) placeholder.replaceWith(aside);
