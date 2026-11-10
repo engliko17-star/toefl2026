@@ -216,6 +216,7 @@
 
     <script src="passage-markup.js"></script>
     <script src="daily-layouts.js"></script>
+    <script src="toefl-scoring.js"></script>
     <script src="reading-engine.js"></script>
     <script src="listening-engine.js"></script>
     <script src="writing-engine.js"></script>
@@ -425,7 +426,12 @@
                 if (error) throw error;
             } else {
                 if (!item.attemptDone) {
-                    const { error } = await supabaseClient.from(item.attempt.table).insert([item.attempt.row]);
+                    let { error } = await supabaseClient.from(item.attempt.table).insert([item.attempt.row]);
+                    // Необязательной колонки (score_details) ещё нет в базе — сохраняем без неё
+                    if (error && item.attempt.optional && /column|schema cache/i.test(error.message || '')) {
+                        item.attempt.optional.forEach(k => { delete item.attempt.row[k]; });
+                        ({ error } = await supabaseClient.from(item.attempt.table).insert([item.attempt.row]));
+                    }
                     if (error && !mtIsDuplicate(error)) throw error;
                     item.attemptDone = true;
                     mtPendingUpdate(item);
