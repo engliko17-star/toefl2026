@@ -52,6 +52,12 @@
         @media (hover: none), (pointer: coarse), (max-width: 1023px) {
             #reviewTranscript { height: auto !important; max-height: none !important; overflow: visible !important; }
             #reviewCard { position: static !important; }
+            /* Разбор листается всей страницей, как обычный сайт, а не окошком внутри неё.
+               У короткого разбора (Conversation и Announcement — по 2 вопроса) внутреннее окошко
+               на планшете быстро упиралось в край и гасило жест: страница ехала рывками,
+               в несколько заходов. У Academic Talk (4 вопроса) до края далеко — там было плавно. */
+            body.pv-review main { height: auto !important; min-height: 100vh; overflow: visible !important; }
+            body.pv-review #viewContainer { overflow: visible !important; flex: none !important; }
         }
     </style>
 </head>
@@ -237,51 +243,15 @@
             visibleFor(rows) { return (rows || []).filter(r => r.is_hidden !== true); }
         };
 
-        // Картинка к заданию: нет ссылки или файл не загрузился — блок скрыт (вместо значка «битой» картинки).
-        // Большие фото (3–5 тыс. пикселей, несколько мегабайт) планшет заново перерисовывает
-        // во время прокрутки — страница с такой картинкой листается рывками (у Academic Talk
-        // картинок почти нет, поэтому там было плавно). Поэтому один раз, сразу после загрузки,
-        // уменьшаем картинку до CTX_MAX_W пикселей по ширине — этого хватает даже на чёткий экран.
-        // Если хранилище не разрешает обработку (CORS) — показываем как раньше, без уменьшения.
-        const CTX_MAX_W = 1200;
-        const ctxCache = {};   // ссылка → Promise(адрес уменьшенной картинки или исходный)
-        function ctxSmall(u) {
-            if (!ctxCache[u]) {
-                ctxCache[u] = new Promise(resolve => {
-                    const probe = new Image();
-                    probe.crossOrigin = 'anonymous';
-                    probe.decoding = 'async';
-                    probe.onload = () => {
-                        try {
-                            if (probe.naturalWidth > CTX_MAX_W) {
-                                const w = CTX_MAX_W, h = Math.max(1, Math.round(probe.naturalHeight * w / probe.naturalWidth));
-                                const cv = document.createElement('canvas');
-                                cv.width = w; cv.height = h;
-                                cv.getContext('2d').drawImage(probe, 0, 0, w, h);
-                                const type = /\.png(\?|$)/i.test(u) ? 'image/png' : 'image/jpeg';
-                                cv.toBlob(b => resolve(b ? URL.createObjectURL(b) : u), type, 0.86);
-                                return;
-                            }
-                        } catch (e) { /* без разрешения на обработку — исходная картинка */ }
-                        resolve(u);
-                    };
-                    probe.onerror = () => resolve(u);
-                    probe.src = u;
-                });
-            }
-            return ctxCache[u];
-        }
+        // Картинка к заданию: нет ссылки или файл не загрузился — блок скрыт (вместо значка «битой» картинки)
         function setCtxImage(id, url) {
             const img = document.getElementById(id);
             if (!img) return;
             const u = String(url || '').trim();
-            const token = (img.__ctxToken = (img.__ctxToken || 0) + 1);
             img.onload = () => img.classList.remove('is-missing');
             img.onerror = () => { img.classList.add('is-missing'); img.removeAttribute('src'); };
             img.classList.add('is-missing');
-            img.removeAttribute('src');
-            if (!/^https?:\/\//i.test(u)) return;
-            ctxSmall(u).then(src => { if (img.__ctxToken === token) img.src = src; });
+            if (/^https?:\/\//i.test(u)) img.src = u; else img.removeAttribute('src');
         }
 
         let mockTests = [];
@@ -511,6 +481,8 @@
         }
 
         function hideAllViews() {
+            // Разбор листается всей страницей (на планшете и телефоне) — при уходе с него возвращаем как было
+            if (document.body.classList.contains('pv-review')) { document.body.classList.remove('pv-review'); window.scrollTo(0, 0); }
             stopTimer(); // Останавливаем таймер при переключении видов для безопасности
             // Разбор продолжал играть в фоне, а со следующим тестом звучали две дорожки
             ['activeAudioPlayer', 'reviewAudioPlayer'].forEach(id => { const a = document.getElementById(id); if (a) a.pause(); });
@@ -852,6 +824,8 @@
             const answersByIndex = parseAnswers(savedResult.user_answers) || {};
 
             hideAllViews();
+            document.body.classList.add('pv-review');
+            window.scrollTo(0, 0);
             document.getElementById('view-results').classList.remove('hidden');
             document.getElementById('pageTitle').innerText = "Results: " + currentTest.title;
 
