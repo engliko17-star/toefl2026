@@ -37,6 +37,22 @@
             background-color: #2563eb !important;
             box-shadow: inset 0 0 0 2.5px white;
         }
+
+        /* Картинка к заданию — целиком, без обрезки. Раньше рамка 16:9 с обрезкой
+           (object-cover) отрезала у вытянутых картинок почти всё. Нет картинки или
+           она не загрузилась — блок просто не показывается. */
+        .ctx-img { display: block; width: 100%; height: auto; max-height: 320px; object-fit: contain; background: #f1f5f9; }
+        .ctx-img.is-missing { display: none !important; }
+
+        /* Планшет и телефон: у разбора одна прокрутка на всю страницу. Расшифровка
+           больше не окошко со своей прокруткой, левая колонка не «прилипает».
+           Раньше палец попадал в расшифровку, она листалась вместо страницы,
+           и страница ехала рывками, в несколько заходов. */
+        @media (hover: none), (pointer: coarse), (max-width: 1023px) {
+            #reviewTranscript { height: auto !important; max-height: none !important; overflow: visible !important; }
+            #reviewCard { position: static !important; }
+            #reviewTranscriptBelow #reviewTranscriptBlock { margin-top: 0; padding-top: 0; border-top: 0; }
+        }
     </style>
 </head>
 <body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex flex-col md:flex-row">
@@ -107,7 +123,7 @@
                 </div>
 
                 <div id="test-audio-phase" class="flex-1 flex flex-col items-center justify-center fade-in">
-                    <img id="testImageMain" src="" alt="Context" class="w-full max-w-md rounded-xl shadow-sm mb-6 border border-slate-200/60 object-cover aspect-video">
+                    <img id="testImageMain" alt="Context" decoding="async" class="ctx-img is-missing w-full max-w-md rounded-xl shadow-sm mb-6 border border-slate-200/60">
                     <div class="bg-white p-6 rounded-2xl border border-slate-200/60 w-full max-w-md text-center shadow-sm">
                         <p class="text-sm font-bold text-slate-800 mb-4">Listen to the audio track. The questions appear when it ends.</p>
                         <audio id="activeAudioPlayer" class="w-full mb-4" controls controlsList="nodownload noplaybackrate"></audio>
@@ -123,7 +139,7 @@
                 <div id="test-questions-phase" class="hidden flex-col md:flex-row gap-8 pb-10 max-w-4xl mx-auto w-full fade-in">
                     <div class="md:w-1/3 shrink-0">
                         <div class="sticky top-4">
-                            <img id="testImageSide" src="" alt="Context" class="w-full rounded-xl border border-slate-200/80 object-cover aspect-video mb-4">
+                            <img id="testImageSide" alt="Context" decoding="async" class="ctx-img is-missing w-full rounded-xl border border-slate-200/80 mb-4">
                             <div class="bg-slate-50 text-slate-600 text-xs p-4 rounded-xl font-medium border border-slate-200/80">
                                 <span id="qProgressCounter" class="font-bold text-slate-800 block mb-1">Question 1 of 4</span>
                                 Listen carefully and answer based on your notes.
@@ -165,10 +181,10 @@
 
                 <div class="flex flex-col lg:flex-row gap-8 pb-10">
                     <div class="lg:w-2/5 shrink-0 space-y-6">
-                        <div class="bg-white p-5 rounded-2xl border border-slate-200/60 shadow-sm sticky top-4">
-                            <img id="reviewImage" src="" alt="Context" class="w-full rounded-xl border border-slate-100 object-cover aspect-video mb-4">
+                        <div id="reviewCard" class="bg-white p-5 rounded-2xl border border-slate-200/60 shadow-sm sticky top-4">
+                            <img id="reviewImage" alt="Context" decoding="async" class="ctx-img is-missing w-full rounded-xl border border-slate-100 mb-4">
                             <audio id="reviewAudioPlayer" class="w-full mb-4" controls></audio>
-                            <div class="mt-4 pt-4 border-t border-slate-100">
+                            <div id="reviewTranscriptBlock" class="mt-4 pt-4 border-t border-slate-100">
                                 <h4 class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Transcript</h4>
                                 <div id="reviewTranscript" class="h-64 overflow-y-auto text-sm text-slate-600 leading-relaxed space-y-3 pr-2 whitespace-pre-wrap"></div>
                             </div>
@@ -180,6 +196,8 @@
                         </div>
                     </div>
                 </div>
+                <!-- Планшет и телефон: расшифровка — отдельной карточкой под вопросами (см. placeTranscript) -->
+                <div id="reviewTranscriptBelow" class="hidden bg-white p-5 rounded-2xl border border-slate-200/60 shadow-sm mb-10"></div>
             </div>
 
         </div>
@@ -220,6 +238,32 @@
             init() {}, cardClass() { return ''; }, withEye(html) { return html; }, eye() { return ''; },
             visibleFor(rows) { return (rows || []).filter(r => r.is_hidden !== true); }
         };
+
+        // Картинка к заданию: нет ссылки или файл не загрузился — блок скрыт (вместо значка «битой» картинки)
+        function setCtxImage(id, url) {
+            const img = document.getElementById(id);
+            if (!img) return;
+            const u = String(url || '').trim();
+            img.onload = () => img.classList.remove('is-missing');
+            img.onerror = () => { img.classList.add('is-missing'); img.removeAttribute('src'); };
+            img.classList.add('is-missing');
+            if (/^https?:\/\//i.test(u)) img.src = u; else img.removeAttribute('src');
+        }
+
+        // Планшет и телефон: расшифровка уходит под вопросы, отдельной карточкой, и листается
+        // вместе со страницей. На компьютере остаётся в левой колонке, в окошке.
+        const TOUCH_LAYOUT = '(hover: none), (pointer: coarse), (max-width: 1023px)';
+        function placeTranscript() {
+            const block = document.getElementById('reviewTranscriptBlock');
+            const below = document.getElementById('reviewTranscriptBelow');
+            const card = document.getElementById('reviewCard');
+            if (!block || !below || !card) return;
+            const touch = window.matchMedia(TOUCH_LAYOUT).matches;
+            if (touch && block.parentElement !== below) below.appendChild(block);
+            if (!touch && block.parentElement !== card) card.appendChild(block);
+            below.classList.toggle('hidden', !touch);
+        }
+        try { window.matchMedia(TOUCH_LAYOUT).addEventListener('change', placeTranscript); } catch (e) {}
 
         let mockTests = [];
         let currentTest = null;
@@ -580,7 +624,7 @@
             
             document.getElementById('toeflTopbarControls').classList.add('invisible');
 
-            document.getElementById('testImageMain').src = currentTest.image_url || '';
+            setCtxImage('testImageMain', currentTest.image_url);
             const audioPlayer = document.getElementById('activeAudioPlayer');
             audioPlayer.src = currentTest.audio_url;
             
@@ -602,7 +646,7 @@
 
             document.getElementById('toeflTopbarControls').classList.remove('invisible');
 
-            document.getElementById('testImageSide').src = currentTest.image_url || '';
+            setCtxImage('testImageSide', currentTest.image_url);
 
             currentQuestionIndex = 0;
             userAnswers = {};
@@ -796,9 +840,10 @@
             paintNextTest(testId);
             showSaveError(savedResult._unsaved ? 'нет связи с базой' : null);
             
-            document.getElementById('reviewImage').src = currentTest.image_url || '';
+            setCtxImage('reviewImage', currentTest.image_url);
             document.getElementById('reviewAudioPlayer').src = currentTest.audio_url;
             document.getElementById('reviewTranscript').innerText = currentTest.transcript || '';
+            placeTranscript();
 
             const container = document.getElementById('reviewQuestionsContainer');
             container.innerHTML = '';
