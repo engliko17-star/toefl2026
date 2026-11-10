@@ -32,6 +32,21 @@
         .word-slot:empty { background: rgba(99, 102, 241, 0.06); border-radius: 8px 8px 0 0; }
         /* Банк слов тоже не должен отдавать жест прокрутке */
         [id^="wordBankContainer-"] { touch-action: none; }
+    
+        /* Результаты (Build a Sentence и эссе), планшет и компьютер: левая панель с баллом,
+           временем и кнопками (Next test, Back to Dashboard) стоит на месте под шапкой и
+           занимает ровно экран, а задания справа листаются вместе со страницей.
+           Раньше левая панель растягивалась на высоту всех заданий, и до Next test
+           приходилось листать весь список. Телефон — как было: всё одной колонкой. */
+        @media (min-width: 768px) {
+            body.wp-results #sliderContainer { overflow: visible; }
+            body.wp-results .wp-res-grid { height: auto; overflow: visible; align-items: start; }
+            body.wp-results .wp-res-left {
+                position: sticky; top: var(--wp-head, 72px);
+                height: calc(100vh - var(--wp-head, 72px)); height: calc(100dvh - var(--wp-head, 72px));
+            }
+            body.wp-results .wp-res-right { height: auto; overflow: visible; min-height: calc(100dvh - var(--wp-head, 72px)); }
+        }
     </style>
 </head>
 <body class="bg-[#f8f9fa] text-slate-900 min-h-screen flex flex-col antialiased">
@@ -459,14 +474,23 @@
             }
         }
 
+        // Высота шапки — чтобы левая панель результатов вставала ровно под неё (см. .wp-res-left)
+        function wpMeasureHead() {
+            const h = document.querySelector('body > header');
+            if (h) document.documentElement.style.setProperty('--wp-head', Math.round(h.getBoundingClientRect().height) + 'px');
+        }
+        window.addEventListener('resize', () => { if (document.body.classList.contains('wp-results')) wpMeasureHead(); });
+
         function renderTestSlider() {
             const container = document.getElementById('sliderContainer');
             const topNav = document.getElementById('topNavigation');
             container.innerHTML = '';
 
+            document.body.classList.toggle('wp-results', !!isTestCompleted);
             if (isTestCompleted) {
                 if (topNav) topNav.classList.add('hidden');
                 container.innerHTML = generateFullResultsView();
+                wpMeasureHead();
                 // «Следующий тест»: следующее несделанное задание этого типа (practice-next.js)
                 if (window.PracticeNext) PracticeNext.mount('w-' + taskType, { row: 'pnRow', currentId: new URLSearchParams(location.search).get('id'), userId: currentUserId, prepend: true });
                 return;
@@ -838,8 +862,8 @@
                 </div>` : '';
 
             return `
-                <div class="flex-1 grid grid-cols-1 md:grid-cols-[300px_1fr] lg:grid-cols-[380px_1fr] divide-y md:divide-y-0 md:divide-x divide-gray-100 h-full overflow-hidden w-full bg-white relative">
-                    <div class="flex flex-col h-full bg-white relative z-10 shadow-[4px_0_24px_rgba(0,0,0,0.02)] min-h-0">
+                <div class="wp-res-grid flex-1 grid grid-cols-1 md:grid-cols-[300px_1fr] lg:grid-cols-[380px_1fr] divide-y md:divide-y-0 md:divide-x divide-gray-100 h-full overflow-hidden w-full bg-white relative">
+                    <div class="wp-res-left flex flex-col h-full bg-white relative z-10 shadow-[4px_0_24px_rgba(0,0,0,0.02)] min-h-0">
                         <div class="p-6 md:p-8 overflow-y-auto flex-1 flex flex-col">
                             <h2 class="text-lg font-bold text-slate-900 mb-6">Results Overview</h2>
                             <div class="${timeCardHtml ? 'grid grid-cols-2 gap-3' : 'flex flex-col'} mb-2">
@@ -864,7 +888,7 @@
                             </a></div>
                         </div>
                     </div>
-                    <div class="bg-[#f4f6f8] h-full overflow-y-auto p-4 md:p-8">
+                    <div class="wp-res-right bg-[#f4f6f8] h-full overflow-y-auto p-4 md:p-8">
                         <div class="max-w-3xl mx-auto space-y-6 pb-12">
                             ${cards}
                             ${sampleCard}
@@ -987,8 +1011,8 @@
             }).join('');
 
             return `
-                <div class="flex-1 grid grid-cols-1 md:grid-cols-[300px_1fr] lg:grid-cols-[380px_1fr] divide-y md:divide-y-0 md:divide-x divide-gray-100 h-full overflow-hidden w-full bg-white relative">
-                    <div class="flex flex-col h-full bg-white relative z-10 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
+                <div class="wp-res-grid flex-1 grid grid-cols-1 md:grid-cols-[300px_1fr] lg:grid-cols-[380px_1fr] divide-y md:divide-y-0 md:divide-x divide-gray-100 h-full overflow-hidden w-full bg-white relative">
+                    <div class="wp-res-left flex flex-col h-full bg-white relative z-10 shadow-[4px_0_24px_rgba(0,0,0,0.02)] min-h-0">
                         <div class="p-6 md:p-8 overflow-y-auto flex-1 flex flex-col">
                             <h2 class="text-lg font-bold text-slate-900 mb-6 flex items-center gap-2">
                                 <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Bar%20Chart.png" class="w-5 h-5" alt="Chart" /> Results Overview
@@ -1013,7 +1037,7 @@
                         </div>
                     </div>
 
-                    <div class="bg-[#f4f6f8] h-full overflow-y-auto p-4 md:p-8">
+                    <div class="wp-res-right bg-[#f4f6f8] h-full overflow-y-auto p-4 md:p-8">
                         <div class="max-w-3xl mx-auto space-y-6 pb-12">
                             ${questionsHtml}
                         </div>
