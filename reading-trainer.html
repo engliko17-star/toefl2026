@@ -108,6 +108,10 @@
         saveFail: ['The result was not saved — check your connection.', 'Результат не сохранился — проверьте интернет.'],
         loadFail: ['Could not load the trainer. Refresh the page.', 'Не удалось загрузить тренажёр. Обновите страницу.'],
         guestMore: ['More tasks of this type are in the full version.', 'Больше заданий этого типа — в полной версии.'],
+        free: ['{a} free of {b}', '{a} бесплатно из {b}'],
+        fullMore: ['{n} more in the full version', 'Ещё {n} — в полной версии'],
+        freeNote: ['Free version: {a} of {b} tasks of this type.', 'Бесплатная версия: {a} из {b} заданий этого типа.'],
+        unlock: ['Get full access', 'Получить полный доступ'],
         q: ['Question {a} of {b}', 'Вопрос {a} из {b}'],
         level: ['Level', 'Уровень']
     };
@@ -130,6 +134,15 @@
     const shuffle = a => { const b = a.slice(); for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; };
 
     let user = null, guest = false, types = [], counts = {}, results = [];
+    // Гость: сколько заданий в типе всего и сколько открыто бесплатно (reading_trainer_guest.sql).
+    // Без этого SQL — null, и страница показывает только то, что пришло из базы.
+    let gcounts = null;
+    const LOCK = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+    function guestInfo(type) {
+        if (!guest || !gcounts) return null;
+        const g = gcounts[type] || {};
+        return { open: Number(g.open) || 0, total: Number(g.total) || 0 };
+    }
     let S = null;   // текущий подход
 
     // ---------------------------------------------------------------
@@ -146,6 +159,13 @@
         counts = {};
         (it.data || []).forEach(i => { counts[i.question_type] = (counts[i.question_type] || 0) + 1; });
         results = rs.error ? [] : (rs.data || []);
+        gcounts = null;
+        if (guest) {
+            try {
+                const g = await db().rpc('reading_trainer_counts');
+                if (!g.error && g.data && typeof g.data === 'object') gcounts = g.data;
+            } catch (e) { /* без чисел — как раньше */ }
+        }
     }
     function accOf(type) {
         const rs = results.filter(r => r.question_type === type);
@@ -168,7 +188,13 @@
             const n = counts[x.question_type] || 0;
             const acc = accOf(x.question_type);
             const summary = RU ? x.summary_ru : (x.summary_en || x.summary_ru);
-            return `<button type="button" data-type="${esc(x.question_type)}" class="tr-card text-left bg-white border border-slate-200 rounded-2xl p-5 flex flex-col gap-3 ${n ? '' : 'opacity-70'}">
+            // Гость: «2 бесплатно из 20» и строка с замочком; тип без открытых заданий — под замочком целиком
+            const g = guestInfo(x.question_type);
+            const locked = !!(g && g.total > 0 && g.open === 0);
+            const countText = g ? (g.total ? t('free', { a: g.open, b: g.total }) : t('soon')) : (n ? plural(n, 'tasks') : t('soon'));
+            const more = g && g.total > g.open && !locked
+                ? `<p class="flex items-center gap-1.5 text-xs font-semibold text-slate-500">${LOCK}<span>${esc(t('fullMore', { n: g.total - g.open }))}</span></p>` : '';
+            return `<button type="button" data-type="${esc(x.question_type)}" ${locked ? 'data-guest-locked' : ''} class="tr-card text-left bg-white border border-slate-200 rounded-2xl p-5 flex flex-col gap-3 ${n || locked ? '' : 'opacity-70'}">
                 <div class="flex items-start justify-between gap-3">
                     <div class="min-w-0">
                         <p class="font-bold text-slate-900 leading-snug">${esc(x.question_type)}</p>
@@ -178,15 +204,16 @@
                 </div>
                 ${summary ? `<p class="text-sm text-slate-600 leading-relaxed">${esc(summary)}</p>` : ''}
                 <div class="mt-auto flex items-center justify-between gap-3 text-xs font-semibold text-slate-500 pt-1">
-                    <span>${n ? esc(plural(n, 'tasks')) : esc(t('soon'))}</span>
+                    <span>${esc(countText)}</span>
                     <span class="${acc === null ? '' : 'r-ink'}">${acc === null ? esc(t('notYet')) : esc(t('accuracy')) + ' ' + acc + '%'}</span>
                 </div>
                 ${acc !== null ? `<div class="h-1.5 rounded-full bg-slate-100 overflow-hidden"><div class="h-full rounded-full" style="width:${acc}%;background:var(--r-bar)"></div></div>` : ''}
+                ${more}
             </button>`;
         }).join('');
         root.innerHTML = `${header(t('lead'))}
             <div class="mt-7 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">${cards}</div>`;
-        root.querySelectorAll('[data-type]').forEach(b => b.addEventListener('click', () => showStart(b.dataset.type)));
+        root.querySelectorAll('[data-type]:not([data-guest-locked])').forEach(b => b.addEventListener('click', () => showStart(b.dataset.type)));
         icons();
     }
 
@@ -199,6 +226,7 @@
     function showStart(type) {
         const info = typeInfo(type);
         const n = counts[type] || 0;
+        const g = guestInfo(type);
         history.replaceState(null, '', '?type=' + encodeURIComponent(type));
         const steps = stepsOf(info);
         const modeBtn = (m, title, note) => `<button type="button" data-mode="${m}" aria-pressed="${mode === m}" class="tr-opt text-left border-2 border-slate-200 rounded-xl p-3.5 bg-white">
@@ -218,6 +246,10 @@
                     <div class="mt-3 grid gap-2.5">${modeBtn('learn', t('learn'), t('learnNote'))}${modeBtn('exam', t('exam'), t('examNote'))}</div>
                     ${n ? `<button type="button" id="trGo" class="r-btn mt-5 w-full rounded-xl py-3 font-bold">${esc(t('start'))} · ${esc(plural(Math.min(SESSION, n), 'qs'))}</button>`
                         : `<p class="mt-5 text-sm text-slate-500 r-bg rounded-xl p-4">${esc(t('none'))}</p>`}
+                    ${g && g.total > g.open ? `<div class="mt-4 rounded-xl border border-slate-200 p-4">
+                        <p class="flex items-start gap-2 text-sm text-slate-600 leading-relaxed"><span class="mt-0.5 shrink-0 text-slate-500">${LOCK}</span><span>${esc(t('freeNote', { a: g.open, b: g.total }))}</span></p>
+                        <button type="button" id="trUnlock" class="mt-3 text-sm font-bold r-ink hover:underline">${esc(t('unlock'))}</button>
+                    </div>` : ''}
                 </aside>
             </div>`;
         root.querySelector('#trAll').addEventListener('click', showTypes);
@@ -228,6 +260,8 @@
         }));
         const go = root.querySelector('#trGo');
         if (go) go.addEventListener('click', () => startSession(type));
+        const unlock = root.querySelector('#trUnlock');
+        if (unlock) unlock.addEventListener('click', () => { if (typeof authShowUpsell === 'function') authShowUpsell(); });
         icons();
         window.scrollTo(0, 0);
     }
