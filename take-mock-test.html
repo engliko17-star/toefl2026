@@ -15,6 +15,7 @@
     <script src="teacher-review.js"></script>
     <script src="passage-markup.js"></script>
     <script src="daily-layouts.js"></script>
+    <script src="toefl-scoring.js"></script>
 
     <style>
         /* Скроллбары */
@@ -995,6 +996,7 @@
             
             let rawScore = 0;
             let totalQuestionsCount = 0;
+            const scoreItems = [];   // каждый вопрос (в Complete the Words — слово) для шкалы toefl-scoring.js
             let resultsHTML = '';
 
             let passagesHTML = '';
@@ -1052,6 +1054,7 @@
                         const userWord = (uAns && uAns[wIdx]) ? uAns[wIdx] : '';
                         const isCorrect = userWord.toLowerCase() === cWord;
                         if (isCorrect) rawScore++;
+                        scoreItems.push({ stage: '1', type: 'complete_words', correct: isCorrect });
 
                         qHtml += `
                             <div class="p-3 border rounded-xl flex justify-between items-center ${isCorrect ? 'border-emerald-300 bg-emerald-50 shadow-sm' : 'border-rose-300 bg-rose-50 shadow-sm'}">
@@ -1073,6 +1076,7 @@
                     totalQuestionsCount++;
                     let isCorrect = (uAns == q.correct_answer);
                     if (isCorrect) rawScore++;
+                    scoreItems.push({ stage: '1', type: q.stage === 'daily' ? 'daily_life' : 'academic', correct: isCorrect });
 
                     let optionsObj = {};
                     try {
@@ -1153,6 +1157,10 @@
             // Округление до ближайшего целого/половинного балла, как того требует спецификация.
             function calcBandScore(raw, total) {
                 if (total <= 0) return "1.0";
+                // Мини-мок — один модуль уровня роутера: балл по той же шкале, что и полный мок
+                const R = window.ToeflScoring && window.ToeflScoring.reading;
+                const s = R && R.score(scoreItems);
+                if (s) return s.band.toFixed(1);
                 const percent = raw / total;
                 let band = 1 + percent * 5; // линейное отображение 0–100% на диапазон 1.0–6.0
                 band = Math.round(band * 2) / 2; // округление до шага 0.5
@@ -1224,7 +1232,7 @@
                                 <button onclick="saveMockResult().then(ok => { if (ok) alert('Сохранено.'); })" class="ml-2 underline font-bold cursor-pointer">Сохранить ещё раз</button>
                             </div>
                             <p class="text-[11px] text-slate-400 -mt-4 mb-8 max-w-sm mx-auto leading-relaxed">
-                                Вопросы в этом мини-тесте подобраны случайно, без калибровки по сложности — поэтому band score здесь лишь примерный ориентир. Смотрите в первую очередь на raw score.
+                                Band score считается по той же шкале, что и полный тест, но мини-тест короче и без второго модуля — поэтому это ориентир. Смотрите и на raw score.
                             </p>
                             
                             <div class="flex justify-center gap-4" data-review-actions>
