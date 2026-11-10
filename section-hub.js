@@ -90,11 +90,11 @@
             sub: L('Strategies, practice by task type and a mini mock without pauses.', 'Стратегии, практика по типам заданий и мини-мок без пауз.'),
             articlesSub: L('Note-taking and how to recognise question types.', 'Конспект на слух и как узнавать типы вопросов.'),
             articlesHub: 'listening-articles.html',
-            allArticlesSub: L('Every task type, note-taking and strategies — all in one place.', 'Все типы заданий, конспект и стратегии — в одном месте.'),
+            allArticlesSub: L('Every task and question type, note-taking and strategies — all in one place.', 'Все типы заданий и вопросов, конспект и стратегии — в одном месте.'),
             articles: [
-                { href: 'article-general-listening.html', tag: L('Overview', 'Обзор'), title: 'Listening Overview', min: 9,
+                { href: 'article-general-listening.html', tag: L('Overview', 'Обзор'), title: 'Listening Overview', min: 14,
                   desc: L('How the 2026 section works: four task types, order and timing.', 'Как устроена секция в формате 2026: четыре типа заданий, порядок и тайминг.') },
-                { href: 'article-listen-to-a-conversation.html', tag: L('Task type', 'Тип задания'), title: 'Listen to a Conversation', min: 10,
+                { href: 'article-listen-to-a-conversation.html', tag: L('Task type', 'Тип задания'), title: 'Listen to a Conversation', min: 11,
                   desc: L('Campus dialogues: the speaker’s problem, details and attitudes.', 'Диалоги на кампусе: проблема собеседника, детали и отношение говорящих.') }
             ],
             types: [
@@ -119,13 +119,13 @@
             name: 'Writing', icon: 'pen-tool', goal: 5,
             tagline: L('Plan. Write. Make every word count.', 'Планируйте, пишите — пусть каждое слово работает.'),
             sub: L('Guides and templates, practice by task type and a timed mini mock.', 'Разборы и шаблоны, практика по типам заданий и мини-мок на время.'),
-            articlesSub: L('Task guides, templates and grammar.', 'Разборы заданий, шаблоны и грамматика.'),
+            articlesSub: L('Task guides, an email course, grammar and vocabulary.', 'Разборы заданий, курс по email, грамматика и лексика.'),
             articlesHub: 'writing-articles.html',
-            allArticlesSub: L('Task guides, templates and grammar — all in one place.', 'Разборы заданий, шаблоны и грамматика — в одном месте.'),
+            allArticlesSub: L('Task guides, the email course, grammar and vocabulary — all in one place.', 'Разборы заданий, курс по email, грамматика и лексика — в одном месте.'),
             articles: [
-                { href: 'article-write-an-academic.html', tag: L('Template', 'Шаблон'), title: 'The Perfect Academic Template', min: 3,
+                { href: 'article-write-an-academic.html', tag: L('Task type', 'Тип задания'), title: 'Write for an Academic Discussion', min: 13,
                   desc: L('A clear structure for the 10-minute Academic Discussion.', 'Понятная структура ответа для Academic Discussion за 10 минут.') },
-                { href: 'article-write-an-email.html', tag: L('Task type', 'Тип задания'), title: 'Write an Email Task', min: null,
+                { href: 'article-write-an-email.html', tag: L('Task type', 'Тип задания'), title: 'Write an Email', min: 17,
                   desc: L('Tone, structure and the details your email has to cover.', 'Тон, структура и детали, которые должно покрыть письмо.') }
             ],
             types: [
@@ -153,11 +153,11 @@
             sub: L('Answer structure and timing, practice by task type and a timed mini mock.', 'Структура ответа и тайминг, практика по типам заданий и мини-мок на время.'),
             articlesSub: L('Answer structure and timing.', 'Структура ответа и тайминг.'),
             articlesHub: 'speaking-articles.html',
-            allArticlesSub: L('Every task type, templates and timing — all in one place.', 'Все типы заданий, шаблоны и тайминг — в одном месте.'),
+            allArticlesSub: L('Both tasks and all seven interview question types — all in one place.', 'Оба задания и все семь видов вопросов интервью — в одном месте.'),
             articles: [
-                { href: 'general-speaking.html', tag: L('Overview', 'Обзор'), title: 'Speaking Overview', min: 9,
+                { href: 'general-speaking.html', tag: L('Overview', 'Обзор'), title: 'Speaking Overview', min: 8,
                   desc: L('How the section works: two task types, timing and scoring.', 'Как устроена секция: два типа заданий, тайминг и критерии оценки.') },
-                { href: 'article-speaking-interview.html', tag: L('Task type', 'Тип задания'), title: 'Take an Interview', min: 12,
+                { href: 'article-speaking-interview.html', tag: L('Task type', 'Тип задания'), title: 'Take an Interview', min: 13,
                   desc: L('Four questions, 45 seconds each: how to build an answer and keep going.', 'Четыре вопроса по 45 секунд: как строить ответ и не замолкать на середине.') }
             ],
             types: [
