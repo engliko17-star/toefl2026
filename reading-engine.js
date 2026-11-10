@@ -816,11 +816,13 @@ async function doLoadModule2Tasks() {
         }
     }
 
-    // Порог роутинга. Знаменатель теперь ~30 айтемов (после починки
-    // подсчёта Complete the Words), стартовое значение по спеке 18/30 = 0.6.
-    // Дальше подстраивать так, чтобы примерно половина учеников уходила в Upper.
-    const thresholdPercentage = 0.6; 
-    const isHardModule = (module1Total > 0) && (correctCount / module1Total >= thresholdPercentage);
+    // Роутер: в верхний модуль, если способность по Модулю 1 не ниже порога
+    // (toefl-scoring.js: чуть ниже начала полосы 4.0, ≈ 13–14 из 20).
+    // Если файла со шкалой нет — прежнее правило 60% верных.
+    const R = window.ToeflScoring && window.ToeflScoring.reading;
+    const isHardModule = R
+        ? R.routeUpper(readingScoreItems(currentTasks.filter(t => t.stage === '1')))
+        : (module1Total > 0) && (correctCount / module1Total >= 0.6);
     const nextStage = isHardModule ? '2_hard' : '2_easy';
     
     try {
@@ -880,9 +882,40 @@ function itemWeight(stage) {
     return ITEM_WEIGHT[String(stage)] !== undefined ? ITEM_WEIGHT[String(stage)] : 1.0;
 }
 
-// Возвращает { score, points, maxPoints, correct, total }
+// Каждый оцениваемый вопрос отдельно (в Complete the Words — каждое слово):
+// { stage, type, correct } — для шкалы в toefl-scoring.js
+function readingScoreItems(tasks) {
+    const items = [];
+    (tasks || []).forEach(task => {
+        const stage = String(task.stage);
+        if (task.type === 'complete_words') {
+            const correct = task.correctWords || [];
+            const user = task.userWords || [];
+            correct.forEach((w, i) => {
+                const u = (user[i] || '').trim().toLowerCase();
+                items.push({ stage, type: 'complete_words', correct: !!u && u === String(w).trim().toLowerCase() });
+            });
+        } else if (task.correctAnswer !== null && task.correctAnswer !== undefined) {
+            items.push({ stage, type: task.type, correct: task.userAnswer === task.correctAnswer });
+        }
+    });
+    return items;
+}
+
+// Возвращает { score, points, maxPoints, correct, total, details }
 // или null, если в тесте нет ни одного вопроса с правильным ответом.
+// Балл — по шкале toefl-scoring.js (как у ETS: число верных + сложность ветки → полоса 1–6).
+// Без этого файла — прежний взвешенный расчёт ниже.
 function calculateWeightedScore(tasks) {
+    const R = window.ToeflScoring && window.ToeflScoring.reading;
+    if (R) {
+        const s = R.score(readingScoreItems(tasks));
+        if (!s) return null;
+        return { score: s.band.toFixed(1), points: s.raw, maxPoints: s.total, correct: s.raw, total: s.total, details: s };
+    }
+    return calculateWeightedScoreOld(tasks);
+}
+function calculateWeightedScoreOld(tasks) {
     let points = 0, maxPoints = 0, correct = 0, total = 0;
 
     (tasks || []).forEach(task => {
@@ -1117,6 +1150,9 @@ async function saveAttemptAndFinish() {
         } else {
             answerText = task.userAnswer;
             isCorrect = task.userAnswer === task.correctAnswer;
+            // для разбора и будущей подстройки шкалы: тип вопроса и верный ответ
+            answerJson.qType = task.qType || null;
+            answerJson.correctAnswer = task.correctAnswer === undefined ? null : task.correctAnswer;
         }
 
         return {
@@ -1141,8 +1177,14 @@ async function saveAttemptAndFinish() {
             user_id: window.currentUser.id,
             total_score: parseFloat(finalScore),
             status: 'completed',
-            completed_at: new Date().toISOString()
-        } },
+            completed_at: new Date().toISOString(),
+            // ветка, сырой балл, θ — для преподавателя и подстройки шкалы (колонка из reading_score_details.sql)
+            score_details: result.details ? {
+                model: result.details.model, path: result.details.path, raw: result.details.raw,
+                total: result.details.total, theta: result.details.theta,
+                router: (() => { const r = readingScoreItems(currentTasks.filter(t => t.stage === '1')); return { raw: r.filter(x => x.correct).length, total: r.length }; })()
+            } : null
+        }, optional: ['score_details'] },
         answers: { table: 'big_mock_answers', rows: answersToSave }
     });
     readingPhase = 'done';
@@ -1412,4 +1454,4 @@ function closeResults() {
     document.getElementById('results-view').classList.remove('flex');
     document.getElementById('main-interface').classList.remove('hidden');
     loadTestsGrid();
-}
+        }
