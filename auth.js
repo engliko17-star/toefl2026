@@ -44,6 +44,20 @@ const PAGE_SECTIONS = {
     'take-mock-test.html':  'reading',
     'mini-mock-test.html':  'reading',
     'reading-articles.html': 'reading',
+    'general-reading.html':  'reading',
+    'article-complete-words.html':  'reading',
+    'article-read-in-daily.html':   'reading',
+    'article-academic-passage.html': 'reading',
+    'article-factual.html':     'reading',
+    'article-vocabulary.html':  'reading',
+    'article-inference.html':   'reading',
+    'article-reference.html':   'reading',
+    'article-rhetorical-purpose.html':      'reading',
+    'article-sentence-simplification.html': 'reading',
+    'article-insert-text.html':     'reading',
+    'article-select-sentence.html': 'reading',
+    'article-greek-latin.html':     'reading',
+    'article-time-management.html': 'reading',
 
     // --- Listening ---
     'listening.html':       'listening',
@@ -84,6 +98,18 @@ const PAGE_SECTIONS = {
     'article-email-politeness.html': 'writing',
     'article-email-closing.html':   'writing',
     'article-email-practice.html':  'writing',
+    'article-build-a-sentence.html':  'writing',
+    'article-write-an-academic.html': 'writing',
+    'article-articles.html':      'writing',
+    'article-countable-uncountable.html': 'writing',
+    'article-prepositions.html':  'writing',
+    'article-dependent-prepositions.html': 'writing',
+    'article-verb-government.html': 'writing',
+    'article-verb-patterns.html': 'writing',
+    'article-gerund-infinitive.html': 'writing',
+    'article-punctuation.html':   'writing',
+    'article-collocations.html':  'writing',
+    'article-idioms.html':        'writing',
 
     // --- Speaking ---
     'speaking.html':    'speaking',
@@ -299,7 +325,10 @@ function authDecide(profile) {
 }
 
 // ---------- скрытие страницы до проверки ----------
-const AUTH_GATED = !!PAGE_SECTIONS[authFileName()] || AUTH_TEACHER_ONLY.includes(authFileName());
+// Статьи закрыты всегда, даже если новую забыли вписать в PAGE_SECTIONS:
+// тогда войти всё равно нужно, а гостю открыты только бесплатные.
+// (Раздел у такой статьи не проверяется — для этого её надо вписать в карту.)
+const AUTH_GATED = !!PAGE_SECTIONS[authFileName()] || AUTH_TEACHER_ONLY.includes(authFileName()) || authIsArticle(authFileName());
 
 function authReveal() {
     document.documentElement.classList.remove('auth-gate');
