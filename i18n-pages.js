@@ -31,7 +31,9 @@
         'exam-reports.html', 'listening-import.html', 'speaking-import.html', 'vocabulary.html', 'review.html',
         // сами экзамены — без перевода
         'speaking_player.html', 'speaking_mini_mock_player.html', 'mini-mock-writing.html'];
-    if (SKIP_PAGES.includes(file) || /^ge-/.test(file)) return;
+    // Статьи — авторский текст на двух языках: перевод по словарю менял в них отдельные
+    // слова («Разбор» → «View Review», «Score» → «Балл»), поэтому статьи не трогаем
+    if (SKIP_PAGES.includes(file) || /^ge-/.test(file) || /^(article-|general-)/.test(file)) return;
 
     function detect() {
         try { const s = localStorage.getItem('appLang'); if (s === 'en' || s === 'ru') return s; } catch (e) { /* по браузеру */ }
@@ -147,6 +149,7 @@
         ['Questions you meet in Read in Daily Life and Read an Academic Passage.', 'Вопросы к заданиям Read in Daily Life и Read an Academic Passage.'],
         ['Skills that help in every task.', 'Навыки, которые помогают во всех заданиях.'],
         ['Understand the structure of complex academic texts to navigate dense passages with confidence.', 'Как устроены сложные академические тексты и как уверенно в них ориентироваться.'],
+        ['How the clock works, a time plan for each module, a pace calculator and what to do when you fall behind.', 'Как устроен таймер, план времени на каждый модуль, калькулятор темпа и что делать, если отстаёте.'],
         ['Decode unfamiliar academic words by recognising their roots, prefixes and suffixes.', 'Как разгадать незнакомое слово по корню, приставке и суффиксу.'],
 
         // Listening
