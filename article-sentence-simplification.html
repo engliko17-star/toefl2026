@@ -85,6 +85,20 @@
         .ins-sq:hover { outline: 3px solid #a5b4fc; }
         .ins-new { font-weight: 700; background: #e0e7ff; padding: 0 2px; }
         .flow-arrow { color: #94a3b8; }
+        /* ---- Complete the Words practice ---- */
+        .ctw-text { font-family: Arial, Helvetica, sans-serif; font-size: 15px; line-height: 2.1; color: #1f2937; }
+        .ctw-w { white-space: nowrap; border-radius: 4px; padding: 1px 1px; }
+        .ctw-b { width: 1.05em; height: 1.45em; border: 1px solid #64748b; border-radius: 3px; margin: 0 1px; padding: 0; text-align: center;
+                 font: inherit; font-size: 15px; line-height: 1; color: #1e1b4b; background: #fff; vertical-align: baseline; }
+        .ctw-b:focus { outline: 2px solid #6366f1; outline-offset: 0; border-color: #6366f1; }
+        .ctw-w.is-ok { background: #d1fae5; }
+        .ctw-w.is-ok .ctw-b { border-color: #10b981; color: #065f46; }
+        .ctw-w.is-bad { background: #ffe4e6; }
+        .ctw-w.is-bad .ctw-b { border-color: #f43f5e; color: #9f1239; }
+        .ctw-fix { font-size: 12px; color: #9f1239; font-weight: 700; margin-left: 2px; }
+        @media (max-width: 640px) { .ctw-text { font-size: 16px; } .ctw-b { font-size: 16px; } }
+        .bar-track { background: #eef2ff; border-radius: 4px; height: 14px; }
+        .bar-fill { background: #6366f1; border-radius: 0 4px 4px 0; height: 14px; }
 
     </style>
 </head>
@@ -262,6 +276,38 @@ Find the <b>logical link</b> first. If the highlighted sentence says <i>A becaus
             if (ans) ans.addEventListener('toggle', function () {
                 block.classList.toggle('is-revealed', ans.open);
             });
+        });
+
+        // Complete the Words practice: one box per letter, auto-advance, Backspace goes back.
+        document.querySelectorAll('.ctw-group').forEach(function (g) {
+            var boxes = Array.prototype.slice.call(g.querySelectorAll('.ctw-b'));
+            boxes.forEach(function (b, i) {
+                b.addEventListener('input', function () {
+                    b.value = b.value.replace(/[^A-Za-z]/g, '').slice(-1);
+                    if (b.value && i + 1 < boxes.length) boxes[i + 1].focus();
+                });
+                b.addEventListener('keydown', function (e) {
+                    if (e.key === 'Backspace' && !b.value && i > 0) { e.preventDefault(); boxes[i - 1].focus(); boxes[i - 1].value = ''; }
+                    if (e.key === 'ArrowLeft' && i > 0) { e.preventDefault(); boxes[i - 1].focus(); }
+                    if (e.key === 'ArrowRight' && i + 1 < boxes.length) { e.preventDefault(); boxes[i + 1].focus(); }
+                });
+            });
+            function words() { return Array.prototype.slice.call(g.querySelectorAll('.ctw-w')); }
+            function clearMarks() { words().forEach(function (w) { w.classList.remove('is-ok', 'is-bad'); var f = w.querySelector('.ctw-fix'); if (f) f.remove(); }); }
+            var res = g.querySelector('.ctw-result');
+            var check = g.querySelector('.ctw-check');
+            if (check) check.addEventListener('click', function () {
+                clearMarks(); var ok = 0;
+                words().forEach(function (w) {
+                    var typed = Array.prototype.map.call(w.querySelectorAll('.ctw-b'), function (b) { return b.value; }).join('').toLowerCase();
+                    var hid = w.getAttribute('data-hidden').toLowerCase();
+                    if (typed === hid) { ok++; w.classList.add('is-ok'); }
+                    else { w.classList.add('is-bad'); var f = document.createElement('span'); f.className = 'ctw-fix'; f.textContent = '(' + w.getAttribute('data-word') + ')'; w.appendChild(f); }
+                });
+                if (res) res.textContent = ok + ' / ' + words().length + ' correct';
+            });
+            var reset = g.querySelector('.ctw-reset');
+            if (reset) reset.addEventListener('click', function () { clearMarks(); boxes.forEach(function (b) { b.value = ''; }); if (res) res.textContent = ''; });
         });
 
         // Select the Sentence demo: click a sentence to highlight it.
