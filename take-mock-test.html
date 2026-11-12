@@ -16,6 +16,7 @@
     <script src="passage-markup.js"></script>
     <script src="daily-layouts.js"></script>
     <script src="toefl-scoring.js"></script>
+    <script src="complete-words-ui.js"></script>
 
     <style>
         /* Скроллбары */
@@ -26,52 +27,6 @@
         /* Анимация таймера */
         .timer-warning { color: #ef4444; animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-
-        /* ИДЕАЛЬНЫЙ СТИЛЬ ДЛЯ СЛОВ (Задания stage: 'sentence') */
-        .puzzle-word {
-            display: inline-flex;
-            align-items: baseline;
-            vertical-align: baseline;
-            margin: 0 4px; 
-        }
-        
-        .letters-container {
-            display: inline-flex;
-            align-items: baseline;
-            vertical-align: baseline;
-            background-color: #f1f5f9;
-            border-radius: 6px;
-            padding: 0 2px;
-            margin: 0; 
-            transition: all 0.2s ease;
-            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
-        }
-        
-        .puzzle-word:focus-within .letters-container {
-            background-color: #e2e8f0;
-            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
-        }
-
-        .letter-input {
-            width: 16px;
-            text-align: center;
-            border: none;
-            border-bottom: 2px solid #94a3b8;
-            outline: none;
-            font-weight: 700;
-            color: #1e293b;
-            background: transparent;
-            margin: 0 2px;
-            padding: 0 0 2px 0;
-            font-family: inherit;
-            font-size: inherit;
-            vertical-align: baseline;
-            transition: all 0.2s;
-        }
-        
-        .letter-input:focus {
-            border-bottom-color: #4f46e5; 
-        }
 
         /* Убираем стандартный скролл в чате */
         .scrollbar-none::-webkit-scrollbar { display: none; }
@@ -678,10 +633,11 @@
                 return `<span class="puzzle-word">${wordHtml}</span>`;
             });
 
+            // Как на экзамене: строка с заданием и абзац по левому краю (вид пропусков — complete-words-ui.js)
             textContent.innerHTML = `
-                <div class="bg-white p-10 rounded-3xl border border-gray-100 shadow-sm max-w-3xl w-full text-[16px] leading-[2.3]">
-                    <h3 class="text-sm font-bold text-slate-800 mb-6 border-b pb-3">Complete the words</h3>
-                    ${htmlWithInputs}
+                <div class="bg-white p-6 sm:p-10 rounded-3xl border border-gray-100 shadow-sm max-w-3xl w-full">
+                    <p class="text-[15px] font-bold text-slate-900 mb-4 sm:mb-5">Fill in the missing letters in the paragraph.</p>
+                    <div class="text-[17px] sm:text-[18px] leading-[1.9] text-slate-800 text-left">${htmlWithInputs}</div>
                 </div>
             `;
             
@@ -695,33 +651,8 @@
                 if (firstInput) firstInput.focus();
             }
 
-            words.forEach((wordElement, wIndex) => {
-                const inputs = wordElement.querySelectorAll('.letter-input');
-                inputs.forEach((input, iIndex) => {
-                    input.addEventListener('input', function() {
-                        this.value = this.value.replace(/[^a-zA-Z]/g, '').toLowerCase();
-                        if (this.value.length === 1) {
-                            if (iIndex < inputs.length - 1) {
-                                inputs[iIndex + 1].focus();
-                            } else if (wIndex < words.length - 1) {
-                                const nextWordInput = words[wIndex + 1].querySelector('.letter-input');
-                                if (nextWordInput) nextWordInput.focus();
-                            }
-                        }
-                        saveCurrentAnswer(); 
-                    });
-                    input.addEventListener('keydown', function(e) {
-                        if (e.key === 'Backspace' && this.value === '') {
-                            if (iIndex > 0) {
-                                inputs[iIndex - 1].focus();
-                            } else if (wIndex > 0) {
-                                const prevInputs = words[wIndex - 1].querySelectorAll('.letter-input');
-                                if (prevInputs.length > 0) prevInputs[prevInputs.length - 1].focus();
-                            }
-                        }
-                    });
-                });
-            });
+            // Ввод букв, переход между клетками и словами, Backspace на Android — общий файл complete-words-ui.js
+            if (window.CWUI) CWUI.bind(textContent, { onChange: saveCurrentAnswer });
         }
 
         function renderDailyLayout(q) {
