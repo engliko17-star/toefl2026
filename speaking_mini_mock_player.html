@@ -9,6 +9,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <script src="auth.js"></script>
+    <script src="mic-check.js"></script>
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -102,6 +103,7 @@
         let recordingStarting = false;   // запись уже запускается (ждём микрофон)
         let silenceWarned = false;       // предупреждение о пустой записи — один раз
         let testRunning = false;         // идёт тест — предупреждаем при уходе со страницы
+        let level = null;                // громкость текущей записи (mic-check.js)
 
         function mmEsc(s) {
             return String(s === null || s === undefined ? '' : s)
@@ -224,7 +226,15 @@
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
             try {
-                mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaStream = await navigator.mediaDevices.getUserMedia(window.MicCheck ? MicCheck.constraints() : { audio: true });
+
+                // Проверка микрофона: начинаем, когда слышен голос (mic-check.js).
+                // Как перед Speaking на экзамене — каждый раз.
+                if (window.MicCheck) {
+                    const mc = await MicCheck.run(document.getElementById('startOverlay'), { stream: mediaStream, audioCtx });
+                    if (!mc.ok) { mediaStream = null; startBtn.disabled = false; return; }
+                    mediaStream = mc.stream;
+                }
 
                 // Создаём попытку прохождения mini-mock теста. Без неё записи
                 // некуда привязать — не заставляем ученицу говорить впустую.
@@ -423,7 +433,7 @@
         async function acquireFreshStream() {
             if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
             mediaStream = null;
-            mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaStream = await navigator.mediaDevices.getUserMedia(window.MicCheck ? MicCheck.constraints() : { audio: true });
             return mediaStream;
         }
 
@@ -468,6 +478,9 @@
                 setStatus('Recording error', 'bg-red-100 text-red-700 border-red-200');
             };
 
+            if (level) level.stop();
+            level = window.MicCheck ? MicCheck.meter(mediaStream, audioCtx) : null;
+
             mediaRecorder.ondataavailable = e => {
                 if (e.data.size > 0) audioChunks.push(e.data);
             };
@@ -498,6 +511,8 @@
 
         async function stopRecording() {
             if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                const lvl = level ? level.stop() : null;
+                level = null;
                 mediaRecorder.stop();
                 setStatus('Saving to Cloud...', 'bg-amber-100 text-amber-700 border-amber-200');
                 
@@ -514,9 +529,11 @@
 
                     const currentItem = items[itemIndex];
                     const blob = new Blob(audioChunks, { type: mimeType });
-                    if (blob.size < 1000 && !silenceWarned) {
+                    // В записи нет голоса. По размеру файла это видно не всегда — Chrome
+                    // пишет тишину файлом обычного размера, поэтому смотрим и на громкость.
+                    if ((blob.size < 1000 || (window.MicCheck && MicCheck.silent(lvl))) && !silenceWarned) {
                         silenceWarned = true;
-                        alert('Запись получилась пустой — микрофон не передал звук.\n\nПроверьте: не подключены ли наушники с отдельным микрофоном, не идёт ли звонок в другом приложении, разрешён ли микрофон в настройках браузера.');
+                        alert('В этой записи не слышно голоса.\n\nЕсли вы говорили — проверьте микрофон: не выключен ли он (кнопка на ноутбуке или гарнитуре), не занят ли звонком в другом приложении, разрешён ли браузеру в настройках устройства.');
                     }
                     const fileName = `${currentUser.id}/mini_mock_${currentItem.task_type}_item${currentItem.id}_${Date.now()}.${fileExt}`;
 
