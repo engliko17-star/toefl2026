@@ -14,6 +14,7 @@
     
     <script src="auth.js"></script>
     <script src="practice-next.js"></script>
+    <script src="complete-words-ui.js"></script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -22,66 +23,6 @@
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
         
-        /* Контейнер для слова целиком — гарантирует небольшие пробелы по бокам */
-        .puzzle-word {
-            display: inline-flex;
-            align-items: baseline;
-            vertical-align: baseline;
-            margin: 0 4px; 
-        }
-        
-        /* Единая плашка для пропущенных букв внутри слова */
-        .letters-container {
-            display: inline-flex;
-            align-items: baseline;
-            vertical-align: baseline;
-            background-color: #f1f5f9;
-            border-radius: 4px;
-            padding: 0 2px;
-            margin: 0; /* Прижимает плашку к обычной части слова без зазоров */
-            transition: all 0.2s ease;
-        }
-        
-        .puzzle-word:focus-within .letters-container {
-            background-color: #e2e8f0;
-        }
-
-        /* Инпуты сидят идеально ровно на линии шрифта */
-        .letter-input {
-            width: 14px;
-            text-align: center;
-            border: none;
-            border-bottom: 2px solid #94a3b8;
-            outline: none;
-            font-weight: 700;
-            color: #1e293b;
-            background: transparent;
-            margin: 0 1px;
-            padding: 0;
-            font-family: inherit;
-            font-size: inherit;
-            vertical-align: baseline;
-            transition: all 0.2s;
-        }
-        
-        .letter-input:focus {
-            border-bottom-color: #7e22ce;
-        }
-        
-        .letter-input.correct { 
-            border-bottom-color: #10b981; 
-            color: #065f46; 
-        }
-        .letter-input.wrong { 
-            border-bottom-color: #ef4444; 
-            color: #991b1b; 
-        }
-
-        /* Телефон и планшет: клетки для букв шире — по ним легче попасть пальцем */
-        @media (pointer: coarse) {
-            .letter-input { width: 18px; }
-            .puzzle-word { margin: 0 3px; }
-        }
     </style>
 </head>
 <body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex flex-col lg:flex-row">
@@ -122,7 +63,8 @@
                     </div>
                 </div>
 
-                <div id="textContent" class="text-[16px] leading-[2.3] text-slate-700 font-medium space-y-5">
+                <p class="text-sm font-semibold text-slate-500 mb-3 sm:mb-4">Fill in the missing letters in the paragraph.</p>
+                <div id="textContent" class="text-[17px] sm:text-[18px] leading-[1.9] text-slate-800 font-medium">
                     <p id="loadingTaskMsg" class="text-sm text-gray-400">Fetching text from database...</p>
                 </div>
 
@@ -367,33 +309,9 @@
             document.getElementById('submitContainer').style.display = 'none';
         }
 
+        // Ввод букв, переход между клетками, Backspace на Android — общий файл complete-words-ui.js
         function setupInputs() {
-            const inputs = document.querySelectorAll('.letter-input');
-            inputs.forEach((input, index) => {
-                input.addEventListener('input', function() {
-                    this.value = this.value.replace(/[^a-zA-Z]/g, '').toLowerCase();
-                    if (this.value.length === 1 && index < inputs.length - 1) {
-                        inputs[index + 1].focus();
-                    }
-                });
-                input.addEventListener('keydown', function(e) {
-                    if (e.key === 'Backspace' && this.value === '' && index > 0) {
-                        inputs[index - 1].focus();
-                    }
-                });
-                // Клавиатура Android часто не сообщает, что нажат Backspace (keydown без e.key),
-                // поэтому на пустой клетке ловим само удаление: стираем букву в предыдущей клетке и переходим туда
-                input.addEventListener('beforeinput', function(e) {
-                    if (e.inputType === 'deleteContentBackward' && this.value === '' && index > 0) {
-                        e.preventDefault();
-                        const prev = inputs[index - 1];
-                        if (!prev.disabled) prev.value = '';
-                        prev.focus();
-                    }
-                });
-                // В заполненной клетке новая буква заменяет старую
-                input.addEventListener('focus', function() { this.select(); });
-            });
+            if (window.CWUI) CWUI.bind(document.getElementById('textContent'));
         }
 
         let checking = false;
