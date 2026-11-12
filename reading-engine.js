@@ -312,17 +312,8 @@ function setupInputs() {
         });
     }
 
-    inputs.forEach((input, index) => {
-        input.setAttribute('maxlength', '1');
-        input.addEventListener('input', function() {
-            this.value = this.value.replace(/[^a-zA-Z]/g, '').toLowerCase();
-            updateCompleteWordsState(); 
-            if (this.value.length === 1 && index < inputs.length - 1) inputs[index + 1].focus();
-        });
-        input.addEventListener('keydown', function(e) {
-            if (e.key === 'Backspace' && this.value === '' && index > 0) inputs[index - 1].focus();
-        });
-    });
+    // Ввод букв, переход между клетками, Backspace на Android — общий файл complete-words-ui.js
+    if (window.CWUI) CWUI.bind(document.getElementById('engine-content') || document.body, { onChange: updateCompleteWordsState });
 }
 
 function updateCompleteWordsState() {
@@ -368,11 +359,16 @@ async function fetchAndParseTasks(testId, stageName) {
 
         if (step.task_type === 'complete_words') {
             let correctWords = [];
-            let parsedPassage = taskData.passage.replace(/(?:\[[a-zA-Z]\])+/g, (match) => {
-                let letters = match.replace(/[\[\]]/g, '').split('');
-                correctWords.push(letters.join(''));
-                let inputsHtml = letters.map(l => `<input type="text" class="letter-input" data-answer="${l}">`).join('');
-                return `<span class="letters-container">${inputsHtml}</span>`;
+            // Слово целиком (начало + клетки + знак после) — в .puzzle-word, чтобы
+            // при переносе строки начало слова не отрывалось от пропуска (complete-words-ui.js)
+            let parsedPassage = taskData.passage.replace(/\S*(?:\[[a-zA-Z]\])+\S*/g, (word) => {
+                const inner = word.replace(/(?:\[[a-zA-Z]\])+/g, (match) => {
+                    let letters = match.replace(/[\[\]]/g, '').split('');
+                    correctWords.push(letters.join(''));
+                    let inputsHtml = letters.map(l => `<input type="text" class="letter-input" data-answer="${l}">`).join('');
+                    return `<span class="letters-container">${inputsHtml}</span>`;
+                });
+                return `<span class="puzzle-word">${inner}</span>`;
             });
             
             parsedTasks.push({ 
@@ -608,11 +604,12 @@ function renderEngine() {
         contentDiv.innerHTML = '';
 
         if (task.type === 'complete_words') {
+            // Как на экзамене: строка с заданием и абзац, выровненный по левому краю
             contentDiv.innerHTML = `
-                <div class="w-full p-10 overflow-y-auto custom-scrollbar flex items-center justify-center bg-[#f8f9fa]">
-                    <div class="max-w-3xl w-full bg-white p-10 rounded-3xl border border-gray-100 shadow-sm">
-                        <h2 class="text-xl font-bold mb-6 text-center text-slate-900">${task.title}</h2>
-                        <div class="text-lg leading-loose text-slate-700 text-center">${task.passage}</div>
+                <div class="w-full p-4 sm:p-10 overflow-y-auto custom-scrollbar flex items-center justify-center bg-[#f8f9fa]">
+                    <div class="max-w-3xl w-full bg-white p-6 sm:p-10 rounded-3xl border border-gray-100 shadow-sm">
+                        <p class="text-[15px] font-bold text-slate-900 mb-4 sm:mb-5">Fill in the missing letters in the paragraph.</p>
+                        <div class="text-[17px] sm:text-[18px] leading-[1.9] text-slate-800 text-left">${task.passage}</div>
                     </div>
                 </div>
             `;
@@ -1454,4 +1451,4 @@ function closeResults() {
     document.getElementById('results-view').classList.remove('flex');
     document.getElementById('main-interface').classList.remove('hidden');
     loadTestsGrid();
-        }
+}
