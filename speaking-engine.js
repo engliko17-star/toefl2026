@@ -17,6 +17,7 @@ let speakingRecordingMimeType = '';
 let speakingQuestionTimerInterval = null;
 let speakingRecordingStarting = false;   // запись уже запускается (ждём микрофон) — второй запуск не нужен
 let speakingSilenceWarned = false;       // предупреждение о пустой записи — один раз за секцию
+let speakingLevel = null;                // громкость текущей записи (mic-check.js)
 
 // Номер сессии Speaking. Abort посреди сохранения раньше не останавливал
 // цепочку: после загрузки файла движок открывал следующий вопрос уже на
@@ -196,8 +197,17 @@ async function beginSpeakingSection(resume) {
     speakingAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
     try {
-        speakingMediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        speakingMediaStream = await navigator.mediaDevices.getUserMedia(speakingMicConstraints());
         if (!speakingAlive(mySession)) { speakingMediaStream.getTracks().forEach(t => t.stop()); return; }
+
+        // Проверка микрофона: секция начнётся, когда будет слышен голос (mic-check.js).
+        // Cancel — обратно к экрану Start.
+        if (window.MicCheck) {
+            const mc = await MicCheck.run(document.getElementById('engine-content'), { stream: speakingMediaStream, audioCtx: speakingAudioCtx });
+            if (!speakingAlive(mySession)) { if (mc.stream) mc.stream.getTracks().forEach(t => t.stop()); return; }
+            if (!mc.ok) { if (startBtn) startBtn.disabled = false; return; }
+            speakingMediaStream = mc.stream;
+        }
 
         const client = speakingDb();
 
@@ -489,10 +499,15 @@ function setSpeakingStatus(text, classes) {
 // проигрывание вопроса переводит звук в режим воспроизведения, и микрофонный
 // поток, взятый ДО этого, остаётся «живым», но отдаёт тишину. Поэтому перед
 // каждой записью берём микрофон заново. На Android и компьютере безвредно.
+// Микрофон, выбранный на проверке (если он ещё подключён), иначе — по умолчанию
+function speakingMicConstraints() {
+    return window.MicCheck ? MicCheck.constraints() : { audio: true };
+}
+
 async function speakingFreshStream() {
     if (speakingMediaStream) speakingMediaStream.getTracks().forEach(t => t.stop());
     speakingMediaStream = null;
-    speakingMediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    speakingMediaStream = await navigator.mediaDevices.getUserMedia(speakingMicConstraints());
     return speakingMediaStream;
 }
 
@@ -540,6 +555,8 @@ async function startSpeakingRecording(limit) {
     };
     speakingMediaRecorder.ondataavailable = e => { if (e.data.size > 0) speakingAudioChunks.push(e.data); };
     speakingMediaRecorder.start();
+    if (speakingLevel) speakingLevel.stop();
+    speakingLevel = window.MicCheck ? MicCheck.meter(speakingMediaStream, speakingAudioCtx) : null;
 
     let time = limit;
     const progress = document.getElementById('speakingProgressBar');
@@ -571,6 +588,8 @@ async function startSpeakingRecording(limit) {
 async function stopSpeakingRecording() {
     clearTimeout(speakingFailsafeTimer);
     if (!speakingMediaRecorder || speakingMediaRecorder.state === 'inactive') return;
+    const level = speakingLevel ? speakingLevel.stop() : null;
+    speakingLevel = null;
     speakingMediaRecorder.stop();
     setSpeakingStatus('Saving to Cloud...', 'bg-amber-100 text-amber-700 border-amber-200');
     const micIcon = document.getElementById('speakingMicIcon');
@@ -593,11 +612,12 @@ async function stopSpeakingRecording() {
         let uploaded = false;
         let tries = 0;
 
-        // Пустая запись: микрофон не передал звук. Раньше такая тишина молча
-        // уходила в базу и обнаруживалась только при проверке.
-        if (blob.size < 1000 && !speakingSilenceWarned) {
+        // В записи нет голоса: микрофон не передал звук (или ученица промолчала).
+        // По размеру файла это видно не всегда — Chrome пишет тишину файлом
+        // обычного размера, поэтому смотрим и на громкость во время записи.
+        if ((blob.size < 1000 || (window.MicCheck && MicCheck.silent(level))) && !speakingSilenceWarned) {
             speakingSilenceWarned = true;
-            alert('Запись получилась пустой — микрофон не передал звук.\n\nПроверьте: не подключены ли наушники с отдельным микрофоном, не идёт ли звонок в другом приложении, разрешён ли микрофон в настройках браузера.');
+            alert('В этой записи не слышно голоса.\n\nЕсли вы говорили — проверьте микрофон: не выключен ли он (кнопка на ноутбуке или гарнитуре), не занят ли звонком в другом приложении, разрешён ли браузеру в настройках устройства.');
         }
 
         // Повторяем, пока не получится (или пока ученица не выйдет из секции)
