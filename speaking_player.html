@@ -10,6 +10,7 @@
 
     <script src="auth.js"></script>
     <script src="checklist.js"></script>
+    <script src="mic-check.js"></script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -127,6 +128,8 @@
         let testId = null;
         let recordingStarting = false;   // запись уже запускается (ждём микрофон)
         let practiceRunning = false;     // идёт запись набора — предупреждаем при уходе
+        let level = null;                // громкость текущей записи (mic-check.js)
+        let silenceWarned = false;       // предупреждение «в записи нет голоса» — один раз за набор
 
         function spEsc(s) {
             return String(s === null || s === undefined ? '' : s)
@@ -275,7 +278,15 @@
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
             try {
-                mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaStream = await navigator.mediaDevices.getUserMedia(window.MicCheck ? MicCheck.constraints() : { audio: true });
+
+                // Проверка микрофона: начинаем, когда слышен голос (mic-check.js).
+                // В практике — не чаще раза в полчаса, чтобы не говорить «hello» перед каждым набором.
+                if (window.MicCheck && !MicCheck.passedRecently(30)) {
+                    const mc = await MicCheck.run(document.getElementById('startOverlay'), { stream: mediaStream, audioCtx });
+                    if (!mc.ok) { mediaStream = null; startBtn.disabled = false; return; }
+                    mediaStream = mc.stream;
+                }
 
                 const { data: attemptData, error: attemptError } = await _supabase
                     .from('speaking_attempts')
@@ -516,7 +527,7 @@
                 mediaStream.getTracks().forEach(t => t.stop());
                 mediaStream = null;
             }
-            mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaStream = await navigator.mediaDevices.getUserMedia(window.MicCheck ? MicCheck.constraints() : { audio: true });
             return mediaStream;
         }
 
@@ -563,6 +574,9 @@
                 setStatus('Recording error', 'bg-red-100 text-red-700 border-red-200');
             };
 
+            if (level) level.stop();
+            level = window.MicCheck ? MicCheck.meter(mediaStream, audioCtx) : null;
+
             mediaRecorder.ondataavailable = e => {
                 if (e.data.size > 0) audioChunks.push(e.data);
             };
@@ -593,6 +607,8 @@
 
         async function stopRecording() {
             if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                const lvl = level ? level.stop() : null;
+                level = null;
                 mediaRecorder.stop();
                 setStatus('Saving to Cloud...', 'bg-amber-100 text-amber-700 border-amber-200');
 
@@ -609,13 +625,11 @@
 
                     const blob = new Blob(audioChunks, { type: mimeType });
 
-                    // Диагностика пустой записи: на iOS при проблеме с
-                    // аудиосессией запись «проходит», но файл получается
-                    // пустой. Раньше такая тишина молча уезжала в базу и
-                    // обнаруживалась только учителем при проверке.
-                    if (blob.size < 1000) {
-                        console.warn('Пустая запись, размер:', blob.size);
-                        alert('Запись получилась пустой — микрофон не передал звук.\n\nПроверьте, что: не подключены наушники с отдельным микрофоном, не идёт звонок в другом приложении, и в настройках Safari разрешён доступ к микрофону.\n\nПопробуйте пройти это задание ещё раз.');
+                    // В записи нет голоса (один раз за набор). По размеру файла это видно не всегда — Chrome
+                    // пишет тишину файлом обычного размера, поэтому смотрим и на громкость.
+                    if ((blob.size < 1000 || (window.MicCheck && MicCheck.silent(lvl))) && !silenceWarned) {
+                        silenceWarned = true;
+                        alert('В этой записи не слышно голоса.\n\nЕсли вы говорили — проверьте микрофон: не выключен ли он (кнопка на ноутбуке или гарнитуре), не занят ли звонком в другом приложении, разрешён ли браузеру в настройках устройства.');
                     }
 
                     const question = questions[itemIndex];
