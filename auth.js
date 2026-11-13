@@ -110,6 +110,7 @@ const PAGE_SECTIONS = {
     'article-punctuation.html':   'writing',
     'article-collocations.html':  'writing',
     'article-idioms.html':        'writing',
+    'grammar.html':               'writing',   // страница грамматики: статьи на ней — из Writing
 
     // --- Speaking ---
     'speaking.html':    'speaking',
