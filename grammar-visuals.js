@@ -469,6 +469,144 @@
     ], W, narrow);
 
     // =================================================================
+    // ---- Present Perfect / Past Simple: две линии времени ----
+    V['pp-timeline'] = (W, narrow) => {
+        const line = (pw, ly, noPast) => {
+            const x0 = 18, x1 = pw - 18, now = x1 - 34;
+            return {
+                x0, x1, now,
+                svg: `<line x1="${x0}" y1="${ly}" x2="${x1}" y2="${ly}" stroke="${C.line}" stroke-width="3" stroke-linecap="round"/>` +
+                    `<line x1="${now}" y1="${ly - 12}" x2="${now}" y2="${ly + 12}" stroke="${C.slate}" stroke-width="2.2"/>` +
+                    T(now, ly + 27, 'сейчас', { fs: 11, fw: 700, c: C.slate, a: 'middle' }) +
+                    (noPast ? '' : T(x0, ly + 27, 'прошлое', { fs: 11, fw: 600, c: C.mute }))
+            };
+        };
+        return panels([
+            pw => {
+                let s = title(16, 26, 'Past Simple — закрытое прошлое', C.amber);
+                const ex = para(16, 48, 'I lost my keys yesterday.', pw - 32, { fs: 13, fw: 700, c: C.slate });
+                s += ex.svg;
+                const ly = 48 + ex.h + 44, L = line(pw, ly);
+                s += L.svg;
+                const bx = L.x0 + (L.now - L.x0) * 0.22, bw = Math.min(110, (L.now - L.x0) * 0.42);
+                s += R(bx, ly - 15, bw, 30, C.amberBg, C.amber, 8) + T(bx + bw / 2, ly + 4.5, 'yesterday', { fs: 12, fw: 800, c: C.amber, a: 'middle' });
+                s += `<line x1="${bx + bw + 10}" y1="${ly - 18}" x2="${bx + bw + 10}" y2="${ly + 18}" stroke="${C.amber}" stroke-width="2" stroke-dasharray="4 4"/>`;
+                const n = para(16, ly + 52, 'Есть «когда». Действие закончено, к «сейчас» не тянется.', pw - 32, { fs: 12, c: C.mute, fw: 600 });
+                return { svg: s + n.svg, h: ly + 52 + n.h + 6 };
+            },
+            pw => {
+                let s = title(16, 26, 'Present Perfect — прошлое + сейчас', C.ink);
+                const ex = para(16, 48, 'I have lost my keys.', pw - 32, { fs: 13, fw: 700, c: C.slate });
+                s += ex.svg;
+                const ly = 48 + ex.h + 44, L = line(pw, ly, true);
+                s += L.svg;
+                const dx = L.x0 + (L.now - L.x0) * 0.3;
+                s += `<circle cx="${dx}" cy="${ly}" r="8" fill="${C.ink}" class="gv-pulse"/>` + T(Math.max(dx, L.x0 + 46), ly + 27, 'когда? неважно', { fs: 11, fw: 700, c: C.mute, a: 'middle' });
+                s += curve(dx + 6, ly - 6, L.now - 4, ly - 8, -30, C.ink, 'gv-dash');
+                const n = para(16, ly + 52, 'Важен результат сейчас: ключей нет до сих пор.', pw - 32, { fs: 12, c: C.mute, fw: 600 });
+                return { svg: s + n.svg, h: ly + 52 + n.h + 6 };
+            }
+        ], W, narrow);
+    };
+
+    // ---- Период ещё идёт или уже закончился ----
+    V['pp-period'] = (W, narrow) => {
+        const rows = [
+            { per: 'this week', ex: 'I have had three exams this week.', col: C.ink, bg: C.inkBg, from: 0.55, to: 1.0, note: 'неделя ещё идёт → Present Perfect' },
+            { per: 'last week', ex: 'I had three exams last week.', col: C.amber, bg: C.amberBg, from: 0.18, to: 0.48, note: 'неделя закончилась → Past Simple' }
+        ];
+        const x0 = 14, x1 = W - 14, now = x0 + (x1 - x0) * 0.8;
+        let s = '', y = 8;
+        rows.forEach(r => {
+            const p = para(x0, y + 14, r.ex, x1 - x0, { fs: 13, fw: 700, c: C.slate });
+            s += p.svg; y += p.h + 10;
+            const ly = y + 18;
+            s += `<line x1="${x0}" y1="${ly}" x2="${x1}" y2="${ly}" stroke="${C.line}" stroke-width="3" stroke-linecap="round"/>`;
+            const bx = x0 + (now - x0) * r.from, bxe = r.to >= 1 ? now + 22 : x0 + (now - x0) * r.to;
+            s += R(bx, ly - 14, bxe - bx, 28, r.bg, r.col, 8, r.to >= 1 ? ' class="gv-glow"' : '');
+            s += T(bx + 10, ly + 4.5, r.per, { fs: 12, fw: 800, c: r.col });
+            s += `<line x1="${now}" y1="${ly - 18}" x2="${now}" y2="${ly + 18}" stroke="${C.slate}" stroke-width="2.2"/>`;
+            s += T(now, ly + 32, 'сейчас', { fs: 11, fw: 700, c: C.slate, a: 'middle' });
+            const n = para(x0, ly + 34 + (narrow ? 16 : 0), r.note, narrow ? x1 - x0 : now - x0 - 40, { fs: 12, fw: 700, c: r.col });
+            s += n.svg;
+            y = ly + 34 + (narrow ? 16 : 0) + n.h + 14;
+        });
+        return { svg: s, h: y - 4 };
+    };
+
+    // ---- since и for ведут к «сейчас» ----
+    V['pp-since'] = (W, narrow) => {
+        const x0 = 16, x1 = W - 16, now = x1 - 40;
+        let s = '', y = 8;
+        const p = para(x0, y + 14, 'The Wi-Fi hasn’t worked since Monday.', x1 - x0, { fs: 13, fw: 700, c: C.slate });
+        s += p.svg; y += p.h;
+        const p2 = para(x0, y + 14, 'The Wi-Fi hasn’t worked for three days.', x1 - x0, { fs: 13, fw: 700, c: C.slate });
+        s += p2.svg; y += p2.h + 26;
+        const ly = y + 52, start = x0 + (now - x0) * 0.25;
+        s += `<line x1="${x0}" y1="${ly}" x2="${x1}" y2="${ly}" stroke="${C.line}" stroke-width="3" stroke-linecap="round"/>`;
+        s += `<rect x="${start}" y="${ly - 5}" width="${now - start}" height="10" rx="5" fill="${C.ink}" opacity=".22" class="gv-grow"/>`;
+        s += `<circle cx="${start}" cy="${ly}" r="7" fill="${C.sky}"/>` + T(start, ly - 16, 'since Monday', { fs: 12, fw: 800, c: C.sky, a: 'middle' }) + T(start, ly + 26, 'точка начала', { fs: 11, fw: 600, c: C.mute, a: 'middle' });
+        const bm = (start + now) / 2;
+        s += `<path d="M${start},${ly - 34} q0,-8 8,-8 L${now - 8},${ly - 42} q8,0 8,8" fill="none" stroke="${C.violet}" stroke-width="2"/>`;
+        s += T(bm, ly - 50, 'for three days', { fs: 12, fw: 800, c: C.violet, a: 'middle' });
+        s += `<line x1="${now}" y1="${ly - 14}" x2="${now}" y2="${ly + 14}" stroke="${C.slate}" stroke-width="2.2"/>` + T(now, ly + 30, 'сейчас', { fs: 11, fw: 700, c: C.slate, a: 'middle' });
+        y = ly + 48;
+        const bad = chip(x0, y, 'isn’t working since Monday', { bg: C.badBg, stroke: '#fecdd3', c: C.bad, fs: 12.5 });
+        s += bad.svg + badge(x0 + bad.w + 16, y + 13, false);
+        const n = para(x0, y + 46, 'Длится до сих пор → have / has + третья форма, а не Present Simple.', x1 - x0, { fs: 12, fw: 600, c: C.mute });
+        return { svg: s + n.svg, h: y + 46 + n.h + 4 };
+    };
+
+    // ---- Где стоят already, just, never, yet, still ----
+    V['pp-yet'] = (W, narrow) => {
+        const hi = (label, col, bg) => ({ label, bg, stroke: col, c: col, fw: 800, fs: 12.5 });
+        const pl = label => ({ label, fs: 12.5 });
+        const block = (head, lines) => pw => {
+            let s = title(16, 26, head), y = 42;
+            lines.forEach(L => {
+                const r = row(16, y, L, 5);
+                s += r.svg; y += 36;
+            });
+            return { svg: s, h: y + 4 };
+        };
+        return panels([
+            block('Между have и третьей формой', [
+                [pl('I'), pl('have'), hi('already', C.ink, C.inkBg), pl('sent'), pl('it.')],
+                [pl('She'), pl('has'), hi('just', C.ink, C.inkBg), pl('left.')],
+                [pl('I'), pl('have'), hi('never', C.ink, C.inkBg), pl('been'), pl('there.')],
+                [pl('Have'), pl('you'), hi('ever', C.ink, C.inkBg), pl('tried'), pl('it?')]
+            ]),
+            block('yet — в конце, still — перед haven’t', [
+                [pl('I'), pl('haven’t'), pl('finished'), pl('it'), hi('yet.', C.ok, C.okBg)],
+                [pl('Have'), pl('you'), pl('applied'), hi('yet?', C.ok, C.okBg)],
+                [pl('I'), hi('still', C.amber, C.amberBg), pl('haven’t'), pl('received'), pl('it.')],
+                [pl('He'), hi('still', C.amber, C.amberBg), pl('hasn’t'), pl('called.')]
+            ])
+        ], W, narrow);
+    };
+
+    // ---- Как выбрать: два вопроса ----
+    V['pp-choose'] = (W, narrow) => {
+        const box = (x, y, w, txt) => {
+            const p = para(x + 12, y + 20, txt, w - 24, { fs: 12.5, fw: 600 });
+            return { svg: R(x, y, w, p.h + 16, C.inkBg, '#c7d2fe', 10) + p.svg, h: p.h + 16 };
+        };
+        const out = (x, y, label, col, bg) => chip(x, y, label, { bg, stroke: col, c: col, fs: 13, fw: 800, h: 28 });
+        const colW = narrow ? W - 20 : W * 0.58;
+        let s = '', y = 6;
+        let q = box(10, y, colW, '1. Есть конкретное время в прошлом: yesterday, last week, ago, in 2020, when I was…?');
+        s += q.svg;
+        if (narrow) { s += out(10, y + q.h + 8, 'Да → Past Simple', C.amber, C.amberBg).svg; y += q.h + 58; }
+        else { s += arrow(colW + 14, y + q.h / 2, colW + 30, y + q.h / 2) + out(colW + 34, y + q.h / 2 - 14, 'Да → Past Simple', C.amber, C.amberBg).svg; y += q.h + 14; }
+        s += T(24, y + 2, 'Нет ↓', { fs: 12, fw: 700, c: C.mute }); y += 12;
+        q = box(10, y, colW, '2. Важно, что есть сейчас, или период ещё идёт: today, this week, so far, since, for?');
+        s += q.svg;
+        if (narrow) { s += out(10, y + q.h + 8, 'Да → Present Perfect', C.ink, C.inkBg).svg; y += q.h + 44; }
+        else { s += arrow(colW + 14, y + q.h / 2, colW + 30, y + q.h / 2) + out(colW + 34, y + q.h / 2 - 14, 'Да → Present Perfect', C.ink, C.inkBg).svg; y += q.h + 10; }
+        const n = para(10, y + 12, 'Рассказываете историю по шагам (сначала, потом) — Past Simple.', W - 20, { fs: 12, fw: 600, c: C.mute });
+        return { svg: s + n.svg, h: y + 12 + n.h };
+    };
+
     const STYLE = `<style>
         .gv{margin:16px 0 6px}
         .gv svg{display:block;width:100%;height:auto;font-family:inherit}
