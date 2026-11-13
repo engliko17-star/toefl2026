@@ -119,9 +119,9 @@
             name: 'Writing', icon: 'pen-tool', goal: 5,
             tagline: L('Plan. Write. Make every word count.', 'Планируйте, пишите — пусть каждое слово работает.'),
             sub: L('Guides and templates, practice by task type and a timed mini mock.', 'Разборы и шаблоны, практика по типам заданий и мини-мок на время.'),
-            articlesSub: L('Task guides, an email course, grammar and vocabulary.', 'Разборы заданий, курс по email, грамматика и лексика.'),
+            articlesSub: L('Task guides, an email course and vocabulary.', 'Разборы заданий, курс по email и лексика.'),
             articlesHub: 'writing-articles.html',
-            allArticlesSub: L('Task guides, the email course, grammar and vocabulary — all in one place.', 'Разборы заданий, курс по email, грамматика и лексика — в одном месте.'),
+            allArticlesSub: L('Task guides, the email course and vocabulary — all in one place.', 'Разборы заданий, курс по email и лексика — в одном месте.'),
             articles: [
                 { href: 'article-write-an-academic.html', tag: L('Task type', 'Тип задания'), title: 'Write for an Academic Discussion', min: 13,
                   desc: L('A clear structure for the 10-minute Academic Discussion.', 'Понятная структура ответа для Academic Discussion за 10 минут.') },
