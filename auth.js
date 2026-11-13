@@ -108,6 +108,7 @@ const PAGE_SECTIONS = {
     'article-verb-patterns.html': 'writing',
     'article-gerund-infinitive.html': 'writing',
     'article-indirect-questions.html': 'writing',
+    'article-present-perfect.html': 'writing',
     'article-punctuation.html':   'writing',
     'article-collocations.html':  'writing',
     'article-idioms.html':        'writing',
