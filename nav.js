@@ -101,15 +101,16 @@
         'article-reference.html': 'reading.html', 'article-rhetorical-purpose.html': 'reading.html',
         'article-select-sentence.html': 'reading.html', 'article-time-management.html': 'reading.html',
         'article-sentence-simplification.html': 'reading.html', 'article-vocabulary.html': 'reading.html',
-        // --- статьи Writing (грамматика и задания) ---
-        'article-idioms.html': 'writing.html',
-        'article-articles.html': 'writing.html', 'article-build-a-sentence.html': 'writing.html',
-        'article-collocations.html': 'writing.html', 'article-countable-uncountable.html': 'writing.html',
-        'article-dependent-prepositions.html': 'writing.html',
-        'article-gerund-infinitive.html': 'writing.html',
-        'article-prepositions.html': 'writing.html', 'article-punctuation.html': 'writing.html',
-        'article-verb-government.html': 'writing.html', 'article-verb-patterns.html': 'writing.html',
+        // --- статьи Writing (задания и лексика) ---
+        'article-idioms.html': 'writing.html', 'article-build-a-sentence.html': 'writing.html',
+        'article-collocations.html': 'writing.html',
         'article-write-an-academic.html': 'writing.html', 'article-write-an-email.html': 'writing.html',
+        // --- грамматика: статьи только на странице Грамматики ---
+        'article-articles.html': 'grammar.html', 'article-countable-uncountable.html': 'grammar.html',
+        'article-prepositions.html': 'grammar.html', 'article-dependent-prepositions.html': 'grammar.html',
+        'article-verb-government.html': 'grammar.html', 'article-verb-patterns.html': 'grammar.html',
+        'article-gerund-infinitive.html': 'grammar.html', 'article-indirect-questions.html': 'grammar.html',
+        'article-punctuation.html': 'grammar.html',
         // --- курс Write an Email (Writing) ---
         'article-email-anatomy.html': 'writing.html', 'article-email-tone.html': 'writing.html',
         'article-email-opening.html': 'writing.html', 'article-email-details.html': 'writing.html',
