@@ -399,15 +399,22 @@
                 <button type="button" class="gp-chip gp-noerr" data-noerr="1">Ошибки нет</button>
                 <div class="gp-why"></div></div></div>`;
             list.appendChild(li);
-            const row = { li, toks, hasErr, it, sel: null };
+            // Можно отметить несколько слов: ошибка бывает из двух-трёх слов (to answer → answering)
+            const row = { li, toks, hasErr, it, sel: new Set(), none: false };
             li.addEventListener('click', e => {
                 const b = e.target.closest('button');
                 if (!b || b.disabled) return;
-                li.querySelectorAll('.is-sel').forEach(n => n.classList.remove('is-sel'));
-                const pick = b.dataset.noerr ? 'none' : Number(b.dataset.k);
-                if (row.sel === pick) { row.sel = null; return; }
-                row.sel = pick;
-                b.classList.add('is-sel');
+                if (b.dataset.noerr) {
+                    row.none = !row.none;
+                    row.sel.clear();
+                    li.querySelectorAll('.gp-tok.is-sel').forEach(n => n.classList.remove('is-sel'));
+                    b.classList.toggle('is-sel', row.none);
+                    return;
+                }
+                const k = Number(b.dataset.k);
+                if (row.none) { row.none = false; li.querySelector('[data-noerr]').classList.remove('is-sel'); }
+                if (row.sel.has(k)) { row.sel.delete(k); b.classList.remove('is-sel'); }
+                else { row.sel.add(k); b.classList.add('is-sel'); }
             });
             rows.push(row);
         });
@@ -416,10 +423,12 @@
                 let ok = 0, missing = 0;
                 const results = [];
                 rows.forEach(r => {
+                    // Верно, если отмечено хотя бы одно слово ошибки и ничего лишнего вне её
                     let res;
-                    if (r.sel === null) { res = false; missing++; }
-                    else if (r.sel === 'none') res = !r.hasErr;
-                    else res = r.hasErr && !!r.toks[r.sel] && r.toks[r.sel].err;
+                    const picked = [...r.sel];
+                    if (!r.none && !picked.length) { res = false; missing++; }
+                    else if (r.none) res = !r.hasErr;
+                    else res = r.hasErr && picked.every(k => r.toks[k] && r.toks[k].err);
                     if (res) ok++;
                     results.push({ key: r.it._key, ok: !!res });
                     r.li.querySelectorAll('button').forEach(b => { b.disabled = true; });
@@ -435,18 +444,18 @@
                             shown.add(t.gid);
                         }
                     });
-                    const sel = r.sel === 'none' ? r.li.querySelector('[data-noerr]') : (r.sel !== null ? r.li.querySelector(`.gp-tok[data-k="${r.sel}"]`) : null);
-                    if (sel) sel.classList.add(res ? 'gp-ok' : 'gp-bad');
+                    if (r.none) r.li.querySelector('[data-noerr]').classList.add(res ? 'gp-ok' : 'gp-bad');
+                    picked.forEach(k => { const b = r.li.querySelector(`.gp-tok[data-k="${k}"]`); if (b) b.classList.add(r.toks[k].err ? 'gp-ok' : 'gp-bad'); });
                     if (!r.hasErr) r.li.querySelector('[data-noerr]').classList.add('gp-ok');
                     const why = r.li.querySelector('.gp-why');
-                    why.innerHTML = (r.sel === null ? '<span class="gp-hint-missing">Нет ответа. </span>' : '') + rich(r.it.why || '');
+                    why.innerHTML = (!r.none && !picked.length ? '<span class="gp-hint-missing">Нет ответа. </span>' : '') + rich(r.it.why || '');
                     why.className = 'gp-why ' + (res ? 'is-ok' : 'is-bad');
                 });
                 return { ok, total: rows.length, missing, results };
             },
             reset() {
                 rows.forEach(r => {
-                    r.sel = null;
+                    r.sel.clear(); r.none = false;
                     r.li.querySelectorAll('[data-gp-fix]').forEach(n => n.remove());
                     r.li.querySelectorAll('button').forEach(b => { b.disabled = false; b.classList.remove('is-sel', 'is-err', 'gp-ok', 'gp-bad'); });
                     r.li.querySelector('.gp-why').className = 'gp-why';
