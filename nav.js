@@ -48,6 +48,7 @@
         ]},
         { title: L('Practice', 'Практика'), items: [
             { href: 'vocabulary.html',      icon: 'book-open',      label: L('Vocabulary', 'Словарь') },
+            { href: 'grammar.html',         icon: 'spell-check',    label: L('Grammar', 'Грамматика') },
             { href: 'irregular-verbs.html', icon: 'repeat',         label: L('Irregular Verbs', 'Неправильные глаголы'), short: L('Verbs', 'Глаголы') },
             { href: 'lessons.html',         icon: 'message-circle', label: L('Speaking Topics', 'Темы для Speaking'), short: L('Topics', 'Темы') }
         ]}
@@ -98,7 +99,7 @@
         'article-factual.html': 'reading.html', 'article-inference.html': 'reading.html',
         'article-insert-text.html': 'reading.html', 'article-read-in-daily.html': 'reading.html',
         'article-reference.html': 'reading.html', 'article-rhetorical-purpose.html': 'reading.html',
-        'article-select-sentence.html': 'reading.html',
+        'article-select-sentence.html': 'reading.html', 'article-time-management.html': 'reading.html',
         'article-sentence-simplification.html': 'reading.html', 'article-vocabulary.html': 'reading.html',
         // --- статьи Writing (грамматика и задания) ---
         'article-idioms.html': 'writing.html',
@@ -108,11 +109,25 @@
         'article-gerund-infinitive.html': 'writing.html',
         'article-prepositions.html': 'writing.html', 'article-punctuation.html': 'writing.html',
         'article-verb-government.html': 'writing.html', 'article-verb-patterns.html': 'writing.html',
-        'article-write-an-academic.html': 'writing.html', 'article-write-an-email.html': 'writing.html'
+        'article-write-an-academic.html': 'writing.html', 'article-write-an-email.html': 'writing.html',
+        // --- курс Write an Email (Writing) ---
+        'article-email-anatomy.html': 'writing.html', 'article-email-tone.html': 'writing.html',
+        'article-email-opening.html': 'writing.html', 'article-email-details.html': 'writing.html',
+        'article-email-politeness.html': 'writing.html', 'article-email-closing.html': 'writing.html',
+        'article-email-practice.html': 'writing.html'
     };
 
     const here = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
-    const activeHref = PARENT_OF[here] || here;
+    // Статья открыта со страницы, которая собирает статьи из разных разделов
+    // (ссылка с ?from=grammar): в меню подсвечена эта страница, а не раздел статьи,
+    // и ссылка «Назад» в статье ведёт обратно на неё.
+    const FROM_PAGES = {
+        grammar: { href: 'grammar.html', back: L('Back to Grammar', 'К грамматике') }
+    };
+    const FROM = (function () {
+        try { return FROM_PAGES[(new URLSearchParams(location.search).get('from') || '').toLowerCase()] || null; } catch (e) { return null; }
+    })();
+    const activeHref = (FROM && FROM.href) || PARENT_OF[here] || here;
     const STORE_KEY = 'appNavCollapsed';
 
     // ---------- Стили меню ----------
@@ -316,6 +331,13 @@
     </div>`;
     document.body.appendChild(mnav);
     document.body.classList.add('app-has-mnav');
+    // Пунктов больше, чем влезает на телефоне: прокручиваем строку так, чтобы текущий раздел был виден
+    (function showActiveMobile() {
+        const row = mnav.querySelector('.app-mnav-row');
+        const act = mnav.querySelector('.app-mnav-link.is-active');
+        if (!row || !act || row.scrollWidth <= row.clientWidth) return;
+        row.scrollLeft = Math.max(0, act.offsetLeft - (row.clientWidth - act.offsetWidth) / 2);
+    })();
 
     // ---------- Переключатель языка ----------
     [aside, mnav].forEach(root => root.addEventListener('click', e => {
@@ -351,6 +373,23 @@
     // Если lucide подключён позже этого скрипта — дорисуем после загрузки
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', drawIcons);
     window.addEventListener('load', drawIcons);
+
+    // ---------- «Назад» в статье, открытой с другой страницы (?from=…) ----------
+    // Первая ссылка в начале статьи, ведущая на раздел статей (…-articles.html),
+    // теперь ведёт туда, откуда пришли.
+    if (FROM) {
+        const fixBack = () => {
+            const main = document.querySelector('main');
+            const back = main && Array.prototype.find.call(main.querySelectorAll('a[href]'),
+                a => /(^|\/)[a-z-]+-articles\.html$/i.test(a.getAttribute('href')));
+            if (!back) return;
+            back.setAttribute('href', FROM.href);
+            const txt = Array.prototype.filter.call(back.childNodes, n => n.nodeType === 3 && n.textContent.trim()).pop();
+            if (txt) txt.textContent = ' ' + FROM.back;
+        };
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fixBack);
+        else fixBack();
+    }
 
     // ---------- Ссылка для преподавателя ----------
     // Страницы и так раскрывают teacherLink* для учителя; дублируем здесь,
