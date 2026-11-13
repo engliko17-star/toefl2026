@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grammar — TOEFL</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        // Если CDN иконок не ответил, страница не должна падать на lucide.createIcons()
+        if (!window.lucide || typeof window.lucide.createIcons !== 'function') window.lucide = { createIcons: function () {} };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="i18n.js"></script>
+    <script src="auth.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+
+        /* Цвет раздела «Грамматика» — тёплый жёлтый, как маркер-выделитель
+           (у Reading зелёный, Listening фиолетовый, Writing синий, Speaking коралловый) */
+        #grammar {
+            --g-bg: #fdf8ec; --g-line: #f1e2bd; --g-chip: #f8eac4; --g-ink: #93640c; --g-bar: #e2ae3f; --g-deep: #6b4808;
+        }
+        .g-ink { color: var(--g-ink); }
+
+        /* Шапка */
+        .g-hero { position: relative; overflow: hidden; isolation: isolate; border-radius: 32px;
+            background: linear-gradient(120deg, var(--g-bg) 0%, #fff 55%, var(--g-bg) 100%); border: 1px solid var(--g-line); }
+        .g-hero-circle { position: absolute; right: 110px; top: -130px; width: 340px; height: 340px; border-radius: 50%;
+            background: var(--g-chip); opacity: .7; z-index: -2; }
+        .g-hero-art { position: absolute; right: 18px; bottom: -26px; width: 300px; height: 230px; z-index: -1;
+            -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 28%); mask-image: linear-gradient(to right, transparent 0%, #000 28%); }
+        .g-hero-tag { background: var(--g-chip); color: var(--g-ink); }
+        .g-hero-title { font-size: clamp(44px, 8vw, 76px); line-height: .95; letter-spacing: -.035em; font-weight: 800; color: #0f1735; }
+        @media (max-width: 639px) {
+            .g-hero-circle { right: -130px; top: -150px; width: 280px; height: 280px; }
+            .g-hero-art { width: 180px; height: 140px; right: -34px; bottom: -28px; opacity: .55; }
+        }
+
+        /* Заголовок группы с тонкой линией до края */
+        .g-zone-line { flex: 1; height: 1px; background: linear-gradient(90deg, var(--g-line), transparent); }
+
+        /* Карточка темы */
+        .g-tile { position: relative; border-radius: 24px; border: 1px solid #eef0f4;
+            background: linear-gradient(135deg, #fff 0%, #fff 55%, var(--g-bg) 100%);
+            transition: border-color .15s, box-shadow .15s; }
+        .g-tile:hover { border-color: var(--g-line); box-shadow: 0 14px 30px -18px rgba(15, 23, 42, .28); }
+        .g-tile:focus-visible { outline: 2px solid var(--g-ink); outline-offset: 2px; }
+        .g-icon { background: #fff; border: 1px solid var(--g-line); color: var(--g-ink);
+            box-shadow: 0 6px 14px -10px rgba(147, 100, 12, .6); }
+        /* Внутри темы: 1 Теория → 2 Практика */
+        .g-step { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #64748b; white-space: nowrap; }
+        .g-step b { width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+            font-size: 10px; font-weight: 800; background: var(--g-chip); color: var(--g-ink); }
+        .g-step-line { width: 14px; height: 1px; background: var(--g-line); flex-shrink: 0; }
+        .g-go { background: var(--g-ink); color: #fff; transition: background .15s; }
+        .g-tile:hover .g-go { background: var(--g-deep); }
+        @media (prefers-reduced-motion: reduce) { .g-tile, .g-go { transition: none; } }
+    </style>
+</head>
+<body class="bg-[#f8f9fa] text-slate-800 min-h-screen flex flex-col md:flex-row">
+    <div id="app-sidebar"></div>
+    <script src="nav.js"></script>
+
+    <!-- Страница грамматики. Темы и группы — в списках TOPICS и GROUPS ниже:
+         новая тема = одна запись в TOPICS (статья с теорией и практикой уже должна быть на сайте). -->
+    <main class="flex-1 min-w-0 overflow-y-auto pb-28 md:pb-10">
+        <div class="max-w-6xl mx-auto px-4 sm:px-8 pt-5 sm:pt-10">
+            <div id="grammar"></div>
+        </div>
+    </main>
+
+    <script>
+    (function () {
+        'use strict';
+        const LANG = window.I18N ? window.I18N.lang : 'en';
+        const L = (en, ru) => (LANG === 'ru' ? ru : en);
+        const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        const ruPlural = (n, one, few, many) => {
+            const m10 = n % 10, m100 = n % 100;
+            if (m10 === 1 && m100 !== 11) return one;
+            if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return few;
+            return many;
+        };
+
+        // ---------- Группы тем (в таком порядке и выводятся) ----------
+        const GROUPS = [
+            { id: 'nouns', title: L('Articles & Nouns', 'Артикли и существительные'),
+              sub: L('a / an / the, countable and uncountable nouns', 'a / an / the, исчисляемые и неисчисляемые') },
+            { id: 'prepositions', title: L('Prepositions', 'Предлоги'),
+              sub: L('Time and place, and prepositions that go with certain words', 'Время и место, и предлоги, которые требуют слова') },
+            { id: 'verbs', title: L('Verbs', 'Глаголы'),
+              sub: L('What comes after a verb: to, -ing, an object or a that-clause', 'Что идёт после глагола: to, -ing, дополнение или that') },
+            { id: 'punctuation', title: L('Punctuation', 'Пунктуация'),
+              sub: L('Commas, semicolons, colons, apostrophes and dashes', 'Запятые, точка с запятой, двоеточие, апостроф и тире') }
+        ];
+
+        // ---------- Темы ----------
+        // href — статья: в ней сначала теория, в конце практика.
+        // min — время чтения (как на странице статей Writing).
+        const TOPICS = [
+            { group: 'nouns', href: 'article-articles.html', icon: 'type', min: 5,
+              title: 'Articles: a / an / the',
+              desc: L('When to use a, an, the or no article at all in essays and emails.',
+                      'A / an / the и нулевой артикль: когда какой нужен в эссе и письме.') },
+            { group: 'nouns', href: 'article-countable-uncountable.html', icon: 'boxes', min: 5,
+              title: 'Countable & Uncountable Nouns',
+              desc: L('Which nouns never take a/an or -s, much vs many, few vs little.',
+                      'Какие существительные не бывают с a/an и -s, much и many, few и little.') },
+            { group: 'prepositions', href: 'article-prepositions.html', icon: 'map-pin', min: 7,
+              title: 'Prepositions of Time & Place',
+              desc: L('In, on, at and other prepositions of time and place.',
+                      'In, on, at и другие предлоги времени и места.') },
+            { group: 'prepositions', href: 'article-dependent-prepositions.html', icon: 'link', min: 8,
+              title: 'Dependent Prepositions',
+              desc: L('Interested in, good at, responsible for: fixed prepositions after adjectives, verbs and nouns.',
+                      'Interested in, good at, responsible for: устойчивые предлоги после прилагательных, глаголов и существительных.') },
+            { group: 'verbs', href: 'article-verb-government.html', icon: 'command', min: 5,
+              title: 'Verb Government',
+              desc: L('Explain to me, not explain me: verbs with to before a person, two objects, spend time doing.',
+                      'Explain to me, а не explain me: глаголы с to перед человеком, с двумя дополнениями, spend time doing.') },
+            { group: 'verbs', href: 'article-verb-patterns.html', icon: 'layers', min: 5,
+              title: 'Verb Patterns: Suggest, Recommend & Advise',
+              desc: L('Suggest, recommend, propose + -ing or that; advise, allow, permit with and without an object.',
+                      'Suggest, recommend, propose + -ing или that; advise, allow, permit с дополнением и без.') },
+            { group: 'verbs', href: 'article-gerund-infinitive.html', icon: 'arrow-right-left', min: 8,
+              title: 'Gerund & Infinitive',
+              desc: L('Which verbs take -ing and which take to + verb, and where the choice changes the meaning.',
+                      'После каких глаголов нужен -ing, после каких to + глагол, и где выбор меняет смысл.') },
+            { group: 'punctuation', href: 'article-punctuation.html', icon: 'pen-line', min: 8,
+              title: 'Punctuation Essentials',
+              desc: L('Where each punctuation mark goes in an email or essay.',
+                      'Где какой знак ставить в письме и эссе.') }
+        ];
+
+        // Тренажёр с грамматикой по уровням (раздел Writing)
+        const TRAINER = { href: 'sentence-practice.html', icon: 'list-ordered', title: 'Sentence Preparation',
+            desc: L('Grammar and word order, step by step by level.', 'Грамматика и порядок слов в предложении — шаг за шагом по уровням.') };
+
+        // ---------- Рисунок в шапке: строка текста с выделенным словом ----------
+        const HERO_ART = `<svg class="g-hero-art" viewBox="0 0 172 132" aria-hidden="true">
+            <defs>
+                <linearGradient id="gPaper" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" style="stop-color:var(--g-chip)"/></linearGradient>
+                <linearGradient id="gMark" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--g-bar)"/><stop offset="1" style="stop-color:var(--g-ink)"/></linearGradient>
+            </defs>
+            <rect x="34" y="16" width="124" height="96" rx="14" fill="url(#gPaper)" style="stroke:var(--g-line)" stroke-width="1.5"/>
+            <rect x="50" y="34" width="70" height="7" rx="3.5" fill="#e2e8f0"/>
+            <rect x="50" y="52" width="22" height="7" rx="3.5" fill="#e2e8f0"/>
+            <rect x="78" y="48" width="34" height="15" rx="5" fill="url(#gMark)" opacity=".9"/>
+            <text x="95" y="59" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="10" font-weight="800" fill="#fff">the</text>
+            <rect x="118" y="52" width="24" height="7" rx="3.5" fill="#e2e8f0"/>
+            <rect x="50" y="72" width="56" height="7" rx="3.5" fill="#e2e8f0"/>
+            <rect x="50" y="90" width="80" height="7" rx="3.5" fill="#e2e8f0"/>
+            <circle cx="150" cy="24" r="13" fill="#fff" style="stroke:var(--g-line)" stroke-width="1.5"/>
+            <path d="M144 24.5l4 4 8-8.5" fill="none" style="stroke:var(--g-ink)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>`;
+
+        const zoneHead = (id, title, sub, count) => `<div class="flex items-end gap-4 mb-4">
+                <div class="min-w-0"><h2 id="${id}" class="text-xl font-extrabold text-slate-900 tracking-tight leading-tight">${esc(title)}${count ? ` <span class="text-sm font-semibold text-slate-400 align-middle ml-1">${count}</span>` : ''}</h2>
+                <p class="text-[13px] text-slate-500 mt-0.5">${esc(sub)}</p></div>
+                <span class="g-zone-line mb-2.5 hidden sm:block" aria-hidden="true"></span>
+            </div>`;
+
+        const steps = `<span class="g-step"><b>1</b>${esc(L('Theory', 'Теория'))}</span><span class="g-step-line" aria-hidden="true"></span><span class="g-step"><b>2</b>${esc(L('Practice', 'Практика'))}</span>`;
+
+        function topicCard(t) {
+            // ?from=grammar — в статье меню подсветит «Грамматику», а «Назад» вернёт на эту страницу
+            const href = t.href + '?from=grammar';
+            return `<a href="${esc(href)}" class="g-tile flex flex-col p-5 sm:p-6 min-h-[200px] min-w-0">
+                    <div class="flex items-start justify-between gap-3">
+                        <span class="g-icon w-10 h-10 rounded-xl flex items-center justify-center shrink-0"><i data-lucide="${esc(t.icon)}" class="w-5 h-5"></i></span>
+                        <span class="text-[12px] text-slate-400 flex items-center gap-1.5 pt-2.5 whitespace-nowrap"><i data-lucide="clock" class="w-3.5 h-3.5"></i>${esc(L(t.min + ' min', t.min + ' мин'))}</span>
+                    </div>
+                    <h3 class="mt-4 text-[17px] font-extrabold text-slate-900 leading-snug tracking-tight">${esc(t.title)}</h3>
+                    <p class="mt-1.5 text-[13px] text-slate-500 leading-relaxed">${esc(t.desc)}</p>
+                    <div class="mt-auto pt-5 flex items-center justify-between gap-3">
+                        <span class="flex items-center gap-2 min-w-0">${steps}</span>
+                        <span class="g-go shrink-0 w-9 h-9 rounded-xl inline-flex items-center justify-center" aria-hidden="true"><i data-lucide="arrow-right" class="w-4 h-4"></i></span>
+                    </div>
+                </a>`;
+        }
+
+        function trainerCard(t) {
+            return `<a href="${esc(t.href)}" class="g-tile flex flex-col items-start sm:flex-row sm:items-center gap-4 p-5 sm:p-6 min-w-0">
+                    <span class="g-icon w-10 h-10 rounded-xl flex items-center justify-center shrink-0"><i data-lucide="${esc(t.icon)}" class="w-5 h-5"></i></span>
+                    <span class="min-w-0 flex-1">
+                        <span class="block text-[12px] font-semibold g-ink">${esc(L('Trainer by level', 'Тренажёр по уровням'))}</span>
+                        <span class="block mt-1 text-[17px] font-extrabold text-slate-900 leading-snug tracking-tight">${esc(t.title)}</span>
+                        <span class="block mt-1 text-[13px] text-slate-500 leading-relaxed">${esc(t.desc)}</span>
+                    </span>
+                    <span class="g-go self-start sm:self-center shrink-0 inline-flex items-center gap-1.5 text-[13px] font-bold px-4 py-2.5 rounded-xl">${esc(L('Start', 'Начать'))}<i data-lucide="arrow-right" class="w-4 h-4"></i></span>
+                </a>`;
+        }
+
+        function render() {
+            const root = document.getElementById('grammar');
+            const n = TOPICS.length;
+            const count = L(n + (n === 1 ? ' topic' : ' topics'), n + ' ' + ruPlural(n, 'тема', 'темы', 'тем'));
+            root.innerHTML = `
+                <header class="g-hero p-6 sm:p-10 mb-8 sm:mb-10">
+                    <span class="g-hero-circle" aria-hidden="true"></span>
+                    ${HERO_ART}
+                    <div class="max-w-xl sm:pr-40">
+                        <span class="g-hero-tag inline-block text-[13px] font-bold px-3.5 py-1.5 rounded-full">TOEFL</span>
+                        <h1 class="g-hero-title mt-4">Grammar</h1>
+                        <p class="mt-3 text-[15px] sm:text-lg text-slate-600">${esc(L('Rule first, then practice — topic by topic.', 'Сначала правило, потом практика — тема за темой.'))}</p>
+                        <p class="mt-4 text-[13px] font-semibold g-ink">${esc(count)}</p>
+                    </div>
+                </header>
+                <div class="space-y-10 sm:space-y-12">
+                    ${GROUPS.map(g => {
+                        const list = TOPICS.filter(t => t.group === g.id);
+                        if (!list.length) return '';
+                        return `<section aria-labelledby="g-${g.id}">
+                                ${zoneHead('g-' + g.id, g.title, g.sub, list.length)}
+                                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">${list.map(topicCard).join('')}</div>
+                            </section>`;
+                    }).join('')}
+                    <section aria-labelledby="g-more">
+                        ${zoneHead('g-more', L('More practice', 'Ещё практика'), L('Grammar inside whole sentences', 'Грамматика в целых предложениях'))}
+                        <div class="grid grid-cols-1 gap-4">${trainerCard(TRAINER)}</div>
+                    </section>
+                </div>`;
+            try { if (window.lucide && lucide.createIcons) lucide.createIcons(); } catch (e) {}
+        }
+
+        render();
+    })();
+    </script>
+</body>
+</html>
