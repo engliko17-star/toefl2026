@@ -607,6 +607,109 @@
         return { svg: s + n.svg, h: y + 12 + n.h };
     };
 
+    // ---- Относительные придаточные ----
+    // Плашки с переносом по ширине; у плашки может быть подпись снизу (sub)
+    function flow(x, y, items, maxW, o) {
+        o = o || {};
+        const gap = o.gap || 6, hasSub = items.some(it => it.sub), lineH = 26 + (hasSub ? 22 : 0) + (o.lineGap || 10);
+        let cx = x, cy = y, svg = '';
+        const pos = [];
+        items.forEach(it => {
+            // Ширина места = max(плашка, подпись), чтобы подписи соседей не налезали друг на друга
+            const w = chip(0, 0, it.label, it).w, slot = Math.max(w, it.sub ? tw(it.sub, 10.5) + 6 : 0);
+            if (cx > x && cx + slot > x + maxW) { cx = x; cy += lineH; }
+            const chx = cx + (slot - w) / 2;
+            svg += chip(chx, cy, it.label, it).svg;
+            if (it.sub) svg += T(cx + slot / 2, cy + 26 + 15, it.sub, { fs: 10.5, fw: 700, c: it.subC || it.c || C.mute, a: 'middle' });
+            pos.push({ x: chx, y: cy, w });
+            cx += slot + gap;
+        });
+        return { svg, h: cy - y + 26 + (hasSub ? 22 : 0), pos };
+    }
+    const RC = {
+        noun: label => ({ label, bg: C.inkBg, stroke: '#c7d2fe', c: C.ink, fw: 800 }),
+        cl: label => ({ label, bg: C.violetBg, stroke: '#ddd6fe', c: C.violet, fw: 700 }),
+        verb: label => ({ label, bg: C.amberBg, stroke: '#fcd34d', c: C.amber, fw: 800 }),
+        plain: label => ({ label }),
+        bad: label => ({ label, bg: C.badBg, stroke: '#fecdd3', c: C.bad, fw: 700 })
+    };
+
+    V['rc-attach'] = (W, narrow) => panels([
+        pw => {
+            let s = title(16, 26, 'Придаточное — сразу за своим словом', C.ok);
+            const f = flow(16, 58, [RC.noun('The park'), RC.cl('that has the best trails'), RC.plain('is my favorite.')], pw - 32);
+            s += f.svg;
+            const a = f.pos[0], b = f.pos[1];
+            if (a.y === b.y) s += curve(b.x + 14, b.y - 2, a.x + a.w / 2, a.y - 2, -18, C.violet, 'gv-dash');
+            else s += curve(b.x + 14, b.y - 2, a.x + a.w / 2, a.y + 28, -10, C.violet, 'gv-dash');
+            const y = 58 + f.h + 26;
+            const n = para(16, y, 'that has the best trails описывает park и стоит прямо за ним.', pw - 50, { fs: 12, fw: 600, c: C.mute });
+            return { svg: s + n.svg + badge(pw - 24, 22, true), h: y + n.h + 4 };
+        },
+        pw => {
+            let s = title(16, 26, 'Оторвали от слова — смысл ломается', C.bad);
+            const f = flow(16, 58, [RC.noun('The park'), RC.plain('has'), RC.plain('the best trails'), RC.bad('that is my favorite.')], pw - 32);
+            s += f.svg;
+            const y = 58 + f.h + 26;
+            const n = para(16, y, 'Теперь that цепляется к trails: «тропы, которые мой любимый».', pw - 50, { fs: 12, fw: 600, c: C.mute });
+            return { svg: s + n.svg + badge(pw - 24, 22, false), h: y + n.h + 4 };
+        }
+    ], W, narrow);
+
+    V['rc-subject'] = (W, narrow) => {
+        const ex = [
+            [Object.assign(RC.noun('The book'), { sub: 'о чём речь' }), Object.assign(RC.cl('that I borrowed from the library'), { sub: 'какая именно' }), Object.assign(RC.verb('is'), { sub: 'главный глагол' }), RC.plain('very interesting.')],
+            [Object.assign(RC.noun('The workshop'), { sub: 'о чём речь' }), Object.assign(RC.cl('that was supposed to take place'), { sub: 'какой именно' }), Object.assign(RC.verb('was canceled.'), { sub: 'главный глагол' })]
+        ];
+        let s = '', y = 6;
+        ex.forEach((items, i) => {
+            const f = flow(10, y, items, W - 20, { lineGap: 8 });
+            s += f.svg;
+            y += f.h + 18;
+            if (i === 0) { s += `<line x1="10" y1="${y - 8}" x2="${W - 10}" y2="${y - 8}" stroke="${C.line}" stroke-dasharray="4 4"/>`; y += 10; }
+        });
+        const n = para(10, y + 6, 'Всё до главного глагола — одно длинное подлежащее. Глагол придаточного (borrowed) не главный.', W - 20, { fs: 12, fw: 600, c: C.mute });
+        return { svg: s + n.svg, h: y + 6 + n.h };
+    };
+
+    V['rc-drop'] = (W, narrow) => panels([
+        pw => {
+            let s = title(16, 26, 'That можно убрать', C.ok);
+            const f = flow(16, 46, [RC.noun('the book'), { label: 'that', bg: C.soft, stroke: C.mute, c: C.mute, fw: 600, sub: 'можно убрать', subC: C.mute }, Object.assign({ label: 'I', bg: C.okBg, stroke: '#a7f3d0', c: C.ok, fw: 800 }, { sub: 'новое подлежащее', subC: C.ok }), RC.plain('need')], pw - 32);
+            s += f.svg;
+            const p = f.pos[1];
+            s += `<line x1="${p.x + 4}" y1="${p.y + 13}" x2="${p.x + p.w - 4}" y2="${p.y + 13}" stroke="${C.mute}" stroke-width="2"/>`;
+            const n = para(16, 46 + f.h + 22, 'После that стоит новое подлежащее (I, you, my professor).', pw - 32, { fs: 12, fw: 600, c: C.mute });
+            return { svg: s + n.svg, h: 46 + f.h + 22 + n.h };
+        },
+        pw => {
+            let s = title(16, 26, 'That убрать нельзя', C.bad);
+            const f = flow(16, 46, [RC.noun('a gym'), Object.assign({ label: 'that', bg: C.inkBg, stroke: C.ink, c: C.ink, fw: 800 }, { sub: 'нужно', subC: C.ink }), Object.assign(RC.verb('offers'), { sub: 'сразу глагол' }), RC.plain('yoga classes')], pw - 32);
+            s += f.svg;
+            const n = para(16, 46 + f.h + 22, 'После that сразу глагол: that здесь подлежащее, без него нельзя.', pw - 32, { fs: 12, fw: 600, c: C.mute });
+            return { svg: s + n.svg, h: 46 + f.h + 22 + n.h };
+        }
+    ], W, narrow);
+
+    V['rc-where'] = (W, narrow) => panels([
+        pw => {
+            let s = title(16, 26, 'where = «в котором»', C.sky);
+            const f = flow(16, 46, [RC.noun('the drawer'), { label: 'where', bg: C.skyBg, stroke: '#7dd3fc', c: C.sky, fw: 800 }, RC.plain('I'), RC.verb('keep'), Object.assign({ label: 'the textbooks', bg: C.okBg, stroke: '#a7f3d0', c: C.ok, fw: 700 }, { sub: 'что? — есть', subC: C.ok })], pw - 32);
+            s += f.svg;
+            const n = para(16, 46 + f.h + 22, 'У keep уже есть дополнение. Ящик — это место: where.', pw - 32, { fs: 12, fw: 600, c: C.mute });
+            return { svg: s + n.svg, h: 46 + f.h + 22 + n.h };
+        },
+        pw => {
+            let s = title(16, 26, 'that / which = «который»', C.ink);
+            const f = flow(16, 46, [Object.assign(RC.noun('the cabinet'), { sub: 'это и есть «что?»', subC: C.ink }), { label: 'that', bg: C.inkBg, stroke: C.ink, c: C.ink, fw: 800 }, RC.plain('we rarely'), Object.assign(RC.verb('use'), { sub: 'что? — нет', subC: C.bad })], pw - 32);
+            s += f.svg;
+            const a = f.pos[0], b = f.pos[3];
+            if (a.y === b.y) s += curve(b.x + b.w / 2, b.y - 2, a.x + a.w / 2, a.y - 2, -16, C.ink, 'gv-dash');
+            const n = para(16, 46 + f.h + 22, 'Use требует дополнения, и это сам cabinet. Поэтому that, а не where.', pw - 32, { fs: 12, fw: 600, c: C.mute });
+            return { svg: s + n.svg, h: 46 + f.h + 22 + n.h };
+        }
+    ], W, narrow);
+
     const STYLE = `<style>
         .gv{margin:16px 0 6px}
         .gv svg{display:block;width:100%;height:auto;font-family:inherit}
