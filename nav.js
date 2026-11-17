@@ -111,6 +111,7 @@
         'article-verb-government.html': 'grammar.html', 'article-verb-patterns.html': 'grammar.html',
         'article-gerund-infinitive.html': 'grammar.html', 'article-indirect-questions.html': 'grammar.html',
         'article-punctuation.html': 'grammar.html', 'article-present-perfect.html': 'grammar.html',
+        'article-relative-clauses.html': 'grammar.html',
         // --- курс Write an Email (Writing) ---
         'article-email-anatomy.html': 'writing.html', 'article-email-tone.html': 'writing.html',
         'article-email-opening.html': 'writing.html', 'article-email-details.html': 'writing.html',
