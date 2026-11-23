@@ -710,6 +710,296 @@
         }
     ], W, narrow);
 
+    // ---- Второй тип условных: картинки для статьи в новом дизайне ----
+    // Цвета «маркеров» совпадают с выделением в тексте статьи: условие — синий, результат — жёлтый
+    const MK = { ifBg: '#dcebff', ifInk: '#1c4fb5', resBg: '#ffe9a6', resInk: '#7a5200', resLine: '#e2ae3f' };
+
+    // На самом деле ↔ представляем
+    V['c2-dream'] = (W, narrow) => {
+        const real = pw => {
+            let s = title(16, 26, 'На самом деле', C.slate);
+            const g = 170;
+            for (let i = 0; i < 16; i++) {
+                const x = 24 + (i * 41) % (pw - 48), y = 46 + (i * 29) % 72;
+                s += `<line x1="${x}" y1="${y}" x2="${x - 4}" y2="${y + 9}" stroke="#93c5fd" stroke-width="2" stroke-linecap="round"/>`;
+            }
+            const px = pw * 0.36, bx = pw * 0.7;
+            s += `<line x1="16" y1="${g}" x2="${pw - 16}" y2="${g}" stroke="${C.line}" stroke-width="2"/>`;
+            s += `<line x1="${bx}" y1="84" x2="${bx}" y2="${g}" stroke="${C.slate}" stroke-width="3" stroke-linecap="round"/>`;
+            s += R(bx - 24, 62, 48, 24, C.soft, C.slate, 6) + T(bx, 78.5, 'BUS', { fs: 11.5, fw: 800, c: C.slate, a: 'middle' });
+            s += `<g fill="none" stroke="${C.slate}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="${px}" cy="98" r="11" fill="#fff"/>
+                <path d="M${px} 109 L${px} 142 M${px - 16} 126 L${px} 116 L${px + 16} 126 M${px} 142 L${px - 11} 168 M${px} 142 L${px + 11} 168"/></g>`;
+            const n = para(16, 198, 'I don’t have a car.', pw - 32, { fs: 14, fw: 700, c: C.slate });
+            return { svg: s + n.svg, h: 198 + n.h };
+        };
+        const dream = pw => {
+            let s = title(16, 26, 'Представляем', MK.ifInk);
+            s += `<rect x="16" y="42" width="${pw - 32}" height="116" rx="44" fill="#f3f8ff" stroke="${MK.ifInk}" stroke-width="2" stroke-dasharray="6 5"/>`;
+            s += `<circle cx="40" cy="168" r="6" fill="#f3f8ff" stroke="${MK.ifInk}" stroke-width="1.8" stroke-dasharray="3 3"/><circle cx="28" cy="182" r="3.5" fill="#f3f8ff" stroke="${MK.ifInk}" stroke-width="1.6"/>`;
+            const cx = pw / 2 + 10;
+            s += `<line x1="${cx - 92}" y1="136" x2="${cx + 82}" y2="136" stroke="#bfd5f5" stroke-width="2" stroke-linecap="round"/>`;
+            s += [102, 111, 120].map(y => `<line x1="${cx - 92}" y1="${y}" x2="${cx - 72}" y2="${y}" stroke="${MK.ifInk}" stroke-width="2" stroke-linecap="round" opacity=".55"/>`).join('');
+            s += `<g stroke="#b07d10" stroke-width="2" stroke-linejoin="round">
+                <path d="M${cx - 36} 98 L${cx - 24} 76 L${cx + 22} 76 L${cx + 38} 98 Z" fill="#fff3c4"/>
+                <rect x="${cx - 60}" y="96" width="120" height="28" rx="9" fill="#ffd75e"/>
+                <line x1="${cx - 1}" y1="77" x2="${cx - 1}" y2="97"/></g>`;
+            s += `<circle cx="${cx - 13}" cy="88" r="6.5" fill="#fff" stroke="${C.slate}" stroke-width="2"/>`;
+            s += [cx - 34, cx + 34].map(x => `<circle cx="${x}" cy="126" r="10" fill="#334155"/><circle cx="${x}" cy="126" r="4" fill="#cbd5e1"/>`).join('');
+            const f = flow(16, 186, [
+                { label: 'If I had a car,', bg: MK.ifBg, stroke: MK.ifBg, c: MK.ifInk, fw: 700, fs: 13.5 },
+                { label: 'I would drive to campus.', bg: MK.resBg, stroke: MK.resBg, c: MK.resInk, fw: 700, fs: 13.5 }
+            ], pw - 32, { gap: 4 });
+            return { svg: s + f.svg, h: 186 + f.h + 4 };
+        };
+        return panels([real, dream], W, narrow);
+    };
+
+    // Шкала уверенности: первый тип — реальный шанс, второй — маленький или нулевой
+    V['c2-scale'] = (W, narrow) => {
+        const x0 = 20, x1 = W - 20, y = 44, mid = (x0 + x1) / 2;
+        let s = T(x0, 24, 'скорее всего будет', { fs: 12, fw: 600, c: C.mute }) + T(x1, 24, 'вряд ли или невозможно', { fs: 12, fw: 600, c: C.mute, a: 'end' });
+        s += `<rect x="${x0}" y="${y - 5}" width="${mid - x0 - 2}" height="10" rx="5" fill="${C.okBg}" stroke="#a7f3d0"/>`;
+        s += `<rect x="${mid + 2}" y="${y - 5}" width="${x1 - mid - 2}" height="10" rx="5" fill="${MK.ifBg}" stroke="#bcd4f6"/>`;
+        const pts = [
+            { x: x0 + (x1 - x0) * 0.24, col: C.ok, name: 'Первый тип', ex: 'If I get the job, I will move.' },
+            { x: x0 + (x1 - x0) * 0.78, col: MK.ifInk, name: 'Второй тип', ex: 'If I got the job, I would move.' }
+        ];
+        pts.forEach((p, i) => {
+            s += `<circle cx="${p.x}" cy="${y}" r="9" fill="#fff" stroke="${p.col}" stroke-width="3"/>`;
+            if (narrow) {
+                const ty = 84 + i * 50;
+                s += `<circle cx="${x0 + 5}" cy="${ty - 4}" r="5" fill="${p.col}"/>` + T(x0 + 16, ty, p.name, { fs: 13, fw: 800, c: p.col });
+                s += T(x0 + 16, ty + 20, p.ex, { fs: 12.5, c: C.slate, it: true });
+            } else {
+                s += `<line x1="${p.x}" y1="${y + 10}" x2="${p.x}" y2="${y + 26}" stroke="${p.col}" stroke-width="1.5"/>`;
+                s += T(p.x, y + 44, p.name, { fs: 13, fw: 800, c: p.col, a: 'middle' }) + T(p.x, y + 64, p.ex, { fs: 12.5, c: C.slate, it: true, a: 'middle' });
+            }
+        });
+        return { svg: s, h: narrow ? 84 + 50 + 28 : y + 74 };
+    };
+
+    // ---- Остальные статьи серии Conditionals (тот же «маркер»: условие синее, результат жёлтый) ----
+    MK.askBg = '#ece8ff'; MK.askInk = '#5b3fc4';
+    const mIf = label => ({ label, bg: MK.ifBg, stroke: MK.ifBg, c: MK.ifInk, fw: 700, fs: 13.5 });
+    const mRes = label => ({ label, bg: MK.resBg, stroke: MK.resBg, c: MK.resInk, fw: 700, fs: 13.5 });
+    const mAsk = label => ({ label, bg: MK.askBg, stroke: MK.askBg, c: MK.askInk, fw: 700, fs: 13.5 });
+    const mReal = label => ({ label, bg: C.soft, stroke: C.line, c: C.slate, fw: 600, fs: 13.5 });
+    const cloudIcon = (x, y, rain) => `<g transform="translate(${x},${y})"><circle cx="12" cy="16" r="8" fill="#e2e8f0"/><circle cx="23" cy="10" r="10" fill="#e2e8f0"/><circle cx="33" cy="16" r="8" fill="#e2e8f0"/><rect x="4" y="15" width="37" height="10" rx="5" fill="#e2e8f0"/>` +
+        (rain ? [11, 22, 33].map(rx => `<line x1="${rx}" y1="30" x2="${rx - 3}" y2="38" stroke="#60a5fa" stroke-width="2" stroke-linecap="round"/>`).join('') : '') + '</g>';
+    const sunIcon = (x, y) => `<g transform="translate(${x},${y})" stroke="#f59e0b" stroke-width="2" stroke-linecap="round"><circle cx="22" cy="18" r="8" fill="#fde68a"/>` +
+        [0, 45, 90, 135, 180, 225, 270, 315].map(a => { const r = a * Math.PI / 180; return `<line x1="${(22 + Math.cos(r) * 12).toFixed(1)}" y1="${(18 + Math.sin(r) * 12).toFixed(1)}" x2="${(22 + Math.cos(r) * 16).toFixed(1)}" y2="${(18 + Math.sin(r) * 16).toFixed(1)}"/>`; }).join('') + '</g>';
+    const stick = (px, armUp) => `<g fill="none" stroke="${C.slate}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="${px}" cy="98" r="11" fill="#fff"/>
+            <path d="M${px} 109 L${px} 142 M${px - 16} 126 L${px} 116 L${armUp ? `${px + 16} 110` : `${px + 16} 126`} M${px} 142 L${px - 11} 168 M${px} 142 L${px + 11} 168"/></g>`;
+
+    // Первый тип: обе дороги в будущее реальны
+    V['c1-fork'] = (W, narrow) => {
+        const br = [
+            { icon: (x, y) => cloudIcon(x, y, true), items: [mIf('If it rains,'), mRes('we will stay home.')] },
+            { icon: (x, y) => sunIcon(x, y), items: [mIf('If it doesn’t rain,'), mRes('we will go to the beach.')] }
+        ];
+        let s = '';
+        if (!narrow) {
+            const sx = 26, sy = 92, ys = [46, 138];
+            s += T(sx, sy - 18, 'сейчас', { fs: 12, fw: 700, c: C.mute, a: 'middle' }) + `<circle cx="${sx}" cy="${sy}" r="7" fill="${C.slate}"/>`;
+            br.forEach((b, i) => {
+                const y = ys[i];
+                s += `<path d="M${sx + 7} ${sy} C ${sx + 50} ${sy}, ${sx + 40} ${y}, 106 ${y}" fill="none" stroke="${C.slate}" stroke-width="2.4"/>`;
+                s += b.icon(112, y - 20) + row(168, y - 13, b.items, 6).svg;
+            });
+            const n = para(10, 196, 'Обе дороги реальны, и какая сбудется — пока неизвестно. Это первый тип: if + Present, will + глагол.', W - 20, { fs: 12, fw: 600, c: C.mute });
+            return { svg: s + n.svg, h: 196 + n.h };
+        }
+        let y = 30;
+        s += `<circle cx="20" cy="16" r="6" fill="${C.slate}"/>` + T(34, 20, 'сейчас', { fs: 12, fw: 700, c: C.mute });
+        const ends = [];
+        br.forEach(b => {
+            const f = flow(84, y + 4, b.items, W - 94, { gap: 6 });
+            const cy = y + 20;
+            ends.push(cy);
+            s += `<path d="M20 ${cy} L30 ${cy}" stroke="${C.slate}" stroke-width="2.4"/>` + b.icon(32, cy - 20) + f.svg;
+            y += Math.max(52, f.h + 18);
+        });
+        s = `<line x1="20" y1="16" x2="20" y2="${ends[ends.length - 1]}" stroke="${C.slate}" stroke-width="2.4"/>` + s;
+        const n = para(10, y + 14, 'Обе дороги реальны, и какая сбудется — пока неизвестно. Это первый тип.', W - 20, { fs: 12, fw: 600, c: C.mute });
+        return { svg: s + n.svg, h: y + 14 + n.h };
+    };
+
+    // Третий тип: от точки в прошлом отходит воображаемая ветка
+    V['c3-branch'] = (W, narrow) => {
+        if (narrow) {
+            let s = T(10, 18, 'На самом деле (тогда)', { fs: 12, fw: 700, c: C.mute });
+            const a = flow(10, 28, [mReal('I didn’t know about the meeting,'), mReal('so I didn’t come.')], W - 20);
+            let y = 28 + a.h + 22;
+            s += a.svg + T(10, y, '↓ представим другое прошлое', { fs: 12, fw: 700, c: MK.ifInk });
+            const b = flow(22, y + 18, [mIf('If I had known,'), mRes('I would have come.')], W - 44);
+            s += `<rect x="10" y="${y + 8}" width="${W - 20}" height="${b.h + 20}" rx="14" fill="#f3f8ff" stroke="${MK.ifInk}" stroke-width="1.8" stroke-dasharray="6 5"/>` + b.svg;
+            return { svg: s, h: y + 8 + b.h + 24 };
+        }
+        const ly = 150, px = 110, nx = W - 40;
+        let s = `<line x1="24" y1="${ly}" x2="${nx}" y2="${ly}" stroke="${C.slate}" stroke-width="2.4"/>`;
+        s += `<circle cx="${px}" cy="${ly}" r="7" fill="${C.slate}"/><circle cx="${nx}" cy="${ly}" r="7" fill="#fff" stroke="${C.slate}" stroke-width="2.4"/>`;
+        s += row(60, ly + 14, [mReal('I didn’t know about the meeting,'), mReal('so I didn’t come.')], 6).svg;
+        s += T(px, ly + 64, 'тогда', { fs: 12, fw: 700, c: C.mute, a: 'middle' }) + T(nx, ly + 64, 'сейчас', { fs: 12, fw: 700, c: C.mute, a: 'middle' });
+        s += `<path d="M${px} ${ly - 7} C ${px} 80, ${px + 30} 60, ${px + 70} 60 L ${nx - 12} 60" fill="none" stroke="${MK.ifInk}" stroke-width="2.2" stroke-dasharray="7 5"/>`;
+        s += `<path d="M${nx - 14} 54 L${nx - 4} 60 L${nx - 14} 66" fill="none" stroke="${MK.ifInk}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>`;
+        s += row(px + 70, 22, [mIf('If I had known,'), mRes('I would have come.')], 6).svg;
+        s += T(px + 74, 86, 'представим другое прошлое', { fs: 12, fw: 700, c: MK.ifInk });
+        return { svg: s, h: ly + 74 };
+    };
+
+    // Смешанный тип: условие и результат по разные стороны от «сейчас»
+    V['cm-bridge'] = (W, narrow) => {
+        const rows = [
+            { left: mIf('If I had studied medicine,'), right: mRes('I would be a doctor now.'), dir: 1, note: 'условие тогда → результат сейчас' },
+            { left: mRes('I would have finished on time.'), right: mIf('If I were more organized,'), dir: -1, note: 'условие сейчас → результат тогда' }
+        ];
+        let s = '';
+        if (narrow) {
+            let y = 6;
+            rows.forEach(r => {
+                const first = r.dir === 1 ? ['тогда', r.left] : ['сейчас', r.right], second = r.dir === 1 ? ['сейчас', r.right] : ['тогда', r.left];
+                s += T(10, y + 14, first[0], { fs: 12, fw: 700, c: C.mute });
+                const a = chip(70, y, first[1].label, first[1]);
+                s += a.svg + T(76, y + 46, '↓', { fs: 14, fw: 800, c: C.mute });
+                s += T(10, y + 70, second[0], { fs: 12, fw: 700, c: C.mute });
+                s += chip(70, y + 56, second[1].label, second[1]).svg;
+                s += T(10, y + 104, r.note, { fs: 12, fw: 600, c: C.mute, it: true });
+                y += 128;
+            });
+            return { svg: s, h: y - 10 };
+        }
+        const mid = W / 2;
+        s += T(mid / 2, 18, 'тогда', { fs: 12.5, fw: 800, c: C.mute, a: 'middle' }) + T(mid + mid / 2, 18, 'сейчас', { fs: 12.5, fw: 800, c: C.mute, a: 'middle' });
+        s += `<line x1="${mid}" y1="8" x2="${mid}" y2="172" stroke="${C.line}" stroke-width="2" stroke-dasharray="4 4"/>`;
+        rows.forEach((r, i) => {
+            const y = 38 + i * 72;
+            const lw = chip(0, 0, r.left.label, r.left).w;
+            s += chip(mid - 26 - lw, y, r.left.label, r.left).svg + chip(mid + 26, y, r.right.label, r.right).svg;
+            s += r.dir === 1 ? arrow(mid - 20, y + 13, mid + 20, y + 13, C.slate) : arrow(mid + 20, y + 13, mid - 20, y + 13, C.slate);
+            s += T(mid, y + 48, r.note, { fs: 12, fw: 600, c: C.mute, it: true, a: 'middle' });
+        });
+        return { svg: s, h: 180 };
+    };
+
+    // In case — заранее, if — когда уже случилось
+    V['cu-umbrella'] = (W, narrow) => {
+        const mk = (head, scene, items, note) => pw => {
+            let s = title(16, 26, head, MK.ifInk) + scene(pw);
+            s += `<line x1="16" y1="170" x2="${pw - 16}" y2="170" stroke="${C.line}" stroke-width="2"/>`;
+            const f = flow(16, 186, items, pw - 32, { gap: 4 });
+            const n = para(16, 186 + f.h + 18, note, pw - 32, { fs: 12, fw: 600, c: C.mute });
+            return { svg: s + f.svg + n.svg, h: 186 + f.h + 18 + n.h };
+        };
+        const caseScene = pw => {
+            const px = pw * 0.42;
+            // сложенный зонт в опущенной руке, как трость
+            return sunIcon(pw - 76, 40) + stick(px, false) +
+                `<path d="M${px + 18} 120 L${px + 31} 168" stroke="${MK.ifInk}" stroke-width="3.2" stroke-linecap="round"/>` +
+                `<path d="M${px + 18} 120 q -1 -9 7 -9" fill="none" stroke="${MK.ifInk}" stroke-width="2.4" stroke-linecap="round"/>` +
+                `<path d="M${px + 20} 130 L${px + 31} 166 L${px + 27} 130 Z" fill="${MK.ifBg}" stroke="${MK.ifInk}" stroke-width="1.6" stroke-linejoin="round"/>`;
+        };
+        const ifScene = pw => {
+            const px = pw * 0.34;
+            let s = cloudIcon(pw - 84, 34, true) + cloudIcon(pw - 136, 56, true);
+            s += `<path d="M${px - 23} 66 Q ${px + 16} 26 ${px + 55} 66 Z" fill="${MK.ifBg}" stroke="${MK.ifInk}" stroke-width="2" stroke-linejoin="round"/>`;
+            s += `<line x1="${px + 16}" y1="48" x2="${px + 16}" y2="114" stroke="${MK.ifInk}" stroke-width="2.4" stroke-linecap="round"/>`;
+            return s + stick(px, true);
+        };
+        return panels([
+            mk('in case — заранее', caseScene, [mRes('Take an umbrella'), mIf('in case it rains.')], 'Берёте зонт сейчас, на всякий случай. Дождя может и не быть.'),
+            mk('if — когда случится', ifScene, [mIf('If it rains,'), mRes('open the umbrella.')], 'Действуете, только когда дождь уже пошёл.')
+        ], W, narrow);
+    };
+
+    // Два разных if: «если» и «ли»
+    V['iw-two'] = (W, narrow) => {
+        const mk = (head, col, items, note) => pw => {
+            let s = title(16, 26, head, col);
+            const f = flow(16, 44, items, pw - 32, { gap: 4 });
+            const n = para(16, 44 + f.h + 22, note, pw - 32, { fs: 12, fw: 600, c: C.mute });
+            return { svg: s + f.svg + n.svg, h: 44 + f.h + 22 + n.h };
+        };
+        return panels([
+            mk('if = «если»', MK.ifInk, [mIf('If it rains,'), mRes('we will stay home.')], 'Условие. Will после if нет. Whether сюда не подставить.'),
+            mk('if = «ли»', MK.askInk, [mReal('Do you know'), mAsk('if it will rain?')], 'Вопрос внутри фразы. Will можно. Whether подходит: Do you know whether it will rain?')
+        ], W, narrow);
+    };
+
+    // ---- Серия «Подлежащее и сказуемое»: подлежащее синее, глагол жёлтый ----
+    const mSubj = mIf, mVerb = mRes;
+    const mThat = label => ({ label, bg: MK.askBg, stroke: MK.askBg, c: MK.askInk, fw: 700, fs: 13.5 });
+    const people = (x, n) => Array.from({ length: n }, (_, k) => `<g transform="translate(${x + k * 30},-20) scale(.6)">${stick(0, false)}</g>`).join('');
+
+    // Одно → -s, много → без -s
+    V['sv-one-many'] = (W, narrow) => {
+        const mk = (head, n, rows, note) => pw => {
+            let s = title(16, 26, head, C.slate) + people(34, n);
+            let y = 98;
+            rows.forEach(r => { const f = flow(16, y, r, pw - 32, { gap: 4 }); s += f.svg; y += f.h + 8; });
+            const t = para(16, y + 12, note, pw - 32, { fs: 12, fw: 600, c: C.mute });
+            return { svg: s + t.svg, h: y + 12 + t.h };
+        };
+        return panels([
+            mk('Одно → глагол с -s', 1, [[mSubj('She'), mVerb('works')], [mSubj('The library'), mVerb('closes')], [mSubj('It'), mVerb('is')]], 'he, she, it, this, my friend, the group'),
+            mk('Много → без -s', 3, [[mSubj('They'), mVerb('work')], [mSubj('The students'), mVerb('live')], [mSubj('We'), mVerb('are')]], 'they, we, you, I, my friends, people')
+        ], W, narrow);
+    };
+
+    // Длинное подлежащее: глагол смотрит на главное слово, of… — только уточнение
+    V['sv-head'] = (W, narrow) => {
+        const extra = label => ({ label, bg: '#fff', stroke: C.line, c: C.mute, fw: 600, sub: 'пропустите', subC: C.mute });
+        const ex = [
+            [Object.assign(mSubj('The material'), { sub: 'главное слово', subC: MK.ifInk }), extra('of the knives'), Object.assign(mVerb('is'), { sub: 'по material', subC: MK.resInk }), mReal('very strong.')],
+            [Object.assign(mSubj('The impact'), { sub: 'главное слово', subC: MK.ifInk }), extra('of online ads'), Object.assign(mVerb('is'), { sub: 'по impact', subC: MK.resInk }), mReal('huge.')]
+        ];
+        let s = '', y = 30;
+        ex.forEach(items => {
+            const f = flow(10, y, items, W - 20, { lineGap: 8 });
+            s += f.svg;
+            const a = f.pos[0], b = f.pos[2];
+            if (a.y === b.y) s += curve(b.x + b.w / 2, b.y - 2, a.x + a.w / 2, a.y - 2, -20, MK.resLine, 'gv-dash');
+            y += f.h + 40;
+        });
+        const n = para(10, y - 8, 'Глагол смотрит на главное слово, а не на ближайшее. Закройте всё от of до глагола — останется The material is.', W - 20, { fs: 12, fw: 600, c: C.mute });
+        return { svg: s + n.svg, h: y - 8 + n.h };
+    };
+
+    // Who / which / that берут число у своего слова
+    V['sv-that'] = (W, narrow) => {
+        const mk = (head, items, note) => pw => {
+            let s = title(16, 26, head, C.slate);
+            const f = flow(16, 58, items, pw - 32, { gap: 4 });
+            s += f.svg;
+            const a = f.pos[0], t = f.pos[1];
+            if (a.y === t.y) s += curve(t.x + t.w / 2, t.y - 2, a.x + a.w / 2, a.y - 2, -16, MK.askInk, 'gv-dash');
+            const n = para(16, 58 + f.h + 24, note, pw - 32, { fs: 12, fw: 600, c: C.mute });
+            return { svg: s + n.svg, h: 58 + f.h + 24 + n.h };
+        };
+        return panels([
+            mk('Одна вещь → глагол с -s', [mSubj('a shirt'), mThat('that'), mVerb('needs'), mReal('washing')], 'that = a shirt. Рубашка одна, поэтому needs.'),
+            mk('Много вещей → без -s', [mSubj('the pens'), mThat('that'), mVerb('have'), mReal('a soft grip')], 'that = the pens. Ручек много, поэтому have.')
+        ], W, narrow);
+    };
+
+    // -ing и what… в роли подлежащего — одно действие или одна мысль
+    V['sv-whole'] = (W, narrow) => {
+        const inner = label => ({ label, bg: '#fff', stroke: '#bcd4f6', c: MK.ifInk, fw: 700, fs: 13.5 });
+        const line = (y, parts, verb, tail, label) => {
+            const x = 10, r = row(x + 10, y + 10, parts.map(inner), 5), bw = r.w - 5 + 20;
+            let s = R(x, y, bw, 46, '#f3f8ff', MK.ifInk, 12, ' stroke-dasharray="5 4"');
+            s += T(x + 4, y - 8, label, { fs: 11.5, fw: 700, c: MK.ifInk }) + r.svg;
+            const v = chip(x + bw + 10, y + 10, verb, mVerb(verb));
+            s += v.svg + chip(x + bw + 10 + v.w + 6, y + 10, tail, mReal(tail)).svg;
+            return s;
+        };
+        let s = line(24, ['Working', 'long hours'], 'makes', 'us tired.', 'одно действие = it');
+        s += line(104, ['What', 'I like most'], 'is', 'the coffee.', 'одна мысль = it');
+        const n = para(10, 182, 'Внутри может стоять множественное число (hours), но подлежащее — всё действие целиком, и оно одно.', W - 20, { fs: 12, fw: 600, c: C.mute });
+        return { svg: s + n.svg, h: 182 + n.h };
+    };
+
     const STYLE = `<style>
         .gv{margin:16px 0 6px}
         .gv svg{display:block;width:100%;height:auto;font-family:inherit}
