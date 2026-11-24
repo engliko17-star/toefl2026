@@ -9,6 +9,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
+    <script src="topics.js"></script>
     <script>
         // Бесплатная версия (auth.js): в списке видны все задания, закрытые — под замочком
         var gMerge = (table, rows, opts) => (typeof authGuestMerge === 'function' ? authGuestMerge(table, rows, opts) : Promise.resolve(rows || []));
@@ -59,32 +60,20 @@
 
 
 <script>
-// Находит клиент Supabase, который создаёт auth.js, как бы он там ни назывался.
-// auth.js создаёт клиент как `const _supabase`. Объявленные через const
-// переменные не попадают в window, поэтому берём голое имя, а не window._supabase.
-function getDb() {
-    try {
-        if (typeof _supabase !== 'undefined' && _supabase && typeof _supabase.from === 'function') {
-            return _supabase;
-        }
-    } catch (e) {}
-    const named = [window.supabaseClient, window.supabaseInstance, window.supabaseDB, window.sb, window.db];
-    for (const c of named) if (c && typeof c.from === 'function') return c;
-    return null;
-}
-
+// Темы берутся из topics.js (одна тема = отдельная страница topic-*.html).
+// Supabase здесь нужен только для входа и роли (auth.js).
 const CATEGORY_LABELS = { society: 'Общество', personal: 'Личное', work_study: 'Работа и учёба' };
 const SKILL_STYLES = {
-    vocabulary: 'bg-sky-50 text-sky-700', speaking: 'bg-rose-50 text-rose-700',
+    vocabulary: 'bg-sky-50 text-sky-700', speaking: 'bg-rose-50 text-rose-700', club: 'bg-violet-50 text-violet-700',
     listening: 'bg-teal-50 text-teal-700', writing: 'bg-indigo-50 text-indigo-700',
     assessment: 'bg-amber-50 text-amber-700'
 };
 const SKILL_LABELS = {
     vocabulary: 'Лексика', speaking: 'Speaking', listening: 'Listening',
-    writing: 'Writing', assessment: 'Замер'
+    writing: 'Writing', assessment: 'Замер', club: 'Speaking Club'
 };
 
-let db = null, allUnits = [], activeCategory = 'all';
+let allUnits = [], activeCategory = 'all';
 
 function safeCreateIcons() {
     try { if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons(); }
@@ -125,7 +114,7 @@ function unitCard(u) {
     const skills = [...new Set(u.skills || [])];
 
     return `
-    <a href="lesson-unit.html?unit=${encodeURIComponent(u.slug)}"
+    <a href="${esc(u.file)}"
        class="unit-card block bg-white p-5 rounded-2xl border border-gray-100 shadow-xs hover:border-indigo-100 hover:shadow-md">
         <div class="flex items-start justify-between gap-3 mb-3 ${u.__locked ? 'pr-8' : ''}">
             <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
@@ -172,42 +161,33 @@ async function load() {
             safeCreateIcons();
         }
 
-        db = getDb();
-        if (!db) throw new Error('Не найден клиент Supabase. Посмотри, как он называется в auth.js, и добавь это имя в getDb().');
-
-        const { data: unitsRaw, error: uErr } = await db
-            .from('lesson_units').select('*').eq('is_published', true).order('order_num');
-        if (uErr) throw uErr;
-        // Гость: все темы, закрытые — под замочком
-        const units = await gMerge('lesson_units', unitsRaw || [], { keep: r => r.is_published === true, order: 'order_num' });
-
-        if (!units || !units.length) {
-            state.innerHTML = '<p class="mb-1">Здесь пока пусто.</p><p class="text-xs text-gray-400">Первая тема появится, как только её опубликует преподаватель.</p>';
+        const topics = (typeof TOPICS !== 'undefined' && Array.isArray(TOPICS)) ? TOPICS : [];
+        if (!topics.length) {
+            state.innerHTML = '<p class="mb-1">Здесь пока пусто.</p><p class="text-xs text-gray-400">Скоро здесь появятся темы.</p>';
             return;
         }
 
-        const ids = units.map(u => u.id);
-        const [{ data: steps }, { data: progress }] = await Promise.all([
-            db.from('lesson_steps').select('id, unit_id, skill').in('unit_id', ids),
-            db.from('lesson_progress').select('unit_id, step_id').eq('user_id', user.id).in('unit_id', ids)
-        ]);
-
-        allUnits = units.map(u => {
-            const mine = (steps || []).filter(s => s.unit_id === u.id);
+        // Прогресс темы хранится в браузере (topic-<slug>-done — пройденные шаги урока)
+        const isGuest = user.role === 'guest';
+        allUnits = topics.map(t => {
+            let done = [];
+            try { done = JSON.parse(localStorage.getItem('topic-' + t.slug + '-done') || '[]') || []; } catch (e) {}
+            const total = Number(t.frames) || 0;
             return {
-                ...u,
-                stepCount: u.__locked ? (Number(u.step_count) || 0) : mine.length,
-                skills: mine.map(s => s.skill),
-                doneCount: (progress || []).filter(p => p.unit_id === u.id).length
+                ...t,
+                __locked: isGuest && !t.guest,
+                stepCount: total,
+                doneCount: Math.min(done.length, total),
+                skills: ['vocabulary', 'speaking', 'club']
             };
-        });
+        }).sort((a, b) => (Number(a.order_num) || 0) - (Number(b.order_num) || 0));
 
         state.classList.add('hidden');
         renderCategories();
         renderGrid();
     } catch (e) {
         console.error(e);
-        state.innerHTML = `<p class="text-rose-600 font-medium">Не удалось загрузить уроки.</p>
+        state.innerHTML = `<p class="text-rose-600 font-medium">Не удалось загрузить темы.</p>
                            <p class="text-xs text-gray-400 mt-1">${esc(e.message || e)}</p>`;
     }
 }
