@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Work & Career — Speaking Topics — TOEFL Prep</title>
+
+<!-- Те же подключения, что на остальных страницах платформы -->
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="auth.js"></script>
+<script src="topics.js"></script>
+
+<link rel="stylesheet" href="topic-engine.css">
+</head>
+<body>
+<div class="tl-layout flex flex-col md:flex-row min-h-screen">
+  <div id="app-sidebar"></div>
+  <script src="nav.js"></script>
+
+  <main class="tl-main">
+    <div class="tl-wrap" id="lesson"></div>
+  </main>
+</div>
+
+<!-- Панель ответа -->
+<div class="tl-dock" id="dock" aria-live="polite">
+  <div class="tl-dock-top"><span id="dockLabel">Ответ</span><button class="tl-dock-close" id="dockClose" aria-label="Закрыть">✕</button></div>
+  <div class="tl-dock-q" id="dockQ"></div>
+  <div class="tl-dock-status">
+    <div class="tl-dock-state"><span class="tl-rec-dot" id="recDot"></span><span id="dockState">Готово</span></div>
+    <div class="tl-dock-time" id="dockTime">0:45</div>
+  </div>
+  <div class="tl-phase" id="dockPhase"></div>
+  <div class="tl-dock-bar" id="dockBar"></div>
+  <div class="tl-dock-ctrl">
+    <label><input type="checkbox" id="recToggle"> Записывать голос</label>
+    <div class="tl-row">
+      <button class="tl-dock-btn" id="dockShowQ">Показать текст</button>
+      <button class="tl-dock-btn" id="dockStop">Стоп</button>
+    </div>
+  </div>
+  <div class="tl-dock-msg" id="dockMsg"></div>
+  <div class="tl-dock-out" id="dockOut"></div>
+</div>
+
+<script>
+/* =====================================================================
+   КОНТЕНТ УРОКА: WORK & CAREER
+   Новая тема = копия файла: меняются LESSON, HERO_ART и IDIOM_ART.
+   Общий движок и стили — topic-engine.js и topic-engine.css.
+   **слово** — подсветка целевой лексики.
+   _слово_ в коллокациях — «ключевой кубик».
+   [A] [R] [E] [C] в модельных ответах — цветная структура:
+   A = прямой ответ, R = причина, E = пример, C = вывод.
+   ===================================================================== */
+const LESSON = {
+  slug: "work",
+  titleEn: "Work & Career",
+  titleRu: "Работа и карьера",
+  category: "Работа и учёба",
+  intro: "Первая работа и подработки, выбор профессии, зарплата против удовольствия, коллеги и начальники, баланс работы и жизни, удалёнка, смена карьеры и ИИ — тема, которая в Take an Interview встречается чаще всех. Собираем лексику, которая звучит по-взрослому, и проходим все вопросы по теме из базы.",
+  meta: [["≈ 60", "минут"], ["27", "слов · 2 уровня"], ["20", "коллокаций"], ["9", "идиом"], ["{Q}", "вопросов для обсуждения"]],
+
+  frames: {
+    warmup:    { icon: "flame",      time: "3 мин",  steps: ["Нажми динамик или прочитай вопрос", "Ответь вслух за 20 секунд", "Без подсказок — это «до урока»"] },
+    vocab:     { icon: "book",       time: "10 мин", steps: ["Посмотри на схему: что ты ищешь в работе?", "Найди себя на шкале", "Слова: начни с Core, слушай и повторяй"] },
+    coll:      { icon: "link",       time: "8 мин",  steps: ["Учи сочетание целиком", "Цветной кубик — то, что чаще путают", "Расскажи с 5 сочетаниями о своей работе или учёбе"] },
+    idioms:    { icon: "quote",      time: "6 мин",  steps: ["Посмотри картинку — запомни образ", "Плашка «Можно» — смело в ответы", "Выбери 2 идиомы на сегодня"] },
+    expr:      { icon: "megaphone",  time: "5 мин",  steps: ["Послушай интонацию", "По 1 фразе из каждой группы", "Запомни шкалу 45 секунд"] },
+    check:     { icon: "puzzle",     time: "10 мин", steps: ["4 мини-игры", "Цель — 100% в Matching и Gap-fill", "Карточки — пока не узнаёшь все"] },
+    repeat:    { icon: "headphones", time: "5 мин",  steps: ["Слушай, не читая", "Повтори слово в слово", "Включи запись и сравни"] },
+    interview: { icon: "mic",        time: "15 мин", steps: ["Выбери сет — начни с Official", "Пройди все вопросы подряд, без пауз", "Сравни с моделью: цвета = структура"] },
+    club:      { icon: "chat",       time: "30+ мин", steps: ["Возьми 1–2 блока на занятие", "Ответь, потом — на «Копнём глубже»", "Отметь «Обсудили» или крути рулетку"] },
+    self:      { icon: "checkCircle",time: "3 мин",  steps: ["Прослушай свои записи", "Отметь, что получилось", "Цель — 15+ отмеченных слов"] }
+  },
+
+  warmup: [
+    "What did you want to be when you were a child?",
+    "Have you ever had a job? What was it?",
+    "Would you rather work in an office or from home?",
+    "What is more important to you: money or free time?"
+  ],
+
+  /* Что мы ищем в работе: равные ветки, вместо процента — tag */
+  flow: {
+    icon: "briefcase",
+    title: "Что мы ищем в работе",
+    source: { kicker: "Выбираю работу…", title: "The dream job", ru: "какая она?", words: ["apply for a job", "job offer", "weigh up"] },
+    branches: [
+      { title: "Money & security", ru: "деньги и стабильность", sub: "pays the bills", tag: "Деньги", color: "#0ea5e9", words: ["a decent salary", "benefits", "job security", "pay off student loans"] },
+      { title: "Meaning & growth", ru: "смысл и рост", sub: "a career, not just a job", tag: "Смысл", color: "#8b5cf6", words: ["job satisfaction", "fulfilling", "career advancement", "develop skills"] },
+      { title: "Time & freedom", ru: "время и свобода", sub: "a life outside work", tag: "Свобода", color: "#ec4899", words: ["work-life balance", "flexible hours", "work remotely", "burnout"] }
+    ],
+    notes: [
+      "Почти любой вопрос о выборе работы — это спор двух веток: <b>salary vs job satisfaction</b> или <b>career vs work-life balance</b>",
+      "Готовая фраза: <i>Ideally, I'd like a job that pays the bills but also gives me a sense of purpose.</i>"
+    ]
+  },
+
+  scale: {
+    title: "Work to live или live to work? Перетащи кружок туда, где ты",
+    left: "WORK TO LIVE", right: "LIVE TO WORK",
+    words: [
+      { w: "work to live", p: 5 }, { w: "clock out at five", p: 17 }, { w: "switch off", p: 31 }, { w: "work-life balance", p: 45 },
+      { w: "ambitious", p: 59 }, { w: "go the extra mile", p: 72 }, { w: "career-driven", p: 85 }, { w: "workaholic", p: 97 }
+    ],
+    says: [
+      { max: 25,  t: "Honestly, I **work to live**. When the day is over, I **clock out** and don't think about work at all." },
+      { max: 50,  t: "Work matters to me, but I protect my **work-life balance** — evenings and weekends are for me." },
+      { max: 75,  t: "I'm quite **ambitious**. I'm happy to **go the extra mile** if it helps my career." },
+      { max: 101, t: "I'll admit it — I'm a bit of a **workaholic**. I find it hard to **switch off**, even on vacation." }
+    ]
+  },
+
+  vocab: [
+    { en: "colleague", pos: "n", ru: "коллега", ex: "My colleagues helped me a lot during my first week.", level: "core" },
+    { en: "salary", pos: "n", ru: "зарплата (оклад)", ex: "A high salary isn't everything.", level: "core" },
+    { en: "part-time job", pos: "n", ru: "подработка, неполная занятость", ex: "I had a part-time job at a café during my first year.", level: "core" },
+    { en: "internship", pos: "n", ru: "стажировка", ex: "My internship gave me real experience in marketing.", level: "core" },
+    { en: "deadline", pos: "n", ru: "срок сдачи, дедлайн", ex: "We had to work late to meet the deadline.", level: "core" },
+    { en: "promotion", pos: "n", ru: "повышение (в должности)", ex: "She got a promotion after only one year.", level: "core" },
+    { en: "responsibilities", pos: "n", ru: "обязанности", ex: "My main responsibilities were answering emails and organizing events.", level: "core" },
+    { en: "workload", pos: "n", ru: "объём работы, нагрузка", ex: "My workload doubles at the end of every month.", level: "core" },
+    { en: "employer / employee", pos: "n", ru: "работодатель / сотрудник", ex: "Good employers listen to their employees.", level: "core" },
+    { en: "boss / manager", pos: "n", ru: "начальник / руководитель", ex: "My manager gave me a lot of freedom.", level: "core" },
+    { en: "job interview", pos: "n", ru: "собеседование", ex: "I was so nervous before my first job interview.", level: "core" },
+    { en: "résumé (CV)", pos: "n", ru: "резюме", ex: "I updated my résumé before applying.", level: "core" },
+    { en: "overtime", pos: "n / adv", ru: "сверхурочные; сверхурочно", ex: "Nobody wants to work overtime every week.", level: "core" },
+    { en: "commute", pos: "n / v", ru: "дорога на работу; ездить на работу", ex: "My commute takes almost an hour.", level: "core" },
+    { en: "job security", pos: "n", ru: "стабильность, уверенность, что не уволят", ex: "Government jobs offer a lot of job security.", level: "core" },
+
+    { en: "fulfilling", pos: "adj", ru: "приносящий удовлетворение, наполняющий", ex: "Teaching is hard, but it's incredibly fulfilling.", level: "adv" },
+    { en: "job satisfaction", pos: "n", ru: "удовлетворённость работой", ex: "For me, job satisfaction matters more than salary.", level: "adv" },
+    { en: "burnout", pos: "n", ru: "выгорание", ex: "Working sixty hours a week is a fast track to burnout.", level: "adv" },
+    { en: "career advancement", pos: "n", ru: "карьерный рост", ex: "Big companies usually offer more opportunities for career advancement.", level: "adv" },
+    { en: "flexible working arrangements", pos: "n", ru: "гибкий формат работы", ex: "Flexible working arrangements help parents a lot.", level: "adv" },
+    { en: "work ethic", pos: "n", ru: "трудовая этика, отношение к работе", ex: "My parents taught me a strong work ethic.", level: "adv" },
+    { en: "transferable skills", pos: "n", ru: "универсальные навыки (пригодятся везде)", ex: "Communication is a transferable skill you can use in any job.", level: "adv" },
+    { en: "hands-on experience", pos: "n", ru: "практический опыт", ex: "An internship gives you hands-on experience you can't get in class.", level: "adv" },
+    { en: "job-hopping", pos: "n", ru: "частая смена работы", ex: "Some employers see job-hopping as a red flag.", level: "adv" },
+    { en: "perks", pos: "n", ru: "бонусы, плюшки (от работодателя)", ex: "Free lunches and a gym are nice perks.", level: "adv" },
+    { en: "entrepreneur", pos: "n", ru: "предприниматель", ex: "My uncle became an entrepreneur at forty.", level: "adv" },
+    { en: "productivity", pos: "n", ru: "продуктивность", ex: "Many studies show that remote work doesn't hurt productivity.", level: "adv" }
+  ],
+
+  collocations: [
+    { icon: "briefcase", group: "Найти работу", items: [
+      { en: "_apply for_ a job", ru: "откликнуться на вакансию", ex: "I applied for ten jobs before I got an answer." },
+      { en: "_land_ a job", ru: "получить (заветную) работу", ex: "She landed a job at a tech company right after graduation." },
+      { en: "_do_ an internship", ru: "пройти стажировку", ex: "I did an internship at a local newspaper last summer." },
+      { en: "_gain_ work experience", ru: "получить опыт работы", ex: "Part-time jobs are a great way to gain work experience." },
+      { en: "_build_ a career", ru: "строить карьеру", ex: "It takes years to build a career in medicine." }
+    ]},
+    { icon: "users", group: "На работе", items: [
+      { en: "_meet_ a deadline", ru: "уложиться в срок", ex: "We stayed late to meet the deadline." },
+      { en: "_take on_ responsibility", ru: "брать на себя ответственность", ex: "I like to take on more responsibility at work." },
+      { en: "_work_ as part of a team", ru: "работать в команде", ex: "In my internship, I worked as part of a team of five." },
+      { en: "_cope with_ a heavy workload", ru: "справляться с большой нагрузкой", ex: "It's hard to cope with a heavy workload and exams at the same time." },
+      { en: "_work_ overtime", ru: "работать сверхурочно", ex: "My father often works overtime at the end of the year." }
+    ]},
+    { icon: "trending", group: "Рост и перемены", items: [
+      { en: "_get_ a promotion", ru: "получить повышение", ex: "She got a promotion after only one year." },
+      { en: "_climb_ the career ladder", ru: "подниматься по карьерной лестнице", ex: "He climbed the career ladder very quickly." },
+      { en: "_switch_ careers", ru: "сменить профессию", ex: "My aunt switched careers at forty and became a nurse." },
+      { en: "_develop_ new skills", ru: "развивать новые навыки", ex: "A good job lets you develop new skills every year." },
+      { en: "_quit_ a job", ru: "уволиться (по своему желанию)", ex: "He quit his job because of a terrible boss." }
+    ]},
+    { icon: "heart", group: "Баланс", items: [
+      { en: "_strike_ a work-life balance", ru: "найти баланс работы и жизни", ex: "It's not easy to strike a work-life balance as a student." },
+      { en: "_work_ remotely", ru: "работать удалённо", ex: "My sister works remotely three days a week." },
+      { en: "_take_ time off", ru: "взять отгул, отдохнуть", ex: "Everyone needs to take time off sometimes." },
+      { en: "_switch off_ after work", ru: "отключиться от работы", ex: "I find it hard to switch off after work." },
+      { en: "_burn out_", ru: "выгореть", ex: "If you never rest, you'll burn out sooner or later." }
+    ]}
+  ],
+
+  idioms: [
+    { art: "ladder", lit: "буквально: «карабкаться по корпоративной лестнице»", en: "climb the corporate ladder", ru: "делать карьеру в компании", meaning: "шаг за шагом получать всё более высокие должности", ex: "My brother spent ten years climbing the corporate ladder.", reg: "ok", note: "Отлично для вопросов о больших компаниях и амбициях." },
+    { art: "oil", lit: "буквально: «жечь полночное масло»", en: "burn the midnight oil", ru: "работать допоздна", meaning: "работать или учиться поздно ночью", ex: "Before the deadline, the whole team was burning the midnight oil.", reg: "ok", note: "Подходит и к учёбе: before exams, I burn the midnight oil." },
+    { art: "snowed", lit: "буквально: «быть заваленным снегом»", en: "be snowed under", ru: "быть заваленным работой", meaning: "иметь слишком много дел одновременно", ex: "At the end of the semester, I'm completely snowed under.", reg: "ok", note: "Идеально для вопроса «a time you felt overwhelmed»." },
+    { art: "ropes", lit: "буквально: «выучить канаты» (как новичок на корабле)", en: "learn the ropes", ru: "освоиться, войти в курс дела", meaning: "узнать, как всё устроено на новом месте", ex: "It took me about a month to learn the ropes at the café.", reg: "ok", note: "Сильная фраза в рассказе о первой работе или стажировке." },
+    { art: "door", lit: "буквально: «просунуть ногу в дверь»", en: "get a foot in the door", ru: "зацепиться, попасть в компанию/профессию", meaning: "получить первую, пусть небольшую, возможность", ex: "An unpaid internship can help you get a foot in the door.", reg: "ok", note: "Лучший аргумент про стажировки и первую работу." },
+    { art: "deadend", lit: "буквально: «работа-тупик»", en: "a dead-end job", ru: "бесперспективная работа", meaning: "работа без шансов на рост и развитие", ex: "He quit his dead-end job and went back to school.", reg: "ok", note: "Удобно в споре salary vs satisfaction." },
+    { art: "mile", lit: "буквально: «пройти лишнюю милю»", en: "go the extra mile", ru: "сделать больше, чем требуется", meaning: "приложить дополнительные усилия", ex: "Good employees go the extra mile without being asked.", reg: "ok", note: "Хорошо звучит в рассказе о своих обязанностях." },
+    { art: "callday", lit: "буквально: «назвать это днём»", en: "call it a day", ru: "закончить на сегодня", meaning: "решить, что пора прекратить работу", ex: "At six o'clock, I close my laptop and call it a day.", reg: "ok", note: "Естественно в ответах о балансе и привычках." },
+    { art: "box", lit: "буквально: «думать за пределами коробки»", en: "think outside the box", ru: "мыслить нестандартно", meaning: "искать новые, креативные решения", ex: "Start-ups need people who can think outside the box.", reg: "careful", note: "Клише. Можно один раз — лучше с конкретным примером." }
+  ],
+
+  expressions: [
+    { icon: "play", fn: "Начать ответ", items: [
+      "Right now, I'm working part-time as …",
+      "To be honest, I haven't had a full-time job yet, but …",
+      "For me, the most important thing is …"
+    ]},
+    { icon: "bulb", fn: "Причина", items: [
+      "The main reason is that I want to grow professionally.",
+      "What really matters to me is having a sense of purpose.",
+      "At the end of the day, everyone has bills to pay."
+    ]},
+    { icon: "camera", fn: "Пример из жизни", items: [
+      "During my internship, for example, I …",
+      "When I worked at a café, my main responsibility was …",
+      "My older brother, for instance, switched careers at thirty."
+    ]},
+    { icon: "scales", fn: "Баланс и контраст", items: [
+      "A high salary is nice; that said, it won't make you happy on its own.",
+      "While big companies offer stability, small ones offer freedom.",
+      "On the flip side, …"
+    ]},
+    { icon: "trending", fn: "Будущее", items: [
+      "In the future, I think more people will …",
+      "AI won't replace people; it'll change what they do.",
+      "I can easily imagine a world where …"
+    ]},
+    { icon: "flag", fn: "Завершить", items: [
+      "So for me, it's all about balance.",
+      "That's why I'd choose meaning over money — up to a point.",
+      "All in all, it depends on the stage of your life."
+    ]}
+  ],
+
+  answerSteps: [
+    { k: "A", s: 5,  i: "For me, job satisfaction comes first." },
+    { k: "R", s: 12, i: "The main reason is that we spend most of our lives at work…" },
+    { k: "E", s: 22, i: "During my internship, for example…" },
+    { k: "C", s: 6,  i: "So for me, it's all about balance." }
+  ],
+
+  matching: [
+    { a: "be snowed under", b: "have far too much work to do" },
+    { a: "learn the ropes", b: "find out how things work in a new place" },
+    { a: "a dead-end job", b: "work with no chance of growth" },
+    { a: "get a foot in the door", b: "get a first small chance in a company or field" },
+    { a: "burn the midnight oil", b: "work or study late at night" },
+    { a: "go the extra mile", b: "do more than you are expected to" }
+  ],
+
+  gapfill: [
+    { t: "I ___ for ten jobs before I finally got an interview.", a: ["applied"] },
+    { t: "We stayed late to ___ the deadline.", a: ["meet"] },
+    { t: "She ___ a promotion after only one year.", a: ["got", "earned", "received"] },
+    { t: "Last summer, I ___ an internship at a local newspaper.", a: ["did"] },
+    { t: "It's not easy to strike a work-life ___ as a student.", a: ["balance"] },
+    { t: "My aunt ___ careers at forty and became a nurse.", a: ["switched", "changed"] },
+    { t: "I find it hard to switch ___ after work.", a: ["off"] },
+    { t: "My sister works ___ three days a week, from her kitchen.", a: ["remotely", "from home"] }
+  ],
+
+  paraphrase: [
+    { plain: "I have too much work.", better: ["I'm completely **snowed under** right now.", "I'm struggling to **cope with a heavy workload**."] },
+    { plain: "I want a job where I can grow.", better: ["I'm looking for a job with real opportunities for **career advancement**.", "I don't want to end up in **a dead-end job**."] },
+    { plain: "My work makes me happy.", better: ["My job is genuinely **fulfilling**.", "I get a lot of **job satisfaction** from what I do."] },
+    { plain: "I worked very late to finish the project.", better: ["I was **burning the midnight oil** to **meet the deadline**."] },
+    { plain: "At first I didn't know how things worked there.", better: ["It took me a few weeks to **learn the ropes**."] },
+    { plain: "He changed his profession.", better: ["He **switched careers** in his thirties."] },
+    { plain: "I work from home.", better: ["I **work remotely**, which saves me a two-hour **commute**."] },
+    { plain: "She is very tired of work and has no energy.", better: ["She's close to **burnout**.", "She's completely **burned out**."] }
+  ],
+
+  repeat: {
+    scenario: "Вы подрабатываете в университетском карьерном центре. Координатор объясняет, как помогать студентам, — повторите каждое предложение точно так, как услышали.",
+    sentences: [
+      "Good morning, and welcome to the team!",
+      "Students sign in at the front desk.",
+      "Résumé reviews take about twenty minutes.",
+      "Mock interviews must be booked a week in advance.",
+      "Please remind students to bring a printed copy of their résumé.",
+      "Internship listings are updated on the website every Monday morning.",
+      "If a student needs career advice that you can't give, refer them to one of our advisors."
+    ]
+  },
+
+  /* ===== Реальные сеты Take an Interview по теме (из базы платформы) ===== */
+  sets: [
+    { id: "s106", badge: "official", title: "Career Choices", src: "Official TOEFL · 106",
+      scenario: "You have agreed to participate in a research study about career choices. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "First, from what you've seen, what kinds of careers do people around you tend to pursue? For example, do they work in healthcare, education, technology, or something else?",
+          lx: ["build a career", "job security", "in demand"],
+          model: "[A] Most people around me work in technology or healthcare. [R] These fields are **in demand**, they pay well, and they offer a lot of **job security**, so parents often push their kids in that direction. [E] For example, in my family, my cousin is a software developer and my aunt is a nurse, and about half of my friends from school are studying computer science or medicine. Only a few of them chose something creative, like design. [C] So I'd say people around me usually choose safe, stable careers rather than risky ones.",
+          model5: "[A] From what I've seen, most people around me tend to **build careers** in either technology or healthcare. [R] Both fields are hugely **in demand**, they pay well and, perhaps most importantly, they offer a great deal of **job security**, which is why parents often steer their children in that direction. [E] In my own family, for instance, my cousin is a software developer and my aunt has been a nurse for twenty years, while roughly half of my school friends are now studying either computer science or medicine. Only a handful of them have opted for something creative, like graphic design. [C] Generally speaking, then, people in my circle prioritize stability over taking risks." },
+        { q: "When choosing a career, is job satisfaction your first priority, or do you focus more on salary? Why?",
+          lx: ["job satisfaction", "salary", "fulfilling"],
+          model: "[A] For me, **job satisfaction** comes first, but salary is still important. [R] We spend about forty hours a week at work, so if I hate my job, no **salary** can make me happy. At the same time, I need enough money to live comfortably. [E] For example, my uncle works at a bank and earns a lot, but he's stressed and tired all the time. My mom earns less as a teacher, but she loves her job and comes home happy. [C] So I'd choose a **fulfilling** job with a decent salary over a boring job with a high one.",
+          model5: "[A] Job satisfaction is definitely my first priority, although I'd never ignore salary completely. [R] Given that we spend roughly a third of our adult lives at work, no amount of money can make up for a job you dread every morning. **That said**, a salary has to be high enough to live on without constant worry. [E] My uncle, for example, earns a fortune at an investment bank, yet he's permanently exhausted and openly admits he's miserable. My mother, by contrast, earns far less as a teacher but finds her work genuinely **fulfilling**. [C] Ideally, then, I'd choose a job that I enjoy and that pays reasonably, rather than one that simply pays the most." },
+        { q: "In recent years, there has been a trend towards people changing careers multiple times throughout their lives instead of sticking to one profession. What are your thoughts on this trend? Do you think it's helpful or hurtful to workers?",
+          lx: ["switch careers", "transferable skills", "a dead-end job"],
+          model: "[A] I think this trend is mostly helpful to workers. [R] People change a lot over their lives, and it's normal that your interests at forty are different from your interests at twenty. If you can **switch careers**, you don't get stuck in **a dead-end job**. [E] For example, my aunt worked in accounting for fifteen years, then went back to school and became a nurse. She says it was the best decision of her life. [C] Of course, it can be risky and stressful, but overall, having the freedom to change is a good thing.",
+          model5: "[A] On the whole, I think this trend is far more helpful than hurtful. [R] People evolve throughout their lives, so it seems perfectly natural that what fascinates you at twenty may bore you at forty. Being able to **switch careers** means nobody has to stay trapped in **a dead-end job** for decades, and the **transferable skills** you've gained are rarely wasted. [E] My aunt, for instance, spent fifteen years in accounting before retraining as a nurse, and she now says it was the best decision she's ever made. Her organizational skills, if anything, made her a better nurse. [C] Admittedly, it involves risk, but the freedom to start over is ultimately a huge advantage." },
+        { q: "Some people believe that artificial intelligence will greatly change the kinds of jobs available in the future. Do you think this trend will continue in your chosen field? Why or why not?",
+          lx: ["automate", "replace", "develop new skills"],
+          model: "[A] Yes, I'm sure AI will change my field, which is marketing. [R] AI can already write simple texts, make images and analyze data in seconds, so many basic tasks will be **automated**. But I don't think it will **replace** people completely, because marketing is about understanding emotions and creativity. [E] For example, during my internship, our team used AI to write the first draft of social media posts, but a person always had to check and improve them. [C] So the jobs will change, and people will need to **develop new skills** to work with AI.",
+          model5: "[A] I'm convinced AI will keep transforming my chosen field, which is marketing. [R] It can already draft copy, generate images and analyze customer data in seconds, so most routine tasks are bound to be **automated**. What it can't do, however, is genuinely understand people, and that's the heart of marketing. [E] During my internship, for instance, our team used AI to produce first drafts of social media posts, but every single one had to be rewritten by a human, because they sounded generic and lifeless. [C] So rather than **replacing** marketers, AI will change what we do, which means we'll constantly have to **develop new skills** to stay relevant." }
+      ]},
+    { id: "s081", badge: "official", title: "Job Satisfaction", src: "Official TOEFL · 081",
+      scenario: "You have agreed to participate in a research study about people's experiences with job satisfaction. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "First, what do you think are the most important things to consider when looking for a job?",
+          lx: ["work-life balance", "career advancement", "colleagues"],
+          model: "[A] I think the two most important things are the people and the chance to grow. [R] Even a great job becomes terrible if your boss or **colleagues** are unpleasant. And if there's no **career advancement**, you'll get bored after a year. [E] For example, my friend took a job with a high salary, but her manager shouted at everyone, and she **quit** after six months. Her new job pays a little less, but the team is friendly and she's learning a lot. [C] So before taking a job, I'd ask about the team and the opportunities to grow.",
+          model5: "[A] In my view, the two things that matter most are the people you'll be working with and the opportunities for growth. [R] However impressive a job looks on paper, it quickly becomes unbearable if your manager or **colleagues** are hostile, and without real **career advancement**, even an interesting role gets stale. [E] A friend of mine, for instance, accepted a very well-paid position, only to discover that her boss regularly shouted at the team. She **quit** within six months and now earns slightly less, but she's surrounded by supportive people and learns something new every week. [C] Before accepting any offer, then, I'd look closely at the team and the room to grow." },
+        { q: "Can you describe a job that either you or one of your friends has had? What kind of work was involved?",
+          lx: ["part-time job", "responsibilities", "learn the ropes"],
+          model: "[A] Last year, I had a **part-time job** as a barista in a café near my university. [R] I needed some extra money, and the hours were flexible, so I could work around my classes. [E] My **responsibilities** were making coffee, serving customers, cleaning the machines and sometimes training new staff. It was hard at first — the café was really busy in the mornings — but it took me about two weeks to **learn the ropes**, and after that I really enjoyed it. [C] So it wasn't my dream job, but it taught me a lot about working under pressure.",
+          model5: "[A] Last year, I had a **part-time job** as a barista at a café just off campus. [R] I needed some extra income, and since the shifts were flexible, I could easily fit them around my lectures. [E] My **responsibilities** ranged from making drinks and serving customers to cleaning the machines and, eventually, training new staff. The first couple of weeks were overwhelming, as the morning rush was intense, but once I'd **learned the ropes**, I genuinely started to enjoy it. What I valued most was learning to stay calm when twenty people were waiting in line. [C] It certainly wasn't my dream job, but it taught me more about handling pressure than any class has." },
+        { q: "Moving on, what kinds of things do you think can lead people to feel unhappy in their work? Can you tell me about one or two of them?",
+          lx: ["workload", "recognition", "burnout"],
+          model: "[A] I think the two main things are a heavy **workload** and a lack of **recognition**. [R] When you have too much work, you feel stressed all the time and you have no energy for your personal life. And if nobody notices your effort, you lose motivation. [E] For example, my older sister worked at a big company where she often stayed until ten p.m., but her manager never said thank you. After two years, she was close to **burnout** and decided to leave. [C] So I believe stress and feeling unappreciated make people the most unhappy.",
+          model5: "[A] I'd say two factors stand out: an unmanageable **workload** and a lack of **recognition**. [R] When the work never stops, stress gradually spills over into your personal life, and when nobody acknowledges your effort, it's only natural to wonder why you're bothering at all. [E] My older sister, for example, worked for a large consulting firm where she routinely stayed in the office until ten at night, yet her manager never once thanked her. Within two years, she was on the verge of **burnout** and eventually resigned. Ironically, she now earns less but feels far more valued. [C] Ultimately, people don't just need a salary; they need to feel that their work matters." },
+        { q: "Some people believe that working for a large company offers more advantages than working for a small company, while others prefer the opposite. What do you think? And why?",
+          lx: ["job security", "perks", "take on responsibility"],
+          model: "[A] I think a small company is better, especially at the start of a career. [R] In a small company, you can **take on** more **responsibility** and try many different tasks, so you learn faster. Big companies offer better salaries, **perks** and **job security**, but you often do only one small task. [E] For example, during my internship at a small marketing agency, I wrote posts, met clients and even helped with a budget. My friend did an internship at a huge corporation, and she just made spreadsheets for three months. [C] So for learning, I'd choose a small company.",
+          model5: "[A] Personally, I'd prefer a small company, at least at the beginning of my career. [R] Admittedly, large corporations offer higher salaries, attractive **perks** and greater **job security**. In a small company, however, you're given the chance to **take on responsibility** almost immediately, which means you learn far faster. [E] During my internship at a ten-person marketing agency, for instance, I wrote content, attended client meetings and even helped plan a budget. A friend of mine, meanwhile, interned at a multinational and spent three months doing nothing but updating spreadsheets. [C] So while large companies are ideal for stability, small ones are, I believe, unbeatable for growth." }
+      ]},
+    { id: "s085", badge: "official", title: "Work Experience", src: "Official TOEFL · 085 / 126",
+      scenario: "You have volunteered for a research study at your university about work experience. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "First, can you tell me about the type of work you are currently doing or have done in the past?",
+          lx: ["internship", "gain work experience", "hands-on experience"],
+          model: "[A] Right now, I'm a full-time student, but last summer I **did an internship** at a small marketing agency. [R] I'm studying business, and I wanted to **gain** real **work experience** before I graduate. [E] I worked there for three months, mostly helping with social media for local companies — a coffee shop, a gym and a bookstore. Before that, I also had a part-time job as a barista. Both jobs gave me a lot of **hands-on experience**. [C] So I don't have a full-time job yet, but I already know what working in a team feels like.",
+          model5: "[A] At the moment, I'm a full-time student, but last summer I **did an internship** at a small marketing agency. [R] As a business major, I was eager to **gain** some genuine **work experience** before graduating, rather than relying solely on what I'd learned in lectures. [E] For three months, I helped manage social media accounts for local clients — a coffee shop, a fitness studio and an independent bookstore. Before that, I'd also worked part-time as a barista, which, surprisingly, turned out to be just as useful. [C] So although I haven't had a full-time job yet, both roles gave me valuable **hands-on experience** of working with real clients and real deadlines." },
+        { q: "Can you describe some of your regular responsibilities or particular tasks that you do in your job?",
+          lx: ["responsibilities", "meet a deadline", "go the extra mile"],
+          model: "[A] During my internship, I had three main **responsibilities**. [R] I was the youngest person on the team, so I helped with many different tasks. [E] First, I wrote posts for our clients' social media pages every day. Second, I prepared weekly reports with numbers — how many likes and new followers each client got. And third, I took notes at client meetings. Sometimes I also **went the extra mile** and suggested new ideas for videos, and my manager really liked that. [C] So my work was a mix of creative tasks and boring but important ones.",
+          model5: "[A] My internship involved three main **responsibilities**. [R] Being the youngest member of a small team, I was expected to help wherever I was needed. [E] Every day, I drafted posts for our clients' social media accounts, making sure each one matched the brand's style. Every Friday, I compiled a performance report showing engagement and follower growth, which had to be ready before the client call, so I learned to **meet deadlines** without exception. I also took minutes at meetings. Occasionally, I **went the extra mile** by pitching ideas for short videos, two of which were actually used. [C] It was, in short, a mix of creative work and routine tasks." },
+        { q: "Tell me about a challenging project or task you have worked on. How did you handle it?",
+          lx: ["be snowed under", "prioritize", "meet a deadline"],
+          model: "[A] The most challenging task was organizing a launch event for a client during my internship. [R] It was hard because we had only one week, and my manager suddenly got sick. [E] I was **snowed under** — I had to book a place, invite guests and prepare all the posts. So I made a list, **prioritized** the most urgent tasks and asked two colleagues to help me with the invitations. I worked late a few nights, but we **met the deadline**, and about eighty people came. [C] It taught me that asking for help is not a weakness.",
+          model5: "[A] The most challenging task I've faced was organizing a product launch for a client during my internship. [R] What made it so difficult was that we had just one week, and two days in, my manager fell ill, leaving me largely in charge. [E] I was completely **snowed under**: the venue, the guest list and the promotional posts all had to be ready at once. Rather than panic, I listed every task, **prioritized** ruthlessly and asked two colleagues to take over the invitations. I burned the midnight oil a few times, but we **met the deadline**, and nearly eighty guests attended. [C] Above all, it taught me that delegating is a strength, not a weakness." },
+        { q: "Some people believe that gaining diverse work experiences by often changing jobs and companies is more valuable than staying in one job or one company for a long time. What is your opinion on this? Why?",
+          lx: ["job-hopping", "transferable skills", "loyalty"],
+          model: "[A] I think it depends on your age. [R] When you're young, changing jobs often is useful, because you try different things and find out what you really like. But later, staying in one company helps you get promotions and become an expert. [E] For example, my cousin changed three jobs in five years after university, and now she knows exactly what she wants. My father, on the other hand, has worked at the same company for twenty years, and now he's a top manager. [C] So **job-hopping** is good at the start, but long-term **loyalty** pays off later.",
+          model5: "[A] I'd argue it largely depends on what stage of your career you're at. [R] Early on, changing jobs frequently is extremely valuable, since you discover what genuinely suits you and pick up **transferable skills** along the way. Later, however, staying put allows you to build deep expertise and earn the trust needed for senior roles. [E] My cousin, for instance, worked for three different companies in her first five years after graduating, and she now knows precisely what she wants. My father, by contrast, has been with one firm for two decades and has risen to senior management. [C] So **job-hopping** pays off at the start, whereas **loyalty** tends to be rewarded later." }
+      ]},
+    { id: "s110", badge: "official", title: "Work-Life Balance", src: "Official TOEFL · 110",
+      scenario: "You have volunteered for a research study about work-life balance. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "First, can you share one or two strategies that you use that you think are effective in managing your work-life balance?",
+          lx: ["switch off", "call it a day", "set boundaries"],
+          model: "[A] I use two simple strategies: a fixed end time and no work apps on my phone. [R] Without clear limits, work and study can take all my free time, and I get tired very quickly. [E] For example, I always **call it a day** at seven p.m. — I close my laptop, even if I haven't finished everything. Also, I deleted my work email app from my phone, so I can really **switch off** in the evening and on weekends. [C] These two small rules help me feel much more relaxed and actually more productive.",
+          model5: "[A] I rely on two strategies: a strict cut-off time and keeping work off my phone. [R] Without clear boundaries, my studies and part-time job would gradually swallow every free moment, and I'd end up exhausted. [E] Every evening, for instance, I **call it a day** at seven o'clock and close my laptop, even if my to-do list isn't finished. I've also deleted my work email app, so I can genuinely **switch off** after hours instead of checking messages at midnight. Surprisingly, I've become more productive, not less, because I now work with a deadline in mind. [C] Small rules like these, I find, make a huge difference to my work-life balance." },
+        { q: "Many companies are now developing programs to help employees manage work-life balance. Would programs like this affect your interest in working for a particular company? Why or why not?",
+          lx: ["work-life balance", "burnout", "employer"],
+          model: "[A] Yes, these programs would definitely make a company more attractive to me. [R] They show that the **employer** cares about people, not only about results. Also, I want to avoid **burnout**, which is very common in my generation. [E] For example, my friend's company gives everyone one free Friday a month and pays for a gym membership. She says she's much less stressed than her friends at other companies, and she doesn't want to leave. [C] So if two companies offered the same salary, I'd choose the one with a good **work-life balance** program.",
+          model5: "[A] Absolutely; programs like these would make a company far more attractive to me. [R] They signal that the **employer** genuinely values employees' well-being rather than treating them simply as resources, and with **burnout** so widespread among young professionals, that matters enormously. [E] A friend of mine, for example, works for a firm that gives everyone one free Friday a month and covers gym memberships. She's noticeably less stressed than friends at other companies, and despite receiving a better offer recently, she chose to stay. [C] So if two jobs offered similar salaries, I'd undoubtedly choose the employer that takes **work-life balance** seriously, provided the programs are real and not just for show." },
+        { q: "Some companies also offer flexible working hours or remote work options to help employees achieve a better work-life balance, but they are concerned that these options would reduce employee attention to tasks or engagement in the workplace. Do you think such programs are a good strategy for companies? Why or why not?",
+          lx: ["work remotely", "flexible hours", "productivity"],
+          model: "[A] Yes, I think they're a good strategy, if companies set clear goals. [R] When people have **flexible hours** or can **work remotely**, they save time on commuting and feel more trusted, so they often work better. Of course, some people may get distracted at home. [E] For example, during my internship, we worked from home two days a week. I was actually more productive on those days because the office was noisy. But we had a team call every morning, so everyone stayed connected. [C] So flexibility works well when there are clear rules.",
+          model5: "[A] I believe they're an excellent strategy, provided companies set clear expectations. [R] Employees with **flexible hours** or the option to **work remotely** save hours on commuting and feel trusted, which tends to boost **productivity** rather than reduce it. Admittedly, some people do struggle with distractions at home, but that's a management issue, not a reason to ban flexibility. [E] At my internship, for instance, we worked from home twice a week, and I got noticeably more done on those days, since the open-plan office was so noisy. A short video call every morning kept the whole team engaged. [C] So flexibility works brilliantly, as long as it comes with structure and clear goals." },
+        { q: "Looking to the future, do you think people's attitudes towards work-life balance will change? For example, do you think people will prioritize personal life over work or work over personal life? Explain your thoughts.",
+          lx: ["work to live", "prioritize", "burnout"],
+          model: "[A] I think people will **prioritize** their personal life more and more. [R] Younger generations saw their parents work long hours and get stressed, and they don't want the same life. Also, technology and remote work make it easier to work less and still be productive. [E] For example, many of my friends say they'd rather earn less and have time for hobbies and family. When they look for jobs, the first thing they ask about is flexible hours. [C] So in the future, I think most people will **work to live**, not live to work.",
+          model5: "[A] I'm fairly confident that people will increasingly **prioritize** their personal lives over work. [R] Having watched their parents work punishing hours, often ending up with **burnout**, many young people are determined not to repeat that pattern. On top of that, technology now allows us to be productive in far less time. [E] Most of my friends, for example, openly say they'd accept a lower salary in exchange for time for their hobbies and families, and the first question they ask in job interviews is about flexibility. Some even turn down offers that require constant overtime. [C] In the coming decades, I suspect, the dominant attitude will be to **work to live**, not live to work." }
+      ]},
+    { id: "s124", badge: "official", title: "Work-Life Balance", src: "Official TOEFL · 124",
+      scenario: "As part of a university project, you have agreed to take part in a short research interview about work-life balance. A graduate student conducting the research will ask you some questions online.",
+      questions: [
+        { q: "First, do you feel that you currently have a good balance between your work and personal life? Give details to explain your answer.",
+          lx: ["work-life balance", "workload", "take time off"],
+          model: "[A] To be honest, my balance is not perfect right now, but it's getting better. [R] I'm a full-time student and I also work part-time, so my **workload** is quite heavy, especially during exams. [E] For example, last month I had three deadlines and extra shifts at the café, and I didn't see my friends for almost two weeks. After that, I decided to work only on weekdays and keep Sundays completely free. Now I have time for sports and friends again. [C] So it's still a challenge, but I'm learning to protect my free time.",
+          model5: "[A] Honestly, my balance isn't perfect at the moment, but it's improving steadily. [R] Combining full-time studies with a part-time job means my **workload** can get quite heavy, particularly around exam periods. [E] Last month, for instance, I had three assignments due and picked up extra shifts at the café, with the result that I barely saw my friends for two weeks. That was a wake-up call, so I've since stopped working on weekends and keep Sundays entirely free. Since then, I've gone back to playing football and I feel far less drained. [C] Striking a healthy **work-life balance** is still a challenge, but I've learned that free time has to be protected deliberately." },
+        { q: "Can you describe some strategies you use or want to use to maintain a balanced lifestyle?",
+          lx: ["set boundaries", "switch off", "to-do list"],
+          model: "[A] I use two strategies, and I want to try one more. [R] I learned that if I don't plan my time, work and study take everything. [E] First, every Sunday I write a **to-do list** for the week and put my free time in my calendar, like a meeting. Second, I don't check emails after eight p.m., so I can **switch off**. In the future, I also want to try a digital detox — one day a month without my phone. [C] So for me, balance is about planning and clear limits.",
+          model5: "[A] I currently use two strategies, and there's a third I'd like to adopt. [R] Experience has taught me that, without planning, work and study will expand to fill every hour available. [E] Every Sunday, for example, I write a weekly **to-do list** and schedule my free time in my calendar, treating a run or dinner with friends as seriously as a meeting. I also **set** a firm **boundary** of no emails after eight p.m., which allows me to genuinely **switch off**. What I'd like to try next is a monthly digital detox — a whole day without my phone. [C] Essentially, for me, balance comes down to planning ahead and sticking to clear limits." },
+        { q: "Tell me about a time when you might have felt overwhelmed by work or personal responsibilities. How did you handle the situation?",
+          lx: ["be snowed under", "overwhelmed", "prioritize"],
+          model: "[A] I felt really **overwhelmed** at the end of my last semester. [R] I had final exams, a group project and extra shifts at work, all in the same two weeks. [E] I was **snowed under** and couldn't sleep well. So I talked to my manager and asked for fewer shifts, and she agreed. Then I made a plan for every day and **prioritized** the exams. I also went for a walk every evening to relax. In the end, I passed everything. [C] It taught me that it's better to ask for help early than to suffer in silence.",
+          model5: "[A] The most **overwhelmed** I've ever felt was at the end of last semester. [R] Final exams, a group project and extra shifts at work all landed in the same fortnight. [E] I was completely **snowed under**, to the point where I was barely sleeping. Eventually, I spoke to my manager, explained the situation and asked to reduce my hours, which, to my relief, she agreed to immediately. I then drew up a day-by-day plan, **prioritized** my exams and forced myself to take a short walk every evening to clear my head. In the end, I passed everything with decent grades. [C] Looking back, I realize that asking for help early is far better than struggling in silence." },
+        { q: "Some people believe that employers should offer more flexible working arrangements to help employees better achieve a healthy work-life balance. Do you agree or disagree with this idea? Why?",
+          lx: ["flexible working arrangements", "commute", "productivity"],
+          model: "[A] I agree with this idea. [R] People have different lives — some have small kids, some live far away, some work better in the morning. Flexible schedules help them organize their day and feel less stressed, and happy employees usually work better. [E] For example, my neighbor is a single mom. Her company lets her start work at seven and finish at three, so she can pick up her son from school. She says she would quit without this option. [C] So I think flexible work is good for both employees and companies.",
+          model5: "[A] I strongly agree with this idea. [R] Employees lead very different lives: some are raising young children, others face a two-hour **commute**, and many simply work better at certain times of day. **Flexible working arrangements** let people organize their lives sensibly, and less stressed employees are, almost invariably, more productive and more loyal. [E] My neighbor, for instance, is a single mother whose company lets her work from seven to three, so she can collect her son from school. She told me she'd have resigned long ago without that option. [C] Flexibility, in my view, isn't a favor to employees; it's a smart investment that benefits companies just as much." }
+      ]},
+    { id: "smock", badge: "mock", title: "The Workplace", src: "Mock-тест платформы",
+      scenario: "You have volunteered for a research study about the workplace. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "First, have you ever worked as part of a team, either at a job or on a school project? What was your role?",
+          lx: ["work as part of a team", "take on responsibility", "meet a deadline"],
+          model: "[A] Yes, I **worked as part of a team** on a big group project at university last semester. [R] There were five of us, and we had to create a business plan for a new app, so we needed a clear leader. [E] I **took on** the role of coordinator. I divided the tasks, made a shared calendar and organized short meetings every week. When two people were late with their parts, I helped them so we could **meet the deadline**. We got the highest grade in the class. [C] So my role was to keep everyone organized and on time.",
+          model5: "[A] Yes, I **worked as part of a team** on a major group project at university last semester. [R] Five of us had to develop a full business plan for a new app, and it quickly became clear that someone needed to coordinate everything. [E] I volunteered to **take on** that **responsibility**: I divided up the tasks according to everyone's strengths, set up a shared calendar and ran a short check-in every week. When two teammates fell behind, I helped them catch up rather than complaining, which meant we **met the deadline** comfortably. We ended up with the highest grade in the class. [C] My role, in short, was keeping the team organized and motivated." },
+        { q: "Would you rather have a manager who gives you clear instructions or one who lets you decide how to do your work? Why?",
+          lx: ["micromanage", "independence", "learn the ropes"],
+          model: "[A] I'd rather have a manager who lets me decide, but only after I **learn the ropes**. [R] At the beginning of a new job, clear instructions are really helpful, because you don't know how things work. But later, I want **independence**, because nobody likes being controlled all the time. [E] For example, at the café, my first manager explained everything step by step, which was great. After a month, she let me organize the morning shifts my own way, and I felt much more motivated. [C] So the best manager gives clear instructions first and freedom later.",
+          model5: "[A] Ideally, I'd want a manager who gives me freedom, though only once I've **learned the ropes**. [R] When you're new, clear instructions are invaluable, since you have no idea how things are done. Once you're competent, however, being told exactly what to do feels restrictive, and few things kill motivation faster than being **micromanaged**. [E] At the café, for example, my manager walked me through every procedure during my first weeks, which was exactly what I needed. A month later, she let me reorganize the morning routine my own way, and I felt genuinely trusted. [C] So the best managers, I think, start with clear guidance and gradually give you **independence**." },
+        { q: "Some people believe that being friends with your coworkers helps you do your job better. Do you agree or disagree? Why?",
+          lx: ["coworkers", "work as part of a team", "professional"],
+          model: "[A] I mostly agree. [R] When you're friends with your **coworkers**, you trust each other, you ask for help more easily, and work is more fun. Also, it's easier to **work as part of a team** when you like the people. [E] For example, at the café, my best friend was also my coworker. On busy mornings, we helped each other without words, and customers said we were the fastest team. But sometimes we chatted too much, so we had to be careful. [C] So friendship at work helps, as long as you stay **professional**.",
+          model5: "[A] I largely agree, with one important condition. [R] Being friends with your **coworkers** builds trust, so people ask for help without hesitation and communicate more openly. Work also becomes far more enjoyable, which, in turn, boosts motivation. [E] At the café, for instance, my closest friend was also my coworker, and on hectic mornings we coordinated almost without speaking — our manager even called us her fastest team. **That said**, we occasionally got distracted chatting, and we had to remind each other to stay focused. [C] So workplace friendships definitely help, provided people remain **professional** and keep personal matters from interfering with the job." },
+        { q: "Some people believe that in the future, most work meetings will take place online rather than in person. What might be the advantages and disadvantages of this for workers?",
+          lx: ["work remotely", "commute", "face-to-face"],
+          model: "[A] Online meetings have clear advantages, but also some serious disadvantages. [R] The main advantage is that workers save time and money, because they don't need to **commute**. The disadvantage is that it's harder to build relationships and understand people through a screen. [E] For example, during my internship, our weekly online meetings were short and efficient. But when we had to solve a difficult problem, we always met **face-to-face**, because online people just turned off their cameras and stayed silent. [C] So I think a mix of online and in-person meetings is best.",
+          model5: "[A] Moving meetings online would bring real advantages, but some significant drawbacks as well. [R] On the positive side, workers would save countless hours otherwise spent **commuting**, and meetings tend to be shorter and more focused. On the downside, building relationships through a screen is far harder, and subtle signals like body language are easily lost. [E] During my internship, for example, our weekly online check-ins were efficient, whereas brainstorming sessions only worked **face-to-face**; online, half the team switched off their cameras and barely spoke. [C] So rather than going fully online, I think workplaces will settle on a hybrid model, using each format for what it does best." }
+      ]},
+    { id: "sent", badge: "platform", title: "Entrepreneurship and Small Business", src: "Практика платформы",
+      scenario: "We're exploring what motivates people to start and manage their own businesses. I'll ask you a few questions about your thoughts and experiences.",
+      questions: [
+        { q: "To begin, have you ever started or thought about starting a business? If yes, what kind of business was it—and if not, what's stopped you so far?",
+          lx: ["start a business", "entrepreneur", "take a risk"],
+          model: "[A] Yes, I've thought about **starting a business** many times, but I haven't done it yet. [R] My dream is to open a small coffee shop with a bookstore inside. But I'm a student, and I don't have enough money or experience yet. [E] For example, when I worked at a café, I saw how hard it is for the owner — rent is expensive, and she works almost every day. That made me understand that I need to save money and learn more about business first. [C] So I'm not ready now, but maybe in five or ten years.",
+          model5: "[A] I've often thought about **starting a business**, although I haven't actually done it yet. [R] My dream is to open a small café combined with a second-hand bookstore. What's held me back so far is simply a lack of capital and experience, which, as a student, is hardly surprising. [E] Working at a café opened my eyes, too: I saw how hard the owner struggled with rising rent and staff shortages, often working seven days a week. Rather than putting me off, though, it made me realize I should save money and learn the business side first before I **take** such a big **risk**. [C] So it's a long-term plan rather than an immediate one." },
+        { q: "Many entrepreneurs say they're driven by independence, passion, or a desire to solve a problem. What do you think are the biggest personal motivations behind starting a business—and what challenges do you think come with that decision?",
+          lx: ["be your own boss", "independence", "financial risk"],
+          model: "[A] I think the biggest motivation is **independence** — people want to **be their own boss**. [R] In a normal job, someone else makes the decisions, but in your own business, you choose what to do and how to do it. The biggest challenges are **financial risk** and stress, because you can lose all your money. [E] For example, my uncle opened a small bakery. He loves the freedom, but in the first two years he had no weekends and was always worried about money. [C] So starting a business gives you freedom, but you pay for it with stress.",
+          model5: "[A] I'd say the strongest motivation is **independence** — the desire to **be your own boss**. [R] In a conventional job, others decide what you work on and how, whereas running your own business lets you shape everything according to your own vision. The flip side is considerable **financial risk**, along with long hours and constant uncertainty. [E] My uncle, for example, left a stable office job to open a bakery. He adores the freedom, but he admits that, for the first two years, he worked every weekend and lay awake at night worrying about money. [C] Entrepreneurship, then, offers enormous freedom, but at a price that not everyone is willing to pay." },
+        { q: "Starting a business often involves risk, uncertainty, and long hours. At the same time, it can offer flexibility and fulfillment. Do you believe entrepreneurship is worth the risk for most people? Why or why not? Can you think of any examples that support your view?",
+          lx: ["worth the risk", "job security", "fulfilling"],
+          model: "[A] I don't think entrepreneurship is **worth the risk** for most people. [R] Most new businesses close in the first few years, and many people have families and loans, so they need **job security**. It's a good choice only for people who are very passionate and ready to work very hard. [E] For example, two of my parents' friends opened restaurants. One is very successful now, but the other one lost all his savings and had to go back to an office job. [C] So it can be **fulfilling**, but it isn't for everyone.",
+          model5: "[A] For most people, I don't believe it's **worth the risk**, although for some it absolutely is. [R] A large proportion of new businesses fail within their first few years, and people with families or loans can rarely afford to give up **job security**. It makes sense mainly for those who are genuinely passionate and prepared for years of sacrifice. [E] Two family friends of ours, for instance, opened restaurants around the same time. One now runs three thriving locations, whereas the other lost his life savings within eighteen months and had to return to an office job. [C] So entrepreneurship can be incredibly **fulfilling**, but only if you go in with your eyes open and a safety net." },
+        { q: "One last question. Some believe that schools and universities should focus more on teaching business and entrepreneurship skills. Do you agree? Why or why not—and what kind of skills do you think future business owners really need?",
+          lx: ["transferable skills", "hands-on experience", "financial literacy"],
+          model: "[A] Yes, I agree, especially at universities. [R] Most students learn theory, but they don't learn how to manage money, sell an idea or deal with failure. These are useful skills even if you never start a business. [E] For example, at my university, we had a project where we created a mini-business and sold products on campus. I learned more about marketing and teamwork in that month than in a whole semester of lectures. [C] So I think future business owners need **financial literacy**, communication and resilience, and schools should teach them.",
+          model5: "[A] I agree, particularly at university level. [R] Most programs focus heavily on theory, yet very few teach students how to manage cash flow, pitch an idea or cope with failure — **transferable skills** that are valuable whether or not you ever start a company. [E] At my university, for example, we had a project in which teams set up mini-businesses and sold products on campus for a month. That single month gave me more **hands-on experience** of marketing and teamwork than an entire semester of lectures. [C] What future business owners really need, in my view, is **financial literacy**, persuasive communication and resilience, and schools are perfectly placed to develop all three." }
+      ]},
+    { id: "ssr", badge: "platform", title: "Social Responsibility", src: "Практика платформы",
+      scenario: "We're looking at how people view ethics and social responsibility in business. I'll ask you a few questions about your perspective.",
+      questions: [
+        { q: "To start, when you think of a company that acts responsibly, what comes to mind? Can you name a business or describe specific practices that you consider ethical?",
+          lx: ["ethical", "fair wages", "sustainable"],
+          model: "[A] When I think of a responsible company, I think of a small coffee shop chain in my city. [R] They pay **fair wages** to farmers and to their staff, and they try to be **sustainable**. [E] For example, they buy coffee directly from farmers, use paper cups that can be recycled, and give a discount if you bring your own cup. They also give leftover food to a homeless shelter every evening. My friend works there and says they treat employees very well. [C] So for me, an **ethical** company cares about people and the planet, not just profit.",
+          model5: "[A] What springs to mind is a local coffee chain in my city. [R] It stands out because it pays **fair wages** both to the farmers who grow its beans and to its own staff, while making a real effort to be **sustainable**. [E] It buys coffee directly from small farms, uses compostable cups and gives customers a discount for bringing their own mug. What's more, every evening it donates unsold food to a homeless shelter nearby. A friend who works there says employees are treated with genuine respect, which is rare in hospitality. [C] To me, then, an **ethical** company is one whose everyday practices, not just its slogans, show it cares about people and the planet." },
+        { q: "These days, many consumers expect companies to do more than just make money—they want transparency, fair treatment of workers, and attention to environmental impact. How important are these issues to you when choosing where to shop or work? Why?",
+          lx: ["transparency", "fair treatment", "company culture"],
+          model: "[A] These issues are very important to me, especially when I choose where to work. [R] I spend most of my day at work, so I want to work for a company I respect. If a company treats workers badly, I don't want to be part of it. When I shop, price still matters, but I try to avoid brands with bad reputations. [E] For example, I rejected an internship offer last year after reading reviews from employees about long hours and no overtime pay. [C] So **fair treatment** and **transparency** really affect my choices.",
+          model5: "[A] They matter a great deal to me, particularly when deciding where to work. [R] Since I'll spend most of my waking hours at a job, I want to work somewhere whose values I genuinely respect; if a company mistreats its staff, I'd rather not be associated with it. As a shopper, I'm admittedly more influenced by price, but I do avoid brands with notorious reputations. [E] Last year, for instance, I turned down an internship after reading employee reviews describing unpaid overtime and a toxic **company culture**. [C] So while I'm not a perfect consumer, **transparency** and **fair treatment** of workers definitely shape my decisions, and I expect they'll matter even more as my career develops." },
+        { q: "Sometimes, companies face tough choices—like balancing profit with doing the right thing. Do you believe most businesses today are genuinely trying to be responsible, or are they mostly concerned with public image? Why do you feel that way?",
+          lx: ["public image", "greenwashing", "profit"],
+          model: "[A] I think most businesses care more about their **public image**. [R] Being responsible is popular now, so companies talk about it in advertising, but they don't always change what they do. Their main goal is still **profit**. [E] For example, a big fashion brand had a campaign about recycling old clothes, but at the same time it produced millions of cheap clothes every month. People call this **greenwashing**. Of course, some companies are really trying, but they are usually smaller. [C] So I'm a bit skeptical about big companies' promises.",
+          model5: "[A] I suspect most large businesses are primarily concerned with their **public image**, though there are genuine exceptions. [R] Social responsibility has become a powerful marketing tool, so companies are eager to talk about it, yet their core priority remains **profit**, and real change is often expensive. [E] A major fashion brand, for instance, ran a high-profile campaign encouraging customers to recycle old clothes while simultaneously producing millions of cheap garments every month — a textbook example of **greenwashing**. Smaller companies, by contrast, often make real sacrifices for their values, partly because their founders' reputations are on the line. [C] So I remain rather skeptical, and I judge companies by their actions rather than their advertising." },
+        { q: "Final question. Do you think governments or consumers should do more to hold businesses accountable for their actions? Why or why not—and what kinds of changes would you personally like to see in how companies operate?",
+          lx: ["hold accountable", "regulation", "transparency"],
+          model: "[A] I think both governments and consumers should do more, but governments are more important. [R] Consumers can stop buying from bad companies, but most people just look at the price. Governments can make laws and fine companies that break the rules. [E] For example, in some countries, companies must show how much CO2 they produce, and this made many of them reduce pollution. Personally, I'd like companies to be more open about how much they pay workers and where their products are made. [C] So we need strong rules and more **transparency**.",
+          model5: "[A] Both should do more, but I believe governments have the greater responsibility. [R] Consumers can certainly boycott irresponsible brands, yet in reality most people simply buy whatever is cheapest. Governments, on the other hand, can introduce **regulation** and impose fines that genuinely **hold** companies **accountable**. [E] In several European countries, for instance, large companies are now legally required to report their carbon emissions, and many have cut them significantly as a result. What I'd personally like to see is far greater **transparency** about pay gaps and supply chains, so that people know exactly who made their products and under what conditions. [C] In short, strong rules backed by informed consumers would make the biggest difference." }
+      ]}
+  ],
+
+  /* ===== Speaking Club: тема вдоль и поперёк ===== */
+  club: [
+    { icon: "briefcase", title: "Мой опыт работы", en: "My work experience", questions: [
+      { t: "personal", src: "Official 085 / 126", q: "Can you tell me about the type of work you are currently doing or have done in the past?", same: "s085-0",
+        f: ["How did you find that job?", "Would you do it again?"], lx: ["internship", "gain work experience", "hands-on experience"] },
+      { t: "personal", src: "Official 085 / 126", q: "What are some of your regular responsibilities or particular tasks in your job?", same: "s085-1",
+        f: ["Which task did you enjoy most — and least?", "What did your manager expect from you?"], lx: ["responsibilities", "meet a deadline", "go the extra mile"] },
+      { t: "experience", src: "Official 081", q: "Can you describe a job that either you or one of your friends has had? What kind of work was involved?", same: "s081-1",
+        f: ["What was the hardest part of that job?", "What skills did it teach?"], lx: ["part-time job", "responsibilities", "learn the ropes"] },
+      { t: "experience", src: "Official 085 / 126", q: "Tell me about a challenging project or task you have worked on. How did you handle it?", same: "s085-2",
+        f: ["What would you do differently now?", "Did anyone help you?"], lx: ["be snowed under", "prioritize", "meet a deadline"] },
+      { t: "opinion", q: "Should university students have part-time jobs, or should they focus only on their studies?",
+        model: "[A] I think a part-time job is a good idea, but only a few hours a week. [R] A job teaches you things that university can't — how to talk to customers, manage your time and work under pressure. It also helps you pay for your studies. But if you work too much, your grades can suffer. [E] For example, I worked about twelve hours a week as a barista in my first year. It was enough to pay for my food and phone, and I still had time to study. A friend of mine worked thirty hours a week and almost failed two classes. [C] So a small part-time job is great, but studies should come first.",
+        model5: "[A] I'm in favor of part-time jobs, provided they're limited to a reasonable number of hours. [R] A job teaches lessons no lecture can — dealing with customers, managing your time and staying calm under pressure — not to mention easing the financial burden of studying. Taken too far, however, it inevitably eats into study time. [E] In my first year, for instance, I worked roughly twelve hours a week as a barista, which covered my food and phone bills without hurting my grades. A friend of mine, by contrast, took on thirty hours a week and very nearly failed two courses. [C] A modest part-time job, then, is invaluable, as long as studies remain the priority.",
+        f: ["How many hours a week is too many?", "What kind of student job is the most useful?"], lx: ["part-time job", "gain work experience", "transferable skills"] },
+      { t: "experience", q: "Tell me about your first day at a new job, internship or school. How did it go?",
+        model: "[A] My first day at my internship was exciting but also very stressful. [R] Everything was new — the people, the programs, the rules — and I was afraid to make mistakes. [E] For example, in the morning, my manager gave me a list of tasks, but I didn't understand half of the words. I was too shy to ask, so I spent an hour searching online. In the afternoon, a colleague noticed and explained everything in five minutes. After that, I always asked questions. [C] So it was hard, but I learned the most important lesson on day one: just ask.",
+        model5: "[A] My first day as an intern was equal parts exciting and nerve-racking. [R] Everything was unfamiliar — the people, the software, the unwritten rules — and I was terrified of making a fool of myself. [E] That morning, for instance, my manager handed me a list of tasks full of jargon I didn't understand, but rather than admit it, I spent an hour secretly searching online. Eventually, a colleague noticed I was struggling and explained everything in five minutes. From then on, I made a point of asking questions immediately, which helped me **learn the ropes** far faster. [C] So the most valuable lesson I learned that day was simply not to be afraid to ask.",
+        f: ["What advice would you give someone starting a new job?", "Who helped you most at the beginning?"], lx: ["learn the ropes", "colleague", "nervous"] }
+    ]},
+    { icon: "target", title: "Выбор профессии", en: "Choosing a career", questions: [
+      { t: "personal", src: "Official 106", q: "From what you've seen, what kinds of careers do people around you tend to pursue — healthcare, education, technology, or something else?", same: "s106-0",
+        f: ["Why do you think these jobs are so popular?", "Which career would be unusual in your circle?"], lx: ["build a career", "job security", "in demand"] },
+      { t: "compare", src: "Official 106", q: "When choosing a career, is job satisfaction your first priority, or do you focus more on salary? Why?", same: "s106-1",
+        f: ["How much money is 'enough'?", "Would your answer change if you had a family?"], lx: ["job satisfaction", "salary", "fulfilling"] },
+      { t: "personal", q: "What did you want to be when you were a child? Has your dream job changed since then?",
+        model: "[A] When I was a child, I wanted to be a pilot, but now I want to work in marketing. [R] As a kid, I loved airplanes and the idea of traveling everywhere. But as I got older, I realized I'm more interested in people and ideas than in machines. [E] For example, in high school I started a small blog about sneakers, and I enjoyed thinking about how to attract readers much more than I expected. That's when I chose to study business. [C] So my dream changed a lot, but I think it changed in the right direction.",
+        model5: "[A] As a child, I was determined to become a pilot, whereas now I'm aiming for a career in marketing. [R] Back then, I was fascinated by airplanes and the idea of seeing the world. As I grew older, however, I realized that what truly interests me is people — what motivates them and how they make decisions. [E] In high school, for example, I started a small blog about sneakers and found that working out how to attract readers excited me far more than writing the posts themselves. That's ultimately what led me to study business. [C] So my dream job has changed completely, but, looking back, the change makes perfect sense.",
+        f: ["What made your dream change?", "Do children's dream jobs say anything about them?"], lx: ["dream job", "career path", "build a career"] },
+      { t: "opinion", q: "How much should parents influence their children's career choices?",
+        model: "[A] I think parents should give advice, but the final decision must be the child's. [R] Parents have more life experience and know their children well, so their opinion is useful. But it's the child who will do this job every day for many years. [E] For example, my friend's parents made him study law because it's prestigious. He finished university, but he hated it, and now, at twenty-six, he's studying design from the beginning. [C] So parents should support and advise, not decide.",
+        model5: "[A] In my view, parents should advise, but the final decision must rest with their children. [R] Parents obviously have more life experience and know their children well, so their perspective is valuable. Nonetheless, it's the child, not the parent, who'll be doing that job every day for decades. [E] A friend of mine, for instance, studied law purely because his parents considered it prestigious. He graduated, but he was so miserable that, at twenty-six, he's now starting over in design — essentially losing five years. Had his parents simply listened to him, he could have avoided all that. [C] So the best thing parents can do is support and guide, rather than choose a **career path** for their children.",
+        f: ["Did your parents influence your choice?", "Is it different in different cultures?"], lx: ["career path", "pressure", "prestigious"] },
+      { t: "compare", q: "Is it better to follow your passion or to choose a stable, well-paid job?",
+        model: "[A] I think the best option is a stable job connected to your passion. [R] If you only follow your passion, you may not earn enough money to live. But if you only think about money, you can feel empty and unhappy. [E] For example, my cousin loves music, but she knew that being a musician is very risky. So she became a sound engineer. She works with music every day and earns a good salary. [C] So I believe you can combine passion and stability if you're a bit creative.",
+        model5: "[A] Rather than choosing one or the other, I think the ideal is to find a stable job that's connected to your passion. [R] Following your passion blindly can leave you struggling to pay rent, whereas chasing money alone often leads to a sense of emptiness. [E] My cousin, for example, adores music but realized early on that a career as a performer was extremely risky. Instead, she trained as a sound engineer, so she now works with music every single day and earns a comfortable salary. In a way, she got the best of both worlds. [C] With a little creativity, then, passion and stability don't have to be mutually exclusive.",
+        f: ["Can a hobby become a good job?", "What if your passion doesn't pay at all?"], lx: ["fulfilling", "job security", "salary"] },
+      { t: "hypo", q: "If you could try any job for just one year, what would you choose and why?",
+        model: "[A] I would choose to work as a tour guide in another country, maybe in Italy. [R] I love traveling, history and talking to people, and this job combines all of them. I wouldn't want to do it forever, but one year would be an amazing experience. [E] For example, I imagine showing tourists around Rome every day, learning Italian and meeting people from all over the world. It would also improve my communication skills, which are useful in any career. [C] So it would be fun and useful at the same time.",
+        model5: "[A] I'd love to spend a year working as a tour guide abroad, ideally in Italy. [R] The job would combine three of my greatest interests — travel, history and meeting people — and while I wouldn't want to do it permanently, a single year would be an unforgettable experience. [E] I imagine leading groups around Rome every morning, picking up Italian along the way and meeting people from every corner of the world. Beyond the fun, it would also sharpen my public speaking and communication skills, which are **transferable** to virtually any career. [C] So it would be a rare chance to enjoy myself while also investing in my future.",
+        f: ["Which job would you never want to try?", "What would you learn from it?"], lx: ["transferable skills", "dream job", "gain work experience"] }
+    ]},
+    { icon: "heart", title: "Что делает работу хорошей", en: "What makes a good job", questions: [
+      { t: "opinion", src: "Official 081", q: "What do you think are the most important things to consider when looking for a job?", same: "s081-0",
+        f: ["What would be a red flag in a job interview?", "Which questions would you ask the employer?"], lx: ["work-life balance", "career advancement", "colleagues"] },
+      { t: "opinion", src: "Official 081", q: "What kinds of things can lead people to feel unhappy in their work?", same: "s081-2",
+        f: ["What can managers do about it?", "When is it time to quit?"], lx: ["workload", "recognition", "burnout"] },
+      { t: "compare", q: "Would you rather have a boring job with a high salary or an interesting job with a low salary?",
+        model: "[A] I'd choose an interesting job with a lower salary. [R] If I'm bored every day, I'll be unhappy, and no money can fix that. Also, when you love your job, you work better, and later your salary can grow. [E] For example, my brother left a well-paid but boring job in a bank to work at a small game studio. In the first year he earned less, but now, three years later, he earns almost the same and he's much happier. [C] So I believe an interesting job is a better long-term choice.",
+        model5: "[A] I'd go for the interesting job, as long as the salary still covers the basics. [R] Spending forty hours a week bored would gradually wear me down, and no salary could compensate for that. Besides, people who enjoy their work tend to excel at it, so their pay often catches up over time. [E] My brother, for instance, left a lucrative but tedious position at a bank to join a small game studio. His income dropped sharply at first, but three years later he earns almost as much as before — and he's a completely different, much happier person. [C] In the long run, therefore, an interesting job is the wiser choice, not just the more enjoyable one.",
+        f: ["Where is the limit — how low is too low?", "Can you make a boring job interesting?"], lx: ["a dead-end job", "job satisfaction", "salary"] },
+      { t: "opinion", q: "Apart from money, what motivates people to work hard?",
+        model: "[A] I think the biggest motivations are recognition and a sense of purpose. [R] People want to feel that their work is important and that someone notices their effort. Also, many people want to learn and grow. [E] For example, at the café, my manager always said thank you and sometimes told the owner about my good work. Because of that, I often stayed longer to help, even when I didn't get paid for it. [C] So I believe respect and meaning motivate people as much as money.",
+        model5: "[A] Beyond money, I'd say the most powerful motivators are recognition and a sense of purpose. [R] People want to feel that their work matters and that their effort is noticed; on top of that, many are driven by the chance to grow and master new skills. [E] At the café, for instance, my manager made a habit of thanking us personally and even mentioned my work to the owner. As a result, I often stayed late to help without being asked, simply because I felt valued. Interestingly, a small pay rise later had far less effect on my motivation. [C] So respect and meaning, in my experience, can motivate people at least as much as money.",
+        f: ["Does praise from a boss really matter?", "What motivates you personally?"], lx: ["recognition", "go the extra mile", "sense of purpose"] },
+      { t: "opinion", q: "Are perks like free food, gyms or game rooms important when choosing a job?",
+        model: "[A] Perks are nice, but they aren't very important for me. [R] Free lunch or a gym can make the day more pleasant, but they don't change the main things — the work itself, the people and the salary. Sometimes companies use **perks** so that people stay in the office longer. [E] For example, my friend works at a tech company with free dinners, but they're only served after seven p.m., so everyone stays late. [C] So I'd prefer good working hours to a game room.",
+        model5: "[A] Perks are pleasant, but they'd hardly influence my decision. [R] Free lunches or an office gym can make the day more enjoyable, yet they don't change what really matters: the work itself, the team and fair pay. Cynically, some companies even use **perks** to keep employees at the office longer. [E] A friend of mine, for example, works for a tech company that provides free dinners — served only after seven p.m. Unsurprisingly, almost everyone ends up staying late. [C] Personally, I'd trade every game room in the world for reasonable working hours and a manager who respects my time.",
+        f: ["Which perk would actually make a difference for you?", "Do perks make people more loyal?"], lx: ["perks", "work-life balance", "employer"] }
+    ]},
+    { icon: "users", title: "Команда, начальник, коллеги", en: "People at work", questions: [
+      { t: "experience", src: "Mock", q: "Have you ever worked as part of a team, either at a job or on a school project? What was your role?", same: "smock-0",
+        f: ["What happens when someone in the team doesn't do their part?", "Are you a natural leader?"], lx: ["work as part of a team", "take on responsibility", "meet a deadline"] },
+      { t: "compare", src: "Mock", q: "Would you rather have a manager who gives you clear instructions or one who lets you decide how to do your work? Why?", same: "smock-1",
+        f: ["What is the worst thing a manager can do?", "Have you ever had a bad boss?"], lx: ["micromanage", "independence", "learn the ropes"] },
+      { t: "opinion", src: "Mock", q: "Some people believe that being friends with your coworkers helps you do your job better. Do you agree or disagree?", same: "smock-2",
+        f: ["Should you be friends with your boss?", "How do you deal with a coworker you don't like?"], lx: ["coworkers", "work as part of a team", "professional"] },
+      { t: "compare", src: "Official 081", q: "Some people think working for a large company offers more advantages than working for a small company. What do you think?", same: "s081-3",
+        f: ["Where would you rather do an internship?", "What about government jobs?"], lx: ["job security", "perks", "take on responsibility"] },
+      { t: "compare", q: "Do you work better alone or as part of a team?",
+        model: "[A] It depends on the task, but usually I work better alone. [R] When I work alone, I can concentrate and choose my own speed. In a team, there are more meetings and discussions, which take time. But for big projects, a team is better because people have different ideas. [E] For example, I always write essays alone, in a quiet library. But for my group business project, our team came up with much better ideas together than I could alone. [C] So I prefer working alone for focused tasks and with a team for creative ones.",
+        model5: "[A] It really depends on the task, although I generally concentrate better on my own. [R] Working alone lets me focus deeply and set my own pace, whereas teamwork inevitably involves meetings and compromises that slow things down. **That said**, complex or creative projects almost always benefit from a mix of perspectives. [E] I always write essays alone, for instance, ideally in a silent corner of the library. For our group business project, by contrast, the ideas we developed together were far stronger than anything I could have come up with by myself. [C] So for focused tasks I prefer to work independently, but for creative ones I'd much rather **work as part of a team**.",
+        f: ["What makes a team work well?", "Is group work at university fair?"], lx: ["work as part of a team", "concentrate", "productivity"] },
+      { t: "opinion", q: "What makes someone a good boss?",
+        model: "[A] I think a good boss is fair, supportive and a good listener. [R] People work better when they feel respected and when they can ask questions without fear. A good boss also explains goals clearly and gives honest feedback. [E] For example, my manager at the internship always asked for our opinions in meetings, and when I made a mistake, she explained how to fix it instead of shouting. Because of that, I wasn't afraid to try new ideas. [C] So for me, a good boss is more like a coach than a police officer.",
+        model5: "[A] In my opinion, a good boss is, above all, fair, supportive and willing to listen. [R] People perform at their best when they feel respected and can raise concerns without fear; equally important, a good boss sets clear goals and gives honest, constructive feedback. [E] My manager during my internship, for example, made a point of asking for everyone's ideas in meetings, interns included. When I made a fairly serious mistake, rather than criticizing me, she calmly showed me how to fix it, which made me far more willing to experiment afterwards. [C] So the best bosses, I believe, act less like supervisors and more like coaches.",
+        f: ["Would you like to be a manager one day?", "Should bosses be strict?"], lx: ["feedback", "micromanage", "supportive"] }
+    ]},
+    { icon: "clock", title: "Баланс работы и жизни", en: "Work-life balance", questions: [
+      { t: "personal", src: "Official 124", q: "Do you feel that you currently have a good balance between your work and personal life?", same: "s124-0",
+        f: ["What takes most of your time right now?", "What would you change first?"], lx: ["work-life balance", "workload", "take time off"] },
+      { t: "personal", src: "Official 110 / 124", q: "Can you share one or two strategies that you use to manage your work-life balance?", same: "s110-0",
+        f: ["Which strategy failed for you?", "Do phones make balance harder?"], lx: ["switch off", "call it a day", "set boundaries"] },
+      { t: "experience", src: "Official 124", q: "Tell me about a time when you felt overwhelmed by work or personal responsibilities. How did you handle it?", same: "s124-2",
+        f: ["How do you know you need a break?", "Who do you talk to when you're stressed?"], lx: ["be snowed under", "overwhelmed", "prioritize"] },
+      { t: "opinion", src: "Платформа · Leisure Activities", q: "Some people argue that we don't have enough free time these days. Do you feel you have a good balance between work or school responsibilities and leisure time?",
+        model: "[A] Not really — I think I don't have enough free time. [R] Between classes, homework and my part-time job, my week is very full, and my free time often disappears because of deadlines. [E] For example, I wanted to join a football club this semester, but I could only go twice because I always had something to finish. Even on weekends, I usually spend one day studying. I'm trying to change this by planning my week better. [C] So I'm still looking for a better balance, like many students.",
+        model5: "[A] Honestly, not quite — I'd say leisure time is the first thing I sacrifice. [R] Between lectures, assignments and my part-time job, my week is packed, and whenever a deadline appears, my free time is what disappears. [E] This semester, for example, I signed up for a football club, but I've only managed to attend twice, since there was always something urgent to finish. Even weekends are usually split between rest and catching up on readings. I've recently started scheduling my free time in advance, which has helped a little. [C] So, like many students, I'm still searching for that balance, but at least I'm now treating rest as a priority.",
+        f: ["What do you do with your free time?", "Do people today really have less free time than before?"], lx: ["leisure time", "work-life balance", "deadline"] },
+      { t: "opinion", src: "Платформа · Vacation Habits", q: "Some people say that vacations aren't just a luxury but a way to maintain good mental health and work-life balance. Do you agree that taking time off is essential?",
+        model: "[A] Yes, I strongly agree that taking time off is essential. [R] Our brains need rest. If people work all the time without breaks, they become tired, stressed and less productive, and finally they **burn out**. [E] For example, my father didn't **take** any **time off** for two years. He was always tired and angry. Last summer, he finally went on a two-week vacation, and he came back calm and full of energy, and he said he worked better after that. [C] So vacations are not a luxury; they're a necessity.",
+        model5: "[A] I wholeheartedly agree that taking time off is essential. [R] Just like our bodies, our minds need recovery time; people who work for long periods without a break become exhausted, irritable and, ironically, far less productive, until eventually they **burn out**. [E] My father, for example, didn't **take** a single day **off** for two years, and he grew increasingly tense and short-tempered. When he finally went on a two-week vacation last summer, he returned relaxed and full of energy, and he admitted that he worked more efficiently afterward. [C] So vacations shouldn't be seen as a luxury, but as a basic investment in people's health and performance.",
+        f: ["Do you check work messages on vacation?", "Should companies force employees to take vacations?"], lx: ["take time off", "burn out", "productivity"] },
+      { t: "opinion", q: "Should employees answer work emails and messages in the evenings and on weekends?",
+        model: "[A] No, I don't think they should, except in emergencies. [R] People need time to rest and be with their families. If they are always connected, they can never **switch off**, and that leads to stress. [E] For example, my sister's boss used to send messages at eleven p.m., and she felt she had to answer. She was stressed all the time. Then her company made a rule: no emails after seven, and everyone became much happier. I've heard some countries even have laws about this. [C] So evenings and weekends should be free.",
+        model5: "[A] Apart from genuine emergencies, I don't believe they should. [R] Everyone needs time to rest and focus on their personal lives; if employees are permanently reachable, they never truly **switch off**, and chronic stress becomes almost inevitable. [E] My sister's boss, for instance, used to send messages late at night, and she felt obliged to reply immediately, which left her constantly on edge. Once her company introduced a rule banning emails after seven, morale noticeably improved. In fact, some countries, such as France, have even made the right to disconnect a legal requirement. [C] So I think evenings and weekends should belong to employees, not their employers.",
+        f: ["Is it different if you work for yourself?", "Should there be a law about this?"], lx: ["switch off", "set boundaries", "burnout"] },
+      { t: "opinion", src: "Платформа · Time Management", q: "Some companies are now testing shorter workdays or four-day work weeks to boost focus and reduce burnout. Do you think working fewer hours could actually help people get more done, or might it backfire?",
+        model: "[A] I think working fewer hours can help people get more done. [R] When people have less time, they focus better and waste less time on unimportant meetings and social media. They are also more rested, so they make fewer mistakes. [E] For example, I read about a company in the UK that tried a four-day week, and most employees did the same amount of work and felt much less stressed. In my own experience, I study better in three focused hours than in a whole tired day. [C] So I think it can work, but maybe not in every job.",
+        model5: "[A] I believe working fewer hours can genuinely help people accomplish more, at least in many types of jobs. [R] With less time available, people tend to focus harder and cut out pointless meetings, while also being better rested and therefore making fewer mistakes. [E] A large trial in the UK, for example, found that most companies maintained their output on a four-day week, and many decided to keep it afterward. My own experience points the same way: three focused hours of study beat an entire exhausted day. Admittedly, it would be harder to apply in hospitals or shops, where someone simply has to be present. [C] So it's no universal solution, but in office work it's well worth trying.",
+        f: ["Would you take a four-day week with less pay?", "Which jobs could never work four days a week?"], lx: ["productivity", "burnout", "workload"] }
+    ]},
+    { icon: "laptop", title: "Удалёнка и гибкий график", en: "Remote & flexible work", questions: [
+      { t: "opinion", src: "Official 110", q: "Some companies offer flexible working hours or remote work, but worry it reduces employee engagement. Is this a good strategy for companies?", same: "s110-2",
+        f: ["How can a manager know people are really working?", "Would you work better at home or in the office?"], lx: ["work remotely", "flexible hours", "productivity"] },
+      { t: "opinion", src: "Official 124", q: "Should employers offer more flexible working arrangements to help employees achieve a healthy work-life balance?", same: "s124-3",
+        f: ["Who benefits most from flexible hours?", "Can flexibility be unfair to some employees?"], lx: ["flexible working arrangements", "commute", "productivity"] },
+      { t: "opinion", src: "Mock", q: "In the future, most work meetings may take place online rather than in person. What are the advantages and disadvantages for workers?", same: "smock-3",
+        f: ["Are online meetings more tiring?", "Should cameras always be on?"], lx: ["work remotely", "commute", "face-to-face"] },
+      { t: "compare", q: "Would you prefer to work from home or in an office? Why?",
+        model: "[A] I would prefer a mix, but if I must choose, I'd pick the office. [R] At home, I save time on the **commute**, but I find it hard to concentrate, and I feel lonely. In the office, I can talk to colleagues, ask questions and learn from them. [E] For example, during my internship, I worked from home two days a week. On those days, I finished small tasks quickly, but I missed lunch with my team, and I learned much more on office days. [C] So for a young person, I think the office is more useful.",
+        model5: "[A] Ideally a combination of the two, but if forced to choose, I'd pick the office. [R] Working from home certainly saves a **commute** and offers flexibility, yet I find it harder to stay focused, and it can feel quite isolating. In the office, on the other hand, I can ask questions on the spot and pick up skills simply by watching experienced colleagues. [E] During my internship, for instance, I worked remotely twice a week. On those days, I got through routine tasks faster, but I learned noticeably more on office days, largely through casual conversations over lunch. [C] So, at least at this early stage of my career, I'd say the office offers more.",
+        f: ["What would your perfect home office look like?", "Is remote work good for young employees?"], lx: ["work remotely", "commute", "colleague"] },
+      { t: "personal", src: "Official 111 · Commuting", q: "Is it important to live close to your school or work? Why?",
+        model: "[A] Yes, I think it's very important. [R] A long **commute** takes a lot of time and energy every day. If you live close, you have more time for sleep, sports and friends. [E] For example, in my first year, I lived an hour away from campus by bus. I woke up at six, and I was always tired. This year I moved to a dorm ten minutes from my classes, and now I have time to go to the gym in the morning. My grades even got better. [C] So living close makes life much easier.",
+        model5: "[A] I'd say it's extremely important, at least for me. [R] A long **commute** quietly drains both time and energy, whereas living nearby frees up hours every week for sleep, exercise and seeing friends. [E] In my first year, for example, I lived an hour away by bus, which meant waking up at six and arriving at lectures already exhausted. This year, I moved into a dorm ten minutes from campus, and the difference has been remarkable: I now go to the gym before class, and, perhaps not coincidentally, my grades have improved. [C] So, if possible, I'd always choose to live close, even if it means paying slightly higher rent.",
+        f: ["Would you accept a great job with a two-hour commute?", "How do you use your commute time?"], lx: ["commute", "work-life balance", "productivity"] },
+      { t: "opinion", src: "Official 111 · Commuting", q: "Some people believe that commuting might disappear entirely. How might a severe decline in commuting affect businesses, positively and negatively? Give one example of each.",
+        model: "[A] A decline in commuting would help some businesses and hurt others. [R] On the positive side, companies could save money on big offices. On the negative side, businesses near offices, like cafés and lunch places, would lose customers. [E] For example, my friend's company closed half of its office after the pandemic and saved a lot of money on rent. But a sandwich shop next to that building closed because there were no office workers anymore. [C] So the economy would change, with winners and losers.",
+        model5: "[A] A sharp decline in commuting would create clear winners and losers among businesses. [R] On the positive side, companies could cut their costs dramatically by renting smaller offices. On the negative side, businesses that depend on commuters — cafés, lunch spots and dry cleaners near office districts — would lose much of their customer base. [E] A friend's company, for instance, gave up half its office space after the pandemic and saved a fortune on rent. Meanwhile, the sandwich shop on the ground floor of that very building closed within a year, simply because the office workers no longer came. [C] So the economy wouldn't shrink so much as shift, with spending moving from city centers to residential neighborhoods.",
+        f: ["Which other businesses would benefit?", "What would happen to city centers?"], lx: ["commute", "work remotely", "office"] },
+      { t: "opinion", src: "Платформа · Sleep and Daily Routines", q: "Some schools and workplaces have started beginning later in the morning, with the idea that more rest improves focus and productivity. Is this a good idea?",
+        model: "[A] Yes, I think it's a good idea. [R] Many people, especially young people, don't get enough sleep, and tired people can't focus well. If the day starts later, they can sleep more and work better. [E] For example, I had a class at eight a.m. last semester, and I was half asleep every time. This semester my first class is at ten, and I understand much more and participate in discussions. [C] So I think a later start could really improve productivity, although it may not work for every job.",
+        model5: "[A] I think it's an excellent idea, at least for schools and office jobs. [R] Many people, teenagers and students in particular, are chronically sleep-deprived, and tired brains simply don't absorb information or solve problems effectively. [E] Last semester, for instance, I had an eight a.m. statistics class, and I spent most of it struggling to stay awake. This semester, my first class starts at ten, and the difference is striking: I follow the material easily and actually contribute to discussions. Admittedly, a later start would be impractical for hospitals or delivery services. [C] Still, wherever it's feasible, starting later seems like a simple, almost cost-free way to boost **productivity**.",
+        f: ["Are you a morning person or a night owl?", "Would a later start just make people stay up later?"], lx: ["productivity", "focus", "schedule"] }
+    ]},
+    { icon: "ladder", title: "Карьерный путь и перемены", en: "Career paths & changes", questions: [
+      { t: "opinion", src: "Official 106", q: "Many people now change careers several times in their lives instead of sticking to one profession. Is this trend helpful or hurtful to workers?", same: "s106-2",
+        f: ["What is the right age to switch careers?", "Would you be afraid to start over?"], lx: ["switch careers", "transferable skills", "a dead-end job"] },
+      { t: "compare", src: "Official 085 / 126", q: "Is gaining diverse experience by often changing jobs more valuable than staying in one company for a long time?", same: "s085-3",
+        f: ["How do employers see job-hopping?", "How long should you stay in your first job?"], lx: ["job-hopping", "transferable skills", "loyalty"] },
+      { t: "opinion", q: "What is more important for career success: talent, hard work, or connections?",
+        model: "[A] I think hard work is the most important, but connections help a lot. [R] Talent is nice, but without hard work, it doesn't take you far. Connections can open doors, but you still need to show results. [E] For example, my friend got her internship because her uncle knew the manager. But she worked very hard, and after the internship they offered her a full-time job. Another person in the same program had connections too, but he was lazy, and they didn't keep him. [C] So connections can **get your foot in the door**, but hard work keeps you there.",
+        model5: "[A] Hard work, in my view, matters most, although connections undeniably help. [R] Talent without effort rarely gets anyone very far, and while connections can open doors, they can't guarantee you'll stay once you've walked through them. [E] A friend of mine, for instance, got her internship partly because her uncle knew the manager. Once there, however, she worked so hard that she was offered a permanent position. Another intern, who also had family connections but put in minimal effort, wasn't kept on. [C] Connections, in other words, can help you **get a foot in the door**, but it's hard work that keeps you in the room.",
+        f: ["Is it fair that connections matter so much?", "How can students build connections?"], lx: ["get a foot in the door", "work ethic", "networking"] },
+      { t: "opinion", src: "Платформа · Lifelong Learning", q: "Why are some people motivated to keep learning even after they finish their formal education? What do they hope to gain — personal growth or career advancement?",
+        model: "[A] I think people keep learning for two reasons: their career and their personal growth. [R] The job market changes very fast, so if you don't learn new skills, you can lose your job. Also, many people simply enjoy learning new things. [E] For example, my mom is forty-five, and last year she took an online course in data analysis because her company started using new programs. She got a promotion after that. She also takes guitar lessons, just for fun. [C] So learning helps both your career and your happiness.",
+        model5: "[A] I'd say people keep learning for two main reasons: **career advancement** and personal growth. [R] The job market is evolving so rapidly that those who stop learning risk falling behind, while for many others, learning is simply a source of joy and confidence. [E] My mother, for example, took an online course in data analysis at forty-five after her company introduced new software, and within a year she'd been promoted. At the same time, she started guitar lessons purely for pleasure, and she says they keep her mind sharp. [C] So lifelong learning, I believe, benefits both your career and your quality of life, and the two often reinforce each other.",
+        f: ["Have you taken a course outside school?", "Should employers pay for courses?"], lx: ["career advancement", "develop new skills", "lifelong learning"] },
+      { t: "hypo", q: "If you didn't need money, would you still work? What would you do?",
+        model: "[A] Yes, I would still work, but maybe not full-time. [R] Work is not only about money. It gives you a routine, a purpose and a chance to meet people. Without it, I think I would get bored very quickly. [E] For example, I'd probably open a small café with books, or volunteer at an animal shelter. I'd work maybe four hours a day and spend the rest of the time traveling and learning languages. [C] So I'd still work, but I'd choose something meaningful instead of something that just pays well.",
+        model5: "[A] I would definitely still work, though probably not full-time. [R] Work gives us far more than a paycheck: it provides structure, a sense of purpose and a community of people around us. Without it, I suspect I'd feel aimless within a few months. [E] If money were no object, for instance, I'd open a small café with a book corner, or perhaps work at an animal shelter. I'd spend about four hours a day on that and devote the rest of my time to traveling and learning languages. [C] So I'd keep working, but I'd choose something genuinely **fulfilling** rather than something that simply pays the bills.",
+        f: ["Would most people stop working?", "Is it good to retire early?"], lx: ["fulfilling", "sense of purpose", "pay the bills"] }
+    ]},
+    { icon: "cap", title: "Образование и навыки для работы", en: "Education & skills for work", questions: [
+      { t: "opinion", src: "Платформа · Higher Education", q: "Some believe a university degree is still essential for long-term success, while others argue that practical experience, entrepreneurship, or technical skills can be just as valuable. What's your view?",
+        model: "[A] I think both are important, but the answer depends on the job. [R] For jobs like doctor or engineer, a degree is necessary. But in many fields, like IT or design, employers care more about your skills and experience. [E] For example, my cousin never finished university, but he learned programming online and built a strong portfolio. Now he works at a good tech company. My sister, on the other hand, is a doctor, and of course she needed many years of university. [C] So a degree is essential in some careers, but not in all of them.",
+        model5: "[A] I'd say it depends heavily on the field. [R] In professions such as medicine or engineering, a degree is obviously non-negotiable. In many others, however — IT, design or marketing, for instance — employers increasingly care about what you can actually do rather than which diploma you hold. [E] My cousin, for example, dropped out of university, taught himself to code online and built an impressive portfolio, which landed him a job at a respected tech company. My sister, by contrast, could never have become a doctor without seven years of medical school. [C] So a degree remains essential for certain careers, but it's no longer the only route to long-term success.",
+        f: ["Is university worth the cost?", "Which skills can you only learn on the job?"], lx: ["hands-on experience", "degree", "land a job"] },
+      { t: "opinion", src: "Платформа · University Life", q: "Do you feel that your university experience — academics, internships, personal growth — is preparing you well for what comes after graduation?",
+        model: "[A] Partly yes, but I think university could do more. [R] My classes give me good theory, and I learned to manage my time and work in teams. But there are not many practical tasks, and many students graduate without real work experience. [E] For example, I found my internship by myself, through a friend, not through the university. Without that internship, I wouldn't know how a real office works. [C] So university is preparing me, but internships and part-time jobs are just as important.",
+        model5: "[A] To some extent, yes, though I think it could do considerably more. [R] My courses have given me a solid theoretical foundation, and group projects have taught me to manage my time and collaborate. Practical experience, however, is largely left to students to find for themselves, so many graduate without ever having worked in a real organization. [E] I found my own internship, for example, through a friend rather than through the university's career services, and that internship taught me more about how a workplace functions than any lecture. [C] So university is a good starting point, but it's internships and part-time jobs that are really bridging the gap for me.",
+        f: ["What should universities add?", "Should internships be required for every degree?"], lx: ["internship", "hands-on experience", "career advancement"] },
+      { t: "opinion", q: "Is it fair that many internships are unpaid?",
+        model: "[A] No, I don't think it's fair. [R] Interns do real work, and they should get at least some money. Also, unpaid internships are only possible for students whose parents can support them, so poorer students lose opportunities. [E] For example, I had a friend who got an unpaid internship at a big company in another city, but she couldn't pay for rent there, so she had to say no. Someone with rich parents took her place. [C] So unpaid internships can **get you a foot in the door**, but they aren't fair for everyone.",
+        model5: "[A] I don't think it's fair, even if I understand why companies do it. [R] Interns often do genuine, valuable work and deserve to be paid for it. More importantly, unpaid internships are only realistic for students whose families can support them, which effectively shuts out less privileged students. [E] A friend of mine, for instance, was offered an unpaid internship at a prestigious firm in another city, but she simply couldn't afford the rent there, so she had to turn it down. The place went to someone whose parents could cover the costs. [C] So while unpaid internships may **get some people's foot in the door**, they tend to keep that door closed to others.",
+        f: ["Would you do an unpaid internship?", "Should the government pay interns?"], lx: ["internship", "get a foot in the door", "fair"] },
+      { t: "compare", q: "Which skills are more important in today's job market: soft skills or technical skills?",
+        model: "[A] I think soft skills are a little more important. [R] Technical skills get you a job, but soft skills, like communication and teamwork, help you keep it and grow. Also, technical skills can become old very quickly, but soft skills are useful in every job. [E] For example, in my internship, the best-paid person wasn't the best at computers. She was the one who could talk to clients and solve conflicts in the team. [C] So both are important, but soft skills are **transferable** to any career.",
+        model5: "[A] I'd argue that soft skills are slightly more important in the long run. [R] Technical skills may get you hired, but it's communication, teamwork and adaptability that determine whether you thrive. What's more, technical knowledge can become outdated within a few years, whereas soft skills remain valuable throughout your career. [E] During my internship, for instance, the most senior person on the team wasn't the strongest technically; she was the one who could calm down an angry client and resolve tensions within the team. [C] So while both matter, soft skills are the ultimate **transferable skills**, and they're far harder for AI to replace.",
+        f: ["Can soft skills be taught?", "Which soft skill do you want to improve?"], lx: ["transferable skills", "soft skills", "communication"] },
+      { t: "opinion", q: "Should schools teach practical job skills, like writing a résumé or doing a job interview?",
+        model: "[A] Yes, I think schools should definitely teach these skills. [R] Every person needs to find a job one day, but most students have no idea how to write a résumé or what to say at a **job interview**. Learning this early would give them more confidence. [E] For example, before my first job interview, I watched videos online for hours, and I was still very nervous. If my school had had even one class with practice interviews, it would have helped me a lot. [C] So these lessons would be short but very useful.",
+        model5: "[A] Absolutely; I think schools should teach them. [R] Virtually everyone will need to apply for jobs at some point, yet most teenagers have no idea how to write a **résumé** or present themselves in a **job interview**. Learning these skills early would give them both practical knowledge and confidence. [E] Before my first interview, for example, I spent hours watching online videos and still walked in shaking. Had my school offered even a single workshop with mock interviews, I'd have felt far better prepared. [C] So such lessons would require very little time but could make a significant difference to young people's prospects.",
+        f: ["What else should schools teach about work?", "Who should teach these classes?"], lx: ["job interview", "résumé (CV)", "apply for a job"] }
+    ]},
+    { icon: "cpu", title: "Технологии и будущее работы", en: "Technology & the future of work", questions: [
+      { t: "opinion", src: "Official 106", q: "Some people believe that artificial intelligence will greatly change the kinds of jobs available in the future. Will this trend continue in your chosen field?", same: "s106-3",
+        f: ["Which part of your future job could AI do?", "Are you worried about AI?"], lx: ["automate", "replace", "develop new skills"] },
+      { t: "opinion", src: "Official 090 · Technology", q: "Some people believe technology will replace many jobs, while others think it will create more opportunities. What is your opinion and why?",
+        model: "[A] I think technology will replace some jobs, but it will create even more new ones. [R] This always happens with new technology. Old jobs disappear, but people start doing new work that didn't exist before. [E] For example, twenty years ago, nobody worked as a social media manager or an app developer. Now millions of people have these jobs. Of course, some people, like cashiers, are losing jobs to machines, so they need help to learn new skills. [C] So overall, technology creates opportunities, but the change can be painful.",
+        model5: "[A] I believe technology will eliminate some jobs but create even more opportunities overall. [R] History shows that every major technological shift destroys certain roles while generating entirely new ones that nobody could have predicted. [E] Twenty years ago, for example, jobs like social media manager or app developer simply didn't exist, yet today millions of people earn a living from them. **That said**, the transition is painful for those whose jobs disappear, such as cashiers replaced by self-checkout machines, so governments and companies need to help them retrain. [C] So technology is, on balance, a source of opportunity, provided nobody is left behind along the way.",
+        f: ["Which jobs will disappear first?", "Who should pay for retraining?"], lx: ["automate", "replace", "develop new skills"] },
+      { t: "experience", q: "Do you use AI tools for work or study? How do they help you, and what are the risks?",
+        model: "[A] Yes, I use AI tools almost every day for my studies. [R] They save a lot of time — they help me find information, check my grammar and explain difficult topics. But there are also risks: AI sometimes makes mistakes, and if you use it too much, you stop thinking for yourself. [E] For example, last month I asked AI to explain a statistics problem, and the explanation was great. But once it gave me a fake source for an essay, and I almost used it. [C] So AI is a useful assistant, but you always have to check it.",
+        model5: "[A] I do, almost daily, mainly for my studies. [R] AI tools save an enormous amount of time: they explain complex topics, check my grammar and help me brainstorm. The risks, however, are just as real — they occasionally invent facts, and relying on them too heavily can weaken your own thinking. [E] Last month, for instance, an AI tool gave me a brilliantly clear explanation of a statistics problem I'd been stuck on for hours. Yet on another occasion, it suggested a source for my essay that turned out not to exist, which could have cost me dearly. [C] So I treat AI as a helpful assistant, but never as an authority I trust without checking.",
+        f: ["Should universities allow AI?", "Will you need AI skills for your future job?"], lx: ["productivity", "automate", "rely on"] },
+      { t: "hypo", q: "Imagine it's 2050. Which jobs do you think will no longer exist, and which new jobs might appear?",
+        model: "[A] I think many simple jobs, like drivers and cashiers, will disappear by 2050. [R] Self-driving cars and machines are getting better every year, and they are cheaper than people. But new jobs will appear, especially in technology and care for older people. [E] For example, there may be jobs like 'AI trainer' or 'robot repair technician'. Also, because people will live longer, we'll need many more nurses and carers. [C] So the job market will look very different, but there will still be work for people.",
+        model5: "[A] By 2050, I suspect jobs such as truck drivers, cashiers and call-center operators will have largely disappeared. [R] Self-driving vehicles and AI systems are improving rapidly, and companies will inevitably replace people wherever machines are cheaper. At the same time, entirely new roles are bound to emerge, particularly in technology and care. [E] We might see jobs like 'AI ethics auditor' or 'robot maintenance technician', for example. Moreover, since people will be living longer, there'll be enormous demand for nurses and carers — work that requires a human touch. [C] So the job market will be unrecognizable in many ways, but human skills like empathy will be more valuable than ever.",
+        f: ["Which job is completely safe from robots?", "Would you trust a robot doctor?"], lx: ["automate", "replace", "in demand"] }
+    ]},
+    { icon: "rocket", title: "Своё дело", en: "Entrepreneurship", questions: [
+      { t: "personal", src: "Платформа · Entrepreneurship", q: "Have you ever started or thought about starting a business? If yes, what kind — and if not, what's stopped you so far?", same: "sent-0",
+        f: ["What business would be easy to start as a student?", "Who would you start a business with?"], lx: ["start a business", "entrepreneur", "take a risk"] },
+      { t: "opinion", src: "Платформа · Entrepreneurship", q: "What are the biggest personal motivations behind starting a business — and what challenges come with that decision?", same: "sent-1",
+        f: ["Is independence worth the stress?", "What is the hardest part of the first year?"], lx: ["be your own boss", "independence", "financial risk"] },
+      { t: "opinion", src: "Платформа · Entrepreneurship", q: "Do you believe entrepreneurship is worth the risk for most people? Why or why not?", same: "sent-2",
+        f: ["What should you do if your business fails?", "Is failure a good teacher?"], lx: ["worth the risk", "job security", "fulfilling"] },
+      { t: "opinion", src: "Платформа · Entrepreneurship", q: "Should schools and universities focus more on teaching business and entrepreneurship skills? What skills do future business owners really need?", same: "sent-3",
+        f: ["Can you teach someone to be an entrepreneur?", "What's one skill every business owner needs?"], lx: ["transferable skills", "hands-on experience", "financial literacy"] },
+      { t: "compare", q: "Would you rather be your own boss or work for a company?",
+        model: "[A] Right now, I'd rather work for a company, but in the future I'd like to **be my own boss**. [R] At the start of my career, I need experience, a stable salary and people who can teach me. Later, when I know my industry well, I'd like to have the freedom to make my own decisions. [E] For example, my uncle worked at a bakery chain for ten years before opening his own bakery. Because he knew everything about the business, his bakery was successful from the first year. [C] So first I want to learn, and then I want to lead.",
+        model5: "[A] For now, I'd much rather work for a company, though eventually I'd love to **be my own boss**. [R] Early in my career, I need stability, a regular salary and experienced people to learn from. Once I've mastered my field, however, I'd value the freedom to make my own decisions. [E] My uncle is a perfect example: he spent ten years working for a bakery chain before opening his own bakery, and because he already understood every aspect of the business, it was profitable almost from day one. Many people who start without that experience, by contrast, learn expensive lessons. [C] So my plan is to learn first and lead later.",
+        f: ["What kind of person makes a good entrepreneur?", "Would you work for a friend's start-up?"], lx: ["be your own boss", "job security", "gain work experience"] },
+      { t: "opinion", q: "Many young people now have a 'side hustle' — a small business or project alongside their main job or studies. Is this a good idea?",
+        model: "[A] I think it's a good idea, if it doesn't take too much time. [R] A **side hustle** gives you extra money and lets you try your business idea without big risk. You also learn new skills. But if you work all the time, you can **burn out**. [E] For example, my friend sells handmade jewelry online on weekends. She earns some extra money, and she learned about marketing and photography. But during exams, she stops completely to rest. [C] So a side hustle is great, as long as you keep a balance.",
+        model5: "[A] I think it's a great idea, provided it doesn't take over your life. [R] A **side hustle** brings in extra income and, more importantly, lets you test a business idea with very little risk, while developing new skills along the way. The danger, though, is that you never stop working and eventually **burn out**. [E] A friend of mine, for instance, sells handmade jewelry online at weekends. Not only does it earn her extra money, but she's also taught herself marketing and product photography. Wisely, she pauses it completely during exam season. [C] So a side hustle can be a brilliant launchpad, as long as you protect your rest.",
+        f: ["What side hustle would you try?", "Should employers allow side hustles?"], lx: ["side hustle", "burn out", "develop new skills"] }
+    ]},
+    { icon: "scales", title: "Этика бизнеса и общество", en: "Business ethics & society", questions: [
+      { t: "experience", src: "Платформа · Social Responsibility", q: "When you think of a company that acts responsibly, what comes to mind? Can you name a business or describe ethical practices?", same: "ssr-0",
+        f: ["Would you pay more to buy from that company?", "Can a big company be truly ethical?"], lx: ["ethical", "fair wages", "sustainable"] },
+      { t: "opinion", src: "Платформа · Social Responsibility", q: "How important are transparency, fair treatment of workers and environmental impact to you when choosing where to shop or work?", same: "ssr-1",
+        f: ["Would you work for a company you don't respect for a high salary?", "How can you find out how a company treats workers?"], lx: ["transparency", "fair treatment", "company culture"] },
+      { t: "opinion", src: "Платформа · Social Responsibility", q: "Are most businesses today genuinely trying to be responsible, or are they mostly concerned with public image?", same: "ssr-2",
+        f: ["How can you spot greenwashing?", "Does public image matter at all?"], lx: ["public image", "greenwashing", "profit"] },
+      { t: "opinion", src: "Платформа · Social Responsibility", q: "Should governments or consumers do more to hold businesses accountable for their actions? What changes would you like to see?", same: "ssr-3",
+        f: ["Do boycotts work?", "Should companies publish salaries?"], lx: ["hold accountable", "regulation", "transparency"] },
+      { t: "opinion", src: "Платформа · Civic Engagement / Community", q: "Some workplaces encourage or even require volunteering, offering time off or recognition. Should employers actively support volunteering?",
+        model: "[A] I think employers should support volunteering, but not make it required. [R] Volunteering helps the community, and it also makes employees happier and builds team spirit. But if it's required, it stops being real volunteering. [E] For example, my sister's company gives everyone two paid days a year for volunteering. Last spring, her team cleaned a park together, and she said it was the best team-building they've ever had. Nobody was forced to go, but almost everyone went. [C] So support is great, but it should be a choice.",
+        model5: "[A] I believe employers should actively encourage volunteering, but stop short of making it mandatory. [R] It benefits the community, boosts employee morale and builds a sense of team spirit that no office party can match. Once it becomes compulsory, however, it loses the very spirit that makes it valuable. [E] My sister's company, for instance, gives every employee two paid volunteering days a year. Last spring, her team spent one of them restoring a local park, and she described it as the best team-building experience they'd ever had. Tellingly, nobody was obliged to take part, yet nearly everyone did. [C] So support and incentives work well, whereas obligation would backfire.",
+        f: ["Would you use a paid volunteering day?", "Does volunteering look good on a résumé?"], lx: ["company culture", "volunteer", "time off"] },
+      { t: "opinion", src: "Платформа · Mental Health", q: "There are now more open conversations about mental health in workplaces. Are these discussions genuinely helpful, or do they sometimes feel shallow?",
+        model: "[A] I think they are helpful, but only when companies do something real. [R] Talking about stress and **burnout** is important, because many people are afraid to say they feel bad. But if a company only talks and still gives people too much work, it's not honest. [E] For example, my friend's company sends emails about mental health every month, but everyone still works until nine p.m. Another company I know reduced overtime and offers free sessions with a psychologist, and that really helped people. [C] So words are a good start, but actions matter more.",
+        model5: "[A] They're genuinely helpful, but only when they're backed up by real action. [R] Talking openly about stress and **burnout** reduces the stigma, so people feel able to ask for help. If a company simply talks, however, while continuing to overload its staff, the conversation feels hollow, even hypocritical. [E] A friend's company, for instance, sends out cheerful wellness newsletters every month, yet employees still routinely work until nine. Another company I know, by contrast, cut mandatory overtime and offers free counseling sessions, and staff there say it has made a real difference. [C] So these conversations are a valuable first step, but what ultimately counts is whether working conditions actually change.",
+        f: ["Should managers be trained in mental health?", "Is it OK to take a day off for mental health?"], lx: ["burnout", "workload", "well-being"] }
+    ]},
+    { icon: "building", title: "Нетворкинг, город и мир", en: "Networking, cities & the world", questions: [
+      { t: "opinion", src: "Official 082 · Social Gatherings", q: "Some people believe that social gatherings are important opportunities for building and maintaining professional relationships. Do you agree?",
+        model: "[A] Yes, I agree. [R] When people meet outside the office, they relax, talk about their lives and get to know each other better. Later, this trust helps them work together. Also, at parties and events you can meet people who can help your career. [E] For example, at a university career event, I talked to a woman from a marketing agency during the coffee break. We kept in touch, and two months later she told me about an internship there. That's how I got it. [C] So social events can be very useful for your career.",
+        model5: "[A] I agree, and I'd go further: they're often where professional relationships really begin. [R] In a relaxed setting, people drop their formal roles and connect on a personal level, and that trust makes working together far easier later on. What's more, informal events give you access to people you'd never meet otherwise. [E] At a university career fair, for instance, I got chatting with a woman from a marketing agency during the coffee break. We stayed in touch, and two months later she mentioned an internship opening at her company — the one I eventually got. [C] So social gatherings can be surprisingly powerful for building a career, as long as you approach them genuinely.",
+        f: ["Do you feel comfortable at networking events?", "Is networking online as good as in person?"], lx: ["networking", "get a foot in the door", "keep in touch"] },
+      { t: "opinion", src: "Платформа · City Life", q: "Some people believe that people who live in cities have more access to professional opportunities and therefore lead more interesting lives. Do you agree?",
+        model: "[A] I partly agree. [R] It's true that big cities have more companies, jobs and events, so it's easier to build a career there. But remote work is changing this, and an interesting life doesn't depend only on your job. [E] For example, my cousin moved from a small town to the capital and got a much better job. But my friend works remotely for a company in another country while living in a village near the sea, and she says her life is more interesting than ever. [C] So cities give more opportunities, but technology is making the difference smaller.",
+        model5: "[A] I partly agree, although I think the gap is narrowing. [R] Big cities undoubtedly concentrate companies, jobs and networking events, which makes building a career there considerably easier. However, remote work is reshaping that picture, and an interesting life depends on far more than your job. [E] My cousin, for example, moved from a small town to the capital and landed a far better job almost immediately. A friend of mine, by contrast, works remotely for a foreign company from a village by the sea and says her life has never been more fulfilling. [C] So cities still offer more opportunities, but technology is steadily making where you live less important for your career.",
+        f: ["Would you move to a big city for a job?", "What jobs are better in small towns?"], lx: ["career advancement", "work remotely", "opportunities"] },
+      { t: "hypo", q: "If you got a great job offer in another country, would you accept it? Why or why not?",
+        model: "[A] Yes, I think I would accept it, at least for a few years. [R] Working abroad is a great chance to grow professionally and personally. You learn a new culture, improve a language and become more independent. Of course, I'd miss my family and friends. [E] For example, my older cousin worked in Germany for three years. At first, she felt lonely, but then she made friends, learned German, and when she came back, companies were very interested in her experience. [C] So the benefits would be bigger than the difficulties.",
+        model5: "[A] I'd almost certainly accept it, at least for a few years. [R] Working abroad offers a rare opportunity to grow both professionally and personally: you adapt to a new culture, master another language and become far more independent. Leaving family and friends behind would undeniably be hard, but with video calls and cheap flights, distance matters less than it used to. [E] My cousin, for instance, spent three years working in Germany. Although she felt isolated at first, she gradually built a social circle, became fluent in German and, on returning home, found that employers were extremely keen on her international experience. [C] So, on balance, the benefits would far outweigh the difficulties.",
+        f: ["Which country would you like to work in?", "What would you miss most?"], lx: ["career advancement", "opportunities", "independent"] }
+    ]}
+  ],
+
+  checklist: [
+    "Ответил(а) на вопрос прямо в первом предложении",
+    "Использовал(а) минимум 3 коллокации из урока",
+    "Вставил(а) одну идиому — естественно, а не «для галочки»",
+    "Привёл(а) конкретный пример: работа, стажировка, проект, человек",
+    "Использовал(а) фразу контраста: While it's true that… / That said…",
+    "Уложился(ась) в 45 секунд без длинных пауз"
+  ],
+
+  targetLexis: ["apply for a job", "land a job", "do an internship", "gain work experience", "meet a deadline", "take on responsibility", "work as part of a team", "workload", "get a promotion", "switch careers", "develop new skills", "work-life balance", "work remotely", "switch off", "burnout", "job satisfaction", "fulfilling", "career advancement", "transferable skills", "learn the ropes", "be snowed under", "get a foot in the door", "that said"]
+};
+
+/* =====================================================================
+   ИЛЛЮСТРАЦИИ (SVG)
+   ===================================================================== */
+const HERO_ART = `
+<svg viewBox="0 0 320 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Портфель, ноутбук, кружка и график роста">
+  <ellipse cx="165" cy="228" rx="128" ry="10" fill="rgba(0,0,0,.22)"/>
+  <rect x="96" y="150" width="140" height="78" rx="8" fill="#334155"/>
+  <rect x="104" y="158" width="124" height="62" rx="4" fill="#bae6fd"/>
+  <rect x="80" y="222" width="172" height="8" rx="4" fill="#475569"/>
+  <path d="M112 206 l22 -16 l18 10 l26 -24 l22 12" stroke="#0284c7" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="200" cy="188" r="5" fill="#ec4899"/>
+  <g transform="rotate(-8 70 170)">
+    <path d="M52 132 v-10 a8 8 0 0 1 8 -8 h22 a8 8 0 0 1 8 8 v10" stroke="#7c2d12" stroke-width="6" fill="none"/>
+    <rect x="26" y="130" width="90" height="74" rx="9" fill="#c2410c"/>
+    <rect x="26" y="156" width="90" height="8" fill="#9a3412"/>
+    <rect x="64" y="152" width="14" height="16" rx="3" fill="#fde68a"/>
+  </g>
+  <rect x="246" y="178" width="34" height="44" rx="6" fill="#f472b6"/>
+  <path d="M280 188 a10 10 0 0 1 0 22" stroke="#f472b6" stroke-width="5" fill="none"/>
+  <path d="M256 170 q-4 -8 2 -14 M266 170 q-4 -8 2 -14" stroke="#94a3b8" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <g class="tl-coin">
+    <rect x="200" y="40" width="96" height="84" rx="12" fill="#fff" opacity=".95"/>
+    <rect x="214" y="96" width="14" height="16" rx="2" fill="#a78bfa"/>
+    <rect x="234" y="80" width="14" height="32" rx="2" fill="#8b5cf6"/>
+    <rect x="254" y="62" width="14" height="50" rx="2" fill="#7c3aed"/>
+    <path d="M216 74 l20 -12 l14 6 l24 -18" stroke="#ec4899" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+    <path d="M266 46 h10 v10" stroke="#ec4899" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+  </g>
+  <path d="M40 60 l4 10 l10 4 l-10 4 l-4 10 l-4 -10 l-10 -4 l10 -4 z" fill="#a5f3fc"/>
+  <path d="M150 74 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3 z" fill="#fbcfe8"/>
+</svg>`;
+
+/* Мини-иллюстрации к идиомам (160×96). Классы a-* анимируются при наведении. */
+const PERSON = (x, y, c) => `<circle cx="${x}" cy="${y}" r="6" fill="${c}"/><path d="M${x} ${y + 6} v14 M${x} ${y + 12} l-8 6 M${x} ${y + 12} l8 -4 M${x} ${y + 20} l-6 10 M${x} ${y + 20} l6 10" stroke="${c}" stroke-width="3.5" fill="none" stroke-linecap="round"/>`;
+const PAPER = (x, y, w = 34, h = 10, c = "#fff") => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="2" fill="${c}" stroke="#94a3b8" stroke-width="1.5"/>`;
+const IDIOM_ART = {
+  ladder: `<path d="M50 92 L72 6 M90 92 L112 6" stroke="#92400e" stroke-width="4" stroke-linecap="round"/>
+         <path d="M55 74 h39 M60 56 h39 M64 38 h39 M69 20 h39" stroke="#b45309" stroke-width="3.5" stroke-linecap="round"/>
+         <g class="a-up">${PERSON(84, 34, "#2563eb")}</g>
+         <path d="M118 12 l14 -8 M118 12 l4 12" stroke="#ec4899" stroke-width="3" stroke-linecap="round"/>
+         <path d="M20 86 h20" stroke="#94a3b8" stroke-width="3" stroke-linecap="round"/>`,
+  oil: `<path d="M126 12 a14 14 0 1 0 14 20 a11 11 0 1 1 -14 -20z" fill="#c7d2fe"/>
+         <path d="M48 80 h56 a4 4 0 0 1 0 8 h-56 a4 4 0 0 1 0 -8z" fill="#92400e"/>
+         <path d="M56 80 c-6 -20 6 -32 20 -32 s26 12 20 32z" fill="#f59e0b" stroke="#b45309" stroke-width="2.5"/>
+         <rect x="72" y="38" width="8" height="12" fill="#78350f"/>
+         <g class="a-flame"><path d="M76 36 c-8 -8 -4 -18 0 -26 c4 8 8 18 0 26z" fill="#f97316"/><path d="M76 33 c-3 -4 -2 -9 0 -13 c2 4 3 9 0 13z" fill="#fde68a"/></g>
+         <path d="M20 22 l2 5 l5 2 l-5 2 l-2 5 l-2 -5 l-5 -2 l5 -2z" fill="#a5b4fc"/>`,
+  snowed: `<rect x="34" y="80" width="92" height="8" rx="3" fill="#78350f"/>
+         <g class="a-drop">${PAPER(54, 70)}${PAPER(58, 60)}${PAPER(52, 50)}${PAPER(60, 40)}${PAPER(55, 30)}
+         <path d="M52 30 q16 -12 40 0" fill="#fff" stroke="#bae6fd" stroke-width="3"/></g>
+         <g fill="#93c5fd"><circle cx="30" cy="20" r="3"/><circle cx="118" cy="14" r="3.5"/><circle cx="132" cy="40" r="2.5"/><circle cx="24" cy="52" r="2.5"/><circle cx="106" cy="30" r="2"/></g>
+         <circle cx="110" cy="66" r="5" fill="#fecaca"/><path d="M106 66 h8" stroke="#475569" stroke-width="2"/>`,
+  ropes: `<path d="M20 20 h120" stroke="#475569" stroke-width="3" stroke-linecap="round"/>
+         <g class="a-belt"><path d="M44 20 c0 20 10 22 10 40 s-10 20 -10 30" stroke="#d97706" stroke-width="5" fill="none" stroke-linecap="round"/>
+         <path d="M80 20 c0 16 -12 22 -2 34 c10 12 0 22 2 36" stroke="#b45309" stroke-width="5" fill="none" stroke-linecap="round"/>
+         <path d="M116 20 v44" stroke="#d97706" stroke-width="5" stroke-linecap="round"/><circle cx="116" cy="70" r="8" fill="none" stroke="#d97706" stroke-width="5"/></g>
+         <rect x="98" y="2" width="52" height="16" rx="6" fill="#fff" stroke="#2563eb" stroke-width="2"/><text x="124" y="14" text-anchor="middle" font-size="10" font-weight="800" font-family="system-ui" fill="#2563eb">DAY 1</text>`,
+  door: `<rect x="70" y="8" width="54" height="84" rx="3" fill="#e0e7ff" stroke="#4f46e5" stroke-width="3"/>
+         <g class="a-tag" style="transform-origin:left"><path d="M70 8 l40 8 v70 l-40 6z" fill="#818cf8"/><circle cx="102" cy="52" r="3" fill="#fde68a"/></g>
+         <path d="M32 86 h34 a6 6 0 0 0 6 -6 v-6 h-18 l-6 -10 h-16z" fill="#1e293b"/>
+         <path d="M20 64 v-28" stroke="#475569" stroke-width="8" stroke-linecap="round"/>
+         <path d="M130 30 l10 -6 M132 46 h12 M130 62 l10 6" stroke="#fbbf24" stroke-width="3" stroke-linecap="round"/>`,
+  deadend: `<path d="M0 74 h120" stroke="#cbd5e1" stroke-width="22"/>
+         <path d="M8 74 h16 M40 74 h16 M72 74 h16" stroke="#fff" stroke-width="3" stroke-dasharray="1 0"/>
+         <rect x="118" y="44" width="34" height="46" rx="3" fill="#e11d48"/><path d="M118 58 h34 M118 72 h34 M135 44 v14 M127 58 v14 M143 58 v14 M135 72 v18" stroke="#9f1239" stroke-width="2"/>
+         <g class="a-no"><rect x="26" y="10" width="84" height="26" rx="5" fill="#fff" stroke="#e11d48" stroke-width="3"/><text x="68" y="28" text-anchor="middle" font-size="12" font-weight="800" font-family="system-ui" fill="#e11d48">DEAD END</text></g>
+         <path d="M68 36 v26" stroke="#64748b" stroke-width="3.5"/>`,
+  mile: `<path d="M6 82 C40 70 70 86 154 70" stroke="#cbd5e1" stroke-width="10" fill="none" stroke-linecap="round"/>
+         <g><rect x="108" y="40" width="22" height="30" rx="6" fill="#94a3b8"/><text x="119" y="60" text-anchor="middle" font-size="12" font-weight="800" font-family="system-ui" fill="#fff">+1</text></g>
+         <path d="M134 34 l6 -6 l6 6 l-6 6z" fill="#fbbf24"/>
+         <g class="a-l">${PERSON(52, 36, "#db2777")}</g>
+         <path d="M24 46 h14 M20 54 h14" stroke="#f9a8d4" stroke-width="3" stroke-linecap="round"/>`,
+  callday: `<path d="M18 70 a32 32 0 0 1 64 0z" fill="#fdba74"/><path d="M8 70 h92" stroke="#fb923c" stroke-width="3" stroke-linecap="round"/>
+         <path d="M50 24 v-8 M26 34 l-6 -6 M74 34 l6 -6" stroke="#fdba74" stroke-width="3" stroke-linecap="round"/>
+         <rect x="92" y="78" width="60" height="6" rx="3" fill="#334155"/>
+         <g class="a-drain"><rect x="98" y="38" width="48" height="40" rx="4" fill="#334155"/><rect x="103" y="43" width="38" height="30" rx="2" fill="#93c5fd"/></g>
+         <circle cx="140" cy="18" r="11" fill="#fff" stroke="#ea580c" stroke-width="3"/><path d="M140 11 v7 l5 3" stroke="#ea580c" stroke-width="2.5" fill="none" stroke-linecap="round"/>`,
+  box: `<path d="M30 46 l30 -12 l30 12 l-30 12z" fill="#e7c38f"/><path d="M30 46 v34 l30 12 v-34z" fill="#d6a46b"/><path d="M90 46 v34 l-30 12 v-34z" fill="#c08a4f"/>
+         <path d="M30 46 l-10 -16 M90 46 l12 -14" stroke="#c08a4f" stroke-width="3" stroke-linecap="round"/>
+         <g class="a-beam"><path d="M124 18 a16 16 0 0 0 -10 28 v8 h20 v-8 a16 16 0 0 0 -10 -28z" fill="#fde047" stroke="#ca8a04" stroke-width="2.5"/>
+         <rect x="116" y="56" width="16" height="6" rx="2" fill="#94a3b8"/>
+         <path d="M100 14 l-6 -5 M124 2 v-0 M148 14 l6 -5 M150 34 h8" stroke="#facc15" stroke-width="3" stroke-linecap="round"/></g>`
+};
+</script>
+<script src="topic-engine.js"></script>
+</body>
+</html>
