@@ -135,7 +135,8 @@
     const FROM = (function () {
         try { return FROM_PAGES[(new URLSearchParams(location.search).get('from') || '').toLowerCase()] || null; } catch (e) { return null; }
     })();
-    const activeHref = (FROM && FROM.href) || PARENT_OF[here] || here;
+    // Страницы тем Speaking Topics (topic-*.html) подсвечивают «Темы для Speaking»
+    const activeHref = (FROM && FROM.href) || PARENT_OF[here] || (/^topic-/.test(here) ? 'lessons.html' : here);
     const STORE_KEY = 'appNavCollapsed';
 
     // ---------- Стили меню ----------

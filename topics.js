@@ -26,5 +26,17 @@ var TOPICS = [
         order_num: 2,
         frames: 10,
         guest: true
+    },
+    {
+        slug: 'shopping',
+        file: 'topic-shopping.html',
+        title_en: 'Shopping & Fashion',
+        title_ru: 'Шопинг и мода',
+        category: 'personal',      // personal | society | work_study
+        description: 'Онлайн или в магазине, отзывы и бренды, реклама, личный стиль и быстрая мода: лексика, идиомы, все сеты TOEFL по теме и Speaking Club.',
+        cover_icon: 'shopping-bag',
+        order_num: 3,
+        frames: 10,
+        guest: false
     }
 ];

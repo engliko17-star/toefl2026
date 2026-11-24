@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shopping & Fashion — Speaking Topics — TOEFL Prep</title>
+
+<!-- Те же подключения, что на остальных страницах платформы -->
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="auth.js"></script>
+<script src="topics.js"></script>
+
+<link rel="stylesheet" href="topic-engine.css">
+</head>
+<body>
+<div class="tl-layout flex flex-col md:flex-row min-h-screen">
+  <div id="app-sidebar"></div>
+  <script src="nav.js"></script>
+
+  <main class="tl-main">
+    <div class="tl-wrap" id="lesson"></div>
+  </main>
+</div>
+
+<!-- Панель ответа -->
+<div class="tl-dock" id="dock" aria-live="polite">
+  <div class="tl-dock-top"><span id="dockLabel">Ответ</span><button class="tl-dock-close" id="dockClose" aria-label="Закрыть">✕</button></div>
+  <div class="tl-dock-q" id="dockQ"></div>
+  <div class="tl-dock-status">
+    <div class="tl-dock-state"><span class="tl-rec-dot" id="recDot"></span><span id="dockState">Готово</span></div>
+    <div class="tl-dock-time" id="dockTime">0:45</div>
+  </div>
+  <div class="tl-phase" id="dockPhase"></div>
+  <div class="tl-dock-bar" id="dockBar"></div>
+  <div class="tl-dock-ctrl">
+    <label><input type="checkbox" id="recToggle"> Записывать голос</label>
+    <div class="tl-row">
+      <button class="tl-dock-btn" id="dockShowQ">Показать текст</button>
+      <button class="tl-dock-btn" id="dockStop">Стоп</button>
+    </div>
+  </div>
+  <div class="tl-dock-msg" id="dockMsg"></div>
+  <div class="tl-dock-out" id="dockOut"></div>
+</div>
+
+<script>
+/* =====================================================================
+   КОНТЕНТ УРОКА: SHOPPING & FASHION
+   Новая тема = копия файла: меняются LESSON, HERO_ART и IDIOM_ART.
+   Общий движок и стили — topic-engine.js и topic-engine.css.
+   **слово** — подсветка целевой лексики.
+   _слово_ в коллокациях — «ключевой кубик».
+   [A] [R] [E] [C] в модельных ответах — цветная структура:
+   A = прямой ответ, R = причина, E = пример, C = вывод.
+   ===================================================================== */
+const LESSON = {
+  slug: "shopping",
+  titleEn: "Shopping & Fashion",
+  titleRu: "Шопинг и мода",
+  category: "Личное",
+  intro: "Онлайн или в магазине, отзывы и бренды, реклама и инфлюенсеры, личный стиль, быстрая мода и будущее магазинов — одна из самых частых тем в Take an Interview. Разбираем лексику, которая звучит естественно, и отрабатываем её на всех вопросах по теме из базы.",
+  meta: [["≈ 60", "минут"], ["27", "слов · 2 уровня"], ["20", "коллокаций"], ["9", "идиом"], ["{Q}", "вопросов для обсуждения"]],
+
+  frames: {
+    warmup:    { icon: "flame",      time: "3 мин",  steps: ["Нажми динамик или прочитай вопрос", "Ответь вслух за 20 секунд", "Без подсказок — это «до урока»"] },
+    vocab:     { icon: "book",       time: "10 мин", steps: ["Пройди по пути покупки на схеме", "Найди себя на шкале", "Слова: начни с Core, слушай и повторяй"] },
+    coll:      { icon: "link",       time: "8 мин",  steps: ["Учи сочетание целиком", "Цветной кубик — то, что чаще путают", "Скажи с 5 сочетаниями фразу о себе"] },
+    idioms:    { icon: "quote",      time: "6 мин",  steps: ["Посмотри картинку — запомни образ", "Плашка «Можно» — смело в ответы", "Выбери 2 идиомы на сегодня"] },
+    expr:      { icon: "megaphone",  time: "5 мин",  steps: ["Послушай интонацию", "По 1 фразе из каждой группы", "Запомни шкалу 45 секунд"] },
+    check:     { icon: "puzzle",     time: "10 мин", steps: ["4 мини-игры", "Цель — 100% в Matching и Gap-fill", "Карточки — пока не узнаёшь все"] },
+    repeat:    { icon: "headphones", time: "5 мин",  steps: ["Слушай, не читая", "Повтори слово в слово", "Включи запись и сравни"] },
+    interview: { icon: "mic",        time: "15 мин", steps: ["Выбери сет — начни с Official", "Пройди все вопросы подряд, без пауз", "Сравни с моделью: цвета = структура"] },
+    club:      { icon: "chat",       time: "30+ мин", steps: ["Возьми 1–2 блока на занятие", "Ответь, потом — на «Копнём глубже»", "Отметь «Обсудили» или крути рулетку"] },
+    self:      { icon: "checkCircle",time: "3 мин",  steps: ["Прослушай свои записи", "Отметь, что получилось", "Цель — 15+ отмеченных слов"] }
+  },
+
+  warmup: [
+    "Do you enjoy shopping, or is it something you try to avoid?",
+    "What was the last thing you bought online?",
+    "Is there a store you always go back to? Why?",
+    "How would you describe your style in three words?"
+  ],
+
+  /* Путь покупки: равные ветки, вместо процента — tag */
+  flow: {
+    icon: "cart",
+    title: "Путь покупки: от «хочу» до «купил»",
+    source: { kicker: "Это бросилось в глаза…", title: "I want it!", ru: "мне это нужно?", words: ["catch my eye", "tempted", "browse"] },
+    branches: [
+      { title: "Need it", ru: "нужная вещь", sub: "essentials · buy it", tag: "Купить", color: "#0ea5e9", words: ["essentials", "run out of", "replace"] },
+      { title: "Wait & compare", ru: "подумать и сравнить", sub: "smart shopper", tag: "Подождать", color: "#8b5cf6", words: ["read reviews", "compare prices", "shop around", "wishlist"] },
+      { title: "Just want it", ru: "просто хочется", sub: "impulse buy", tag: "Импульс", color: "#ec4899", words: ["impulse buy", "treat myself", "retail therapy", "buyer's remorse"] }
+    ],
+    notes: [
+      "<b>buyer's remorse</b> — сожаление после покупки, частый финал ветки «Импульс»",
+      "Готовая фраза: <i>Before I buy anything, I ask myself one question: do I need it, or do I just want it?</i>"
+    ]
+  },
+
+  scale: {
+    title: "Love it or hate it? Перетащи кружок туда, где ты",
+    left: "SHOPPING IS A CHORE", right: "SHOPAHOLIC",
+    words: [
+      { w: "a chore", p: 5 }, { w: "get in and get out", p: 17 }, { w: "only when I need to", p: 31 }, { w: "browse", p: 45 },
+      { w: "window-shopping", p: 59 }, { w: "retail therapy", p: 72 }, { w: "splurge", p: 85 }, { w: "shopaholic", p: 97 }
+    ],
+    says: [
+      { max: 25,  t: "Honestly, shopping is **a chore** for me — I know what I need, I **get in and get out**." },
+      { max: 50,  t: "I only shop **when I need to**, but I don't mind **browsing** for a while if I have time." },
+      { max: 75,  t: "I actually enjoy shopping. On weekends I sometimes go **window-shopping** just for fun." },
+      { max: 101, t: "I'll admit it — shopping is my **retail therapy**. After a hard week, I love to **treat myself**." }
+    ]
+  },
+
+  vocab: [
+    { en: "browse", pos: "v", ru: "просматривать товары, «гулять» по магазину", ex: "I like to browse online before I go to the store.", level: "core" },
+    { en: "bargain", pos: "n", ru: "выгодная покупка", ex: "This jacket was a real bargain — seventy percent off.", level: "core" },
+    { en: "refund", pos: "n", ru: "возврат денег", ex: "I returned the shoes and got a full refund.", level: "core" },
+    { en: "exchange", pos: "v / n", ru: "обменять; обмен", ex: "Can I exchange this shirt for a smaller size?", level: "core" },
+    { en: "checkout", pos: "n", ru: "касса; оформление заказа", ex: "There was a long line at the checkout.", level: "core" },
+    { en: "delivery", pos: "n", ru: "доставка", ex: "Free delivery is the main reason I order online.", level: "core" },
+    { en: "out of stock", pos: "adj", ru: "нет в наличии", ex: "The size I wanted was out of stock.", level: "core" },
+    { en: "customer service", pos: "n", ru: "обслуживание клиентов", ex: "Good customer service makes me come back to a store.", level: "core" },
+    { en: "brand", pos: "n", ru: "бренд, марка", ex: "I don't care much about brands — quality matters more.", level: "core" },
+    { en: "outfit", pos: "n", ru: "образ, комплект одежды", ex: "I usually plan my outfit the night before.", level: "core" },
+    { en: "try on", pos: "phr v", ru: "примерить", ex: "I always try clothes on before buying them.", level: "core" },
+    { en: "fit", pos: "v", ru: "подходить по размеру", ex: "These jeans don't fit me anymore.", level: "core" },
+    { en: "suit", pos: "v", ru: "идти, быть к лицу", ex: "Bright colors really suit you.", level: "core" },
+    { en: "trendy", pos: "adj", ru: "модный, трендовый", ex: "Trendy clothes go out of style very quickly.", level: "core" },
+    { en: "second-hand", pos: "adj", ru: "подержанный, б/у", ex: "Half of my wardrobe is second-hand.", level: "core" },
+
+    { en: "consumerism", pos: "n", ru: "потребительство, культ потребления", ex: "Black Friday is a perfect example of modern consumerism.", level: "adv" },
+    { en: "retailer", pos: "n", ru: "розничный продавец, магазин", ex: "Online retailers can often offer lower prices.", level: "adv" },
+    { en: "brick-and-mortar store", pos: "n", ru: "обычный (физический) магазин", ex: "Many brick-and-mortar stores are struggling to compete.", level: "adv" },
+    { en: "convenience", pos: "n", ru: "удобство", ex: "For me, convenience matters more than price.", level: "adv" },
+    { en: "marketing ploy", pos: "n", ru: "маркетинговая уловка", ex: "'Only three left!' is often just a marketing ploy.", level: "adv" },
+    { en: "fast fashion", pos: "n", ru: "быстрая мода (дешёвая одежда на один сезон)", ex: "Fast fashion is cheap, but it creates a huge amount of waste.", level: "adv" },
+    { en: "sustainable", pos: "adj", ru: "экологичный, устойчивый", ex: "I try to buy from more sustainable brands.", level: "adv" },
+    { en: "overconsumption", pos: "n", ru: "чрезмерное потребление", ex: "Overconsumption is one of the biggest environmental problems today.", level: "adv" },
+    { en: "self-expression", pos: "n", ru: "самовыражение", ex: "For me, clothing is a form of self-expression.", level: "adv" },
+    { en: "word of mouth", pos: "n", ru: "сарафанное радио, рекомендации знакомых", ex: "I found my favorite store through word of mouth.", level: "adv" },
+    { en: "haul", pos: "n", ru: "«улов» покупок; видеообзор покупок", ex: "Shopping haul videos make people want to buy even more.", level: "adv" },
+    { en: "counterfeit", pos: "adj / n", ru: "поддельный; подделка", ex: "Some marketplaces sell counterfeit sneakers.", level: "adv" }
+  ],
+
+  collocations: [
+    { icon: "store", group: "Где и как покупаем", items: [
+      { en: "_shop_ online", ru: "покупать онлайн", ex: "I shop online for almost everything except shoes." },
+      { en: "go _window-shopping_", ru: "смотреть витрины, ничего не покупая", ex: "On Sundays we often go window-shopping downtown." },
+      { en: "_place_ an order", ru: "оформить заказ", ex: "I placed an order on Monday, and it arrived on Wednesday." },
+      { en: "_track_ a package", ru: "отслеживать посылку", ex: "I can track my package in the app." },
+      { en: "_browse_ the aisles", ru: "бродить между рядами", ex: "I love to browse the aisles of old bookstores." }
+    ]},
+    { icon: "tag", group: "Решение о покупке", items: [
+      { en: "_read_ reviews", ru: "читать отзывы", ex: "I always read reviews before I buy electronics." },
+      { en: "_compare_ prices", ru: "сравнивать цены", ex: "Apps make it really easy to compare prices." },
+      { en: "_catch_ my eye", ru: "бросаться в глаза", ex: "This bag caught my eye in the shop window." },
+      { en: "_good value_ for money", ru: "хорошее соотношение цены и качества", ex: "This backpack is really good value for money." },
+      { en: "_snap up_ a bargain", ru: "ухватить выгодную покупку", ex: "I snapped up a bargain in the January sales." }
+    ]},
+    { icon: "undo", group: "После покупки", items: [
+      { en: "_return_ an item", ru: "вернуть товар", ex: "I returned an item because it was the wrong size." },
+      { en: "_get_ a full refund", ru: "получить деньги назад полностью", ex: "I got a full refund within a week." },
+      { en: "_exchange_ it for a different size", ru: "обменять на другой размер", ex: "I exchanged the sweater for a medium." },
+      { en: "_leave_ a review", ru: "оставить отзыв", ex: "I always leave a review if the service was great." },
+      { en: "_make_ a complaint", ru: "пожаловаться", ex: "I made a complaint because the package arrived damaged." }
+    ]},
+    { icon: "shirt", group: "Мода и стиль", items: [
+      { en: "_keep up with_ trends", ru: "следить за трендами", ex: "I don't try to keep up with every new trend." },
+      { en: "_go out of_ fashion", ru: "выйти из моды", ex: "Skinny jeans went out of fashion a few years ago." },
+      { en: "_dress up_ / _dress down_", ru: "нарядиться / одеться попроще", ex: "I like to dress up for special occasions." },
+      { en: "_express_ yourself", ru: "самовыражаться", ex: "Clothes are an easy way to express yourself." },
+      { en: "a _timeless_ piece", ru: "вещь вне времени", ex: "A good wool coat is a timeless piece." }
+    ]}
+  ],
+
+  idioms: [
+    { art: "drop", lit: "буквально: «ходить по магазинам, пока не упадёшь»", en: "shop till you drop", ru: "шопиться до упаду", meaning: "ходить по магазинам очень долго, до усталости", ex: "On our trip to Milan, we shopped till we dropped.", reg: "ok", note: "Хорошо звучит в рассказе о поездке или распродаже." },
+    { art: "steal", lit: "буквально: «кража»", en: "a steal", ru: "почти даром, очень выгодно", meaning: "вещь, купленная намного дешевле её реальной цены", ex: "At ten dollars, these boots were a steal.", reg: "ok", note: "Естественно и коротко: It was a steal!" },
+    { art: "ripoff", lit: "буквально: «содрать»", en: "a rip-off", ru: "грабёж, обдираловка", meaning: "слишком высокая, нечестная цена", ex: "Eight dollars for a coffee? That's a rip-off!", reg: "ok", note: "Разговорное, но для интервью уместно — эмоционально и ясно." },
+    { art: "rage", lit: "буквально: «вся ярость»", en: "all the rage", ru: "писк моды", meaning: "очень популярное прямо сейчас", ex: "Wide-leg jeans are all the rage right now.", reg: "ok", note: "Отлично для вопросов о трендах." },
+    { art: "musthave", lit: "буквально: «обязательно иметь»", en: "a must-have", ru: "вещь, которая «обязательно нужна»", meaning: "то, что считается необходимым (часто из-за рекламы)", ex: "Every season, magazines tell us about the new must-haves.", reg: "ok", note: "Удобно критиковать рекламу: the so-called must-haves…" },
+    { art: "megaphone", lit: "буквально: «купиться на что-то»", en: "buy into sth", ru: "поверить, «купиться» (на идею)", meaning: "принять идею, часто навязанную рекламой", ex: "I don't buy into the idea that expensive means better.", reg: "ok", note: "Сильная фраза для вопросов о рекламе и брендах." },
+    { art: "remorse", lit: "буквально: «угрызения покупателя»", en: "buyer's remorse", ru: "сожаление после покупки", meaning: "чувство, что не стоило это покупать", ex: "I had terrible buyer's remorse after buying that phone.", reg: "ok", note: "Идеально для вопроса «a purchase you regretted»." },
+    { art: "nose", lit: "буквально: «платить через нос»", en: "pay through the nose", ru: "сильно переплатить", meaning: "заплатить намного больше, чем вещь стоит", ex: "We paid through the nose for concert merch.", reg: "ok", note: "Хорошо звучит в рассказе о туристических местах и концертах." },
+    { art: "crown", lit: "буквально: «клиент всегда прав»", en: "the customer is always right", ru: "клиент всегда прав", meaning: "магазин должен выполнять желания покупателя", ex: "Some people think the customer is always right, but I disagree.", reg: "careful", note: "Клише. Хорошо, только если ты с ним споришь." }
+  ],
+
+  expressions: [
+    { icon: "play", fn: "Начать ответ", items: [
+      "To be honest, I'm not a big fan of shopping.",
+      "I'd say I'm more of an online shopper.",
+      "It really depends on what I'm buying."
+    ]},
+    { icon: "bulb", fn: "Причина", items: [
+      "The main reason is convenience — I can do it from my couch.",
+      "What matters most to me is being able to try things on.",
+      "For me, it all comes down to price and quality."
+    ]},
+    { icon: "camera", fn: "Пример из жизни", items: [
+      "Just last week, for example, I ordered …",
+      "The last time I went to the mall, I …",
+      "I remember buying a jacket that …"
+    ]},
+    { icon: "scales", fn: "Баланс и контраст", items: [
+      "Online shopping is convenient; that said, nothing beats trying things on.",
+      "While it's true that stores can be more expensive, …",
+      "On the flip side, …"
+    ]},
+    { icon: "trending", fn: "Будущее", items: [
+      "I can easily imagine a future where …",
+      "In ten years, I think most people will …",
+      "Physical stores won't disappear; they'll just change."
+    ]},
+    { icon: "flag", fn: "Завершить", items: [
+      "So all in all, I prefer a mix of both.",
+      "That's why I'd rather …",
+      "So for me, the experience matters more than the price."
+    ]}
+  ],
+
+  answerSteps: [
+    { k: "A", s: 5,  i: "I mostly shop online, to be honest." },
+    { k: "R", s: 12, i: "The main reason is convenience…" },
+    { k: "E", s: 22, i: "Just last week, for example…" },
+    { k: "C", s: 6,  i: "So all in all, …" }
+  ],
+
+  matching: [
+    { a: "a steal", b: "very cheap for what it is really worth" },
+    { a: "a rip-off", b: "an unfair, far too high price" },
+    { a: "all the rage", b: "extremely fashionable right now" },
+    { a: "buyer's remorse", b: "regret after buying something" },
+    { a: "pay through the nose", b: "pay much more than something is worth" },
+    { a: "buy into sth", b: "believe an idea, often from advertising" }
+  ],
+
+  gapfill: [
+    { t: "I always ___ reviews before I buy electronics.", a: ["read"] },
+    { t: "This bag ___ my eye in the shop window.", a: ["caught"] },
+    { t: "The shoes didn't fit, so I ___ them and got a full refund.", a: ["returned"] },
+    { t: "I placed an ___ on Monday, and it arrived on Wednesday.", a: ["order"] },
+    { t: "I don't try to keep ___ with every new trend.", a: ["up"] },
+    { t: "Skinny jeans have gone out of ___.", a: ["fashion", "style"] },
+    { t: "At ten dollars, these boots were a real ___.", a: ["steal", "bargain"] },
+    { t: "Can I ___ this shirt for a smaller size?", a: ["exchange"] }
+  ],
+
+  paraphrase: [
+    { plain: "I don't like shopping.", better: ["Honestly, shopping is a bit of **a chore** for me.", "I'm not a big fan of shopping — I **get in and get out**."] },
+    { plain: "It was very cheap.", better: ["It was **a steal**!", "I **snapped up a bargain**."] },
+    { plain: "It was too expensive.", better: ["Honestly, it was **a rip-off**.", "We **paid through the nose** for it."] },
+    { plain: "Everyone wears these sneakers now.", better: ["These sneakers are **all the rage** right now."] },
+    { plain: "I bought it and then I was sad about it.", better: ["I had terrible **buyer's remorse**."] },
+    { plain: "I look at things in shops but don't buy anything.", better: ["I like to go **window-shopping**.", "I mostly just **browse**."] },
+    { plain: "I check what other people say about the product.", better: ["I always **read reviews** and **compare prices** first."] },
+    { plain: "Shops in the city are closing because of the internet.", better: ["Many **brick-and-mortar stores** are struggling because of **online retailers**."] }
+  ],
+
+  repeat: {
+    scenario: "Вы подрабатываете в магазине одежды рядом с кампусом. Менеджер объясняет, как помогать покупателям, — повторите каждое предложение точно так, как услышали.",
+    sentences: [
+      "Welcome to our store!",
+      "Fitting rooms are in the back.",
+      "Customers can try on up to five items.",
+      "All returns need the original receipt.",
+      "Sale items are on the racks near the front window.",
+      "If a size is out of stock, customers can order it online for free.",
+      "Students who show their ID get a ten percent discount on everything except accessories."
+    ]
+  },
+
+  /* ===== Реальные сеты Take an Interview по теме (из базы платформы) ===== */
+  sets: [
+    { id: "s055", badge: "official", title: "Online Shopping", src: "Official TOEFL · 055 / 070",
+      scenario: "You have volunteered for a research study at your university about online shopping. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "First, how often do you shop online? Do you do it weekly, monthly, or less often?",
+          lx: ["place an order", "convenience", "delivery"],
+          model: "[A] I'd say I shop online at least once a week, so pretty often. [R] As a student, I don't have much free time, and **convenience** matters a lot to me — I can **place an order** in two minutes between classes. [E] For example, last week I ordered a phone charger, some notebooks and a birthday present for my sister, and everything was **delivered** to my dorm in two days. I didn't have to go anywhere. [C] So online shopping has become a normal part of my week, especially for small, everyday things." },
+        { q: "If you were to shop online, what types of products would you be most likely to buy? For example, would you buy clothing, electronics, or groceries?",
+          lx: ["read reviews", "compare prices", "try on"],
+          model: "[A] I'd most likely buy electronics and books online, but probably not clothes. [R] With electronics, I know exactly what I want, so I can **read reviews**, **compare prices** and usually find a better deal than in a store. [E] Clothes are different. Last year I ordered a jacket that looked great in the photos, but it didn't **fit** at all, and **returning** it was a real hassle. Since then, I prefer to **try things on** first. [C] So for me, it's online for things with clear specs, and in person for anything I wear." },
+        { q: "Some people believe that online shopping is more convenient than shopping in physical stores, while others think it's a worse experience because it lacks the human interaction of in-person shopping. What is your opinion on this?",
+          lx: ["convenience", "customer service", "that said"],
+          model: "[A] I think online shopping is more convenient, but going to a store is often a better experience. [R] Online, you save time, you can shop at midnight, and you can **compare prices** in seconds. **That said**, you lose the human side — a good salesperson can really help you choose. [E] For instance, when I was buying running shoes, an assistant in a sports store watched me run and recommended a pair I would never have picked myself. They're the best shoes I've ever had. [C] So it depends on the product: for simple things, online wins; for important purchases, I still prefer real people." },
+        { q: "Some people believe physical stores might one day disappear because of online shopping. What is your opinion on this? Why?",
+          lx: ["brick-and-mortar store", "try on", "in the long run"],
+          model: "[A] I don't think physical stores will disappear completely, but they will definitely change. [R] Some **brick-and-mortar stores** are closing because people can get things cheaper online. But shopping is also a social activity, and many people want to see, touch and **try on** products. [E] In my city, for example, a lot of small shops closed, but the ones that survived turned into experiences — a bookstore with a café, a sneaker shop with events on weekends. They're always full. [C] So **in the long run**, stores will become places to experience a brand, not just places to buy things." }
+      ]},
+    { id: "s119", badge: "official", title: "Shopping Habits", src: "Official TOEFL · 119",
+      scenario: "You have volunteered for a research study about shopping habits. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "Do you shop more frequently online or in physical stores? And why?", lx: ["convenience", "brick-and-mortar store", "try on"] },
+        { q: "Can you tell me about one or two factors that most influence your decision to purchase a product? For example, do you consider price, brand, or quality? Why?", lx: ["good value for money", "brand", "read reviews"] },
+        { q: "Thinking back to a recent shopping experience, can you describe a product you bought that you were particularly satisfied with and explain why?", lx: ["a steal", "worth every penny", "catch my eye"] },
+        { q: "As online shopping continues to grow, some people believe that physical stores will become obsolete. Do you agree or disagree with this viewpoint? Why or why not?", lx: ["obsolete", "online retailers", "that said"] }
+      ]},
+    { id: "s067", badge: "official", title: "Shopping Habits", src: "Official TOEFL · 067",
+      scenario: "You have signed up for a study run by a university research group that is investigating shopping habits. You will have a short video interview with one of the researchers.",
+      questions: [
+        { q: "When was your last shopping trip and what did you buy? Did you have a good shopping experience?", lx: ["browse", "customer service", "checkout"] },
+        { q: "When you shop, which do you like better, shopping for yourself or shopping for others? Why?", lx: ["gift", "catch my eye", "treat myself"] },
+        { q: "In recent years, people's shopping preferences have shifted in various ways. Do you think that in the future, people will continue to change how and where they shop? Why or why not?", lx: ["online retailers", "convenience", "in the long run"] },
+        { q: "Some people believe that buying too many products you do not need harms the environment. Do you agree with this idea? Why or why not?", lx: ["overconsumption", "fast fashion", "sustainable"] }
+      ]},
+    { id: "s047", badge: "official", title: "Fashion and Clothing", src: "Official TOEFL · 047 / 051 / 080",
+      scenario: "You have agreed to participate in a research study about people's experiences with fashion and clothing. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "First, do you enjoy shopping for clothes, or is it something you find tedious? Why?",
+          lx: ["a chore", "try on", "get in and get out"],
+          model: "[A] Honestly, I find it a bit tedious, especially in big malls. [R] There are too many options, the music is loud, and the lines for the fitting rooms are always long. [E] Last month, for example, I spent almost three hours looking for one pair of jeans, and I left with nothing. Now I usually **browse** online first, choose two or three options, and then go to the store just to **try them on**. [C] So I don't hate it, but I like to **get in and get out** as fast as possible." },
+        { q: "What types of clothes do you usually prefer to wear? Do you have a particular style you enjoy?",
+          lx: ["outfit", "trendy", "timeless piece"],
+          model: "[A] I'd describe my style as simple and comfortable — mostly jeans, plain T-shirts and sneakers. [R] I'm a student, so I spend the whole day running between classes, and comfort matters more to me than looking **trendy**. [E] For example, my favorite **outfit** is black jeans, a white T-shirt and an oversized jacket — it works for lectures, coffee with friends and even a casual presentation. [C] So I'd say I prefer **timeless pieces** to the latest trends." },
+        { q: "How do you decide what to wear each day? Do you choose your clothes in the morning or the night before?",
+          lx: ["outfit", "dress up", "plan ahead"],
+          model: "[A] I usually choose my clothes the night before. [R] Mornings are always rushed for me, and if I have to decide at eight a.m., I end up late. [E] So in the evening I check the weather and my schedule — if I have a presentation, I **dress up** a little, and on lab days I wear something I don't mind getting dirty. It takes two minutes, but it saves me a lot of stress. [C] So planning my **outfit** ahead really works for me." },
+        { q: "Some people believe that fashion trends change too quickly and that spending money on new fashions is wasteful. Do you agree or disagree with this viewpoint? Why or why not?",
+          lx: ["fast fashion", "go out of fashion", "timeless piece"],
+          model: "[A] I mostly agree. [R] Trends now change every few weeks because of social media, and **fast fashion** brands produce cheap clothes that people wear two or three times and then throw away. That's wasteful both for your wallet and for the environment. [E] I've done it myself: I bought a **trendy** jacket last spring, and by autumn it had already **gone out of fashion**, so it's just sitting in my closet. [C] **That said**, fashion itself isn't bad — buying fewer, better **timeless pieces** is the smart way to enjoy it." }
+      ]},
+    { id: "s072", badge: "official", title: "Grocery Shopping Habits", src: "Official TOEFL · 072 · в базе 3 вопроса",
+      scenario: "You have volunteered for a research study about grocery shopping habits. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "First, how often do you go grocery shopping each week? Why that often?", lx: ["run out of", "essentials", "plan ahead"] },
+        { q: "Can you tell me what types of items you usually buy when you go grocery shopping? For example, do you buy fresh produce, dairy products or packaged foods?", lx: ["fresh produce", "essentials", "good value for money"] },
+        { q: "When you are grocery shopping, how often do you impulse buy? In other words, buy things you did not plan on buying. What types of items do you or might you impulse buy?", lx: ["impulse buy", "catch my eye", "treat myself"] }
+      ]},
+    { id: "smock", badge: "mock", title: "Shopping Habits", src: "Mock-тест платформы · 3 вопроса",
+      scenario: "You have agreed to take part in a research study about shopping habits. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "First, when you go shopping, do you prefer to shop alone or do you like to shop with friends or family? Why?", lx: ["browse", "get in and get out", "second opinion"] },
+        { q: "Where do you generally do your shopping? For example, do you usually go to department stores, specialty shops, secondhand stores, or other types of stores? Why do you choose to go there?", lx: ["department store", "second-hand", "good value for money"] },
+        { q: "Many people believe that Internet retail will lead to the disappearance of physical stores. Do you agree or disagree and why?", lx: ["brick-and-mortar store", "online retailers", "that said"] }
+      ]},
+    { id: "sph", badge: "platform", title: "Shopping Habits", src: "Практика платформы",
+      scenario: "I'm interested in learning more about how people shop, what influences their choices, and how those habits have changed over time.",
+      questions: [
+        { q: "Where do you usually prefer to shop — do you mostly buy things online, in physical stores, or a combination of both? And what types of purchases do you tend to make in each setting?", lx: ["shop online", "try on", "convenience"] },
+        { q: "Some people love the convenience and variety of online shopping, while others miss the ability to see and touch items in person. What do you enjoy or find frustrating about shopping online versus going to a store? Has your preference changed over time?", lx: ["track a package", "return an item", "that said"] },
+        { q: "Advertisements, especially on social media, seem to follow us everywhere. Some people believe these ads strongly influence our spending, while others feel they're easy to ignore. Do you think advertising has an impact on what you choose to buy? Why or why not?", lx: ["marketing ploy", "buy into", "catch my eye"] },
+        { q: "Some people now choose eco-friendly packaging, second-hand items, or brands that are transparent about their values. Do you think it's important for consumers to consider the environmental or ethical impact of the things they buy? Do you try to make more sustainable choices?", lx: ["sustainable", "second-hand", "overconsumption"] }
+      ]},
+    { id: "sfi", badge: "platform", title: "Fashion & Personal Identity", src: "Практика платформы",
+      scenario: "We're exploring the connection between fashion and self-expression — how people use clothing to reflect their identity, values, or creativity.",
+      questions: [
+        { q: "How would you describe your personal style or the types of clothes you typically like to wear? Do you tend to follow trends, or do you choose pieces that feel more individual or comfortable for you?", lx: ["keep up with trends", "timeless piece", "outfit"] },
+        { q: "How important is clothing to the way you present yourself to others? Do you feel that your style reflects your personality, or does it change depending on your mood or environment?", lx: ["self-expression", "express yourself", "dress up"] },
+        { q: "Some critics argue that the fashion industry promotes overconsumption, unrealistic beauty standards, or pressure to constantly update your wardrobe. Others see fashion as a powerful creative and cultural force. What are your thoughts?", lx: ["overconsumption", "fast fashion", "self-expression"] },
+        { q: "We've seen more conversations around body positivity, gender-neutral fashion, and cultural representation. Do you think people are becoming more open to diverse and inclusive expressions of style? Why is that important?", lx: ["inclusive", "self-expression", "open-minded"] }
+      ]}
+  ],
+
+  /* ===== Speaking Club: тема вдоль и поперёк ===== */
+  club: [
+    { icon: "store", title: "Где мы покупаем", en: "Where we shop", questions: [
+      { t: "personal", src: "Official 119 · Платформа", q: "Do you shop more often online or in physical stores? What do you usually buy in each place?",
+        f: ["Has this changed over the last few years?", "Is there anything you would never buy online?"], lx: ["brick-and-mortar store", "convenience", "try on"] },
+      { t: "personal", src: "Official 055 / 070", q: "How often do you shop online — weekly, monthly, or less often?",
+        f: ["What was the last thing you ordered?", "Do you think you shop online too often?"], lx: ["place an order", "delivery", "convenience"] },
+      { t: "personal", src: "Official 055 / 070", q: "If you shop online, what types of products are you most likely to buy — clothing, electronics, or groceries? Why?",
+        f: ["What do you always prefer to buy in person?", "Have you ever ordered groceries online? How was it?"], lx: ["read reviews", "compare prices", "fit"] },
+      { t: "personal", src: "Mock", q: "Where do you generally do your shopping — department stores, specialty shops, second-hand stores, or other types of stores? Why?",
+        f: ["Do you have a favorite store? What makes it special?", "Is there a type of store you never go to?"], lx: ["department store", "second-hand", "specialty shop"] },
+      { t: "compare", q: "Do you prefer big shopping malls or small local shops? Why?",
+        f: ["What makes a mall tiring — or fun?", "Should people make an effort to support small local businesses?"], lx: ["local business", "browse", "customer service"] },
+      { t: "experience", q: "Have you ever bought something second-hand from another person through an online marketplace? How did it go?",
+        f: ["How do you know if a seller is trustworthy?", "Have you ever received something different from the photo?"], lx: ["seller", "counterfeit", "leave a review"] }
+    ]},
+    { icon: "cart", title: "Онлайн против офлайна", en: "Online vs in-store", questions: [
+      { t: "compare", src: "Official 055 / 070", q: "Some people think online shopping is more convenient, while others think it's a worse experience because it lacks human interaction. What is your opinion?",
+        f: ["When do you really need a real salesperson?", "Do online chat assistants actually help you?"], lx: ["convenience", "customer service", "that said"] },
+      { t: "experience", src: "Платформа · Shopping Habits", q: "What do you enjoy or find frustrating about shopping online versus going to a store? Has your preference changed over time?",
+        f: ["What would make online shopping perfect for you?", "What would make you go to stores more often?"], lx: ["track a package", "return an item", "try on"] },
+      { t: "personal", q: "What is the most annoying part of online shopping for you — delivery, returns, or something else?",
+        f: ["Tell me about a delivery that went wrong.", "Should returns always be free?"], lx: ["track a package", "return an item", "get a full refund"] },
+      { t: "compare", q: "Is free delivery worth waiting longer for, or would you rather pay for fast delivery?",
+        f: ["What do you usually need urgently?", "Is super-fast delivery bad for the environment?"], lx: ["delivery", "convenience", "trade-off"] },
+      { t: "opinion", q: "Some people try clothes on in a store and then buy them cheaper online. Is that fair to the store?",
+        f: ["Have you ever done it yourself?", "What could stores do about it?"], lx: ["brick-and-mortar store", "compare prices", "fair"] }
+    ]},
+    { icon: "tag", title: "Как мы выбираем", en: "Making choices", questions: [
+      { t: "personal", src: "Official 119", q: "What one or two factors most influence your decision to buy a product — price, brand, or quality? Why?",
+        f: ["Has a review ever changed your mind?", "Is there anything you always buy the cheapest version of?"], lx: ["good value for money", "brand", "read reviews"] },
+      { t: "experience", src: "Official 119", q: "Describe a product you bought recently that you were particularly satisfied with. Why were you so happy with it?",
+        f: ["Would you recommend it to a friend?", "Did you compare it with other options before buying?"], lx: ["a steal", "worth every penny", "good value for money"] },
+      { t: "experience", src: "Official 067", q: "When was your last shopping trip and what did you buy? Did you have a good shopping experience?",
+        f: ["What makes a shopping experience good or bad?", "Did the staff help you?"], lx: ["browse", "customer service", "checkout"] },
+      { t: "opinion", q: "Do you trust online reviews? Why or why not?",
+        f: ["Have you ever written a review yourself?", "How can you spot a fake review?"], lx: ["read reviews", "word of mouth", "fake"] },
+      { t: "opinion", q: "Are expensive brands really better, or are people just paying for the name?",
+        f: ["Is there a brand you're loyal to?", "Would you ever buy a counterfeit designer item?"], lx: ["brand", "counterfeit", "buy into"] },
+      { t: "compare", q: "Is it better to buy one expensive, high-quality item or several cheap ones?",
+        f: ["Give an example of a cheap item that broke too fast.", "Does it depend on the product?"], lx: ["timeless piece", "good value for money", "last"] },
+      { t: "experience", q: "Tell me about a purchase you regretted. What happened?",
+        f: ["What would you do differently now?", "Did you try to return it?"], lx: ["buyer's remorse", "impulse buy", "return an item"] }
+    ]},
+    { icon: "gift", title: "С кем и для кого", en: "Shopping with & for others", questions: [
+      { t: "personal", src: "Mock", q: "When you go shopping, do you prefer to shop alone or with friends or family? Why?",
+        f: ["Who is the best shopping partner you know?", "Do friends make you spend more?"], lx: ["second opinion", "browse", "get in and get out"] },
+      { t: "compare", src: "Official 067", q: "Which do you like better — shopping for yourself or shopping for others? Why?",
+        f: ["What's the best gift you've ever chosen?", "Is it harder to buy for family or friends?"], lx: ["gift", "catch my eye", "treat myself"] },
+      { t: "opinion", q: "Is it better to give a gift you chose yourself, or money or a gift card?",
+        f: ["What do people in your culture usually give?", "Have you ever received a gift you really didn't like?"], lx: ["thoughtful", "gift card", "meaningful"] },
+      { t: "opinion", src: "Mock", q: "Some people believe that holidays have become too focused on shopping and expensive gifts. Do you agree or disagree? Why?",
+        f: ["What's a meaningful gift that didn't cost much?", "Should families set a price limit for gifts?"], lx: ["consumerism", "materialistic", "meaningful"] },
+      { t: "experience", q: "Tell me about a time you had to buy a present for someone and had no idea what to choose.",
+        f: ["How did you finally decide?", "Did they like it?"], lx: ["browse", "catch my eye", "last-minute"] }
+    ]},
+    { icon: "megaphone", title: "Реклама и инфлюенсеры", en: "Ads & influencers", questions: [
+      { t: "opinion", src: "Платформа · Shopping Habits", q: "Do you think advertising, especially on social media, has an impact on what you choose to buy? Why or why not?",
+        f: ["Can you remember an ad that actually worked on you?", "Which ads do you find most annoying?"], lx: ["marketing ploy", "buy into", "catch my eye"] },
+      { t: "experience", q: "Have you ever bought something after seeing it in an influencer's video or a shopping haul? How did it turn out?",
+        f: ["Do you trust influencers who are paid by brands?", "Should influencers always say when a post is an ad?"], lx: ["haul", "must-have", "buyer's remorse"] },
+      { t: "opinion", q: "Should there be stricter rules for advertising to children and teenagers?",
+        f: ["What kinds of ads target teenagers the most?", "Who should control this — parents or governments?"], lx: ["target", "influence", "marketing ploy"] },
+      { t: "opinion", q: "Do 'limited time offers' and countdown timers make you buy faster? Are these tactics fair?",
+        f: ["Have you ever bought something because 'only two were left'?", "How can shoppers protect themselves?"], lx: ["marketing ploy", "impulse buy", "pressure"] },
+      { t: "compare", q: "Are personalized ads helpful, or are they a little creepy?",
+        f: ["Have you ever seen an ad for something you only talked about?", "Would you pay to avoid ads?"], lx: ["personalized ads", "privacy", "catch my eye"] }
+    ]},
+    { icon: "shirt", title: "Одежда и стиль", en: "Clothes & style", questions: [
+      { t: "personal", src: "Official 047 / 051 / 080", q: "Do you enjoy shopping for clothes, or is it something you find tedious? Why?",
+        f: ["What would make clothes shopping easier for you?", "Do you prefer shopping for clothes online or in stores?"], lx: ["a chore", "try on", "get in and get out"] },
+      { t: "personal", src: "Official 047 / 051 / 080", q: "What types of clothes do you usually prefer to wear? Do you have a particular style you enjoy?",
+        f: ["Has your style changed since high school?", "Is there an item you wear almost every day?"], lx: ["outfit", "trendy", "timeless piece"] },
+      { t: "personal", src: "Official 047 / 051 / 080", q: "How do you decide what to wear each day? Do you choose your clothes in the morning or the night before?",
+        f: ["Do you dress differently for exams or presentations?", "Does the weather change your plans?"], lx: ["outfit", "dress up", "plan ahead"] },
+      { t: "personal", src: "Платформа · Fashion & Identity", q: "How would you describe your personal style? Do you follow trends, or do you choose pieces that feel individual or comfortable?",
+        f: ["Who or what inspires your style?", "Would your friends describe your style the same way?"], lx: ["keep up with trends", "timeless piece", "express yourself"] },
+      { t: "experience", src: "Платформа · Clothing & Identity", q: "Can you think of a time when an outfit made you feel particularly confident — or completely out of place?",
+        f: ["Why did it make you feel that way?", "What did you learn from that situation?"], lx: ["dress up", "dress down", "confident"] },
+      { t: "opinion", q: "Should students wear uniforms at school? What about at university?",
+        f: ["Did you wear a uniform? How did you feel about it?", "Do uniforms reduce pressure about clothes?"], lx: ["uniform", "self-expression", "peer pressure"] },
+      { t: "opinion", q: "Is it important to dress formally for a job interview, even for a casual job?",
+        f: ["What would you wear to an interview at a café?", "Do clothes really affect first impressions?"], lx: ["dress up", "first impression", "appropriate"] }
+    ]},
+    { icon: "sparkles", title: "Тренды и самовыражение", en: "Trends & identity", questions: [
+      { t: "opinion", src: "Платформа · Clothing & Identity", q: "Do you think clothing plays a role in self-expression or identity? Why or why not?",
+        f: ["What does your favorite item say about you?", "Can clothes ever give the wrong impression?"], lx: ["self-expression", "express yourself", "identity"] },
+      { t: "opinion", src: "Платформа · Clothing & Identity", q: "What's your view on following fashion trends? Do trends help people be creative, or do they put pressure on people to look a certain way?",
+        f: ["Which recent trend did you like or hate?", "Are teenagers more affected by trends than adults?"], lx: ["keep up with trends", "all the rage", "peer pressure"] },
+      { t: "opinion", src: "Official 047 / 051 / 080", q: "Some people believe that fashion trends change too quickly and that spending money on new fashions is wasteful. Do you agree or disagree?",
+        f: ["How long do you usually keep your clothes?", "What happens to clothes you don't wear anymore?"], lx: ["fast fashion", "go out of fashion", "wasteful"] },
+      { t: "opinion", src: "Платформа · Fashion & Identity", q: "Some critics say the fashion industry promotes overconsumption and unrealistic beauty standards, while others see fashion as a creative and cultural force. What are your thoughts?",
+        f: ["Do fashion ads make people feel worse about themselves?", "Who is a fashion figure you actually admire?"], lx: ["overconsumption", "beauty standards", "self-expression"] },
+      { t: "opinion", src: "Платформа · Fashion & Identity", q: "Do you think people are becoming more open to diverse and inclusive expressions of style? Why is that important?",
+        f: ["Is your city or campus open to different styles?", "Has social media helped or hurt this?"], lx: ["inclusive", "open-minded", "self-expression"] },
+      { t: "opinion", q: "Do people judge others by their clothes? Is that fair?",
+        f: ["Have you ever been judged by your clothes?", "Do you judge people by their clothes, honestly?"], lx: ["first impression", "judge", "appearance"] }
+    ]},
+    { icon: "leaf", title: "Экология и осознанное потребление", en: "Sustainable shopping", questions: [
+      { t: "opinion", src: "Official 067", q: "Some people believe that buying too many products you do not need harms the environment. Do you agree with this idea? Why or why not?",
+        f: ["What do you own that you never use?", "Should companies be responsible for reducing waste?"], lx: ["overconsumption", "waste", "cut back on"] },
+      { t: "opinion", src: "Платформа · Shopping Habits", q: "Is it important for consumers to consider the environmental or ethical impact of the things they buy? Do you try to make sustainable choices?",
+        f: ["Would you pay twenty percent more for an eco-friendly product?", "Is this the consumer's job or the government's?"], lx: ["sustainable", "ethical", "eco-friendly"] },
+      { t: "experience", src: "Платформа · Clothing & Identity", q: "Have you ever thought about how your clothing choices affect the environment or other people? Should this be a bigger conversation in society?",
+        f: ["Do you know where your clothes are made?", "Should brands be forced to show how their clothes are produced?"], lx: ["fast fashion", "ethical", "sustainable"] },
+      { t: "personal", q: "Would you buy second-hand clothes? Why or why not?",
+        f: ["What would you never buy second-hand?", "Why do some people feel embarrassed about it?"], lx: ["second-hand", "thrift store", "good value for money"] },
+      { t: "opinion", q: "Should online stores be required to use less packaging?",
+        f: ["What was the most ridiculous packaging you've received?", "Would you wait longer for eco-friendly delivery?"], lx: ["packaging", "waste", "sustainable"] },
+      { t: "opinion", q: "Fast fashion is cheap and accessible. Is it fair to criticize people who can't afford sustainable brands?",
+        f: ["What can people on a tight budget do instead?", "Who should pay the real cost — brands or shoppers?"], lx: ["fast fashion", "afford", "tight budget"] }
+    ]},
+    { icon: "cart", title: "Продукты и повседневные покупки", en: "Groceries & everyday", questions: [
+      { t: "personal", src: "Official 072", q: "How often do you go grocery shopping each week? Why that often?",
+        f: ["Do you plan meals before you go?", "Do you ever run out of food at home?"], lx: ["run out of", "essentials", "plan ahead"] },
+      { t: "personal", src: "Official 072", q: "What types of items do you usually buy when you go grocery shopping — fresh produce, dairy products or packaged foods?",
+        f: ["Do you read labels on food?", "What's always in your fridge?"], lx: ["fresh produce", "essentials", "good value for money"] },
+      { t: "personal", src: "Official 072", q: "When you are grocery shopping, how often do you buy things you didn't plan to buy? What kinds of items?",
+        f: ["Do you use a shopping list? Does it help?", "How do supermarkets encourage people to buy more?"], lx: ["impulse buy", "catch my eye", "treat myself"] },
+      { t: "compare", q: "Do you prefer supermarkets or local markets? Why?",
+        f: ["Are markets more expensive where you live?", "Do you talk to the sellers at markets?"], lx: ["local business", "fresh produce", "convenience"] },
+      { t: "opinion", q: "Would you rather use self-checkout or a cashier? What about a store with no cashiers at all?",
+        f: ["What would people lose if cashiers disappeared?", "Do self-checkouts make shopping faster?"], lx: ["checkout", "convenience", "human interaction"] },
+      { t: "opinion", src: "Платформа · Food Delivery", q: "Do you think people will keep relying on delivery apps, or will traditional habits like cooking at home come back?",
+        f: ["How often do you order food?", "What would make you cook more?"], lx: ["delivery", "convenience", "overspend"] }
+    ]},
+    { icon: "rocket", title: "Будущее шопинга", en: "The future of shopping", questions: [
+      { t: "opinion", src: "Official 055 / 070 · 119 · Mock", q: "Some people believe that physical stores will disappear because of online shopping. Do you agree or disagree? Why?",
+        f: ["Which kinds of stores will survive the longest?", "What would cities look like without shops?"], lx: ["brick-and-mortar store", "online retailers", "that said"] },
+      { t: "opinion", src: "Official 067", q: "Do you think that in the future people will continue to change how and where they shop? Why or why not?",
+        f: ["How did your parents shop when they were your age?", "What change do you expect in the next ten years?"], lx: ["convenience", "online retailers", "in the long run"] },
+      { t: "hypo", q: "Would you let an AI assistant choose and buy everyday things for you, like groceries or toiletries?",
+        f: ["What would you never let it buy?", "What could go wrong?"], lx: ["convenience", "trust", "essentials"] },
+      { t: "hypo", q: "Would you buy clothes in a virtual store, using a digital fitting room instead of trying them on?",
+        f: ["What would you need to trust it?", "Would it reduce returns?"], lx: ["try on", "fit", "return an item"] },
+      { t: "hypo", q: "Imagine all shops in your city closed and everything was delivered. What would be better, and what would be worse?",
+        f: ["Who would suffer most?", "Where would people meet and spend time?"], lx: ["delivery", "brick-and-mortar store", "human interaction"] }
+    ]},
+    { icon: "help", title: "Что если…", en: "What if", questions: [
+      { t: "hypo", q: "If you had to stop buying new clothes for a whole year, could you do it? How?",
+        f: ["What would be the hardest part?", "What would you do instead of shopping?"], lx: ["second-hand", "overconsumption", "make do with"] },
+      { t: "hypo", q: "If you could open your own shop, what would you sell and why?",
+        f: ["Would it be online or a real store?", "Who would your customers be?"], lx: ["retailer", "customer service", "brick-and-mortar store"] },
+      { t: "hypo", q: "If you won a five-hundred-dollar shopping spree, where would you go and what would you buy?",
+        f: ["Would you buy things for yourself or for others?", "Would you save any of it if you could?"], lx: ["splurge", "treat myself", "shop till you drop"] },
+      { t: "hypo", q: "If you could only shop in one store for a whole year, which would it be and why?",
+        f: ["What would you miss the most?", "Which store would be the worst choice?"], lx: ["essentials", "good value for money", "variety"] }
+    ]}
+  ],
+
+  checklist: [
+    "Ответил(а) на вопрос прямо в первом предложении",
+    "Использовал(а) минимум 3 коллокации из урока",
+    "Вставил(а) одну идиому — естественно, а не «для галочки»",
+    "Привёл(а) конкретный пример: что купил(а), где, когда",
+    "Использовал(а) фразу контраста: While it's true that… / That said…",
+    "Уложился(ась) в 45 секунд без длинных пауз"
+  ],
+
+  targetLexis: ["shop online", "place an order", "browse", "try on", "read reviews", "compare prices", "catch my eye", "good value for money", "return an item", "get a full refund", "keep up with trends", "go out of fashion", "dress up", "express myself", "timeless piece", "convenience", "brick-and-mortar store", "fast fashion", "sustainable", "a steal", "a rip-off", "buyer's remorse", "that said"]
+};
+
+/* =====================================================================
+   ИЛЛЮСТРАЦИИ (SVG)
+   ===================================================================== */
+const HERO_ART = `
+<svg viewBox="0 0 320 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Пакеты с покупками, посылка и ценник">
+  <ellipse cx="165" cy="228" rx="122" ry="10" fill="rgba(0,0,0,.22)"/>
+  <g transform="rotate(-6 70 190)">
+    <rect x="28" y="160" width="84" height="60" rx="6" fill="#d6a46b"/>
+    <rect x="28" y="160" width="84" height="13" fill="#c08a4f"/>
+    <rect x="64" y="160" width="12" height="60" fill="#f5deb3"/>
+  </g>
+  <g transform="rotate(-10 112 145)">
+    <path d="M88 100 v-14 a24 24 0 0 1 48 0 v14" stroke="#1e3a8a" stroke-width="6" fill="none" stroke-linecap="round"/>
+    <rect x="72" y="98" width="80" height="104" rx="8" fill="#38bdf8"/>
+    <rect x="72" y="98" width="80" height="12" rx="6" fill="#0ea5e9"/>
+  </g>
+  <path d="M152 94 v-18 a27 27 0 0 1 54 0 v18" stroke="#9d174d" stroke-width="7" fill="none" stroke-linecap="round"/>
+  <rect x="128" y="92" width="102" height="130" rx="10" fill="#f472b6"/>
+  <rect x="128" y="92" width="102" height="14" rx="7" fill="#ec4899"/>
+  <circle cx="179" cy="160" r="24" fill="#fff" opacity=".92"/>
+  <path d="M168 160 l8 8 l15 -17" stroke="#ec4899" stroke-width="5.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M206 80 C224 68 236 78 246 88" stroke="#a16207" stroke-width="2.5" fill="none"/>
+  <g class="tl-coin">
+    <path d="M250 70 h46 l14 18 l-14 18 h-46 a5 5 0 0 1 -5 -5 v-26 a5 5 0 0 1 5 -5z" fill="#fde68a"/>
+    <circle cx="296" cy="88" r="4" fill="#92400e"/>
+    <text x="271" y="94" text-anchor="middle" font-size="15" font-weight="800" font-family="system-ui" fill="#b45309">SALE</text>
+  </g>
+  <path d="M40 60 l4 10 l10 4 l-10 4 l-4 10 l-4 -10 l-10 -4 l10 -4 z" fill="#a5f3fc"/>
+  <path d="M260 160 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3 z" fill="#fbcfe8"/>
+</svg>`;
+
+/* Мини-иллюстрации к идиомам (160×96). Классы a-* анимируются при наведении. */
+const COIN = (x, y, r = 10) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#fbbf24" stroke="#d97706" stroke-width="3"/><text x="${x}" y="${y + r * .45}" text-anchor="middle" font-size="${r * 1.2}" font-weight="800" font-family="system-ui" fill="#b45309">$</text>`;
+const BAG = (x, y, w, h, c, d) => `<path d="M${x + w * .25} ${y} v-${h * .18} a${w * .25} ${w * .25} 0 0 1 ${w * .5} 0 v${h * .18}" stroke="${d}" stroke-width="3.5" fill="none" stroke-linecap="round"/><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="5" fill="${c}"/>`;
+const IDIOM_ART = {
+  drop: `<g transform="rotate(-8 50 60)">${BAG(22, 38, 40, 50, "#f472b6", "#9d174d")}</g>
+         <g transform="rotate(6 100 60)">${BAG(78, 42, 44, 46, "#38bdf8", "#1e3a8a")}</g>
+         <g class="a-drop">${BAG(56, 22, 34, 34, "#a78bfa", "#5b21b6")}</g>
+         <path d="M128 22 q4 -8 8 0 q-4 6 -8 0z" fill="#60a5fa"/><path d="M140 34 q3 -6 6 0 q-3 5 -6 0z" fill="#60a5fa"/>`,
+  steal: `<g class="a-tag"><path d="M30 30 h72 l26 18 l-26 18 h-72 a6 6 0 0 1 -6 -6 v-24 a6 6 0 0 1 6 -6z" fill="#fff" stroke="#4f46e5" stroke-width="3"/>
+         <circle cx="108" cy="48" r="4.5" fill="none" stroke="#4f46e5" stroke-width="3"/>
+         <text x="64" y="57" text-anchor="middle" font-size="24" font-weight="800" font-family="system-ui" fill="#4f46e5">$5</text></g>
+         <g class="a-no"><path d="M134 12 l5 11 l12 2 l-9 8 l2 12 l-10 -6 l-10 6 l2 -12 l-9 -8 l12 -2z" fill="#fbbf24"/></g>`,
+  ripoff: `<g class="a-l"><path d="M24 30 h46 l-6 9 l7 9 l-7 9 l6 9 h-46 a6 6 0 0 1 -6 -6 v-24 a6 6 0 0 1 6 -6z" fill="#fff" stroke="#e11d48" stroke-width="3"/>
+         <text x="44" y="57" text-anchor="middle" font-size="22" font-weight="800" font-family="system-ui" fill="#e11d48">$$</text></g>
+         <g class="a-r"><path d="M80 30 h26 l26 18 l-26 18 h-26 l6 -9 l-7 -9 l7 -9z" fill="#fff" stroke="#e11d48" stroke-width="3"/>
+         <circle cx="112" cy="48" r="4.5" fill="none" stroke="#e11d48" stroke-width="3"/>
+         <text x="96" y="57" text-anchor="middle" font-size="22" font-weight="800" font-family="system-ui" fill="#e11d48">$</text></g>`,
+  rage: `<path d="M80 10 a7 7 0 1 1 7 7 v5" stroke="#475569" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+         <path d="M87 22 L40 46 h94 z" fill="none" stroke="#475569" stroke-width="3.5" stroke-linejoin="round"/>
+         <g class="a-drop"><path d="M58 46 h58 l14 44 h-86z" fill="#ec4899"/><path d="M70 46 l17 14 l17 -14" fill="none" stroke="#fbcfe8" stroke-width="3"/></g>
+         <path d="M24 30 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3z" fill="#fbbf24"/><path d="M140 60 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3z" fill="#fbbf24"/>`,
+  musthave: `<rect x="56" y="10" width="48" height="80" rx="9" fill="#1e1b4b"/><rect x="61" y="18" width="38" height="62" rx="4" fill="#c7d2fe"/>
+         ${BAG(68, 44, 24, 26, "#f472b6", "#9d174d")}
+         <g class="a-no"><circle cx="112" cy="18" r="13" fill="#e11d48"/><text x="112" y="24" text-anchor="middle" font-size="17" font-weight="800" font-family="system-ui" fill="#fff">!</text></g>`,
+  megaphone: `<g class="a-tag"><path d="M30 42 l52 -20 v52 l-52 -20z" fill="#7c3aed"/><rect x="20" y="40" width="14" height="16" rx="3" fill="#5b21b6"/>
+         <path d="M38 56 l6 20 h10 l-4 -16" fill="#5b21b6"/></g>
+         <path d="M92 34 q10 14 0 28" stroke="#a78bfa" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+         <path d="M102 26 q16 22 0 44" stroke="#c4b5fd" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+         <g class="a-no"><rect x="112" y="8" width="44" height="22" rx="8" fill="#fff" stroke="#7c3aed" stroke-width="2.5"/><text x="134" y="24" text-anchor="middle" font-size="12" font-weight="800" font-family="system-ui" fill="#7c3aed">BEST!</text></g>`,
+  remorse: `<g class="a-drop"><path d="M40 34 l40 -16 l40 16 l-40 16z" fill="#e7c38f"/><path d="M40 34 v40 l40 16 v-40z" fill="#d6a46b"/><path d="M120 34 v40 l-40 16 v-40z" fill="#c08a4f"/>
+         <circle cx="94" cy="62" r="2.6" fill="#422006"/><circle cx="106" cy="57" r="2.6" fill="#422006"/>
+         <path d="M92 76 q8 -8 16 -6" stroke="#422006" stroke-width="2.5" fill="none" stroke-linecap="round"/></g>
+         <path d="M110 64 q2 6 0 8 q-2 -2 0 -8z" fill="#60a5fa"/>`,
+  nose: `<path d="M36 14 C46 30 52 46 64 56 C70 62 62 70 52 68" stroke="#92400e" stroke-width="4" fill="none" stroke-linecap="round"/>
+         <path d="M30 76 q16 6 30 0" stroke="#92400e" stroke-width="3" fill="none" stroke-linecap="round"/>
+         <g class="a-drop">${COIN(92, 40, 10)}${COIN(118, 58, 9)}${COIN(100, 78, 8)}</g>`,
+  crown: `<g class="a-no"><path d="M54 40 l8 -24 l18 16 l18 -16 l8 24z" fill="#fbbf24" stroke="#d97706" stroke-width="2.5" stroke-linejoin="round"/>
+         <circle cx="62" cy="16" r="3.5" fill="#f43f5e"/><circle cx="98" cy="16" r="3.5" fill="#f43f5e"/></g>
+         <path d="M44 48 h72 a8 8 0 0 1 8 8 v18 a8 8 0 0 1 -8 8 h-40 l-12 10 v-10 h-20 a8 8 0 0 1 -8 -8 v-18 a8 8 0 0 1 8 -8z" fill="#fff" stroke="#475569" stroke-width="2.5"/>
+         <path d="M58 64 h44 M58 72 h30" stroke="#94a3b8" stroke-width="3" stroke-linecap="round"/>`
+};
+</script>
+<script src="topic-engine.js"></script>
+</body>
+</html>
