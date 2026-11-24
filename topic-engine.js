@@ -493,7 +493,7 @@ function render() {
 
   // 8. Interview — реальные сеты
   h += frame("interview", "Все сеты по этой теме из базы платформы — официальные TOEFL, mock и практика. Вопрос звучит, сразу 45 секунд, без подготовки. Таймер подсказывает, какой блок ответа говорить сейчас.",
-    `<div class="tl-tabs tl-set-tabs" id="setTabs">${L.sets.map((st, i) => `<button data-set="${i}" class="${i ? "" : "tl-on"}"><span class="tl-sb tl-sb-${st.badge}"></span>${esc(st.title)}</button>`).join("")}</div>
+    RUBRIC_HTML + `<div class="tl-tabs tl-set-tabs" id="setTabs">${L.sets.map((st, i) => `<button data-set="${i}" class="${i ? "" : "tl-on"}"><span class="tl-sb tl-sb-${st.badge}"></span>${esc(st.title)}</button>`).join("")}</div>
      ${L.sets.map((st, i) => `
        <div class="tl-set ${i ? "" : "tl-show"}" data-set-panel="${i}">
          <div class="tl-scenario">${INTERVIEWER_ART}<div class="tl-scen-txt">
@@ -561,8 +561,63 @@ const BADGE = { official: "Official TOEFL", mock: "Mock", platform: "Практ�
 const QREG = {};
 function totalQ() { return LESSON.sets.reduce((a, s) => a + s.questions.length, 0) + LESSON.club.reduce((a, c) => a + c.questions.length, 0); }
 
+/* same: "setid-index" — взять модельные ответы (4 и 5+) из вопроса сета, чтобы не дублировать текст */
+function sameSource(q) {
+  if (!q.same) return null;
+  const m = /^(.*)-(\d+)$/.exec(q.same);
+  const st = m && LESSON.sets.find(x => x.id === m[1]);
+  return (st && st.questions[+m[2]]) || null;
+}
+
+/* Модельные ответы: model — ответ на 4 (B2), model5 — ответ на 5+ (C1). Переключатель уровня запоминается. */
+function modelBlock(q, id) {
+  const lv = store.get("mlv", "5");
+  const both = q.model && q.model5;
+  const variant = (k, text) => `<div class="tl-mv" data-mv="${id}|${k}" ${both && k !== lv ? "hidden" : ""}>
+      <div class="tl-mv-top"><span class="tl-mv-tag tl-mv-${k}">${k === "5" ? "Ответ на 5+ · C1" : "Ответ на 4 · B2"}</span>${spk(text, "Прослушать модельный ответ")}</div>
+      ${modelHtml(text)}
+      ${k === "5" ? `<div class="tl-mv-note">Сравни с ответом на 4: идея та же — сильнее грамматика (придаточные, условные, cleft, причастные обороты), точнее слова и разнообразнее связки.</div>` : `<div class="tl-mv-note">Хороший ответ по теме и со структурой. До 5 не хватает разнообразия грамматики, точности слов и связок между мыслями.</div>`}
+    </div>`;
+  return `<div class="tl-model">
+    <div class="tl-model-head"><span>Model answer · ~45 сек</span>
+      ${both ? `<div class="tl-mtabs">${["5", "4"].map(k => `<button data-mlv="${k}" class="${k === lv ? "tl-on" : ""}">${k === "5" ? "5+ · C1" : "4 · B2"}</button>`).join("")}</div>` : ""}
+    </div>
+    ${q.model5 ? variant("5", q.model5) : ""}${q.model ? variant("4", q.model) : ""}
+  </div>`;
+}
+
+/* Рубрика Take an Interview (ETS, TOEFL iBT Technical Manual, 2025, Figure A4) — кратко по-русски */
+const RUBRIC_HTML = `
+<details class="tl-rubric">
+  <summary><span class="tl-ic-tile">${IC("checkCircle")}</span><div><b>Как оценивают ответ: рубрика ETS для Take an Interview</b><span>Каждый ответ — от 0 до 5 баллов. Итог Speaking 1–6: 4–4.5 = B2, 5–5.5 = C1, 6 = C2</span></div><span class="tl-cat-chev">${IC("chevron", 18)}</span></summary>
+  <div class="tl-rubric-body">
+    <div class="tl-rub-grid">
+      <div class="tl-rub tl-rub-5"><b>5 · полностью успешный</b><ul>
+        <li>Полный ответ на вопрос, по теме и <u>хорошо развёрнут</u></li>
+        <li>Естественный разговорный темп, паузы уместны</li>
+        <li>Легко понять; ритм и интонация передают смысл</li>
+        <li><u>Разнообразная и точная</u> грамматика и лексика — передаёт точные оттенки смысла</li></ul></div>
+      <div class="tl-rub tl-rub-4"><b>4 · в целом успешный</b><ul>
+        <li>По теме и развёрнуто, но <u>может не хватать связок</u> между предложениями</li>
+        <li>Темп в целом хороший, паузы немного мешают</li>
+        <li>Отдельные слова требуют небольшого усилия слушателя</li>
+        <li>Грамматики и лексики хватает для <u>общего</u> смысла</li></ul></div>
+      <div class="tl-rub tl-rub-3"><b>3 · частично успешный</b><ul>
+        <li>По теме, но <u>мало развёрнуто</u></li>
+        <li>Частые или долгие паузы, много слов-паразитов</li>
+        <li>Произношение иногда мешает пониманию</li>
+        <li>Ограниченная грамматика и лексика заметно снижают точность</li></ul></div>
+    </div>
+    <div class="tl-rub-ai"><b>Что измеряет автоматический оценщик:</b> беглость (темп, длина фраз без пауз, число пауз и запинок) · разборчивость (произношение, ритм, ударения) · язык (разнообразие и «нечастотность» слов, грамматическая точность) · организацию (связность и связки между мыслями).</div>
+    <div class="tl-rub-ai"><b>Как получить 5:</b> ответь прямо → объясни причину → дай конкретный пример → сделай вывод; меняй конструкции (<i>Having lived…, What matters most is…, If I hadn't…, which is why…</i>) и связки (<i>admittedly, whereas, what's more, as a result</i>); говори ровно, без длинных пауз, все 45 секунд.</div>
+    <div class="tl-rub-src">Источник: ETS, TOEFL iBT® Technical Manual (2025), рубрика Take an Interview и таблица соответствия CEFR.</div>
+  </div>
+</details>`;
+
 function qCard(q, id, opt = {}) {
   QREG[id] = q;
+  const src = sameSource(q);
+  if (src) { if (!q.model) q.model = src.model; if (!q.model5) q.model5 = src.model5; }
   const lx = q.lx || q.lexis || [];
   const hasMore = (q.ideas && q.ideas.length) || lx.length;
   const ty = q.t && QTYPE[q.t];
@@ -576,7 +631,7 @@ function qCard(q, id, opt = {}) {
       <button class="tl-chipbtn tl-go" data-answer="${id}">${ICON.mic} Ответить · 45 с</button>
       ${q.f && q.f.length ? `<button class="tl-chipbtn" data-toggle="fu-${id}">${IC("chat", 14)} Копнём глубже</button>` : ""}
       ${hasMore ? `<button class="tl-chipbtn" data-toggle="ideas-${id}">${ICON.bulb} ${q.ideas ? "Идеи и лексика" : "Лексика"}</button>` : ""}
-      ${q.model ? `<button class="tl-chipbtn" data-toggle="model-${id}">${ICON.eye} Модельный ответ</button>` : ""}
+      ${q.model || q.model5 ? `<button class="tl-chipbtn" data-toggle="model-${id}">${ICON.eye} ${q.model && q.model5 ? "Модельные ответы · 4 и 5+" : "Модельный ответ"}</button>` : ""}
       ${opt.club ? `<label class="tl-discussed"><input type="checkbox" data-disc="${id}"> Обсудили</label>` : ""}
     </div>
     ${q.f && q.f.length ? `<div class="tl-q-more" id="fu-${id}"><div class="tl-fu">${q.f.map((f, i) => `
@@ -585,7 +640,7 @@ function qCard(q, id, opt = {}) {
         ${q.ideas ? `<ul class="tl-ideas">${q.ideas.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
         ${lx.length ? `<div class="tl-lexis">${lx.map(x => `<span>${esc(x)}</span>`).join("")}</div>` : ""}
       </div>` : ""}
-    ${q.model ? `<div class="tl-q-more" id="model-${id}"><div class="tl-model"><div class="tl-model-head"><span>Model answer · ~45 сек</span>${spk(q.model, "Прослушать модельный ответ")}</div>${modelHtml(q.model)}</div></div>` : ""}
+    ${q.model || q.model5 ? `<div class="tl-q-more" id="model-${id}">${modelBlock(q, id)}</div>` : ""}
   </div>`;
 }
 
@@ -863,6 +918,14 @@ function bind() {
     $$(".tl-panel-ex").forEach(p => p.classList.remove("tl-show")); $("#ex-" + b.dataset.ex).classList.add("tl-show");
   });
 
+  // Ответ на 4 / 5+: выбор уровня применяется ко всем карточкам и запоминается
+  document.addEventListener("click", e => {
+    const b = e.target.closest("[data-mlv]");
+    if (!b) return;
+    const lv = b.dataset.mlv; store.set("mlv", lv);
+    $$("[data-mlv]").forEach(x => x.classList.toggle("tl-on", x.dataset.mlv === lv));
+    $$(".tl-model").forEach(m => { if ($$(".tl-mv", m).length > 1) $$(".tl-mv", m).forEach(v => v.hidden = !v.dataset.mv.endsWith("|" + lv)); });
+  });
   $$("[data-toggle]").forEach(b => b.onclick = () => {
     const el = document.getElementById(b.dataset.toggle); el.classList.toggle("tl-show"); b.classList.toggle("tl-on", el.classList.contains("tl-show"));
   });
