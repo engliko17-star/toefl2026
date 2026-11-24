@@ -38,5 +38,17 @@ var TOPICS = [
         order_num: 3,
         frames: 10,
         guest: false
+    },
+    {
+        slug: 'work',
+        file: 'topic-work.html',
+        title_en: 'Work & Career',
+        title_ru: 'Работа и карьера',
+        category: 'work_study',
+        description: 'Работа и подработки, выбор профессии, коллеги и начальники, баланс, удалёнка, ИИ и своё дело: лексика, идиомы, 8 сетов и Speaking Club на 98 вопросов.',
+        cover_icon: 'briefcase',
+        order_num: 4,
+        frames: 10,
+        guest: false
     }
 ];
