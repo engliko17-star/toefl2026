@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Time, Goals & Organization — Speaking Topics — TOEFL Prep</title>
+
+<!-- Те же подключения, что на остальных страницах платформы -->
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="auth.js"></script>
+<script src="topics.js"></script>
+
+<link rel="stylesheet" href="topic-engine.css">
+</head>
+<body>
+<div class="tl-layout flex flex-col md:flex-row min-h-screen">
+  <div id="app-sidebar"></div>
+  <script src="nav.js"></script>
+
+  <main class="tl-main">
+    <div class="tl-wrap" id="lesson"></div>
+  </main>
+</div>
+
+<!-- Панель ответа -->
+<div class="tl-dock" id="dock" aria-live="polite">
+  <div class="tl-dock-top"><span id="dockLabel">Ответ</span><button class="tl-dock-close" id="dockClose" aria-label="Закрыть">✕</button></div>
+  <div class="tl-dock-q" id="dockQ"></div>
+  <div class="tl-dock-status">
+    <div class="tl-dock-state"><span class="tl-rec-dot" id="recDot"></span><span id="dockState">Готово</span></div>
+    <div class="tl-dock-time" id="dockTime">0:45</div>
+  </div>
+  <div class="tl-phase" id="dockPhase"></div>
+  <div class="tl-dock-bar" id="dockBar"></div>
+  <div class="tl-dock-ctrl">
+    <label><input type="checkbox" id="recToggle"> Записывать голос</label>
+    <div class="tl-row">
+      <button class="tl-dock-btn" id="dockShowQ">Показать текст</button>
+      <button class="tl-dock-btn" id="dockStop">Стоп</button>
+    </div>
+  </div>
+  <div class="tl-dock-msg" id="dockMsg"></div>
+  <div class="tl-dock-out" id="dockOut"></div>
+</div>
+
+<script>
+/* =====================================================================
+   КОНТЕНТ УРОКА: TIME, GOALS & ORGANIZATION
+   Новая тема = копия файла: меняются LESSON, HERO_ART и IDIOM_ART.
+   Общий движок и стили — topic-engine.js и topic-engine.css.
+   **слово** — подсветка целевой лексики.
+   _слово_ в коллокациях — «ключевой кубик».
+   [A] [R] [E] [C] в модельных ответах — цветная структура:
+   A = прямой ответ, R = причина, E = пример, C = вывод.
+   ===================================================================== */
+const LESSON = {
+  slug: "time",
+  titleEn: "Time, Goals & Organization",
+  titleRu: "Время, цели и организованность",
+  category: "Повседневная жизнь",
+  intro: "Распорядок дня, планеры и приложения, прокрастинация и дедлайны, телефон как главный отвлекатель, цели и срывы, мотивация и дисциплина — всё, о чём спрашивают в сетах про Time Management, Personal Goals и Organization. Разбираем лексику и проходим все вопросы по теме из базы.",
+  meta: [["≈ 60", "минут"], ["27", "слов · 2 уровня"], ["20", "коллокаций"], ["9", "идиом"], ["{Q}", "вопрос для обсуждения"]],
+
+  frames: {
+    warmup:    { icon: "flame",      time: "3 мин",  steps: ["Нажми динамик или прочитай вопрос", "Ответь вслух за 20 секунд", "Без подсказок — это «до урока»"] },
+    vocab:     { icon: "book",       time: "10 мин", steps: ["Пройди путь от цели к результату", "Найди себя на шкале", "Слова: начни с Core, слушай и повторяй"] },
+    coll:      { icon: "link",       time: "8 мин",  steps: ["Учи сочетание целиком", "Цветной кубик — то, что чаще путают", "Опиши свой день с 5 сочетаниями"] },
+    idioms:    { icon: "quote",      time: "6 мин",  steps: ["Посмотри картинку — запомни образ", "Плашка «Можно» — смело в ответы", "Выбери 2 идиомы на сегодня"] },
+    expr:      { icon: "megaphone",  time: "5 мин",  steps: ["Послушай интонацию", "По 1 фразе из каждой группы", "Запомни шкалу 45 секунд"] },
+    check:     { icon: "puzzle",     time: "10 мин", steps: ["4 мини-игры", "Цель — 100% в Matching и Gap-fill", "Карточки — пока не узнаёшь все"] },
+    repeat:    { icon: "headphones", time: "5 мин",  steps: ["Слушай, не читая", "Повтори слово в слово", "Включи запись и сравни"] },
+    interview: { icon: "mic",        time: "15 мин", steps: ["Выбери сет — начни с Official", "Пройди все вопросы подряд, без пауз", "Сравни с моделью: цвета = структура"] },
+    club:      { icon: "chat",       time: "30+ мин", steps: ["Возьми 1–2 блока на занятие", "Ответь, потом — на «Копнём глубже»", "Отметь «Обсудили» или крути рулетку"] },
+    self:      { icon: "checkCircle",time: "3 мин",  steps: ["Прослушай свои записи", "Отметь, что получилось", "Цель — 15+ отмеченных слов"] }
+  },
+
+  warmup: [
+    "Are you a morning person or a night owl?",
+    "Do you make to-do lists? On paper or on your phone?",
+    "What is one goal you have for this year?",
+    "What wastes most of your time?"
+  ],
+
+  /* От цели к результату: равные ветки, вместо процента — tag */
+  flow: {
+    icon: "target",
+    title: "От цели к результату",
+    source: { kicker: "У меня есть цель…", title: "A big goal", ru: "большая цель", words: ["set a goal", "aim high", "New Year's resolution"] },
+    branches: [
+      { title: "Plan it", ru: "спланировать", sub: "big goal → small steps", tag: "План", color: "#0ea5e9", words: ["break it down", "set a deadline", "to-do list", "prioritize"] },
+      { title: "Do it", ru: "делать каждый день", sub: "habits beat motivation", tag: "Действие", color: "#8b5cf6", words: ["stick to a routine", "stay focused", "build a habit", "track progress"] },
+      { title: "Bounce back", ru: "сорваться — и вернуться", sub: "setbacks are normal", tag: "Срыв → снова", color: "#ec4899", words: ["setback", "lose motivation", "get back on track", "perseverance"] }
+    ],
+    notes: [
+      "Почти любой вопрос о целях — это одна из трёх веток: <b>как планируешь</b>, <b>как держишься</b> или <b>что делаешь, когда сорвался</b>",
+      "Готовая фраза: <i>I've learned that motivation comes and goes, so I rely on habits instead.</i>"
+    ]
+  },
+
+  scale: {
+    title: "Планировщик или «как пойдёт»? Перетащи кружок туда, где ты",
+    left: "EVERY MINUTE PLANNED", right: "GO WITH THE FLOW",
+    words: [
+      { w: "color-coded calendar", p: 5 }, { w: "stick to a routine", p: 18 }, { w: "to-do list", p: 31 }, { w: "a rough plan", p: 45 },
+      { w: "flexible", p: 58 }, { w: "take things as they come", p: 71 }, { w: "last-minute", p: 85 }, { w: "spontaneous", p: 97 }
+    ],
+    says: [
+      { max: 25,  t: "I'm a planner through and through — my week lives in a **color-coded calendar**, and I **stick to my routine**." },
+      { max: 50,  t: "I usually make a **to-do list** in the morning, but I don't plan every minute." },
+      { max: 75,  t: "I have **a rough plan** for the day, but I like to stay **flexible** and **take things as they come**." },
+      { max: 101, t: "Honestly, I'm pretty **spontaneous** — I do my best work **at the last minute**, for better or worse." }
+    ]
+  },
+
+  vocab: [
+    { en: "schedule", pos: "n / v", ru: "расписание; запланировать", ex: "My schedule is packed on Mondays.", level: "core" },
+    { en: "routine", pos: "n", ru: "распорядок, привычный порядок дел", ex: "My morning routine takes about thirty minutes.", level: "core" },
+    { en: "deadline", pos: "n", ru: "крайний срок", ex: "I have three deadlines next week.", level: "core" },
+    { en: "to-do list", pos: "n", ru: "список дел", ex: "Every evening I write a to-do list for the next day.", level: "core" },
+    { en: "priority", pos: "n", ru: "приоритет", ex: "Right now, my top priority is passing my exams.", level: "core" },
+    { en: "goal", pos: "n", ru: "цель", ex: "My main goal this year is to run a half marathon.", level: "core" },
+    { en: "achieve", pos: "v", ru: "достичь", ex: "You can achieve almost anything with a good plan.", level: "core" },
+    { en: "habit", pos: "n", ru: "привычка", ex: "Reading before bed is my favorite habit.", level: "core" },
+    { en: "distraction", pos: "n", ru: "то, что отвлекает", ex: "My phone is my biggest distraction.", level: "core" },
+    { en: "procrastinate", pos: "v", ru: "откладывать на потом, прокрастинировать", ex: "I always procrastinate when a task feels too big.", level: "core" },
+    { en: "multitask", pos: "v", ru: "делать несколько дел одновременно", ex: "I can't multitask — I make too many mistakes.", level: "core" },
+    { en: "organized", pos: "adj", ru: "организованный", ex: "I'm much more organized than I was in high school.", level: "core" },
+    { en: "plan ahead", pos: "phr v", ru: "планировать заранее", ex: "If you plan ahead, exam week is much less stressful.", level: "core" },
+    { en: "motivation", pos: "n", ru: "мотивация", ex: "My motivation drops in the middle of the semester.", level: "core" },
+    { en: "reminder", pos: "n", ru: "напоминание", ex: "I set a reminder on my phone for every deadline.", level: "core" },
+
+    { en: "time management", pos: "n", ru: "управление временем", ex: "Good time management is a skill you can learn.", level: "adv" },
+    { en: "productivity", pos: "n", ru: "продуктивность", ex: "My productivity is highest early in the morning.", level: "adv" },
+    { en: "self-discipline", pos: "n", ru: "самодисциплина", ex: "Online courses require a lot of self-discipline.", level: "adv" },
+    { en: "setback", pos: "n", ru: "неудача, откат назад", ex: "An injury was a big setback in my training.", level: "adv" },
+    { en: "milestone", pos: "n", ru: "важный этап, промежуточная цель", ex: "Finishing the first draft was an important milestone.", level: "adv" },
+    { en: "accountability", pos: "n", ru: "подотчётность, ответственность перед кем-то", ex: "A study partner gives you accountability.", level: "adv" },
+    { en: "perseverance", pos: "n", ru: "упорство, настойчивость", ex: "Learning a language takes perseverance more than talent.", level: "adv" },
+    { en: "spontaneous", pos: "adj", ru: "спонтанный", ex: "Some of my best weekends were completely spontaneous.", level: "adv" },
+    { en: "sense of accomplishment", pos: "n", ru: "чувство, что ты чего-то достиг", ex: "Crossing tasks off my list gives me a sense of accomplishment.", level: "adv" },
+    { en: "overcommit", pos: "v", ru: "набрать слишком много обязательств", ex: "I tend to overcommit and then struggle to keep up.", level: "adv" },
+    { en: "overwhelmed", pos: "adj", ru: "перегруженный, подавленный объёмом", ex: "I felt completely overwhelmed during finals week.", level: "adv" },
+    { en: "attention span", pos: "n", ru: "способность удерживать внимание", ex: "Short videos may be shrinking our attention span.", level: "adv" }
+  ],
+
+  collocations: [
+    { icon: "target", group: "Цели", items: [
+      { en: "_set_ a goal", ru: "поставить цель", ex: "At the start of the year, I set a goal to read twenty books." },
+      { en: "_achieve_ / _reach_ a goal", ru: "достичь цели", ex: "It took me two years to reach my goal." },
+      { en: "_make_ progress", ru: "продвигаться, делать успехи", ex: "I'm making good progress with my Spanish." },
+      { en: "_track_ your progress", ru: "отслеживать прогресс", ex: "I track my progress in a running app." },
+      { en: "_stick to_ a plan", ru: "придерживаться плана", ex: "The hardest part is sticking to the plan." }
+    ]},
+    { icon: "clock", group: "Время", items: [
+      { en: "_manage_ your time", ru: "распоряжаться временем", ex: "Students have to learn to manage their time." },
+      { en: "_make time_ for", ru: "найти время на", ex: "I always make time for the gym, even in exam week." },
+      { en: "_waste_ time on", ru: "тратить время впустую на", ex: "I waste too much time on social media." },
+      { en: "_run out of_ time", ru: "не успеть, время закончилось", ex: "I ran out of time and didn't finish the last question." },
+      { en: "_free up_ time", ru: "освободить время", ex: "Cooking for the whole week frees up time on weekdays." }
+    ]},
+    { icon: "list", group: "Порядок", items: [
+      { en: "_make_ a to-do list", ru: "составить список дел", ex: "I make a to-do list every Sunday evening." },
+      { en: "_keep track of_ sth", ru: "следить за, не терять из виду", ex: "A planner helps me keep track of deadlines." },
+      { en: "_set_ a reminder", ru: "поставить напоминание", ex: "I set a reminder an hour before every meeting." },
+      { en: "_plan_ ahead", ru: "планировать заранее", ex: "If you plan ahead, you avoid last-minute stress." },
+      { en: "_get_ organized", ru: "навести порядок, организоваться", ex: "This semester I finally got organized." }
+    ]},
+    { icon: "bulb", group: "Фокус и срывы", items: [
+      { en: "_stay_ focused", ru: "сохранять концентрацию", ex: "It's hard to stay focused with notifications everywhere." },
+      { en: "_put off_ a task", ru: "откладывать дело", ex: "I put off my essay until the night before." },
+      { en: "_lose_ motivation", ru: "потерять мотивацию", ex: "Many people lose motivation in February." },
+      { en: "_get back on_ track", ru: "вернуться в колею", ex: "After a bad week, I make a new plan and get back on track." },
+      { en: "_build_ / _break_ a habit", ru: "сформировать / избавиться от привычки", ex: "It takes about two months to build a new habit." }
+    ]}
+  ],
+
+  idioms: [
+    { art: "owl", lit: "буквально: «ночная сова» / «ранняя птица»", en: "a night owl / an early bird", ru: "сова / жаворонок", meaning: "человек, который активен поздно ночью / рано утром", ex: "I'm a real night owl — I do my best work after ten p.m.", reg: "ok", note: "Идеально для вопроса «describe your typical day»." },
+    { art: "allnighter", lit: "буквально: «вытянуть всю ночь»", en: "pull an all-nighter", ru: "не спать всю ночь (учиться/работать)", meaning: "работать или учиться всю ночь без сна", ex: "I pulled an all-nighter before my history exam — never again.", reg: "ok", note: "Сильный пример для вопросов о прокрастинации." },
+    { art: "nick", lit: "буквально: «в зарубку времени»", en: "in the nick of time", ru: "в последний момент, едва успев", meaning: "как раз вовремя, почти опоздав", ex: "I submitted my essay in the nick of time — at 11:59 p.m.", reg: "ok", note: "Оживляет рассказ про дедлайн." },
+    { art: "race", lit: "буквально: «против часов»", en: "race against the clock", ru: "гонка со временем", meaning: "очень спешить, чтобы успеть к сроку", ex: "Finals week is always a race against the clock.", reg: "ok", note: "Хорошо для вопроса «multiple tasks at once»." },
+    { art: "flies", lit: "буквально: «время летит»", en: "time flies", ru: "время летит", meaning: "время проходит очень быстро", ex: "Time flies when you're doing something you love.", reg: "ok", note: "Удобно в начале или конце ответа." },
+    { art: "chew", lit: "буквально: «откусить больше, чем можешь прожевать»", en: "bite off more than you can chew", ru: "взять на себя слишком много", meaning: "взяться за больше дел, чем реально успеть", ex: "I joined three clubs and got a job — I bit off more than I could chew.", reg: "ok", note: "Лучшая идиома для вопроса «a time you felt overwhelmed»." },
+    { art: "steps", lit: "буквально: «по одному шагу за раз»", en: "take it one step at a time", ru: "двигаться постепенно, шаг за шагом", meaning: "делить большую задачу на маленькие шаги", ex: "When a goal feels huge, I just take it one step at a time.", reg: "ok", note: "Прямой ответ на вопрос «what steps do you take»." },
+    { art: "ball", lit: "буквально: «запустить мяч»", en: "get the ball rolling", ru: "сдвинуть дело с места, начать", meaning: "сделать первый шаг, чтобы процесс пошёл", ex: "To get the ball rolling, I do the easiest task first.", reg: "ok", note: "Хорошо против прокрастинации: just get the ball rolling." },
+    { art: "rome", lit: "буквально: «Рим не за день строился»", en: "Rome wasn't built in a day", ru: "не всё сразу", meaning: "на большие дела нужно время и терпение", ex: "My English isn't perfect yet, but Rome wasn't built in a day.", reg: "careful", note: "Пословица-клише. Один раз и к месту — в выводе про долгие цели." }
+  ],
+
+  expressions: [
+    { icon: "play", fn: "Начать ответ", items: [
+      "I'd describe myself as a fairly organized person.",
+      "Honestly, I'm more of a last-minute person.",
+      "Right now, my main goal is …"
+    ]},
+    { icon: "bulb", fn: "Причина", items: [
+      "The main reason is that my schedule is really packed.",
+      "If I don't write things down, I simply forget them.",
+      "What keeps me going is the feeling of making progress."
+    ]},
+    { icon: "camera", fn: "Пример из жизни", items: [
+      "Last semester, for example, I had three deadlines in one week …",
+      "A typical day for me starts at …",
+      "I remember the first time I …"
+    ]},
+    { icon: "scales", fn: "Баланс и контраст", items: [
+      "Planning helps; that said, you also need some flexibility.",
+      "While routines save time, they can also feel boring.",
+      "On the flip side, …"
+    ]},
+    { icon: "trending", fn: "Будущее и изменения", items: [
+      "Compared to a few years ago, I'm much more …",
+      "Since I started university, my routine has completely changed.",
+      "In the future, I'd like to …"
+    ]},
+    { icon: "flag", fn: "Завершить", items: [
+      "So for me, small daily habits matter more than big plans.",
+      "That's why I always plan ahead.",
+      "All in all, it's about finding what works for you."
+    ]}
+  ],
+
+  answerSteps: [
+    { k: "A", s: 5,  i: "Yes, I'd say I'm quite organized." },
+    { k: "R", s: 12, i: "The main reason is that my schedule is packed…" },
+    { k: "E", s: 22, i: "Last semester, for example…" },
+    { k: "C", s: 6,  i: "So for me, planning ahead is everything." }
+  ],
+
+  matching: [
+    { a: "pull an all-nighter", b: "stay up all night working or studying" },
+    { a: "in the nick of time", b: "just before it was too late" },
+    { a: "bite off more than you can chew", b: "take on more than you can handle" },
+    { a: "get the ball rolling", b: "start something so it can keep going" },
+    { a: "a night owl", b: "a person who is most active late at night" },
+    { a: "take it one step at a time", b: "deal with a big task gradually" }
+  ],
+
+  gapfill: [
+    { t: "At the start of the year, I ___ a goal to read twenty books.", a: ["set"] },
+    { t: "I always ___ time for the gym, even in exam week.", a: ["make", "find"] },
+    { t: "I ___ too much time on social media.", a: ["waste", "spend"] },
+    { t: "A planner helps me keep ___ of my deadlines.", a: ["track"] },
+    { t: "I ___ off my essay until the night before.", a: ["put"] },
+    { t: "It's hard to stay ___ with notifications everywhere.", a: ["focused"] },
+    { t: "After a bad week, I make a new plan and get back on ___.", a: ["track"] },
+    { t: "I ran ___ of time and didn't finish the last question.", a: ["out"] }
+  ],
+
+  paraphrase: [
+    { plain: "I always do things at the last moment.", better: ["I tend to **procrastinate** and **put things off** until the last minute.", "I'm a classic last-minute person."] },
+    { plain: "I didn't sleep all night because I was studying.", better: ["I **pulled an all-nighter** before the exam."] },
+    { plain: "I had too many things to do.", better: ["I'd **bitten off more than I could chew**.", "I felt completely **overwhelmed**."] },
+    { plain: "I write what I need to do.", better: ["I **make a to-do list** and **keep track of** every deadline."] },
+    { plain: "My phone stops me from working.", better: ["My phone is my biggest **distraction** — I can't **stay focused** with it nearby."] },
+    { plain: "I stopped going to the gym, but then I started again.", better: ["I **lost motivation** for a while, but I **got back on track**."] },
+    { plain: "I finished just before the deadline.", better: ["I submitted it **in the nick of time**."] },
+    { plain: "I want to learn Spanish this year.", better: ["I've **set a goal** to reach B1 in Spanish by the end of the year."] }
+  ],
+
+  repeat: {
+    scenario: "Вы подрабатываете в университетском центре академической поддержки. Координатор рассказывает о новом семинаре по тайм-менеджменту — повторите каждое предложение точно так, как услышали.",
+    sentences: [
+      "Thanks for helping out today.",
+      "The workshop starts at four o'clock.",
+      "Please hand out a planner to every student.",
+      "Remind them to write down all their deadlines.",
+      "After the talk, students will set three goals for the semester.",
+      "Students who sign up for coaching can meet with an advisor every two weeks.",
+      "If anyone needs help organizing their schedule, they can book a session on our website."
+    ]
+  },
+
+  /* ===== Реальные сеты Take an Interview по теме (из базы платформы) ===== */
+  sets: [
+    { id: "s056", badge: "official", title: "Personal Goals and Achievements", src: "Official TOEFL · 056 / 065 / 125",
+      scenario: "As part of a university project, you have agreed to take part in a short research interview about personal goals and achievements. A graduate student conducting the research will ask you some questions online.",
+      questions: [
+        { q: "First, do you currently have any specific personal goals you are working towards? Give details to explain your answer.",
+          lx: ["set a goal", "make progress", "achieve"],
+          model: "[A] Yes, right now I'm working towards two goals: getting a summer internship and learning Spanish. [R] The internship will give me real work experience, and Spanish will help me in my future career, because I want to work for an international company. [E] For example, I've already updated my résumé and applied to five companies. For Spanish, I study with an app for twenty minutes every morning and take a conversation class on Thursdays. I'm **making** good **progress** — I can already have simple conversations. [C] So these two goals keep me busy, but they're very important to me.",
+          model5: "[A] Yes, at the moment I'm working towards two specific goals: landing a summer internship and reaching an intermediate level in Spanish. [R] Both are closely tied to my long-term plans, since I'm hoping to work for an international company, where practical experience and a second foreign language would set me apart. [E] For the internship, I've rewritten my résumé and applied to five companies so far. As for Spanish, I practice with an app for twenty minutes every morning and attend a conversation class on Thursdays, and I'm genuinely **making progress** — last week I managed a ten-minute conversation without switching to English. [C] So although they keep me busy, these goals give my everyday routine a real sense of direction." },
+        { q: "Can you describe some steps you can take to achieve these goals or to achieve goals in general? What are the challenges you face when taking these steps?",
+          lx: ["break it down", "track your progress", "lose motivation"],
+          model: "[A] The most important step for me is to break a big goal into small daily tasks. [R] A big goal can feel scary, but small tasks are easy to start. I also **track my progress**, so I can see that I'm moving forward. [E] For example, with Spanish, my goal is twenty minutes a day, not \"become fluent\". I mark every day in my calendar. The biggest challenge is **losing motivation**, especially during exams, when I'm tired and want to skip days. When that happens, I just do five minutes instead of twenty. [C] So small, regular steps are the key for me.",
+          model5: "[A] For me, the crucial step is breaking a big goal down into small, concrete daily tasks. [R] A goal like \"become fluent in Spanish\" is so vague that it's almost paralyzing, whereas twenty minutes of practice a day feels perfectly manageable. I also **track my progress**, because seeing a chain of completed days is surprisingly motivating. [E] I mark each study session in my calendar, for instance, and try never to break the chain. The main challenge, admittedly, is **losing motivation** during busy periods like exam season. Rather than giving up altogether, though, I lower the bar and do just five minutes. [C] Consistency, in short, matters far more to me than intensity." },
+        { q: "Can you describe an accomplishment that holds special meaning for you? What did you achieve and why is it significant to you?",
+          lx: ["sense of accomplishment", "perseverance", "set a goal"],
+          model: "[A] The accomplishment I'm most proud of is finishing my first half marathon last spring. [R] It's special because two years ago I couldn't run more than ten minutes, and many people, even my friends, didn't believe I could do it. [E] I **set a goal**, found a training plan online and ran four times a week for six months. I had a knee injury in the middle, but I didn't give up. When I crossed the finish line, I almost cried. [C] It showed me that with **perseverance**, I can do things I thought were impossible.",
+          model5: "[A] The accomplishment that means the most to me is completing my first half marathon last spring. [R] What makes it so significant is how far I'd come: just two years earlier, I couldn't run for more than ten minutes, and even some of my friends doubted I'd make it. [E] I followed a six-month training plan, running four times a week, and halfway through I suffered a knee injury that cost me three weeks. Instead of quitting, I adjusted the plan and kept going. Crossing the finish line gave me a **sense of accomplishment** I'd never felt before. [C] More than anything, it proved to me that **perseverance** matters far more than natural talent." },
+        { q: "Some people believe that setting and working towards individual goals is crucial for self-improvement and personal growth. Do you agree or disagree with this idea? Why?",
+          lx: ["personal growth", "set a goal", "sense of direction"],
+          model: "[A] I agree with this idea. [R] Goals give you direction. Without them, it's easy to do the same things every day and never improve. When you **set a goal**, you push yourself out of your comfort zone, and that's how you grow. [E] For example, before I decided to run a half marathon, I didn't exercise at all. The goal changed my habits — I started sleeping better, eating healthier and feeling more confident. [C] So I think goals are one of the best tools for **personal growth**, as long as they're realistic.",
+          model5: "[A] I strongly agree that goals are crucial for personal growth. [R] Without them, it's all too easy to drift through life repeating the same routines; a clear goal, by contrast, pushes you out of your comfort zone, which is precisely where growth happens. [E] Before I committed to running a half marathon, for instance, I barely exercised. That single goal ended up transforming my habits far beyond running: I began sleeping better, eating more healthily and, perhaps most importantly, trusting myself to finish what I start. [C] So I'd say goals are among the most powerful tools for self-improvement, provided they're challenging but realistic." }
+      ]},
+    { id: "s089", badge: "official", title: "Setting Personal Goals", src: "Official TOEFL · 089",
+      scenario: "You have agreed to participate in a research study about people's experiences with setting personal goals. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "First, think of a time, recent or not, when you had something you wanted to achieve. What was it?",
+          lx: ["achieve", "set a goal", "milestone"],
+          model: "[A] Last year, I really wanted to get into a summer exchange program in Spain. [R] I'd never lived abroad, and I wanted to improve my Spanish and become more independent. But the program was very competitive — only ten students were accepted. [E] To get in, I needed a good language test score and a strong motivation letter. So I studied Spanish every day for four months and rewrote my letter five times with my teacher's help. In the end, I was accepted. [C] It was one of the most important goals I've ever **achieved**.",
+          model5: "[A] Last year, I was determined to get into a highly competitive summer exchange program in Spain. [R] I'd never lived abroad before, and I saw it as a chance not only to improve my Spanish but also to become more independent. Only ten places were available, however, so I knew it wouldn't be easy. [E] I needed a strong language test score and a convincing motivation letter, so for four months I studied Spanish every single day and rewrote my letter five times with my teacher's feedback. Each draft felt like a small **milestone**. In the end, to my delight, I was accepted. [C] It remains one of the goals I'm proudest of having **achieved**." },
+        { q: "In general, how do you handle difficulties or obstacles that come up while working toward what you want to achieve?",
+          lx: ["setback", "get back on track", "take it one step at a time"],
+          model: "[A] When I have a difficulty, I first take a short break, and then I make a new plan. [R] If I try to continue when I'm angry or tired, I usually make things worse. After a break, I can see the problem more clearly. [E] For example, during my half marathon training, I hurt my knee and couldn't run for three weeks. At first I was very upset. But then I talked to a coach, did exercises for my knee and changed my plan. I **got back on track** and finished the race. [C] So for me, a **setback** is a reason to change the plan, not to give up.",
+          model5: "[A] My approach is to step back briefly and then adapt my plan rather than abandon it. [R] Pushing on while frustrated rarely helps, whereas a short pause usually lets me see the obstacle more clearly and find a way around it. [E] During my half marathon training, for instance, I injured my knee and couldn't run for three weeks. Initially, I was devastated and seriously considered quitting. Instead, I consulted a coach, focused on strengthening exercises and rebuilt my schedule, **taking it one step at a time**. Within two months, I was fully **back on track**, and I finished the race. [C] So I see **setbacks** as signals to adjust the route, not to change the destination." },
+        { q: "In your opinion, how important is goal setting for personal growth?",
+          lx: ["personal growth", "sense of direction", "comfort zone"],
+          model: "[A] I think goal setting is very important for personal growth. [R] Goals give you a direction and make you try new things. Without goals, many people stay in their **comfort zone** and don't change. [E] For example, my older brother was shy and never spoke in public. Last year, he **set a goal** to give one presentation at work every month. At first it was terrible, but now he's confident and even got a promotion. [C] So goals help us become better versions of ourselves.",
+          model5: "[A] I'd say goal setting is essential for personal growth. [R] Goals provide a **sense of direction** and, crucially, force us to attempt things we'd otherwise avoid; without them, most people stay comfortably where they are. [E] My older brother, for example, was painfully shy and dreaded public speaking. Last year, he deliberately set himself the goal of giving one presentation at work every month. The first few were, by his own admission, disastrous, yet a year later he speaks confidently in meetings and has even been promoted. [C] So while growth can happen by accident, a clear goal makes it far more likely to happen." },
+        { q: "Do you think children should be taught to set personal goals from an early age? Why or why not?",
+          lx: ["set a goal", "self-discipline", "pressure"],
+          model: "[A] Yes, I think children should learn this early, but in a fun way. [R] If kids learn to set small goals, they understand that effort leads to results. This helps them later at school and in life. But the goals should be simple, not stressful. [E] For example, my little sister's teacher asks every child to choose one goal a month, like reading three books or learning to ride a bike. When they achieve it, they get a sticker. My sister loves it and is very proud of herself. [C] So goal setting is good for kids, if there's no **pressure**.",
+          model5: "[A] I believe they should, as long as it's done in a playful, pressure-free way. [R] Learning to set small goals teaches children early on that effort leads to results, which builds **self-discipline** and confidence that will serve them throughout school and beyond. The goals, however, must be simple and genuinely their own. [E] My little sister's teacher, for instance, asks each child to choose one monthly goal, such as reading three books or learning to ride a bike, and rewards them with a sticker when they succeed. My sister takes it incredibly seriously and is visibly proud of herself. [C] So early goal setting is valuable, provided it builds confidence rather than **pressure**." }
+      ]},
+    { id: "s061", badge: "official", title: "Time Management", src: "Official TOEFL · 061",
+      scenario: "You received an email from your university inviting you to join a research study about time management. You have scheduled a short online interview with a researcher to answer a few questions.",
+      questions: [
+        { q: "First, do you use any tools or techniques to manage your time effectively? Please give some examples.",
+          lx: ["to-do list", "set a reminder", "manage your time"],
+          model: "[A] Yes, I use two main tools: a calendar app and a paper **to-do list**. [R] The calendar helps me remember fixed things like classes and work shifts, and the list helps me focus on what I need to do today. [E] For example, every Sunday evening I put all my deadlines in the calendar and **set reminders** two days before each one. Then every morning I write three main tasks on a sticky note and put it on my laptop. Crossing them off feels great. [C] So these simple tools help me **manage my time** without stress.",
+          model5: "[A] Yes, I rely on two tools in particular: a digital calendar and a handwritten **to-do list**. [R] The calendar takes care of fixed commitments such as lectures and work shifts, while the list keeps me focused on what genuinely matters each day. [E] Every Sunday evening, for instance, I enter all upcoming deadlines into my calendar and **set reminders** two days before each one. Then, every morning, I write my three priorities for the day on a sticky note and stick it to my laptop. Limiting myself to three prevents me from overcommitting, and crossing them off is oddly satisfying. [C] These simple habits, I find, help me **manage my time** without feeling controlled by it." },
+        { q: "Can you describe a typical day's events for you and how you organize your time?",
+          lx: ["routine", "schedule", "make time for"],
+          model: "[A] On a typical weekday, my day is very busy, so I plan it carefully. [R] I have classes, a part-time job and the gym, and without a plan, I'd forget something. [E] I wake up at seven, have breakfast and review my to-do list. From nine to two I have classes. In the afternoon I study in the library for two hours, and three times a week I work at a café from five to nine. I always **make time for** the gym in the morning or on weekends. [C] So my **schedule** is full, but having a clear **routine** helps me get everything done.",
+          model5: "[A] My weekdays are fairly packed, so I organize them quite carefully. [R] Between lectures, a part-time job and training, my **schedule** would quickly fall apart without a clear structure. [E] I usually get up at seven, have breakfast and glance over my priorities for the day. Lectures take up most of the time between nine and two, after which I spend a couple of hours studying in the library, as I concentrate far better there than in my dorm. Three evenings a week, I work at a café, so I deliberately **make time for** the gym in the mornings on the other days. [C] It's a demanding **routine**, but having one means I rarely feel lost." },
+        { q: "Tell me about a time when you had to manage multiple tasks or responsibilities at once. How did you handle it?",
+          lx: ["prioritize", "race against the clock", "bite off more than you can chew"],
+          model: "[A] At the end of last semester, I had to manage many tasks at the same time. [R] I had two exams, a group presentation and extra shifts at work, all in one week. Honestly, I'd **bitten off more than I could chew**. [E] First, I wrote down every task with its deadline. Then I **prioritized** — exams first, then the presentation. I asked my manager to give one of my shifts to a coworker, and I divided the presentation work with my group. It was a **race against the clock**, but I finished everything on time. [C] I learned that it's important to prioritize and ask for help.",
+          model5: "[A] The most stressful example was the final week of last semester. [R] I had two exams, a group presentation and extra shifts at work, all within five days — I'd clearly **bitten off more than I could chew**. [E] Rather than panicking, I listed every task alongside its deadline and **prioritized** ruthlessly: exams came first, the presentation second. I then asked my manager to reassign one of my shifts and split the remaining presentation work more evenly within my group. The whole week was a **race against the clock**, yet I met every deadline and even did well on both exams. [C] Above all, it taught me that prioritizing and asking for help aren't signs of weakness but of good judgment." },
+        { q: "Some people believe that managing your time wisely can lead to higher productivity, while others think it can cause unnecessary stress and prefer a looser schedule. What is your opinion on this? Why?",
+          lx: ["productivity", "flexible", "time management"],
+          model: "[A] I think good **time management** increases **productivity**, but only if your plan is **flexible**. [R] When you plan your day, you don't waste time deciding what to do next. But if you plan every minute, you feel stressed when something goes wrong. [E] For example, last year I tried to plan my whole day in thirty-minute blocks. After a week, I felt like a robot, and one small delay ruined my whole plan. Now I only plan my three main tasks, and I get more done. [C] So a simple plan is better than a strict one.",
+          model5: "[A] In my view, managing your time wisely does boost **productivity**, but only when the plan leaves room for flexibility. [R] A clear plan saves you from constantly deciding what to do next, which is surprisingly draining. Overly rigid schedules, however, turn every small delay into a source of stress. [E] Last year, for instance, I experimented with planning my entire day in thirty-minute blocks. Within a week, I felt like a machine, and a single late bus could derail everything. Nowadays I plan only my three main priorities and leave the rest **flexible**, and, paradoxically, I accomplish far more. [C] So the key, I think, is structure without rigidity." }
+      ]},
+    { id: "s114", badge: "official", title: "Personal Organization Habits", src: "Official TOEFL · 114",
+      scenario: "You have volunteered for a research study at your university about personal organization habits. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "Do you consider yourself to be an organized person? Why or why not?",
+          lx: ["organized", "keep track of", "plan ahead"],
+          model: "[A] Yes, I'd say I'm quite **organized**, at least with my time. [R] I have a lot of responsibilities — classes, a job, sports — so I can't just remember everything. I need a system. [E] For example, I **keep track of** all my deadlines in a calendar app, and I always **plan ahead** for exams, so I never study the night before. But my room is another story — my desk is usually covered with papers and coffee cups. [C] So I'm organized with my schedule, but not so much with my things.",
+          model5: "[A] I'd describe myself as organized, at least as far as my time is concerned. [R] Juggling lectures, a part-time job and training means I simply can't rely on memory; I need a system. [E] I **keep track of** every deadline in a calendar app, for example, and I always **plan ahead** for exams, so I haven't crammed the night before in over a year. My physical space, on the other hand, is a different story: my desk is usually buried under notes and empty coffee cups. My roommate jokes that I'm organized everywhere except where it's visible. [C] So I'm highly organized with my schedule, but there's definitely room for improvement with my belongings." },
+        { q: "Would you say that your organization habits have changed or stayed the same over time? Why do you think that is?",
+          lx: ["get organized", "responsibilities", "habit"],
+          model: "[A] My organization habits have changed a lot. [R] In high school, my parents and teachers reminded me about everything, so I didn't need to be organized. At university, nobody does that, and I have many more **responsibilities**. [E] For example, in my first semester, I missed an important deadline because I forgot about it. That was a wake-up call. After that, I started using a calendar and a to-do list every day, and now it's a **habit**. [C] So I **got organized** because I had to, and I'm happy I did.",
+          model5: "[A] They've changed dramatically, mostly out of necessity. [R] In high school, my parents and teachers reminded me about almost everything, so I never really needed a system of my own. University, however, brought far more **responsibilities** and nobody to remind me of them. [E] In my very first semester, for instance, I completely forgot about an essay deadline and lost a significant portion of my grade. It was an unpleasant but valuable wake-up call. Since then, I've used a calendar and a daily to-do list without fail, and what started as an effort has become an automatic **habit**. [C] So I **got organized** because I had no choice, and I'm genuinely grateful I did." },
+        { q: "Do you think organizational skills should be taught in schools? Why or why not?",
+          lx: ["time management", "plan ahead", "life skills"],
+          model: "[A] Yes, I definitely think schools should teach organizational skills. [R] Many students are smart, but they get bad grades because they forget deadlines or start studying too late. These skills are also useful later at work and in life. [E] For example, when I started university, many of my classmates struggled in the first semester, not because the classes were hard, but because nobody had taught them how to **plan ahead**. A short course in high school could have helped them a lot. [C] So schools should teach **time management** just like math or history.",
+          model5: "[A] I'm convinced they should. [R] Plenty of capable students underperform not because they lack ability but because they lose track of deadlines or start revising far too late. Organizational skills are, moreover, **life skills** that matter just as much at work as at school. [E] When I started university, for example, a surprising number of my classmates struggled during the first semester, not because the content was too difficult, but because nobody had ever shown them how to **plan ahead** or break down a big assignment. A short course in high school could easily have spared them that stress. [C] So **time management** deserves a place in the curriculum alongside traditional subjects." },
+        { q: "Some people believe that being organized can significantly reduce stress. Do you agree or disagree with this viewpoint? Why?",
+          lx: ["overwhelmed", "keep track of", "last-minute"],
+          model: "[A] I completely agree. [R] When you're organized, you know what you need to do and when, so you don't worry about forgetting things. Most stress comes from **last-minute** surprises. [E] For example, before I started using a planner, I often felt **overwhelmed** — I'd suddenly remember an assignment due the next day and panic. Now I can see all my deadlines for the month, and even exam week feels calm. My friend who never plans is always stressed and running around. [C] So being organized doesn't remove all stress, but it reduces it a lot.",
+          model5: "[A] I completely agree with this viewpoint. [R] A great deal of everyday stress comes not from the work itself but from uncertainty — the nagging feeling that you've forgotten something or that a deadline is about to ambush you. Being organized eliminates much of that uncertainty. [E] Before I started using a planner, for instance, I frequently felt **overwhelmed**, suddenly remembering an assignment due the next morning and spending the night in a panic. Now that I can see every deadline weeks in advance, even exam season feels manageable. A friend of mine who refuses to plan, by contrast, lurches from one **last-minute** crisis to the next. [C] So organization won't remove stress entirely, but it dramatically reduces it." }
+      ]},
+    { id: "spg", badge: "platform", title: "Personal Goals", src: "Практика платформы",
+      scenario: "We're conducting a study to better understand what motivates people to set and pursue personal goals. I'd like to ask you a few questions about your current priorities and experiences.",
+      questions: [
+        { q: "To start off, what are one or two personal goals that are important to you right now? These could be related to your career, education, health, or even personal development. Why are those goals meaningful to you?",
+          lx: ["set a goal", "priority", "personal growth"],
+          model: "[A] Right now, my two most important goals are getting a good internship and taking better care of my health. [R] The internship is meaningful because it's the first real step in my career. Health matters because last year I was always tired and stressed, and I don't want to feel like that again. [E] For example, I've **set a goal** to apply to two companies every week. For my health, I go to bed before midnight and run three times a week. I already feel much more energetic. [C] So one goal is about my future, and the other is about feeling good today.",
+          model5: "[A] At the moment, my two top **priorities** are securing a good internship and looking after my health. [R] The internship matters because it would be the first concrete step towards the career I want, whereas my health goal stems from last year, when I was constantly exhausted and anxious and realized I couldn't go on like that. [E] So I've **set** myself **a goal** of applying to two companies every week, and, on the health side, I'm in bed before midnight and run three times a week. The difference is already striking: I have far more energy, which, in turn, makes the job search less draining. [C] One goal, in short, is about my future, and the other is about enjoying the present." },
+        { q: "Some people stay motivated by creating detailed plans, setting deadlines, or breaking their goals into small, manageable tasks. Others might use vision boards, apps, or reward systems. What specific strategies or habits help you stay focused on your goals over time? Why do you think those work for you?",
+          lx: ["break it down", "track your progress", "accountability"],
+          model: "[A] Two strategies help me the most: small tasks and a study partner. [R] Small tasks are easy to start, so I don't **procrastinate**. And a partner gives me **accountability** — I don't want to let someone else down. [E] For example, for my Spanish goal, I study twenty minutes a day with an app, and I meet a classmate every Thursday to practice speaking. If I skip a day, she notices and asks me why! I also **track my progress** in the app, and seeing my streak motivates me. [C] So for me, small steps and other people keep me going.",
+          model5: "[A] What works best for me is a combination of tiny daily tasks and a partner who holds me accountable. [R] Small tasks lower the barrier to getting started, so I rarely **procrastinate**, while a partner adds **accountability**, since letting someone else down feels far worse than letting myself down. [E] For my Spanish, for instance, I do twenty minutes a day on an app and meet a classmate every Thursday for conversation practice; if I skip a session, she's quick to ask why. I also **track my progress** with the app's streak counter, which, admittedly, is a simple trick, yet it works remarkably well on me. [C] So small steps combined with a bit of social pressure keep me consistently on course." },
+        { q: "Of course, it's common to face setbacks or lose motivation—whether from external distractions, lack of time, or self-doubt. When that happens, how do you usually respond? Are there any techniques you use to bounce back and stay on track?",
+          lx: ["setback", "get back on track", "self-doubt"],
+          model: "[A] When I lose motivation, I try not to be too hard on myself, and I start again with something very small. [R] If I feel guilty, I usually lose even more motivation. A small step helps me feel that I'm moving again. [E] For example, last month I stopped running for two weeks because I had too much work. Instead of trying to run ten kilometers right away, I went for a fifteen-minute jog. The next day I did twenty minutes. Within a week, I was **back on track**. [C] So my technique is simple: forgive yourself and restart small.",
+          model5: "[A] My first rule is not to be too hard on myself; my second is to restart with something ridiculously small. [R] Guilt, I've noticed, only deepens the slump, whereas a tiny success quickly rebuilds momentum and quiets the **self-doubt**. [E] Last month, for example, I didn't run for two whole weeks because of a heavy workload. Rather than forcing myself straight back into a ten-kilometer run, I went for a fifteen-minute jog, then twenty minutes the following day. Within a week, I was fully **back on track**, and, crucially, I didn't associate running with failure. [C] So my technique is essentially to forgive the **setback** quickly and restart with a step too small to fail." },
+        { q: "Many people believe that setting goals is an essential part of personal growth, helping us stay purposeful and driven. Others argue that too much focus on goals can lead to stress or unrealistic expectations. What's your opinion? Do you think setting goals generally helps people grow, or can it sometimes create unnecessary pressure? Why?",
+          lx: ["realistic", "pressure", "personal growth"],
+          model: "[A] I think goals usually help people grow, but too many goals can create **pressure**. [R] Goals give you direction and motivation. But if your goals are not **realistic**, you feel like a failure all the time. [E] For example, last January I set ten New Year's resolutions — gym every day, two books a week, perfect grades. By February, I'd given up on all of them and felt terrible. This year I chose just two realistic goals, and I'm still working on them. [C] So goals are helpful, as long as they're realistic and not too many.",
+          model5: "[A] On balance, I believe goals help people grow, although setting too many can certainly backfire. [R] Goals give us direction and a reason to push ourselves; unrealistic ones, however, turn into a constant source of guilt and disappointment. [E] Last January, for example, I made ten ambitious resolutions — the gym every day, two books a week, top grades in every course. By February, I'd abandoned all of them and felt like a failure. This year, by contrast, I chose just two **realistic** goals, and eleven months later I'm still pursuing both. [C] So goals are a powerful tool for **personal growth**, as long as we choose them carefully and treat them as guides rather than tests." }
+      ]},
+    { id: "stm", badge: "platform", title: "Time Management", src: "Практика платформы",
+      scenario: "I'm conducting a study on time management and how people structure their days to stay productive and balanced. I'd like to ask you a few questions about how you approach planning and organization.",
+      questions: [
+        { q: "To start, how do you usually plan or organize your day? Do you follow a set routine, or do you take things as they come?",
+          lx: ["routine", "take things as they come", "plan ahead"],
+          model: "[A] On weekdays I follow a set **routine**, but on weekends I **take things as they come**. [R] During the week, I have classes, work and the gym, so I need structure. On weekends, I want to relax and be spontaneous. [E] For example, from Monday to Friday, I get up at seven, check my to-do list and plan my evening the night before. But on Saturdays I don't set an alarm, and I decide what to do after breakfast — sometimes I meet friends, sometimes I just read. [C] So I need both structure and freedom.",
+          model5: "[A] I follow a fairly fixed **routine** on weekdays, whereas at weekends I prefer to **take things as they come**. [R] With lectures, a part-time job and training, my weekdays simply wouldn't work without structure. At weekends, however, I deliberately let go of plans, because that's how I recharge. [E] From Monday to Friday, for example, I'm up at seven, review my priorities over breakfast and usually **plan** the next day the night before. On Saturdays, by contrast, I don't even set an alarm, and I decide what to do as the day unfolds — sometimes meeting friends, sometimes just reading in a café. [C] So for me, the right balance is structure during the week and freedom at the weekend." },
+        { q: "Everyone has their own style—some people rely on digital tools like apps, while others prefer pen-and-paper methods or mental checklists. What kinds of tools, methods, or strategies do you personally use to stay on track with your tasks? And why do you think those approaches work well for you?",
+          lx: ["to-do list", "set a reminder", "keep track of"],
+          model: "[A] I use a mix of a phone calendar and a paper notebook. [R] The calendar is great for dates and **reminders**, because my phone is always with me. But writing tasks by hand helps me remember them and think more clearly. [E] For example, all my classes, shifts and deadlines are in my calendar, and it **sets** automatic **reminders**. Every morning I also write a short **to-do list** in my notebook, and I love crossing things off with a pen. [C] So digital tools help me remember, and paper helps me focus.",
+          model5: "[A] I use a hybrid system: a digital calendar alongside a paper notebook. [R] The calendar is unbeatable for **keeping track of** dates and sending **reminders**, given that my phone is always with me. Writing tasks down by hand, on the other hand, forces me to think about what really matters, and I remember handwritten tasks far better. [E] Every class, shift and deadline goes into my calendar with automatic alerts, for instance, while each morning I jot down a short **to-do list** in my notebook. Physically crossing items off gives me a small but genuine sense of accomplishment. [C] In short, technology handles my memory, while paper handles my focus." },
+        { q: "One of the biggest challenges people mention today is staying focused—especially with constant notifications, social media, or the pressure to multitask. How do you personally deal with distractions during your day? Are there specific things you do to create a more focused or productive environment?",
+          lx: ["distraction", "stay focused", "multitask"],
+          model: "[A] My biggest **distraction** is my phone, so I keep it away when I study. [R] If my phone is next to me, I check it every few minutes, and then it takes a long time to concentrate again. I also don't try to **multitask**, because it makes me slower. [E] For example, when I study in the library, I put my phone in my bag on silent mode and use a timer: twenty-five minutes of work, then a five-minute break. During the break, I can check messages. This way I **stay focused** much longer. [C] So I just remove distractions instead of fighting them.",
+          model5: "[A] My biggest **distraction**, by far, is my phone, so my main strategy is to put it out of reach. [R] If it's within arm's length, I'll check it every few minutes almost unconsciously, and each interruption costs me several minutes of concentration. I've also stopped trying to **multitask**, since it only creates the illusion of productivity. [E] When I study in the library, for instance, my phone goes into my bag on silent, and I work in twenty-five-minute blocks followed by five-minute breaks, during which I'm allowed to check messages. It sounds simple, but it's doubled the amount I can **stay focused**. [C] So rather than relying on willpower, I simply design my environment so that distractions aren't an option." },
+        { q: "Some companies and even schools are now testing shorter workdays or four-day work weeks as a way to boost focus and reduce burnout. Do you think working fewer hours could actually help people get more done, or do you think it might backfire? Why or why not?",
+          lx: ["productivity", "burnout", "workload"],
+          model: "[A] I think working fewer hours can help people get more done. [R] When people have less time, they focus better and waste less time on unimportant meetings and social media. They are also more rested, so they make fewer mistakes. [E] For example, I read about a company in the UK that tried a four-day week, and most employees did the same amount of work and felt much less stressed. In my own experience, I study better in three focused hours than in a whole tired day. [C] So I think it can work, but maybe not in every job.", model5: "[A] I believe working fewer hours can genuinely help people accomplish more, at least in many types of jobs. [R] With less time available, people tend to focus harder and cut out pointless meetings, while also being better rested and therefore making fewer mistakes. [E] A large trial in the UK, for example, found that most companies maintained their output on a four-day week, and many decided to keep it afterward. My own experience points the same way: three focused hours of study beat an entire exhausted day. Admittedly, it would be harder to apply in hospitals or shops, where someone simply has to be present. [C] So it's no universal solution, but in office work it's well worth trying." }
+      ]},
+    { id: "sdr", badge: "platform", title: "Daily Routines", src: "Практика платформы",
+      scenario: "I'm interested in learning about people's everyday routines and how they manage life at home. I'd like to ask you a few questions about what your typical day looks like.",
+      questions: [
+        { q: "To begin, can you walk me through a typical day for you, starting from when you wake up until you go to bed? What are some of the regular tasks or habits that structure your day?",
+          lx: ["routine", "habit", "wind down"],
+          model: "[A] My typical day is busy, but it has a clear structure. [R] I'm a student with a part-time job, so a fixed **routine** helps me do everything without forgetting things. [E] I wake up at seven, drink coffee and look at my to-do list. Then I have classes until about two. After lunch, I study in the library, and three evenings a week I work at a café. At home, I cook something simple, watch a show and read for twenty minutes before bed to **wind down**. I'm usually asleep by midnight. [C] So my day is full, but my **habits** keep it under control.",
+          model5: "[A] My typical day is busy but fairly predictable, which I actually find reassuring. [R] Combining university with a part-time job means a consistent **routine** is the only way to fit everything in. [E] I get up at seven, have coffee while reviewing my priorities, and head to lectures, which usually run until around two. After a quick lunch, I study in the library for a couple of hours, and three evenings a week I work at a café. Back home, I cook something simple, watch an episode of a series and read for twenty minutes to **wind down**, as screens before bed ruin my sleep. I'm usually asleep by midnight. [C] So these small **habits** are what hold my busy day together." },
+        { q: "Everyone approaches their routine a little differently—some people follow a strict schedule, while others like to keep things more flexible. How would you describe your preferred style? Do you find that having more structure or more flexibility works better for you, and why?",
+          lx: ["structure", "flexible", "spontaneous"],
+          model: "[A] I prefer a mix, but more structure works better for me. [R] Without a plan, I waste time thinking about what to do next, and I often **procrastinate**. But a very strict **schedule** makes me feel stressed. [E] For example, I always plan my three most important tasks for the day, but I don't decide exactly when to do them. Last year I tried planning every hour, and it was a disaster — one late bus ruined everything. [C] So I like **structure** for the big things and freedom for the small ones.",
+          model5: "[A] I'd describe my style as structured but **flexible**, leaning slightly towards structure. [R] Without any plan, I waste energy deciding what to do next and tend to **procrastinate**, yet a rigid hour-by-hour **schedule** makes me anxious, because real life rarely cooperates. [E] I always decide on my three key tasks for the day, for instance, but I leave the timing open. When I once tried scheduling every hour, a single delayed bus threw the entire day off and left me feeling like a failure by lunchtime. [C] So what works best for me is a clear **structure** for priorities combined with freedom for everything else." },
+        { q: "In recent years, a lot of people have had to adjust their routines—because of remote work, changing school schedules, or shifts in lifestyle. Have you noticed any changes in your daily routine compared to, say, a few years ago? What caused those changes, and how have they affected your day-to-day life?",
+          lx: ["routine", "independent", "self-discipline"],
+          model: "[A] Yes, my routine has changed a lot in the last few years. [R] The main reason is that I moved away from home to go to university. Now I'm responsible for everything — cooking, cleaning, money and my own schedule. [E] For example, at school my day was the same every day: classes from eight to three, then homework, and my mom made dinner. Now every day is different, and I have to plan my own time. At first it was hard, but now I'm much more **independent** and organized. [C] So the change was difficult, but it made me more mature.",
+          model5: "[A] My routine has changed enormously over the past few years. [R] The main cause was moving away from home for university, which suddenly made me responsible for everything — cooking, cleaning, finances and, above all, my own schedule. [E] In high school, for instance, every day looked identical: classes from eight to three, homework, then dinner that my mother had prepared. Now no two days are the same, and nobody tells me when to study or sleep. The first semester was admittedly chaotic, but it forced me to develop **self-discipline** and a system for organizing my time. [C] So although the transition was challenging, it's made me far more **independent** and, I think, more mature." },
+        { q: "Some people believe that having a stable daily routine can improve mental health, increase productivity, and even reduce stress. Others feel that strict routines can be limiting or stressful. In your opinion, do you think maintaining a consistent daily routine improves overall quality of life? Why or why not?",
+          lx: ["routine", "productivity", "spontaneous"],
+          model: "[A] Yes, I think a consistent **routine** improves quality of life, but it shouldn't be too strict. [R] When basic things like sleep, meals and exercise happen at the same time every day, you feel more stable and less stressed, and you don't waste energy on small decisions. But life also needs some surprises. [E] For example, since I started going to bed at the same time every night, I sleep better and I'm more productive in the morning. But I still keep weekends free for **spontaneous** plans with friends. [C] So a routine is good for the basics, with space for fun.",
+          model5: "[A] I believe a consistent routine generally improves quality of life, provided it isn't too rigid. [R] When the basics — sleep, meals, exercise — happen at regular times, both body and mind feel more stable, and you save mental energy for decisions that actually matter. A life with no room for surprises, however, quickly becomes dull. [E] Since I started going to bed at the same time every night, for example, I sleep noticeably better and my morning **productivity** has improved. At the same time, I deliberately keep weekends open for **spontaneous** plans, which are often the most memorable moments of my week. [C] So routines work best as a foundation, not a cage." }
+      ]}
+  ],
+
+  /* ===== Speaking Club: тема вдоль и поперёк ===== */
+  club: [
+    { icon: "sun", title: "Мой день", en: "My day", questions: [
+      { t: "personal", src: "Платформа · Daily Routines", q: "Can you walk me through a typical day for you, from when you wake up until you go to bed?", same: "sdr-0",
+        f: ["Which part of your day do you enjoy most?", "What would you change about your day?"], lx: ["routine", "habit", "wind down"] },
+      { t: "personal", src: "Official 061", q: "Can you describe a typical day's events for you and how you organize your time?", same: "s061-1",
+        f: ["How is your weekend different?", "What usually ruins your plans?"], lx: ["routine", "schedule", "make time for"] },
+      { t: "experience", src: "Платформа · Daily Routines", q: "Have you noticed any changes in your daily routine compared to a few years ago? What caused them?", same: "sdr-2",
+        f: ["What do you miss about your old routine?", "What will your routine look like in five years?"], lx: ["routine", "independent", "self-discipline"] },
+      { t: "personal", src: "Official 063 · Sleep Habits", q: "Do you usually go to bed early or late? Are you a morning person or a night owl?",
+        model: "[A] I usually go to bed quite late, around midnight, so I'm more of a **night owl**. [R] In the evening my brain feels more awake, and it's quiet, so I can concentrate. But because I have morning classes, I can't sleep as long as I'd like. [E] For example, I often write my essays between nine and midnight, because that's when I have the best ideas. But last semester I had eight a.m. classes and felt like a zombie every morning. Now I try to be in bed by twelve at the latest. [C] So I'm a night owl by nature, but I'm learning to be a bit of an **early bird**.",
+        model5: "[A] I tend to go to bed fairly late, usually around midnight, so I'd call myself a **night owl**. [R] My mind simply feels sharper in the evening, when everything is quiet and there are no messages coming in. The problem, of course, is that university doesn't adjust to my body clock. [E] I write most of my essays between nine and midnight, for instance, as that's when ideas come most easily. Last semester, however, I had eight a.m. lectures and spent every morning half asleep. Since then, I've forced myself to be in bed by midnight at the latest, which has made a noticeable difference. [C] So I'm a night owl by nature, but I'm slowly training myself to be more of an **early bird**.",
+        f: ["Can people change from night owls to early birds?", "Should schools start later for night owls?"], lx: ["a night owl / an early bird", "routine", "productivity"] },
+      { t: "personal", q: "What time of day are you most productive? How do you use that time?",
+        model: "[A] I'm most productive in the late morning, from about nine to twelve. [R] By then I'm fully awake after coffee, but I'm not tired yet, and my phone is usually quiet because my friends are in class. [E] For example, I always try to do my hardest task during this time, like writing an essay or solving statistics problems. I leave easy things, like emails and shopping, for the afternoon, when my energy is lower. [C] So I plan my day around my energy, not just around the clock.",
+        model5: "[A] My most productive window is the late morning, roughly from nine until noon. [R] By then I'm fully alert, yet not drained, and, conveniently, my phone tends to be quiet since most of my friends are in lectures. [E] I therefore reserve that time for my most demanding task of the day — writing an essay, for instance, or working through statistics problems — while pushing routine tasks such as emails or grocery shopping into the afternoon, when my concentration naturally dips. Since I started doing this, I've finished assignments considerably faster. [C] So I've learned to plan my day around my energy levels rather than simply around the clock.",
+        f: ["What do you do when your energy is low?", "Does coffee really help you?"], lx: ["productivity", "priority", "schedule"] },
+      { t: "opinion", q: "Morning routines are very popular on social media — waking up at five, journaling, cold showers. Do you think a good morning routine really matters?",
+        model: "[A] I think a calm morning routine matters, but the extreme ones on social media are not necessary. [R] How you start your day affects your mood and energy. But everyone is different, and waking up at five isn't good for people who go to bed late. [E] For example, I tried the five a.m. routine for a week after watching a video. I was so tired by the afternoon that I couldn't study. Now my routine is simple: no phone for the first thirty minutes, breakfast and a short walk. It works much better for me. [C] So a routine helps, but it should fit your life, not an influencer's.",
+        model5: "[A] A good morning routine matters, in my view, but the extreme versions popular online are largely unnecessary. [R] The way you start your day undoubtedly shapes your mood and focus; however, people's body clocks vary enormously, so waking at five is hardly a universal recipe for success. [E] I once tried the famous five a.m. routine for a week after watching a video, for instance, and by mid-afternoon I was too exhausted to study. These days, my routine is far simpler: no phone for the first half hour, a proper breakfast and a ten-minute walk. It's unglamorous, but it works. [C] So the best morning routine is one that suits your life, not one that looks good on camera.",
+        f: ["What's the first thing you do after waking up?", "Do you check your phone in bed?"], lx: ["routine", "habit", "productivity"] }
+    ]},
+    { icon: "sliders", title: "План или «как пойдёт»", en: "Structure vs flexibility", questions: [
+      { t: "compare", src: "Платформа · Daily Routines", q: "Do you prefer a strict schedule or more flexibility? Which works better for you, and why?", same: "sdr-1",
+        f: ["Has your style changed over time?", "Which style is better for students?"], lx: ["structure", "flexible", "spontaneous"] },
+      { t: "personal", src: "Платформа · Time Management", q: "How do you usually plan your day? Do you follow a set routine, or do you take things as they come?", same: "stm-0",
+        f: ["What happens when your plan falls apart?", "Do you plan your weekends?"], lx: ["routine", "take things as they come", "plan ahead"] },
+      { t: "opinion", src: "Платформа · Daily Routines", q: "Does maintaining a consistent daily routine improve overall quality of life?", same: "sdr-3",
+        f: ["Can routines become boring?", "How long does it take to build a routine?"], lx: ["routine", "productivity", "spontaneous"] },
+      { t: "opinion", src: "Official 061", q: "Some people believe managing your time wisely leads to higher productivity, while others think it causes unnecessary stress. What's your opinion?", same: "s061-3",
+        f: ["Can you plan too much?", "What is the minimum planning everyone needs?"], lx: ["productivity", "flexible", "time management"] },
+      { t: "compare", src: "Платформа · Vacation Habits", q: "Some people plan every detail of a vacation, while others take it day by day. How do you usually plan your vacations, and how does that affect your experience?",
+        model: "[A] I plan the important things, but I leave a lot of time free. [R] If I plan nothing, I waste time and money, but if I plan every hour, the trip feels like work. [E] For example, when I went to Barcelona with friends, we booked the hotel, the flights and one museum in advance. Everything else we decided each morning. Because of that, we found a small local festival that wasn't in any guidebook, and it was the best day of the trip. [C] So for me, a vacation needs a basic plan and lots of freedom.",
+        model5: "[A] I plan the essentials in advance and deliberately leave the rest open. [R] Planning nothing tends to waste both time and money, whereas scheduling every hour turns a holiday into a to-do list. [E] When I visited Barcelona with friends, for instance, we booked our flights, accommodation and one museum that sells out early, but decided everything else over breakfast each morning. Thanks to that freedom, we stumbled upon a local street festival that wasn't in any guidebook, and it turned out to be the highlight of the trip. [C] So, for me, the ideal vacation combines a light structure with plenty of room for **spontaneous** discoveries.",
+        f: ["Do you plan trips differently with friends and family?", "What's the worst thing that happened without a plan?"], lx: ["plan ahead", "spontaneous", "flexible"] },
+      { t: "experience", q: "Tell me about a spontaneous decision that turned out well.",
+        model: "[A] Last summer, I decided to join a hiking trip with only one day's notice, and it was one of my best experiences. [R] Usually I plan everything, so this was very unusual for me. A friend had a free place because someone got sick. [E] I packed my bag in one hour and left the next morning. We hiked in the mountains for three days, slept in tents and had no internet at all. I met amazing people, and two of them are now my close friends. [C] It taught me that sometimes it's good to say yes without a plan.",
+        model5: "[A] Last summer, I joined a three-day hiking trip with less than twenty-four hours' notice, and it turned out to be one of the best decisions I've made. [R] It was completely out of character, since I'm normally someone who plans everything weeks in advance. A friend, however, suddenly had a spare place after someone fell ill. [E] I packed in under an hour and set off the next morning. We spent three days in the mountains with no internet, sleeping in tents and cooking over a fire, and I came back not only refreshed but with two new close friends. [C] So as much as I value planning, that trip reminded me that some of life's best moments simply can't be scheduled.",
+        f: ["Are you usually spontaneous?", "When is it dangerous to be spontaneous?"], lx: ["spontaneous", "plan ahead", "take things as they come"] }
+    ]},
+    { icon: "list", title: "Инструменты и техники", en: "Tools & techniques", questions: [
+      { t: "personal", src: "Official 061", q: "Do you use any tools or techniques to manage your time effectively? Please give some examples.", same: "s061-0",
+        f: ["Which tool have you tried and given up?", "Would you recommend it to a friend?"], lx: ["to-do list", "set a reminder", "manage your time"] },
+      { t: "compare", src: "Платформа · Time Management", q: "Do you rely on digital tools like apps, pen-and-paper methods or mental checklists to stay on track? Why do those approaches work for you?", same: "stm-1",
+        f: ["Is paper old-fashioned?", "Can you trust your memory?"], lx: ["to-do list", "set a reminder", "keep track of"] },
+      { t: "opinion", src: "Official 109 · Exercise Habits", q: "Some people use fitness apps on their smartphones to organize their fitness schedules. Is this a good way to keep track of your exercise goals?",
+        model: "[A] Yes, I think fitness apps are a good way to **keep track of** exercise goals. [R] They show your progress clearly, remind you to train and make you feel proud when you see your results. But they don't work if you only download them and never open them. [E] For example, I used a running app to prepare for my half marathon. It gave me a plan for every week and showed my distance and speed. Seeing my progress kept me motivated on lazy days. [C] So apps are helpful, but you still need **self-discipline**.",
+        model5: "[A] I think fitness apps are an excellent way to **keep track of** exercise goals, as long as they're actually used. [R] They make progress visible, send timely reminders and provide a structured plan, which removes a lot of the guesswork. They can't, however, replace **self-discipline**; plenty of people download them with great enthusiasm and never open them again. [E] When I trained for my half marathon, for instance, my running app gave me a week-by-week plan and recorded every run. On days when I felt lazy, seeing how far I'd already come was often what got me out the door. [C] So apps are a powerful support tool, but the motivation still has to come from you.",
+        f: ["Do you use any apps to track habits?", "Can apps make people obsessed with numbers?"], lx: ["keep track of", "track your progress", "self-discipline"] },
+      { t: "opinion", q: "Social media is full of productivity tips and 'life hacks'. Do they actually work, or are they a waste of time?",
+        model: "[A] Some tips work, but most of them are a waste of time. [R] Many people watch productivity videos instead of actually working, so it's a form of **procrastination**. A few simple ideas are useful, but you don't need hundreds. [E] For example, I learned about the Pomodoro technique — twenty-five minutes of work and a five-minute break — from a video, and I still use it every day. But I also wasted whole evenings watching \"perfect morning routine\" videos and didn't change anything. [C] So it's better to try one tip than to watch fifty.",
+        model5: "[A] A few genuinely work, but on the whole, I'd say they're more of a trap than a solution. [R] Watching productivity content can easily become a sophisticated form of **procrastination**: it feels useful, yet nothing actually gets done. Only a handful of principles really matter, and they're quite simple. [E] I discovered the Pomodoro technique through a short video, for example, and I still use it daily. Yet I've also lost entire evenings watching videos about \"perfect routines\" without changing a single habit. [C] So the trick, ironically, is to stop consuming tips and test one of them properly for a few weeks.",
+        f: ["Which tip has worked for you?", "Why are these videos so popular?"], lx: ["procrastinate", "productivity", "habit"] },
+      { t: "personal", q: "Do you find it hard to say no when people ask for your time? How does that affect you?",
+        model: "[A] Yes, I find it quite hard to say no. [R] I like helping people, and I don't want my friends to feel disappointed. But when I say yes to everything, I don't have time for my own work, and I get stressed. [E] For example, last semester I agreed to help a friend with his project, join a student club and take extra shifts at work, all in the same month. I **overcommitted**, and my grades went down. Now, before I say yes, I check my calendar first. [C] So I'm learning that saying no is sometimes necessary.",
+        model5: "[A] I do find it difficult, and it's probably my biggest time-management weakness. [R] I genuinely enjoy helping others and hate disappointing people, yet every yes to someone else is effectively a no to my own priorities. [E] Last semester, for instance, I agreed to help a friend with his project, joined a new student club and took on extra shifts, all within the same month. Unsurprisingly, I'd **overcommitted**, and my grades suffered. Since then, I've adopted a simple rule: I never agree to anything on the spot; I check my calendar first and reply the next day. [C] So I'm gradually learning that saying no politely is a skill, not a sign of selfishness.",
+        f: ["How do you say no politely?", "Is it harder to say no to friends or to a boss?"], lx: ["overcommit", "priority", "bite off more than you can chew"] }
+    ]},
+    { icon: "phone", title: "Фокус и отвлечения", en: "Focus & distractions", questions: [
+      { t: "personal", src: "Платформа · Time Management", q: "How do you personally deal with distractions during your day? What do you do to create a more focused environment?", same: "stm-2",
+        f: ["Where do you focus best?", "Does music help you concentrate?"], lx: ["distraction", "stay focused", "multitask"] },
+      { t: "opinion", src: "Платформа · Mobile Phone Use", q: "Some people see their phone as a helpful tool for staying productive, while others say it's a major source of distraction and stress. Do smartphones make life easier overall, or do they get in the way of being present?",
+        model: "[A] I think smartphones make life easier, but they also take away a lot of our attention. [R] My phone helps me organize everything — my calendar, reminders, maps and messages. But social media apps are designed to keep us scrolling, and it's very easy to lose an hour. [E] For example, I once checked my screen time and saw that I spent four hours a day on my phone, mostly on short videos. After that, I deleted two apps and turned off notifications. Now I use it about two hours a day and feel calmer. [C] So phones are useful tools, but only if we control them.",
+        model5: "[A] Overall, smartphones make life easier, but they come at a real cost to our attention. [R] My phone is essentially my organizer, holding my calendar, reminders and maps. Many apps, however, are deliberately designed to keep us scrolling, so it's remarkably easy to lose an hour without noticing. [E] When I first checked my screen time, for instance, I was shocked to see I averaged four hours a day, mostly on short videos. I deleted two apps and switched off most notifications, and within a month my daily usage had halved, while I felt noticeably calmer and more present with friends. [C] So phones are excellent servants but terrible masters.",
+        f: ["How much time do you spend on your phone?", "Have you ever tried a digital detox?"], lx: ["distraction", "attention span", "stay focused"] },
+      { t: "opinion", src: "Платформа · Academic Life", q: "Do modern resources like online learning and digital tools make studying more convenient, or are they a distraction? How do you stay focused and motivated?",
+        model: "[A] Modern resources make learning much more convenient, but they can also be a big **distraction**. [R] I can find any information in seconds and watch lectures again, which is great. But when I study on my laptop, social media and messages are just one click away. [E] For example, when I watch an online lecture, I sometimes open another tab \"for a second\" and then lose twenty minutes. To **stay focused**, I use a website blocker during study time and study with a friend in the library. [C] So technology helps, but only with some rules.",
+        model5: "[A] They make learning far more convenient, though they can just as easily become a **distraction**. [R] Being able to find almost any explanation instantly or rewatch a lecture is invaluable; the trouble is that social media and messages are always just one click away from the material. [E] During online lectures, for example, I'd sometimes open another tab \"for a second\" and resurface twenty minutes later. To **stay focused**, I now use a website blocker during study sessions and, whenever possible, study alongside a friend in the library, which adds a little accountability. [C] So digital tools are a huge advantage, provided we set boundaries around how we use them.",
+        f: ["Do you take notes by hand or on a laptop?", "Should universities block social media on campus Wi-Fi?"], lx: ["distraction", "stay focused", "accountability"] },
+      { t: "opinion", q: "Many people say they are good at multitasking. Do you think multitasking actually helps people get more done?",
+        model: "[A] No, I don't think **multitasking** helps people get more done. [R] When we try to do two things at once, our brain constantly switches between them, so we make more mistakes and everything takes longer. It only feels productive. [E] For example, I used to write essays while chatting with friends and watching videos. One essay took me five hours! Last month I tried writing with my phone in another room, and I finished a similar essay in two hours, with better quality. [C] So doing one thing at a time is actually faster.",
+        model5: "[A] I'm fairly convinced that **multitasking** is largely an illusion. [R] When we try to do two demanding tasks at once, the brain doesn't truly work on both; it rapidly switches between them, which costs time and increases errors. Multitasking simply feels productive, which is precisely why it's so tempting. [E] I used to write essays while chatting with friends and half-watching videos, for instance, and a single essay could take me five hours. Last month, I tried writing with my phone in another room and finished a comparable essay in two, and it was noticeably better. [C] So, paradoxically, focusing on one thing at a time is the fastest way to get many things done.",
+        f: ["When is multitasking fine?", "Can young people multitask better than older people?"], lx: ["multitask", "stay focused", "productivity"] },
+      { t: "opinion", q: "Should phones be banned in classrooms?",
+        model: "[A] I think phones should be banned during lessons in schools, but not completely in universities. [R] Children and teenagers often can't control themselves, and phones make it hard to listen to the teacher. University students are adults, and they sometimes need phones for learning. [E] For example, my younger brother's school banned phones last year. His teachers say students now talk to each other more during breaks, and their grades have improved. At my university, we sometimes use our phones for quick quizzes in class, which is actually useful. [C] So the answer depends on the students' age.",
+        model5: "[A] In schools, I'd support a ban during lessons, whereas at university I think it should be left to the students. [R] Children and teenagers often lack the self-control to ignore notifications, and constant interruptions make genuine learning almost impossible. University students, by contrast, are adults who occasionally need their phones for academic purposes. [E] My younger brother's school, for example, introduced a ban last year, and teachers report that students now actually talk to each other during breaks and concentrate better in class. At my university, meanwhile, lecturers sometimes use phone-based quizzes, which keep everyone engaged. [C] So, in my view, the right policy depends largely on the students' age and maturity.",
+        f: ["Did your school allow phones?", "How would students react to a ban?"], lx: ["distraction", "attention span", "self-discipline"] }
+    ]},
+    { icon: "hourglass", title: "Прокрастинация и дедлайны", en: "Procrastination & deadlines", questions: [
+      { t: "experience", src: "Official 061", q: "Tell me about a time when you had to manage multiple tasks or responsibilities at once. How did you handle it?", same: "s061-2",
+        f: ["What would you do differently next time?", "Who helped you?"], lx: ["prioritize", "race against the clock", "bite off more than you can chew"] },
+      { t: "opinion", q: "Why do you think people procrastinate? What helps you stop?",
+        model: "[A] I think people **procrastinate** mainly because a task feels too big, boring or scary. [R] When we don't know where to start, our brain looks for something easier and more fun, like social media. It's not always laziness — often it's fear of doing something badly. [E] For example, when I have to write a long essay, I sometimes clean my whole room instead! What helps me is starting with a tiny step — I tell myself I'll write only one paragraph. Usually, once I start, I continue. [C] So the best way to beat procrastination is to just **get the ball rolling**.",
+        model5: "[A] In my experience, people **procrastinate** mainly when a task feels overwhelming, tedious or emotionally risky. [R] Faced with a big, unclear task, the brain naturally escapes to something easier and more rewarding; so it's often not laziness at all, but a fear of doing badly. [E] Whenever I face a long essay, for instance, my room suddenly becomes spotless. What helps me is shrinking the first step until it's almost laughable — promising myself I'll write just one paragraph. Nine times out of ten, once I've started, I keep going. [C] So the most effective cure, I think, is simply to **get the ball rolling**, however small the first push.",
+        f: ["What do you do when you procrastinate?", "Is procrastination always bad?"], lx: ["procrastinate", "put off", "get the ball rolling"] },
+      { t: "experience", q: "Tell me about a time you left something until the last minute. What happened?",
+        model: "[A] Last year, I left a big history essay until the night before the deadline. [R] I had two weeks, but I kept **putting it off** because the topic was boring and I thought I had plenty of time. [E] The evening before, I realized I hadn't even started. I **pulled an all-nighter**, drank three coffees and submitted it **in the nick of time**, at 11:58 p.m. The essay was okay, but I got a lower grade than usual, and I was exhausted for two days. [C] After that, I started breaking big tasks into small steps.",
+        model5: "[A] Last year, I left a major history essay until the very last night. [R] I'd had two full weeks, but because the topic bored me, I kept **putting it off**, convinced I had plenty of time. [E] The evening before the deadline, I realized with horror that I hadn't written a single word. I **pulled an all-nighter**, fueled by three cups of coffee, and submitted it **in the nick of time**, at two minutes to midnight. The grade was mediocre, and I was useless for the next two days. [C] It was a painful but effective lesson, and ever since, I've broken big assignments into small, scheduled steps." ,
+        f: ["Do you work better at night?", "What would you tell yourself two weeks earlier?"], lx: ["put off", "pull an all-nighter", "in the nick of time"] },
+      { t: "compare", q: "Some people say they work better under pressure. Do you agree, or is it better to finish things early?",
+        model: "[A] I think it's better to finish things early, even though pressure can sometimes help. [R] A deadline gives you energy and focus, but when you're in a hurry, you make mistakes and can't check your work. You're also very stressed. [E] For example, my roommate always says he works better under pressure. He writes everything on the last night, but he often has silly mistakes and gets sick after exam week. When I start early, I have time to improve my work and still sleep. [C] So a little pressure is fine, but last-minute work is risky.",
+        model5: "[A] I'd argue that finishing early almost always beats working under pressure, although a deadline can certainly sharpen focus. [R] Pressure does give you a burst of energy; however, it also leaves no time to review your work, and the stress takes a toll on your health. Many people who claim they work better under pressure, I suspect, have simply never tried the alternative. [E] My roommate, for instance, insists he thrives at the last minute, yet his essays are often full of careless mistakes, and he invariably falls ill after exam week. When I start early, by contrast, I can revise my work and still sleep properly. [C] So a little pressure is useful, but relying on it is a gamble.",
+        f: ["Do deadlines motivate you?", "Should teachers give earlier mini-deadlines?"], lx: ["deadline", "last-minute", "procrastinate"] },
+      { t: "opinion", src: "Платформа · Academic Life", q: "Academic pressure from deadlines, expectations or competition is common. How do you manage that pressure in a healthy way, and do schools do enough to support students' well-being?",
+        model: "[A] I manage pressure with planning and regular breaks, but I don't think schools do enough. [R] When I plan my deadlines early, I feel more in control. Sport and time with friends also help me relax. But many students don't know how to cope, and universities often just give more work. [E] For example, during exam week I still go running three times and meet friends once. At my university, there is a free psychologist, but the waiting list is about a month long, so it doesn't really help. [C] So students can do a lot themselves, but schools should offer more support.",
+        model5: "[A] I manage it through careful planning and protected downtime, though I don't believe institutions do nearly enough. [R] Planning deadlines early gives me a sense of control, while exercise and time with friends prevent stress from building up. Many students, however, have never been taught these strategies, and universities tend to respond to pressure simply by adding more work. [E] Even during exam week, for instance, I still run three times and see friends at least once. My university does offer free counseling, but the waiting list is almost a month long, which makes it virtually useless in a crisis. [C] So students can do a lot for themselves, but schools need to invest far more in support.",
+        f: ["What causes the most pressure for you?", "Is competition between students healthy?"], lx: ["deadline", "overwhelmed", "well-being"] }
+    ]},
+    { icon: "notebook", title: "Порядок вокруг", en: "Getting organized", questions: [
+      { t: "personal", src: "Official 114", q: "Do you consider yourself to be an organized person? Why or why not?", same: "s114-0",
+        f: ["Who is the most organized person you know?", "What's always a mess in your life?"], lx: ["organized", "keep track of", "plan ahead"] },
+      { t: "experience", src: "Official 114", q: "Have your organization habits changed or stayed the same over time? Why?", same: "s114-1",
+        f: ["What was the turning point?", "Do your parents think you're organized?"], lx: ["get organized", "responsibilities", "habit"] },
+      { t: "opinion", src: "Official 114", q: "Some people believe that being organized can significantly reduce stress. Do you agree or disagree?", same: "s114-3",
+        f: ["Can being too organized cause stress?", "What's the quickest way to get organized?"], lx: ["overwhelmed", "keep track of", "last-minute"] },
+      { t: "experience", src: "Платформа · Living Space", q: "Have you ever reorganized or redesigned a space to make it feel more motivating or productive? What changed, and how did it affect your mood or habits?",
+        model: "[A] Yes, last semester I completely reorganized my dorm room. [R] My desk was always covered with clothes and papers, so I studied in bed and couldn't concentrate. I felt tired and lazy all the time. [E] I moved my desk to the window, bought a small lamp and some boxes for my papers, and made a rule: nothing on the desk except my laptop and one notebook. After that, I started studying at my desk again, and I could focus much longer. Even my mood got better. [C] So a tidy space really helps me be productive.",
+        model5: "[A] I did, last semester, when I reorganized my entire dorm room. [R] My desk had become a dumping ground for clothes and papers, so I'd ended up studying in bed, where I could never concentrate for long and constantly felt sluggish. [E] I moved the desk next to the window to get natural light, bought a lamp and a few storage boxes, and introduced one simple rule: nothing on the desk except my laptop and a single notebook. Almost immediately, I started studying at my desk again, and my focus sessions doubled in length. Surprisingly, my mood improved too. [C] So I'm now convinced that an organized space leads to a more organized mind.",
+        f: ["What does your desk look like right now?", "Does a messy room say something about a person?"], lx: ["get organized", "productivity", "stay focused"] },
+      { t: "compare", q: "Some people say a messy desk is a sign of creativity. Do you agree, or does mess just make people less productive?",
+        model: "[A] I don't really agree — for most people, mess makes them less productive. [R] When there are many things around you, it's harder to find what you need and easier to get distracted. Some creative people may like a little chaos, but it isn't the reason they're creative. [E] For example, my roommate's desk is always a mess, and he often spends ten minutes looking for his charger or notes. My desk was messy too, but when I cleaned it, I started working faster. [C] So I think creativity comes from the person, not from the mess.",
+        model5: "[A] I'm rather skeptical; for most people, I suspect, mess simply reduces productivity. [R] A cluttered space makes it harder to find things and easier to get distracted. Admittedly, some highly creative people seem to thrive amid chaos, but that's more likely a coincidence than a cause. [E] My roommate, for instance, defends his chaotic desk as \"creative\", yet he regularly spends ten minutes hunting for his charger or lecture notes. When I cleared my own desk last semester, by contrast, I noticed I got started on tasks noticeably faster. [C] So creativity, in my view, comes from the person, not from the piles of paper around them.",
+        f: ["Is your room tidy right now?", "Can you be organized in a messy room?"], lx: ["organized", "distraction", "productivity"] }
+    ]},
+    { icon: "target", title: "Мои цели", en: "My goals", questions: [
+      { t: "personal", src: "Official 056 / 065 / 125", q: "Do you currently have any specific personal goals you are working towards? Give details.", same: "s056-0",
+        f: ["When did you set this goal?", "How will you know you've achieved it?"], lx: ["set a goal", "make progress", "achieve"] },
+      { t: "personal", src: "Платформа · Personal Goals", q: "What are one or two personal goals that are important to you right now — career, education, health or personal development? Why are they meaningful to you?", same: "spg-0",
+        f: ["Which goal is harder?", "Who knows about your goals?"], lx: ["set a goal", "priority", "personal growth"] },
+      { t: "experience", src: "Official 089", q: "Think of a time when you had something you wanted to achieve. What was it?", same: "s089-0",
+        f: ["What was the hardest moment?", "Would you do it again?"], lx: ["achieve", "set a goal", "milestone"] },
+      { t: "experience", src: "Official 056 / 065 / 125", q: "Can you describe an accomplishment that holds special meaning for you? Why is it significant?", same: "s056-2",
+        f: ["Who supported you?", "What did it teach you about yourself?"], lx: ["sense of accomplishment", "perseverance", "set a goal"] },
+      { t: "opinion", q: "Do you make New Year's resolutions? Why do you think most people give them up so quickly?",
+        model: "[A] I used to make New Year's resolutions, but now I don't. [R] I think most people give them up because the goals are too big and too vague, like \"get fit\" or \"be happier\". Also, motivation is high on January first, but it disappears when normal life starts again. [E] For example, two years ago I promised to go to the gym every day. I went five times in January and then stopped. Now I set small goals whenever I need them, not just at New Year. [C] So I think resolutions fail because people expect big changes overnight.",
+        model5: "[A] I used to, but I've stopped making them. [R] Most resolutions fail, I think, because they're both too ambitious and too vague — \"get fit\" or \"be more productive\" — and because they rely on the burst of motivation people feel on the first of January, which inevitably fades once ordinary life resumes. [E] Two years ago, for instance, I vowed to go to the gym every single day. I managed five visits in January before quietly giving up. Nowadays, I set small, specific goals whenever I need them, regardless of the date, and they stick far better. [C] So resolutions don't fail because people are weak, but because they expect transformation overnight.",
+        f: ["What's the strangest resolution you've heard?", "Is January the right time to start something new?"], lx: ["set a goal", "lose motivation", "realistic"] },
+      { t: "experience", q: "Tell me about a goal you gave up on. Do you regret it?",
+        model: "[A] When I was fifteen, I gave up on learning to play the piano, and I don't really regret it. [R] My parents wanted me to play, but I never enjoyed it. I practiced only because I had to, so I didn't make much progress. [E] After three years of lessons, I told my parents I wanted to stop and use the time for football, which I loved. They were disappointed at first, but I became captain of my school team two years later. [C] So I think it's okay to give up a goal if it isn't really yours.",
+        model5: "[A] At fifteen, I gave up the piano after three years of lessons, and, honestly, I don't regret it. [R] It had always been my parents' goal rather than mine; I practiced out of obligation, not interest, so my progress was painfully slow. [E] Eventually, I summoned the courage to tell them I wanted to stop and devote that time to football instead. They were disappointed initially, but two years later I'd become captain of my school team — something I'd worked for with genuine passion. Occasionally I wish I could play a song or two, but that's about it. [C] So I'd say giving up isn't always failure; sometimes it's simply choosing the right goal.",
+        f: ["When is quitting the right decision?", "Would you start again now?"], lx: ["give up", "motivation", "perseverance"] }
+    ]},
+    { icon: "map", title: "Как достигать целей", en: "How to reach goals", questions: [
+      { t: "personal", src: "Official 056 / 065 / 125", q: "What steps can you take to achieve your goals, or goals in general? What challenges do you face?", same: "s056-1",
+        f: ["Which step is the hardest for you?", "Do you write your goals down?"], lx: ["break it down", "track your progress", "lose motivation"] },
+      { t: "personal", src: "Платформа · Personal Goals", q: "What specific strategies or habits help you stay focused on your goals over time — plans, deadlines, apps, rewards? Why do they work for you?", same: "spg-1",
+        f: ["Have you tried a vision board?", "Do rewards work for you?"], lx: ["break it down", "track your progress", "accountability"] },
+      { t: "experience", src: "Official 089", q: "How do you handle difficulties or obstacles that come up while working toward what you want to achieve?", same: "s089-1",
+        f: ["Who do you ask for help?", "Have you ever changed a goal because of an obstacle?"], lx: ["setback", "get back on track", "take it one step at a time"] },
+      { t: "experience", src: "Платформа · Personal Goals", q: "When you face setbacks or lose motivation, how do you respond? What techniques help you bounce back and stay on track?", same: "spg-2",
+        f: ["How long does a slump usually last for you?", "What do you say to yourself?"], lx: ["setback", "get back on track", "self-doubt"] },
+      { t: "compare", q: "Is it better to set big, ambitious goals or small, realistic ones?",
+        model: "[A] I think the best way is to have one big goal and many small ones inside it. [R] A big goal gives you excitement and a direction. But if you only have a big goal, it feels impossible, and you give up. Small goals show you that you're moving forward. [E] For example, my big goal was to run a half marathon. But my weekly goals were small — first three kilometers, then five, then eight. Each small goal felt like a victory, and after six months I was ready for the race. [C] So big goals inspire us, and small goals get us there.",
+        model5: "[A] I'd say the most effective approach is to combine the two: one ambitious goal broken down into small, realistic **milestones**. [R] A big goal provides inspiration and direction, but on its own it can feel so distant that it becomes discouraging. Small goals, by contrast, offer regular proof that you're advancing. [E] My ambitious goal, for instance, was to complete a half marathon, yet my weekly targets were modest — three kilometers, then five, then eight. Each one felt like a small victory, and six months later I was genuinely ready for race day. [C] Put simply, big goals tell you where to go, whereas small goals actually get you there.",
+        f: ["What's your biggest dream?", "Can a goal be too small?"], lx: ["milestone", "realistic", "take it one step at a time"] },
+      { t: "compare", q: "Should you tell other people about your goals or keep them private?",
+        model: "[A] I think it's better to tell one or two close people, not everyone. [R] When a friend knows about your goal, you feel more responsible and you're less likely to give up. But if you announce it on social media, you get likes and feel successful before you've done anything. [E] For example, I told only my roommate that I wanted to study Spanish every day. She asks me about it almost every evening, so I can't skip. My friend posted about his diet goal online, got lots of support and stopped after a week. [C] So share your goals, but only with people who will check on you.",
+        model5: "[A] I'd recommend sharing them with one or two trusted people rather than with everyone. [R] Telling a close friend creates **accountability**, which makes quitting harder. Announcing goals publicly, however, can backfire, since the praise you receive gives you a sense of achievement before you've actually done anything. [E] I told only my roommate about my daily Spanish practice, for instance, and she checks in almost every evening, so skipping simply isn't an option. A friend of mine, by contrast, posted his fitness plan online, received dozens of encouraging comments and gave up within a week. [C] So I'd say share your goals selectively — with people who'll hold you to them, not just applaud them.",
+        f: ["Do you post about your achievements online?", "Who would you tell about a new goal?"], lx: ["accountability", "motivation", "achieve"] }
+    ]},
+    { icon: "bulb", title: "Зачем нужны цели", en: "Why goals matter", questions: [
+      { t: "opinion", src: "Official 056 / 065 / 125", q: "Some people believe that setting and working towards individual goals is crucial for self-improvement and personal growth. Do you agree?", same: "s056-3",
+        f: ["Can people grow without goals?", "What's more important: the goal or the journey?"], lx: ["personal growth", "set a goal", "sense of direction"] },
+      { t: "opinion", src: "Official 089", q: "In your opinion, how important is goal setting for personal growth?", same: "s089-2",
+        f: ["Do you know anyone who has no goals but is happy?", "When did a goal change you?"], lx: ["personal growth", "sense of direction", "comfort zone"] },
+      { t: "opinion", src: "Платформа · Personal Goals", q: "Do you think setting goals generally helps people grow, or can too much focus on goals create stress and unrealistic expectations?", same: "spg-3",
+        f: ["How many goals is too many?", "Is it okay to have no goals for a while?"], lx: ["realistic", "pressure", "personal growth"] },
+      { t: "opinion", src: "Official 089", q: "Do you think children should be taught to set personal goals from an early age? Why or why not?", same: "s089-3",
+        f: ["What goals did you have as a child?", "Should parents set goals for their children?"], lx: ["set a goal", "self-discipline", "pressure"] },
+      { t: "opinion", src: "Official 114", q: "Do you think organizational skills should be taught in schools? Why or why not?", same: "s114-2",
+        f: ["How would you teach it?", "Which subject could be replaced to make time for it?"], lx: ["time management", "plan ahead", "life skills"] },
+      { t: "compare", q: "What is more important for success: talent or self-discipline?",
+        model: "[A] I think **self-discipline** is more important than talent. [R] Talent gives you a good start, but without regular work, talented people often stop improving. A disciplined person keeps practicing every day, and in the end, they usually go further. [E] For example, in my school football team, there was a very talented boy, but he often skipped training. Another player was less talented but trained every day, even in the rain. Today, the second player plays for a semi-professional team, and the talented boy stopped playing. [C] So talent is a gift, but discipline is what turns it into success.",
+        model5: "[A] I'm convinced that **self-discipline** matters more than talent in the long run. [R] Talent certainly gives you a head start, but naturally gifted people often coast and stop improving, whereas disciplined people keep refining their skills day after day until they overtake them. [E] On my school football team, for instance, there was an extraordinarily talented boy who regularly skipped training. Another player, far less gifted, never missed a session, even in pouring rain. Today, the second plays for a semi-professional club, while the first gave up football entirely. [C] So talent may open the door, but it's discipline that carries you through it — or, as the saying goes, **Rome wasn't built in a day**.",
+        f: ["Can self-discipline be learned?", "Name someone who succeeded through hard work."], lx: ["self-discipline", "perseverance", "Rome wasn't built in a day"] }
+    ]},
+    { icon: "flame", title: "Мотивация", en: "Motivation", questions: [
+      { t: "personal", src: "Платформа · Learning Experiences", q: "Some people are driven by academic success or career goals, while others focus on learning for personal growth. What has motivated you most in your education so far, and has that motivation changed?",
+        model: "[A] At school I was motivated mostly by grades, but now I'm motivated more by my future career and curiosity. [R] In school, my parents praised good grades, so I studied to get A's. At university, I understand that I'm learning skills I'll actually use. [E] For example, in high school I memorized everything for tests and forgot it a week later. Now, in my marketing classes, I try to understand how real companies work, because I want to work in this field. I even read articles that aren't required. [C] So my motivation has changed from external to internal.",
+        model5: "[A] In school, I was driven mainly by grades, whereas now my motivation comes from my career plans and genuine curiosity. [R] Back then, good grades brought praise from my parents, so I studied primarily to earn top marks. At university, however, I've realized I'm acquiring skills I'll actually rely on in my future career. [E] In high school, for instance, I'd memorize material for tests and forget it within a week. Now, in my marketing courses, I'm keen to understand how real companies operate, to the point where I regularly read articles nobody has assigned. [C] So my motivation has shifted from external rewards to something far more internal, and, in my experience, far more durable.",
+        f: ["Do grades motivate or stress you?", "What subject do you study just for fun?"], lx: ["motivation", "personal growth", "career goals"] },
+      { t: "opinion", src: "Платформа · Leisure Activities", q: "There's a growing interest in using free time to learn new skills or pursue personal development. Do you think this is a good use of leisure time?",
+        model: "[A] Yes, I think it's a good use of free time, but only if you enjoy it. [R] Learning something new in your free time makes you feel proud and can help your career. But free time is also for rest. If every hour must be \"productive\", you can get tired and stressed. [E] For example, I learn Spanish in the evenings because I love the language and want to travel to Latin America. But on Sundays I just relax, watch movies and meet friends, with no goals at all. [C] So personal development is great, as long as rest still has a place.",
+        model5: "[A] It can be an excellent use of leisure time, provided it's driven by enjoyment rather than guilt. [R] Picking up a new skill brings a real **sense of accomplishment** and can even benefit your career. **That said**, leisure also exists for genuine rest, and turning every free hour into \"self-improvement\" can easily lead to exhaustion. [E] I study Spanish in the evenings, for instance, because I genuinely love the language and dream of traveling around Latin America. Sundays, on the other hand, are completely goal-free: films, long walks and friends. [C] So personal development is a wonderful way to spend free time, as long as it doesn't crowd out the rest we actually need.",
+        f: ["What skill would you like to learn in your free time?", "Do you feel guilty when you rest?"], lx: ["develop new skills", "sense of accomplishment", "leisure time"] },
+      { t: "opinion", src: "Official 088 · Online Learning", q: "Online courses often let students work at their own pace. How do you feel about learning when there is no set class time?",
+        model: "[A] I like it, but it's difficult for me. [R] Learning at my own pace is flexible — I can study when I have energy and repeat difficult parts. But without a fixed time, it's very easy to **procrastinate**, and you need a lot of **self-discipline**. [E] For example, last year I signed up for an online course in data analysis. In the first two weeks, I watched all the lessons, but then I got busy and stopped. I finished it only when I put a fixed time in my calendar — every Tuesday and Thursday at six. [C] So it works well, but only if you create your own schedule.",
+        model5: "[A] I appreciate the flexibility, but I find it genuinely challenging. [R] Learning at your own pace means you can study when your energy is highest and revisit difficult parts as often as you need. Without a fixed class time, however, it's dangerously easy to **procrastinate**, so it demands considerable **self-discipline**. [E] Last year, for instance, I enrolled in an online data analysis course. I flew through the first two weeks, then got busy and drifted away from it entirely. I only completed it once I'd scheduled two fixed sessions a week in my calendar, essentially creating the structure the course lacked. [C] So self-paced learning works beautifully, but only for those willing to impose their own schedule.",
+        f: ["Have you ever dropped an online course?", "Who is self-paced learning best for?"], lx: ["self-discipline", "procrastinate", "schedule"] },
+      { t: "opinion", q: "Do rewards — like a treat after finishing a task — really help people stay motivated?",
+        model: "[A] Yes, I think small rewards help, especially for boring tasks. [R] When you know something nice is waiting for you, it's easier to start and finish the work. But rewards shouldn't be too big, or the reward becomes more important than the task. [E] For example, when I write an essay, I promise myself an episode of my favorite show after every two pages. It really works — I write faster. But when I tried to reward myself with shopping, I spent too much money! [C] So small rewards are a simple and useful trick.",
+        model5: "[A] Small rewards definitely help, particularly with tedious tasks, though they need to be used carefully. [R] Knowing something pleasant awaits makes it easier both to start and to finish; if the rewards are too generous, however, the reward rather than the work becomes the point. [E] When writing an essay, for instance, I allow myself an episode of my favorite series after every two pages, and I write noticeably faster as a result. When I once tried rewarding myself with shopping, by contrast, my motivation soared, but so did my credit card bill. [C] So modest rewards are a simple, effective trick, as long as they don't cost more than the task is worth.",
+        f: ["What's your favorite reward?", "Should parents pay children for good grades?"], lx: ["motivation", "sense of accomplishment", "procrastinate"] },
+      { t: "opinion", q: "Does seeing other people's achievements on social media motivate you or make you feel worse?",
+        model: "[A] Honestly, it usually makes me feel worse. [R] On social media, people only show their successes, not their problems. So it looks like everyone is achieving more than you, and that can kill your motivation. Sometimes it inspires me, but not often. [E] For example, during exam week, I saw a classmate post about her internship at a famous company, and I felt like I was failing. Later I found out she had applied to forty companies and got thirty-nine rejections — she just didn't post about that. [C] So I try to compare myself only with my past self.",
+        model5: "[A] More often than not, it makes me feel worse, although it occasionally inspires me. [R] Social media shows only the highlights of people's lives, so it creates the illusion that everyone else is achieving more, faster — which can quietly erode your own motivation. [E] During exam week, for instance, a classmate posted about landing an internship at a prestigious firm, and I felt as if I were falling hopelessly behind. I later discovered she'd applied to forty companies and received thirty-nine rejections, none of which, naturally, made it onto her feed. [C] So I've made a conscious decision to measure my progress against my past self rather than against other people's highlights.",
+        f: ["Do you post your achievements?", "How can people use social media in a healthier way?"], lx: ["motivation", "self-doubt", "compare yourself"] }
+    ]},
+    { icon: "trending", title: "Время и общество", en: "Time & society", questions: [
+      { t: "opinion", src: "Платформа · Time Management", q: "Some companies and schools are testing shorter workdays or four-day weeks to boost focus and reduce burnout. Could working fewer hours help people get more done, or might it backfire?", same: "stm-3",
+        f: ["Would you take a four-day week with less pay?", "Should schools have four-day weeks?"], lx: ["productivity", "burnout", "workload"] },
+      { t: "opinion", q: "Many people say they are busier than ever, even with technology that saves time. Why do you think that is?",
+        model: "[A] I think people are busier because technology saves time, but we fill that time with more tasks. [R] Before, you could only work in the office. Now, with phones and laptops, we can work and answer messages anywhere and anytime. Also, we have so many options for entertainment that we feel we must do everything. [E] For example, my father says that twenty years ago he finished work at six and nobody could call him. Now he gets work emails during dinner. And I always feel I should be studying, exercising and seeing friends at the same time. [C] So technology gives us time, but it also takes it back.",
+        model5: "[A] Paradoxically, I think it's precisely because technology saves time that we feel busier than ever. [R] Every minute it frees up is quickly filled with new tasks, and since laptops and phones let us work anywhere, the boundary between work and rest has largely disappeared. On top of that, the sheer number of options creates pressure to do everything. [E] My father, for instance, recalls that twenty years ago nobody could reach him after six o'clock, whereas today work emails arrive during dinner. I, meanwhile, constantly feel I should be studying, exercising and socializing all at once. [C] So technology gives us time with one hand and quietly takes it back with the other.",
+        f: ["What takes up most of your time?", "Did people really have more free time in the past?"], lx: ["time management", "overwhelmed", "workload"] },
+      { t: "opinion", q: "'Hustle culture' says you should always be working towards your goals and never waste a minute. Is this a healthy attitude?",
+        model: "[A] No, I don't think hustle culture is healthy. [R] It makes people feel guilty when they rest, and nobody can work all the time without getting tired and stressed. In the end, people **burn out** and do less, not more. [E] For example, a friend of mine followed this idea — she studied, worked and did a side project every day, and slept five hours a night. After four months, she got sick and couldn't do anything for weeks. [C] So working hard is good, but rest is part of success, not the opposite.",
+        model5: "[A] I don't think it's healthy at all, despite its appeal. [R] Hustle culture makes rest feel like a moral failure, yet nobody can sustain constant work without paying for it, and exhausted people ultimately achieve less, not more. [E] A friend of mine, for example, fully embraced that mindset: she studied, worked and ran a side project every single day on five hours' sleep, proudly posting about it online. Within four months, she'd **burned out** so badly that she couldn't work for weeks. [C] So ambition is admirable, but rest isn't the opposite of success; it's a precondition for it.",
+        f: ["Why is hustle culture popular online?", "How many hours a day can a person work well?"], lx: ["burn out", "productivity", "overcommit"] },
+      { t: "opinion", q: "Some people say that doing nothing — resting, daydreaming — is actually productive. Do you agree?",
+        model: "[A] Yes, I agree that doing nothing can be productive. [R] When we rest, our brain doesn't stop working. It organizes information and makes new connections, and that's often when we get our best ideas. Rest also gives us energy for later. [E] For example, I often get stuck on an essay, but when I go for a walk without my phone, the solution suddenly appears. Last week I found the perfect topic for my project while lying on the grass in the park. [C] So rest isn't wasted time; it's part of the work.",
+        model5: "[A] I agree; some of my most productive moments happen when I'm doing nothing at all. [R] When we stop actively working, the brain continues to process information in the background, making unexpected connections, which is why so many good ideas seem to arrive out of nowhere. Rest also restores the energy we need to concentrate later. [E] Whenever I'm stuck on an essay, for instance, a walk without my phone almost always unblocks me. Just last week, the topic for my group project came to me while I was lying on the grass in a park, staring at the sky. [C] So idle time isn't wasted time; it's often where the real thinking happens.",
+        f: ["When do you get your best ideas?", "Are people afraid of being bored?"], lx: ["productivity", "attention span", "recharge"] }
+    ]},
+    { icon: "sparkles", title: "Представь, что…", en: "What if…?", questions: [
+      { t: "hypo", q: "If you had one extra hour every day, how would you spend it?",
+        model: "[A] If I had an extra hour every day, I'd use it for sleep and reading. [R] Right now, I sleep about seven hours, and I always feel a bit tired. Also, I love reading, but I almost never have time for books that aren't for my classes. [E] For example, I'd go to bed thirty minutes earlier and read for thirty minutes before sleeping, instead of looking at my phone. I think after a month, I'd feel more energetic and would read maybe two extra books. [C] So I'd use it to take care of myself, not to work more.",
+        model5: "[A] I'd split it between sleep and reading for pleasure. [R] At the moment, I average about seven hours of sleep and constantly feel slightly drained, and although I love reading, I rarely have time for anything that isn't on my course list. [E] Specifically, I'd go to bed half an hour earlier and spend another half hour reading a novel instead of scrolling through my phone. Within a month, I imagine, I'd feel noticeably more energetic and would have finished a couple of books I've been meaning to read for ages. [C] So, tempting as it might be to use it for extra work, I'd invest that hour in my well-being.",
+        f: ["What would you NOT spend it on?", "Would most people just spend it on their phones?"], lx: ["make time for", "priority", "wind down"] },
+      { t: "hypo", q: "Imagine you had a whole year off with no obligations. How would you use it?",
+        model: "[A] I would spend half the year traveling and half the year learning something new. [R] I've always wanted to see South America, and I'd love to finally become fluent in Spanish. But I'd still want a plan, because without one, I'd waste the year. [E] For example, I'd spend six months in Argentina, Chile and Peru, taking Spanish classes and volunteering. Then I'd come home and do an online course in web design, which I've been interested in for a long time. [C] So it would be a year of adventure, but with clear goals.",
+        model5: "[A] I'd divide it between traveling through South America and learning a practical new skill. [R] I've dreamed of exploring that continent for years, and it would finally give me the chance to become fluent in Spanish. Knowing myself, though, I'd still need a loose plan; otherwise, the year would simply slip away. [E] I'd spend the first six months moving between Argentina, Chile and Peru, taking language classes and volunteering along the way. Then I'd return home and take an intensive course in web design, something I've been curious about for a long time. [C] So it would be a year of adventure, but one with a clear sense of direction.",
+        f: ["Would you be bored without obligations?", "Should students take a gap year?"], lx: ["set a goal", "plan ahead", "spontaneous"] },
+      { t: "hypo", q: "If you could give your younger self one piece of advice about time or goals, what would it be?",
+        model: "[A] I would tell my younger self: start small, but start now. [R] When I was younger, I had many big dreams, but I always waited for the \"perfect time\" to begin, so I often didn't start at all. [E] For example, at fourteen I wanted to learn guitar, but I kept saying I'd start in the summer when I had more time. I never did. If I'd practiced just ten minutes a day, by now I'd play quite well. [C] So my advice would be: don't wait for the perfect moment — just **get the ball rolling**.",
+        model5: "[A] I'd tell my younger self to start small, but to start immediately. [R] As a teenager, I had plenty of ambitious ideas, yet I kept waiting for the \"perfect moment\" to begin, which, of course, never arrived. [E] At fourteen, for example, I desperately wanted to learn the guitar, but I kept postponing it until the summer holidays, when I'd supposedly have more time. Summer came and went, and I never started. Had I practiced for just ten minutes a day, I'd be a decent player by now. [C] So my advice would be simple: forget the perfect moment, and just **get the ball rolling** — **time flies** faster than you think.",
+        f: ["Would your younger self listen?", "What advice would you give a first-year student?"], lx: ["get the ball rolling", "time flies", "procrastinate"] },
+      { t: "hypo", q: "Where do you see yourself in ten years? Do you plan that far ahead?",
+        model: "[A] I have a general idea, but I don't plan that far ahead in detail. [R] Life changes a lot, and if I make a very exact ten-year plan, I'll probably feel disappointed when things change. But it's good to know the direction. [E] For example, in ten years I'd like to work in marketing for an international company, maybe in another country, and speak three languages. I don't know which company or which country, and that's okay. I focus on the next one or two years. [C] So I have a direction, but not a fixed map.",
+        model5: "[A] I have a rough vision, but I deliberately avoid planning that far ahead in detail. [R] A decade is long enough for circumstances, opportunities and even my own interests to change completely, so a rigid ten-year plan would almost certainly end in disappointment. Having a general direction, however, helps me make better decisions today. [E] Ideally, for instance, I'd be working in marketing for an international company, perhaps abroad, and speaking three languages. Which company or country, I genuinely don't know, and I'm comfortable with that, so I concentrate on concrete goals for the next year or two. [C] In short, I have a compass rather than a map.",
+        f: ["Where did you think you'd be today, five years ago?", "Is it scary not to have a plan?"], lx: ["long-term", "plan ahead", "set a goal"] }
+    ]}
+  ],
+
+  checklist: [
+    "Ответил(а) на вопрос прямо в первом предложении",
+    "Использовал(а) минимум 3 коллокации из урока",
+    "Вставил(а) одну идиому — естественно, а не «для галочки»",
+    "Привёл(а) конкретный пример: дедлайн, цель, свой обычный день",
+    "Использовал(а) фразу контраста: While it's true that… / That said…",
+    "Уложился(ась) в 45 секунд без длинных пауз"
+  ],
+
+  targetLexis: ["set a goal", "achieve a goal", "make progress", "track my progress", "stick to a plan", "manage my time", "make time for", "waste time", "keep track of", "make a to-do list", "plan ahead", "stay focused", "put off", "procrastinate", "lose motivation", "get back on track", "routine", "productivity", "self-discipline", "setback", "a night owl", "in the nick of time", "that said"]
+};
+
+/* =====================================================================
+   ИЛЛЮСТРАЦИИ (SVG)
+   ===================================================================== */
+const HERO_ART = `
+<svg viewBox="0 0 320 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Календарь, будильник, список дел и мишень">
+  <ellipse cx="165" cy="228" rx="128" ry="10" fill="rgba(0,0,0,.22)"/>
+  <g transform="rotate(-5 110 150)">
+    <rect x="40" y="78" width="140" height="140" rx="12" fill="#fff"/>
+    <rect x="40" y="78" width="140" height="32" rx="12" fill="#ec4899"/>
+    <rect x="40" y="98" width="140" height="12" fill="#ec4899"/>
+    <rect x="66" y="68" width="8" height="22" rx="4" fill="#9d174d"/><rect x="146" y="68" width="8" height="22" rx="4" fill="#9d174d"/>
+    <g fill="#e2e8f0">
+      <rect x="54" y="122" width="20" height="18" rx="4"/><rect x="80" y="122" width="20" height="18" rx="4"/><rect x="106" y="122" width="20" height="18" rx="4"/><rect x="132" y="122" width="20" height="18" rx="4"/><rect x="158" y="122" width="12" height="18" rx="4"/>
+      <rect x="54" y="148" width="20" height="18" rx="4"/><rect x="106" y="148" width="20" height="18" rx="4"/><rect x="132" y="148" width="20" height="18" rx="4"/><rect x="158" y="148" width="12" height="18" rx="4"/>
+      <rect x="54" y="174" width="20" height="18" rx="4"/><rect x="80" y="174" width="20" height="18" rx="4"/><rect x="106" y="174" width="20" height="18" rx="4"/><rect x="132" y="174" width="20" height="18" rx="4"/>
+    </g>
+    <rect x="80" y="148" width="20" height="18" rx="4" fill="#a78bfa"/>
+    <circle cx="142" cy="183" r="12" fill="none" stroke="#e11d48" stroke-width="3.5"/>
+  </g>
+  <g transform="translate(188 118)">
+    <circle cx="48" cy="54" r="46" fill="#38bdf8"/>
+    <circle cx="48" cy="54" r="36" fill="#fff"/>
+    <path d="M48 30 v24 l16 10" stroke="#0f172a" stroke-width="5" fill="none" stroke-linecap="round"/>
+    <circle cx="16" cy="12" r="12" fill="#0284c7"/><circle cx="80" cy="12" r="12" fill="#0284c7"/>
+    <path d="M22 98 l-8 10 M74 98 l8 10" stroke="#0284c7" stroke-width="5" stroke-linecap="round"/>
+  </g>
+  <g class="tl-coin">
+    <rect x="206" y="24" width="90" height="74" rx="12" fill="#fff" opacity=".96"/>
+    <path d="M218 42 l5 5 l9 -10" stroke="#7c3aed" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><rect x="240" y="38" width="44" height="6" rx="3" fill="#c4b5fd"/>
+    <path d="M218 62 l5 5 l9 -10" stroke="#7c3aed" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><rect x="240" y="58" width="36" height="6" rx="3" fill="#c4b5fd"/>
+    <rect x="218" y="76" width="12" height="12" rx="3" fill="none" stroke="#7c3aed" stroke-width="2.5"/><rect x="240" y="79" width="40" height="6" rx="3" fill="#e2e8f0"/>
+  </g>
+  <path d="M28 46 l4 10 l10 4 l-10 4 l-4 10 l-4 -10 l-10 -4 l10 -4 z" fill="#a5f3fc"/>
+  <path d="M176 30 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3 z" fill="#fbcfe8"/>
+</svg>`;
+
+/* Мини-иллюстрации к идиомам (160×96). Классы a-* анимируются при наведении. */
+const CLOCK = (x, y, r, c = "#0284c7") => `<circle cx="${x}" cy="${y}" r="${r}" fill="#fff" stroke="${c}" stroke-width="3.5"/><path d="M${x} ${y - r * .6} V${y} l${r * .45} ${r * .3}" stroke="#0f172a" stroke-width="3" fill="none" stroke-linecap="round"/>`;
+const PERSON = (x, y, c) => `<circle cx="${x}" cy="${y}" r="6" fill="${c}"/><path d="M${x} ${y + 6} v14 M${x} ${y + 12} l-8 6 M${x} ${y + 12} l8 -4 M${x} ${y + 20} l-6 10 M${x} ${y + 20} l6 10" stroke="${c}" stroke-width="3.5" fill="none" stroke-linecap="round"/>`;
+const IDIOM_ART = {
+  owl: `<path d="M8 86 h144" stroke="#92400e" stroke-width="5" stroke-linecap="round"/>
+         <g class="a-tag"><ellipse cx="58" cy="56" rx="24" ry="28" fill="#7c3aed"/><ellipse cx="58" cy="64" rx="15" ry="17" fill="#c4b5fd"/>
+         <path d="M38 34 l6 10 M78 34 l-6 10" stroke="#7c3aed" stroke-width="6" stroke-linecap="round"/>
+         <circle cx="49" cy="46" r="8" fill="#fff"/><circle cx="67" cy="46" r="8" fill="#fff"/><circle cx="49" cy="46" r="4" fill="#1e1b4b"/><circle cx="67" cy="46" r="4" fill="#1e1b4b"/>
+         <path d="M54 54 l4 6 l4 -6z" fill="#f59e0b"/></g>
+         <path d="M128 16 a13 13 0 1 0 13 18 a10 10 0 1 1 -13 -18z" fill="#c7d2fe"/>
+         <g class="a-no"><circle cx="112" cy="68" r="9" fill="#fdba74"/><path d="M112 54 v-4 M100 68 h-4 M124 68 h4 M104 60 l-3 -3 M120 60 l3 -3" stroke="#fb923c" stroke-width="2.5" stroke-linecap="round"/></g>`,
+  allnighter: `<rect x="24" y="78" width="112" height="8" rx="3" fill="#78350f"/>
+         <rect x="44" y="40" width="60" height="38" rx="4" fill="#334155"/><rect x="49" y="45" width="50" height="28" rx="2" fill="#bae6fd"/>
+         <path d="M54 52 h30 M54 59 h38 M54 66 h22" stroke="#0284c7" stroke-width="2.5" stroke-linecap="round"/>
+         <rect x="112" y="58" width="16" height="20" rx="3" fill="#f472b6"/><path d="M128 62 a6 6 0 0 1 0 12" stroke="#f472b6" stroke-width="3" fill="none"/>
+         <g class="a-flame"><path d="M116 52 q-3 -6 1 -10 M123 52 q-3 -6 1 -10" stroke="#94a3b8" stroke-width="2" fill="none" stroke-linecap="round"/></g>
+         <path d="M30 14 a12 12 0 1 0 12 16 a9 9 0 1 1 -12 -16z" fill="#c7d2fe"/>
+         <g fill="#a5b4fc"><circle cx="62" cy="14" r="2"/><circle cx="90" cy="24" r="2.5"/><circle cx="132" cy="18" r="2"/></g>`,
+  nick: `${CLOCK(56, 48, 32, "#e11d48")}
+         <path d="M56 22 v4 M56 70 v4 M30 48 h4 M78 48 h4" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round"/>
+         <g class="a-r"><path d="M150 30 L104 42" stroke="#334155" stroke-width="3.5" stroke-linecap="round"/><path d="M100 43 l10 -8 l0 14z" fill="#334155"/>
+         <path d="M150 30 l6 -6 M150 30 l8 2" stroke="#ec4899" stroke-width="3" stroke-linecap="round"/></g>
+         <rect x="96" y="66" width="56" height="20" rx="6" fill="#fff" stroke="#e11d48" stroke-width="2.5"/><text x="124" y="80" text-anchor="middle" font-size="11" font-weight="800" font-family="system-ui" fill="#e11d48">23:59</text>`,
+  race: `<path d="M8 86 h144" stroke="#cbd5e1" stroke-width="6" stroke-linecap="round"/>
+         <g class="a-l">${PERSON(48, 44, "#2563eb")}<path d="M22 54 h12 M18 62 h12" stroke="#93c5fd" stroke-width="3" stroke-linecap="round"/></g>
+         <rect x="104" y="6" width="12" height="8" rx="2" fill="#475569"/>
+         ${CLOCK(110, 40, 24, "#ea580c")}
+         <path d="M134 22 l6 -6" stroke="#475569" stroke-width="4" stroke-linecap="round"/>`,
+  flies: `<g class="a-tag"><path d="M46 50 C26 30 12 36 10 46 C22 44 26 52 46 56z" fill="#c4b5fd"/><path d="M46 56 C28 54 18 62 22 70 C30 62 38 64 48 62z" fill="#a78bfa"/>
+         <path d="M114 50 C134 30 148 36 150 46 C138 44 134 52 114 56z" fill="#c4b5fd"/><path d="M114 56 C132 54 142 62 138 70 C130 62 122 64 112 62z" fill="#a78bfa"/>
+         ${CLOCK(80, 52, 30, "#7c3aed")}</g>
+         <path d="M40 88 q8 -6 16 0 M104 88 q8 -6 16 0" stroke="#cbd5e1" stroke-width="3" fill="none" stroke-linecap="round"/>`,
+  chew: `<g class="a-crack"><path d="M36 50 a44 22 0 0 1 88 0z" fill="#f59e0b"/><g fill="#fef3c7"><circle cx="60" cy="38" r="2"/><circle cx="80" cy="34" r="2"/><circle cx="100" cy="40" r="2"/></g>
+         <rect x="32" y="52" width="96" height="10" rx="4" fill="#dc2626"/>
+         <rect x="34" y="62" width="92" height="12" rx="5" fill="#78350f"/>
+         <rect x="32" y="74" width="96" height="6" rx="3" fill="#facc15"/>
+         <path d="M36 80 h88 a6 6 0 0 1 -6 8 h-76 a6 6 0 0 1 -6 -8z" fill="#f59e0b"/></g>
+         <circle cx="140" cy="22" r="11" fill="#fff" stroke="#e11d48" stroke-width="2.5"/><text x="140" y="27" text-anchor="middle" font-size="14" font-weight="800" font-family="system-ui" fill="#e11d48">!</text>`,
+  steps: `<path d="M20 86 h30 v-18 h30 v-18 h30 v-18 h30" fill="none" stroke="#0891b2" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>
+         <path d="M20 86 h30 v-18 h30 v-18 h30 v-18 h30 v54 h-120z" fill="#cffafe"/>
+         <g class="a-up">${PERSON(64, 18, "#db2777")}</g>
+         <path d="M132 6 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3z" fill="#fbbf24"/>`,
+  ball: `<path d="M4 86 h152" stroke="#cbd5e1" stroke-width="4" stroke-linecap="round"/>
+         <g class="a-r"><circle cx="96" cy="64" r="20" fill="#f97316"/><path d="M76 64 h40 M96 44 v40" stroke="#7c2d12" stroke-width="2.5"/><path d="M82 50 q14 14 0 28 M110 50 q-14 14 0 28" stroke="#7c2d12" stroke-width="2.5" fill="none"/></g>
+         <path d="M40 58 h20 M34 68 h22 M42 78 h16" stroke="#fdba74" stroke-width="3.5" stroke-linecap="round"/>
+         <path d="M128 40 l8 -6 M132 54 h10" stroke="#fbbf24" stroke-width="3" stroke-linecap="round"/>`,
+  rome: `<path d="M8 88 h144" stroke="#a8a29e" stroke-width="4" stroke-linecap="round"/>
+         <g fill="#fdba74" stroke="#c2410c" stroke-width="1.5"><rect x="30" y="72" width="22" height="12" rx="1"/><rect x="54" y="72" width="22" height="12" rx="1"/><rect x="78" y="72" width="22" height="12" rx="1"/><rect x="102" y="72" width="22" height="12" rx="1"/>
+         <rect x="42" y="58" width="22" height="12" rx="1"/><rect x="66" y="58" width="22" height="12" rx="1"/><rect x="90" y="58" width="22" height="12" rx="1"/>
+         <rect x="54" y="44" width="22" height="12" rx="1"/><rect x="78" y="44" width="22" height="12" rx="1"/></g>
+         <g class="a-drop"><rect x="66" y="12" width="22" height="12" rx="1" fill="#fdba74" stroke="#c2410c" stroke-width="1.5"/></g>
+         <path d="M120 20 h26 M120 28 h20" stroke="#cbd5e1" stroke-width="3" stroke-linecap="round"/>
+         <circle cx="138" cy="48" r="10" fill="#fff" stroke="#0284c7" stroke-width="2.5"/><path d="M138 42 v6 l4 3" stroke="#0284c7" stroke-width="2" fill="none" stroke-linecap="round"/>`
+};
+</script>
+<script src="topic-engine.js"></script>
+</body>
+</html>
