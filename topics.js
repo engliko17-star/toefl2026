@@ -50,5 +50,17 @@ var TOPICS = [
         order_num: 4,
         frames: 10,
         guest: false
+    },
+    {
+        slug: 'time',
+        file: 'topic-time.html',
+        title_en: 'Time, Goals & Organization',
+        title_ru: 'Время, цели и организованность',
+        category: 'personal',
+        description: 'Распорядок дня, планирование, прокрастинация, фокус, цели и мотивация: лексика, идиомы, 7 сетов и Speaking Club на 91 вопрос.',
+        cover_icon: 'alarm-clock',
+        order_num: 5,
+        frames: 10,
+        guest: false
     }
 ];
