@@ -23,7 +23,7 @@
     // ---------- разбор текста ----------
     function parsePassage(raw) {
         let html = String(raw || '')
-            .replace(/\[s(\d+)\](.*?)(?=\[s\d+\]|\[sq\d+\]|\[■\]|$)/gs,
+            .replace(/\[s(\d+)\](.*?)(?=\[s\d+\]|\[sq\d+\]|\[■\]|\n\n|$)/gs,
                      '<span class="clickable-sentence" data-id="$1">$2</span>')
             .replace(/\[sq(\d+)\]/g, '<span class="insert-square"></span>')
             .replace(/\[■\]/g, '<span class="insert-square"></span>');

@@ -80,8 +80,10 @@
                     desc: L('All Reading task types in one go, with an exam timer.', 'Все типы заданий Reading подряд, с таймером как на экзамене.') },
             trainers: [
                 { id: 'qt', title: 'Question Type Trainer', icon: 'target', accent: 'emerald', href: 'reading-trainer.html', unit: 'hub.qtypes',
-                  desc: L('Short texts, one question each: drill the question types you miss most.', 'Короткие тексты с одним вопросом: тренируйте типы вопросов, на которых ошибаетесь.'),
-                  count: { table: 'reading_trainer_types', levels: 'question_type' } }
+                  desc: L('Exam-style questions, one type at a time: drill the ones you miss most.', 'Вопросы в формате TOEFL по одному типу: тренируйте те, на которых ошибаетесь.'),
+                  // вопросы тренажёра лежат внутри academic_tasks/daily_life_tasks (поле questions) —
+                  // считать типы здесь дорого, поэтому число типов задано (как TYPES в reading-trainer.html)
+                  count: { fixed: 11 } }
             ]
         },
         listening: {
@@ -573,9 +575,12 @@
     // Всего по типу: у гостя — из каталога (видны и закрытые), у остальных — из таблицы
     async function loadTotals(h, ctx) {
         const groups = {};
-        [...h.types, ...h.trainers, { id: '__mock', count: { table: h.mock.table, published: h.mock.published } }]
-            .forEach(x => { (groups[x.count.table] = groups[x.count.table] || []).push(x); });
         const out = {};      // id → { total, free }
+        [...h.types, ...h.trainers, { id: '__mock', count: { table: h.mock.table, published: h.mock.published } }]
+            .forEach(x => {
+                if (x.count.fixed) { out[x.id] = { total: x.count.fixed, free: null }; return; }   // число задано, база не нужна
+                (groups[x.count.table] = groups[x.count.table] || []).push(x);
+            });
         const maps = {};     // table → строки (для «сделано»: тип задания и набор по id)
         await Promise.all(Object.keys(groups).map(async table => {
             const items = groups[table];

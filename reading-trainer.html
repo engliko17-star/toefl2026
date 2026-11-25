@@ -14,6 +14,7 @@
     <script src="auth.js"></script>
     <script src="passage-markup.js"></script>
     <script src="daily-layouts.js"></script>
+    <script src="reading-trainer-items.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
@@ -31,7 +32,7 @@
         .tr-opt.is-wrong { border-color: #dc2626; background: #fef2f2; }
         .tr-steps li { counter-increment: st; }
         .tr-steps li::before { content: counter(st); display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: 999px; background: var(--r-chip); color: var(--r-deep); font-weight: 700; font-size: .78rem; flex: none; margin-top: .05rem; }
-        .tr-passage .clickable-sentence { cursor: pointer; border-radius: 4px; transition: background-color .15s; }
+        .tr-passage .clickable-sentence { cursor: pointer; border-radius: 4px; transition: background-color .15s, color .15s; }
         .tr-passage.select-mode .clickable-sentence:hover { background: #ecfdf5; }
         .tr-passage .clickable-sentence.selected { background: var(--r-deep); color: #fff; }
         .tr-passage .clickable-sentence.review-correct { background: #dcfce7; box-shadow: 0 0 0 1px #86efac; }
@@ -57,19 +58,138 @@
     'use strict';
     // =====================================================================
     // Тренажёр Reading по типам вопросов.
-    // Задания — свои (таблица reading_trainer_items), не из практики.
-    // Ученица выбирает тип → карточка со стратегией → 10 вопросов подряд.
-    // Режим «учебный» — разбор сразу после ответа, «экзамен» — в конце подхода.
+    //
+    // Вопросы из двух источников:
+    //   • новые задания тренажёра — reading-trainer-items.js (написаны по образцу реальных);
+    //   • реальные TOEFL из практики — academic_tasks и daily_life_tasks с пометкой
+    //     is_real_toefl (выключаются флагом INCLUDE_REAL ниже).
+    // Каждый вопрос текста — отдельное задание тренажёра: текст + один вопрос.
+    // Скрытые преподавателем (is_hidden) и задания только для пробников
+    // (is_mock_only) сюда не попадают. Гостю база сама отдаёт только открытые
+    // реальные задания, а из новых — первые GUEST_NEW_PER_TYPE каждого типа.
+    //
+    // Результаты в базу не пишутся — только в браузер (localStorage):
+    // точность по типу и какие вопросы уже встречались.
+    //
+    // Типы, их порядок и стратегии — в TYPES ниже. Новый тип в данных,
+    // которого нет в TYPES, тоже появится (без стратегии), если в нём есть вопросы.
     // Сам экзамен (текст, вопрос, варианты) — на английском; интерфейс вокруг — RU / EN.
     // =====================================================================
     const SESSION = 10;
+    const INCLUDE_REAL = true;        // false — в тренажёре только новые задания
+    const GUEST_NEW_PER_TYPE = 2;     // сколько новых вопросов каждого типа открыто гостю
     const lang = (window.I18N && window.I18N.lang) || (function () { try { return localStorage.getItem('appLang') === 'ru' ? 'ru' : 'en'; } catch (e) { return 'en'; } })();
     const RU = lang === 'ru';
+
+    // ---------- Типы вопросов: порядок карточек, стратегия, статья ----------
+    const TYPES = [
+        { type: 'Factual', ru: 'Фактический вопрос', article: 'article-factual.html',
+          sum: ['The answer is stated in the text, just in different words.', 'Ответ прямо есть в тексте, только другими словами.'],
+          steps: [
+            ['Underline the key words in the question: names, dates, terms.', 'Выделите в вопросе ключевые слова: имена, даты, термины.'],
+            ['Find that spot in the text — the answer is usually in one or two sentences around it.', 'Найдите это место в тексте — ответ почти всегда в одном-двух предложениях рядом.'],
+            ['Look for the option that paraphrases the text: synonyms, different grammar, same meaning.', 'Ищите вариант, который пересказывает текст: синонимы, другая грамматика, тот же смысл.'],
+            ['Cross out options that add something, mix up cause and effect, or use “always”, “only” where the text doesn’t.', 'Отбросьте варианты, где есть лишнее, перепутаны причина и следствие или стоят «always», «only», которых нет в тексте.']
+          ] },
+        { type: 'Negative Factual', ru: 'Вопрос с NOT / EXCEPT', article: 'article-factual.html',
+          sum: ['Three options are in the text — find the one that isn’t.', 'Три варианта есть в тексте — найдите тот, которого нет.'],
+          steps: [
+            ['Notice NOT or EXCEPT: you are looking for the statement that is false or missing.', 'Заметьте NOT или EXCEPT: ищем утверждение, которого нет в тексте или которое неверно.'],
+            ['Check the options one by one against the text and tick the ones you find.', 'Проверяйте варианты по одному и отмечайте те, что нашли в тексте.'],
+            ['The answer is the option that the text doesn’t mention or contradicts.', 'Ответ — вариант, которого в тексте нет или который ему противоречит.'],
+            ['Don’t answer from memory: match every option to a specific sentence.', 'Не отвечайте по памяти: для каждого варианта найдите конкретное предложение.']
+          ] },
+        { type: 'Inference', ru: 'Вывод из текста', article: 'article-inference.html',
+          sum: ['Not stated directly, but clearly follows from the text.', 'Прямо не написано, но точно следует из текста.'],
+          steps: [
+            ['Find the part of the text the question is about.', 'Найдите место в тексте, о котором спрашивают.'],
+            ['Ask yourself: what does the author imply but not say?', 'Спросите себя: что автор подразумевает, но не говорит прямо?'],
+            ['The right option rests on the text — no outside knowledge, no big leaps.', 'Верный вариант опирается на текст — без внешних знаний и больших допущений.'],
+            ['Be careful with options that reuse the text’s words but twist the meaning, or go too far.', 'Осторожно с вариантами, которые повторяют слова текста, но искажают смысл или заходят слишком далеко.']
+          ] },
+        { type: 'Main Idea', ru: 'Главная мысль', article: 'article-academic-passage.html',
+          sum: ['The main point of the whole text or a paragraph.', 'Главная мысль всего текста или абзаца.'],
+          steps: [
+            ['Reread the first and the last sentences of the text or paragraph.', 'Перечитайте первое и последнее предложения текста или абзаца.'],
+            ['Say the main point in your own words before you read the options.', 'Сформулируйте главную мысль своими словами до того, как читать варианты.'],
+            ['Cross out options about a single detail — true, but too narrow.', 'Отбросьте варианты про одну деталь — они верны, но слишком узкие.'],
+            ['Cross out options that are too broad or not in the text at all.', 'Отбросьте слишком общие варианты и те, которых в тексте нет.']
+          ] },
+        { type: 'Vocabulary', ru: 'Значение слова', article: 'article-vocabulary.html',
+          sum: ['What a highlighted word means in this context.', 'Что значит выделенное слово именно в этом контексте.'],
+          steps: [
+            ['Find the highlighted word and read the whole sentence.', 'Найдите выделенное слово и прочитайте всё предложение.'],
+            ['Cover the word and guess the meaning from the context.', 'Закройте слово и угадайте смысл по контексту.'],
+            ['Put each option into the sentence — the meaning must stay the same.', 'Подставьте каждый вариант в предложение — смысл должен сохраниться.'],
+            ['Careful: the most common meaning of the word isn’t always the one used here.', 'Осторожно: самое известное значение слова не всегда то, что здесь.']
+          ] },
+        { type: 'Reference', ru: 'К чему относится слово', article: 'article-reference.html',
+          sum: ['What a pronoun or phrase refers back to.', 'К чему относится местоимение или фраза.'],
+          steps: [
+            ['Find the highlighted word: it, they, this, these dynamics…', 'Найдите выделенное слово: it, they, this, these dynamics…'],
+            ['Look for the answer in the sentences before it — usually close by.', 'Ищите ответ в предыдущих предложениях — обычно совсем рядом.'],
+            ['Check number and meaning: “they” is plural, “this idea” is an idea.', 'Сверьте число и смысл: «they» — множественное, «this idea» — именно идея.'],
+            ['Put the option in place of the word — the sentence must still make sense.', 'Подставьте вариант вместо слова — предложение должно остаться логичным.']
+          ] },
+        { type: 'Rhetorical Purpose', ru: 'Зачем автор это упоминает', article: 'article-rhetorical-purpose.html',
+          sum: ['Why the author mentions an example, fact or word.', 'Зачем автор упоминает пример, факт или слово.'],
+          steps: [
+            ['Find the detail and read the sentence before and after it.', 'Найдите упомянутую деталь и прочитайте предложение до и после.'],
+            ['Ask what idea it supports: an example, a contrast, an explanation, a counterargument?', 'Спросите, какую мысль она поддерживает: пример, контраст, объяснение, возражение?'],
+            ['The right option names the function (to illustrate, to contrast…), not the content.', 'Верный вариант называет функцию (to illustrate, to contrast…), а не содержание.'],
+            ['The verbs in the options are a hint — match them to the detail’s role.', 'Глаголы в вариантах — подсказка: сверяйте их с ролью детали.']
+          ] },
+        { type: 'Organization', ru: 'Как устроен текст', article: 'article-academic-passage.html',
+          sum: ['How parts of the text relate: sentences or paragraphs.', 'Как связаны части текста: предложения или абзацы.'],
+          steps: [
+            ['Find the sentences or paragraphs the question names.', 'Найдите предложения или абзацы, о которых спрашивают.'],
+            ['Decide the role of each: claim, example, objection, conclusion.', 'Определите роль каждого: утверждение, пример, возражение, вывод.'],
+            ['Watch the linking words: however, yet, for example, therefore.', 'Следите за связками: however, yet, for example, therefore.'],
+            ['Pick the option where the roles of both parts are right, not just one.', 'Выбирайте вариант, где верна роль обеих частей, а не только одной.']
+          ] },
+        { type: 'Simplification', ru: 'Упрощение предложения', article: 'article-sentence-simplification.html',
+          sum: ['Which option keeps the essential meaning of the highlighted sentence.', 'Какой вариант сохраняет главный смысл выделенного предложения.'],
+          steps: [
+            ['Read the highlighted sentence and find its core idea.', 'Прочитайте выделенное предложение и найдите его основную мысль.'],
+            ['Cross out options that change the logic: cause ↔ effect, “but” ↔ “and”.', 'Отбросьте варианты, где изменена логика: причина ↔ следствие, «но» ↔ «и».'],
+            ['Cross out options that leave out an essential part.', 'Отбросьте варианты, где пропущена важная часть.'],
+            ['Details may go, the meaning may not.', 'Детали можно опустить, смысл — нельзя.']
+          ] },
+        { type: 'Insert Text', ru: 'Вставка предложения', article: 'article-insert-text.html',
+          sum: ['Where a new sentence fits best in the text.', 'Куда в тексте лучше всего встаёт новое предложение.'],
+          steps: [
+            ['Find the links in the new sentence: pronouns (this, they), connectors (however, for example), repeated words.', 'Найдите в новом предложении связки: местоимения (this, they), связки (however, for example), повторяющиеся слова.'],
+            ['Decide what must come right before it.', 'Решите, что должно стоять прямо перед ним.'],
+            ['Try each position: the sentence must connect what comes before and after.', 'Проверьте каждую позицию: предложение должно связать то, что до, и то, что после.'],
+            ['Reread the whole piece with the sentence in place — the logic must not break.', 'Перечитайте кусок целиком со вставкой — логика не должна ломаться.']
+          ] },
+        { type: 'Select a Sentence', ru: 'Выбор предложения', article: 'article-select-sentence.html',
+          sum: ['Click the sentence in a paragraph that matches the description.', 'Найдите в абзаце предложение, которое подходит под описание.'],
+          steps: [
+            ['Work out from the question what you are looking for: an example, a criticism, a cause, a conclusion.', 'Поймите из вопроса, что ищем: пример, критику, причину, вывод.'],
+            ['Go to the paragraph the question names.', 'Перейдите в указанный абзац.'],
+            ['Read the sentences one by one and check each against the whole description.', 'Читайте предложения по одному и сверяйте каждое со всем описанием.'],
+            ['Click the sentence in the text.', 'Нажмите на предложение в тексте.']
+          ] }
+    ];
+    // Разные написания типа в данных → одно имя
+    const TYPE_ALIAS = {
+        'select a sentence': 'Select a Sentence', 'select sentence': 'Select a Sentence',
+        'sentence simplification': 'Simplification', 'negative fact': 'Negative Factual',
+        'detail': 'Factual', 'factual information': 'Factual', 'insert a sentence': 'Insert Text',
+        'rhetorical': 'Rhetorical Purpose', 'purpose': 'Rhetorical Purpose', 'main point': 'Main Idea'
+    };
+    function normType(raw) {
+        const s = String(raw || '').trim(), k = s.toLowerCase();
+        const hit = TYPES.find(x => x.type.toLowerCase() === k);
+        return hit ? hit.type : (TYPE_ALIAS[k] || s);
+    }
+
     const TXT = {
         back: ['Reading', 'Reading'],
         title: ['Question Type Trainer', 'Тренажёр по типам вопросов'],
-        lead: ['Short texts with one question each. Pick a question type and practise it ten times in a row.', 'Короткие тексты, к каждому один вопрос. Выберите тип вопроса и потренируйте его десять раз подряд.'],
-        tasks: [['task', 'tasks'], ['задание', 'задания', 'заданий']],
+        lead: ['Exam-style questions: new tasks modelled on real TOEFL, plus questions from real exams. Pick a question type and practise it ten times in a row — each question comes with its own text.', 'Вопросы в формате экзамена: новые задания по образцу реального TOEFL и вопросы из реальных экзаменов. Выберите тип вопроса и потренируйте его десять раз подряд — каждый вопрос со своим текстом.'],
+        qs: [['question', 'questions'], ['вопрос', 'вопроса', 'вопросов']],
         soon: ['Coming soon', 'Скоро'],
         accuracy: ['Your accuracy', 'Ваша точность'],
         notYet: ['Not practised yet', 'Ещё не тренировали'],
@@ -77,13 +197,18 @@
         allTypes: ['All question types', 'Все типы вопросов'],
         how: ['How to solve it', 'Как решать'],
         article: ['Read the full guide', 'Подробный разбор в статье'],
+        texts: ['Texts', 'Тексты'],
+        realTag: ['Real TOEFL', 'Из реального TOEFL'],
+        newCount: ['new', 'новых'],
+        srcAll: ['All', 'Все'],
+        srcAcademic: ['Academic Passage', 'Academic Passage'],
+        srcDaily: ['Daily Life', 'Daily Life'],
         mode: ['Mode', 'Режим'],
         learn: ['Learning', 'Учебный'],
         learnNote: ['See the answer and explanation after each question', 'Ответ и разбор — сразу после каждого вопроса'],
         exam: ['Exam', 'Экзамен'],
         examNote: ['Ten questions without hints, review at the end', 'Десять вопросов без подсказок, разбор в конце'],
         start: ['Start', 'Начать'],
-        qs: [['question', 'questions'], ['вопрос', 'вопроса', 'вопросов']],
         none: ['Tasks for this question type are on their way.', 'Задания этого типа скоро появятся.'],
         hint: ['Hint', 'Подсказка'],
         check: ['Check', 'Проверить'],
@@ -94,7 +219,6 @@
         answer: ['Correct answer', 'Верный ответ'],
         yours: ['Your answer', 'Ваш ответ'],
         why: ['Why', 'Почему'],
-        options: ['About each option', 'Про каждый вариант'],
         pickSentence: ['Click the sentence in the text.', 'Нажмите на предложение в тексте.'],
         pickSquare: ['Choose where the sentence fits best.', 'Выберите, где предложение подходит лучше всего.'],
         position: ['Position', 'Позиция'],
@@ -105,21 +229,19 @@
         other: ['Another type', 'Другой тип'],
         review: ['Review', 'Разбор'],
         noAnswer: ['No answer', 'Без ответа'],
-        saveFail: ['The result was not saved — check your connection.', 'Результат не сохранился — проверьте интернет.'],
+        local: ['Your progress is saved in this browser.', 'Прогресс сохраняется в этом браузере.'],
         loadFail: ['Could not load the trainer. Refresh the page.', 'Не удалось загрузить тренажёр. Обновите страницу.'],
-        guestMore: ['More tasks of this type are in the full version.', 'Больше заданий этого типа — в полной версии.'],
-        free: ['{a} free of {b}', '{a} бесплатно из {b}'],
-        fullMore: ['{n} more in the full version', 'Ещё {n} — в полной версии'],
-        freeNote: ['Free version: {a} of {b} tasks of this type.', 'Бесплатная версия: {a} из {b} заданий этого типа.'],
+        guestNote: ['Free version: only part of the questions is open.', 'Бесплатная версия: открыта только часть вопросов.'],
+        guestMore: ['More questions of this type are in the full version.', 'Больше вопросов этого типа — в полной версии.'],
         unlock: ['Get full access', 'Получить полный доступ'],
-        q: ['Question {a} of {b}', 'Вопрос {a} из {b}'],
-        level: ['Level', 'Уровень']
+        q: ['Question {a} of {b}', 'Вопрос {a} из {b}']
     };
     function t(k, v) {
         let s = TXT[k] ? TXT[k][RU ? 1 : 0] : k;
         if (v) Object.keys(v).forEach(x => { s = s.replace('{' + x + '}', v[x]); });
         return s;
     }
+    const tr = pair => (pair ? pair[RU ? 1 : 0] : '');
     function plural(n, k) {
         const f = TXT[k][RU ? 1 : 0];
         if (!RU) return n + ' ' + (n === 1 ? f[0] : f[1]);
@@ -132,46 +254,106 @@
     const root = document.getElementById('trainer');
     const arr = v => { if (Array.isArray(v)) return v; if (typeof v === 'string') { try { const x = JSON.parse(v); return Array.isArray(x) ? x : []; } catch (e) { return []; } } return []; };
     const shuffle = a => { const b = a.slice(); for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; };
+    const store = {
+        get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } },
+        set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* приватный режим — только на этот раз */ } }
+    };
 
-    let user = null, guest = false, types = [], counts = {}, results = [];
-    // Гость: сколько заданий в типе всего и сколько открыто бесплатно (reading_trainer_guest.sql).
-    // Без этого SQL — null, и страница показывает только то, что пришло из базы.
-    let gcounts = null;
-    const LOCK = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
-    function guestInfo(type) {
-        if (!guest || !gcounts) return null;
-        const g = gcounts[type] || {};
-        return { open: Number(g.open) || 0, total: Number(g.total) || 0 };
-    }
-    let S = null;   // текущий подход
+    let user = null, guest = false, teacher = false;
+    let items = [];      // все вопросы тренажёра
+    let results = [];    // свои подходы из браузера
+    let S = null;        // текущий подход
 
     // ---------------------------------------------------------------
     // Данные
     // ---------------------------------------------------------------
-    async function loadAll() {
-        const [ty, it, rs] = await Promise.all([
-            db().from('reading_trainer_types').select('*').order('sort_order'),
-            db().from('reading_trainer_items').select('id, question_type').range(0, 9999),
-            db().from('reading_trainer_results').select('question_type, item_ids, score_earned, score_total, created_at').eq('user_id', user.id).order('created_at', { ascending: false }).range(0, 1999)
-        ]);
-        if (ty.error) throw ty.error;
-        types = ty.data || [];
-        counts = {};
-        (it.data || []).forEach(i => { counts[i.question_type] = (counts[i.question_type] || 0) + 1; });
-        results = rs.error ? [] : (rs.data || []);
-        gcounts = null;
-        if (guest) {
-            try {
-                const g = await db().rpc('reading_trainer_counts');
-                if (!g.error && g.data && typeof g.data === 'object') gcounts = g.data;
-            } catch (e) { /* без чисел — как раньше */ }
+    async function fetchReal(table, cols) {
+        const rows = [];
+        for (let from = 0; from < 20000; from += 1000) {
+            const { data, error } = await db().from(table).select(cols).eq('is_real_toefl', true).order('id', { ascending: true }).range(from, from + 999);
+            if (error) throw error;
+            rows.push(...(data || []));
+            if (!data || data.length < 1000) break;
         }
+        return rows.filter(r => r.is_mock_only !== true && (teacher || r.is_hidden !== true));
+    }
+    // В названиях текстов — служебный префикс сборника («079 29.05.2026 — », «Mock 50 — »): ученице он не нужен
+    const cleanTitle = s => String(s || '').replace(/^\s*(?:mock\s*)?\d+(?:\s+[\d.]+)?\s*[—–-]\s*/i, '').trim();
+    const kindOfType = type => (type === 'Select a Sentence' ? 'select' : type === 'Insert Text' ? 'insert' : 'mc');
+    const HAS_SENTENCES = /\[s\d+\]/, HAS_SQUARES = /\[(?:sq\d+|■)\]/;
+
+    // Одна строка текста → столько заданий тренажёра, сколько в ней вопросов
+    function explode(rows, source, isNew) {
+        const out = [];
+        (rows || []).forEach(r => {
+            arr(r.questions).forEach((q, i) => {
+                if (!q || typeof q !== 'object') return;
+                const type = normType(q.type);
+                const k = kindOfType(type);
+                const opts = arr(q.options);
+                if (q.correct === undefined || q.correct === null || q.correct === '') return;
+                if (k === 'mc' && opts.length < 2) return;
+                if (k === 'select' && !HAS_SENTENCES.test(r.passage || '')) return;
+                if (k === 'insert' && !HAS_SQUARES.test(r.passage || '')) return;
+                out.push({
+                    id: (isNew ? 'n' : '') + (source === 'academic' ? 'a' : 'd') + String(r.id).replace(/^n/, '') + '-' + i,
+                    isNew: !!isNew, source: source, task_id: r.id, title: cleanTitle(r.title), layout_type: r.layout_type || '',
+                    passage: r.passage || '', question_type: type, question: q.text || q.question || '',
+                    options: opts, correct: q.correct, explanation: q.explanation || '',
+                    highlight: q.highlight || '', highlight_occurrence: q.highlight_occurrence,
+                    insert_sentence: q.insertSentence || q.insert_sentence || ''
+                });
+            });
+        });
+        return out;
+    }
+
+    // Гостю из новых заданий — первые GUEST_NEW_PER_TYPE вопросов каждого типа
+    function guestCut(list) {
+        if (!guest) return list;
+        const n = {};
+        return list.filter(x => (n[x.question_type] = (n[x.question_type] || 0) + 1) <= GUEST_NEW_PER_TYPE);
+    }
+    async function loadAll() {
+        const NEW = window.READING_TRAINER_NEW || {};
+        const fresh = guestCut(explode(NEW.academic, 'academic', true).concat(explode(NEW.daily, 'daily', true)));
+        let real = [];
+        if (INCLUDE_REAL) {
+            const [ac, dl] = await Promise.all([
+                fetchReal('academic_tasks', 'id, title, passage, questions, is_hidden, is_mock_only'),
+                fetchReal('daily_life_tasks', 'id, title, passage, questions, layout_type, is_hidden, is_mock_only')
+            ]);
+            real = explode(ac, 'academic', false).concat(explode(dl, 'daily', false));
+        }
+        items = fresh.concat(real);
+        results = loadResults();
+    }
+
+    // ---------- Результаты — только в этом браузере ----------
+    const resultsKey = () => 'readingTrainer:v1:' + ((user && user.id) || 'anon');
+    function loadResults() {
+        try { const x = JSON.parse(store.get(resultsKey(), '[]')); return Array.isArray(x) ? x : []; } catch (e) { return []; }
+    }
+    function saveResult(row) {
+        results.unshift(row);
+        results = results.slice(0, 500);
+        store.set(resultsKey(), JSON.stringify(results));
     }
     function accOf(type) {
         const rs = results.filter(r => r.question_type === type);
         const e = rs.reduce((s, r) => s + (Number(r.score_earned) || 0), 0), n = rs.reduce((s, r) => s + (Number(r.score_total) || 0), 0);
         return n ? Math.round(e / n * 100) : null;
     }
+    const itemsOf = (type, src) => items.filter(x => x.question_type === type && (!src || src === 'all' || x.source === src));
+
+    // Порядок карточек: как в TYPES, потом незнакомые типы из данных
+    function typeList() {
+        const known = TYPES.map(x => x.type);
+        const extra = [...new Set(items.map(x => x.question_type))].filter(x => x && !known.includes(x)).sort();
+        return known.concat(extra);
+    }
+    function typeInfo(type) { return TYPES.find(x => x.type === type) || { type: type, ru: '', sum: null, steps: [], article: '' }; }
+    const stepsOf = info => (info.steps || []).map(tr);
 
     // ---------------------------------------------------------------
     // Экран 1: все типы
@@ -181,85 +363,105 @@
             <h1 class="mt-3 text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">${esc(t('title'))}</h1>
             ${sub ? `<p class="mt-2 text-slate-500 max-w-2xl leading-relaxed">${esc(sub)}</p>` : ''}`;
     }
+    function srcLine(type) {
+        const a = itemsOf(type, 'academic').length, d = itemsOf(type, 'daily').length;
+        const parts = [];
+        if (a) parts.push('Academic ' + a);
+        if (d) parts.push('Daily ' + d);
+        const fresh = itemsOf(type).filter(x => x.isNew).length;
+        if (fresh && INCLUDE_REAL) parts.push(t('newCount') + ' ' + fresh);
+        return parts.join(' · ');
+    }
     function showTypes() {
         S = null;
         history.replaceState(null, '', location.pathname);
-        const cards = types.map(x => {
-            const n = counts[x.question_type] || 0;
-            const acc = accOf(x.question_type);
-            const summary = RU ? x.summary_ru : (x.summary_en || x.summary_ru);
-            // Гость: «2 бесплатно из 20» и строка с замочком; тип без открытых заданий — под замочком целиком
-            const g = guestInfo(x.question_type);
-            const locked = !!(g && g.total > 0 && g.open === 0);
-            const countText = g ? (g.total ? t('free', { a: g.open, b: g.total }) : t('soon')) : (n ? plural(n, 'tasks') : t('soon'));
-            const more = g && g.total > g.open && !locked
-                ? `<p class="flex items-center gap-1.5 text-xs font-semibold text-slate-500">${LOCK}<span>${esc(t('fullMore', { n: g.total - g.open }))}</span></p>` : '';
-            return `<button type="button" data-type="${esc(x.question_type)}" ${locked ? 'data-guest-locked' : ''} class="tr-card text-left bg-white border border-slate-200 rounded-2xl p-5 flex flex-col gap-3 ${n || locked ? '' : 'opacity-70'}">
+        const cards = typeList().map(type => {
+            const info = typeInfo(type);
+            const n = itemsOf(type).length;
+            const acc = accOf(type);
+            return `<button type="button" data-type="${esc(type)}" class="tr-card text-left bg-white border border-slate-200 rounded-2xl p-5 flex flex-col gap-3 ${n ? '' : 'opacity-70'}">
                 <div class="flex items-start justify-between gap-3">
                     <div class="min-w-0">
-                        <p class="font-bold text-slate-900 leading-snug">${esc(x.question_type)}</p>
-                        ${RU ? `<p class="text-sm text-slate-500">${esc(x.title_ru)}</p>` : ''}
+                        <p class="font-bold text-slate-900 leading-snug">${esc(type)}</p>
+                        ${RU && info.ru ? `<p class="text-sm text-slate-500">${esc(info.ru)}</p>` : ''}
                     </div>
                     ${acc !== null && acc < 60 ? `<span class="shrink-0 text-[11px] font-bold text-rose-700 bg-rose-50 rounded-full px-2 py-0.5">${esc(t('weak'))}</span>` : ''}
                 </div>
-                ${summary ? `<p class="text-sm text-slate-600 leading-relaxed">${esc(summary)}</p>` : ''}
-                <div class="mt-auto flex items-center justify-between gap-3 text-xs font-semibold text-slate-500 pt-1">
-                    <span>${esc(countText)}</span>
-                    <span class="${acc === null ? '' : 'r-ink'}">${acc === null ? esc(t('notYet')) : esc(t('accuracy')) + ' ' + acc + '%'}</span>
+                ${info.sum ? `<p class="text-sm text-slate-600 leading-relaxed">${esc(tr(info.sum))}</p>` : ''}
+                <div class="mt-auto pt-1">
+                    <div class="flex items-center justify-between gap-3 text-xs font-semibold text-slate-500">
+                        <span>${esc(n ? plural(n, 'qs') : t('soon'))}</span>
+                        <span class="${acc === null ? '' : 'r-ink'}">${acc === null ? esc(t('notYet')) : esc(t('accuracy')) + ' ' + acc + '%'}</span>
+                    </div>
+                    ${n ? `<p class="mt-0.5 text-[11px] text-slate-400">${esc(srcLine(type))}</p>` : ''}
                 </div>
                 ${acc !== null ? `<div class="h-1.5 rounded-full bg-slate-100 overflow-hidden"><div class="h-full rounded-full" style="width:${acc}%;background:var(--r-bar)"></div></div>` : ''}
-                ${more}
             </button>`;
         }).join('');
         root.innerHTML = `${header(t('lead'))}
-            <div class="mt-7 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">${cards}</div>`;
-        root.querySelectorAll('[data-type]:not([data-guest-locked])').forEach(b => b.addEventListener('click', () => showStart(b.dataset.type)));
+            ${guest ? `<div class="mt-4 max-w-2xl rounded-xl border border-slate-200 bg-white p-4 flex flex-wrap items-center justify-between gap-3">
+                <p class="text-sm text-slate-600">${esc(t('guestNote'))}</p>
+                <button type="button" id="trUnlock" class="text-sm font-bold r-ink hover:underline">${esc(t('unlock'))}</button></div>` : ''}
+            <div class="mt-7 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">${cards}</div>
+            <p class="mt-6 text-xs text-slate-400">${esc(t('local'))}</p>`;
+        root.querySelectorAll('[data-type]').forEach(b => b.addEventListener('click', () => showStart(b.dataset.type)));
+        const unlock = root.querySelector('#trUnlock');
+        if (unlock) unlock.addEventListener('click', () => { if (typeof authShowUpsell === 'function') authShowUpsell(); });
         icons();
     }
 
     // ---------------------------------------------------------------
-    // Экран 2: стратегия + режим
+    // Экран 2: стратегия + тексты + режим
     // ---------------------------------------------------------------
-    let mode = (function () { try { return localStorage.getItem('trainerMode') === 'exam' ? 'exam' : 'learn'; } catch (e) { return 'learn'; } })();
-    function typeInfo(type) { return types.find(x => x.question_type === type) || { question_type: type, strategy_ru: [], strategy_en: [] }; }
-    function stepsOf(info) { const ru = arr(info.strategy_ru), en = arr(info.strategy_en); return RU ? ru : (en.length ? en : ru); }
+    let mode = store.get('trainerMode', 'learn') === 'exam' ? 'exam' : 'learn';
+    let source = (function () { const s = store.get('trainerSource', 'all'); return ['academic', 'daily'].includes(s) ? s : 'all'; })();
     function showStart(type) {
         const info = typeInfo(type);
-        const n = counts[type] || 0;
-        const g = guestInfo(type);
+        const hasA = itemsOf(type, 'academic').length > 0, hasD = itemsOf(type, 'daily').length > 0;
+        const src = hasA && hasD ? source : 'all';    // выбор текстов — только если есть оба вида
+        const n = itemsOf(type, src).length;
         history.replaceState(null, '', '?type=' + encodeURIComponent(type));
         const steps = stepsOf(info);
         const modeBtn = (m, title, note) => `<button type="button" data-mode="${m}" aria-pressed="${mode === m}" class="tr-opt text-left border-2 border-slate-200 rounded-xl p-3.5 bg-white">
             <span class="block font-bold text-slate-900 text-sm">${esc(title)}</span><span class="block text-xs text-slate-500 mt-0.5">${esc(note)}</span></button>`;
+        const srcBtn = (s, label) => `<button type="button" data-src="${s}" aria-pressed="${src === s}" class="tr-opt text-center border-2 border-slate-200 rounded-xl px-2 py-2.5 bg-white">
+            <span class="block font-bold text-slate-900 text-xs">${esc(label)}</span><span class="block text-[11px] text-slate-500 mt-0.5">${itemsOf(type, s).length}</span></button>`;
         root.innerHTML = `<button type="button" id="trAll" class="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-slate-800"><i data-lucide="arrow-left" class="w-4 h-4"></i>${esc(t('allTypes'))}</button>
             <div class="mt-4 grid grid-cols-1 lg:grid-cols-5 gap-5 items-start">
                 <section class="lg:col-span-3 bg-white border border-slate-200 rounded-2xl p-6 sm:p-7">
                     <p class="text-xs font-bold r-ink">${esc(t('title'))}</p>
                     <h1 class="mt-1 text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">${esc(type)}</h1>
-                    ${RU ? `<p class="text-slate-500 mt-1">${esc(info.title_ru || '')}</p>` : ''}
-                    <h2 class="mt-6 font-bold text-slate-900">${esc(t('how'))}</h2>
-                    ${steps.length ? `<ol class="tr-steps mt-3 space-y-3 list-none p-0">${steps.map(s => `<li class="flex gap-3 text-slate-700 leading-relaxed">${esc(s)}</li>`).join('')}</ol>` : ''}
-                    ${info.article_url ? `<a href="${esc(info.article_url)}" class="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold r-ink hover:underline">${esc(t('article'))}<i data-lucide="arrow-up-right" class="w-4 h-4"></i></a>` : ''}
+                    ${RU && info.ru ? `<p class="text-slate-500 mt-1">${esc(info.ru)}</p>` : ''}
+                    ${steps.length ? `<h2 class="mt-6 font-bold text-slate-900">${esc(t('how'))}</h2>
+                    <ol class="tr-steps mt-3 space-y-3 list-none p-0">${steps.map(s => `<li class="flex gap-3 text-slate-700 leading-relaxed">${esc(s)}</li>`).join('')}</ol>` : ''}
+                    ${info.article ? `<a href="${esc(info.article)}" class="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold r-ink hover:underline">${esc(t('article'))}<i data-lucide="arrow-up-right" class="w-4 h-4"></i></a>` : ''}
                 </section>
                 <aside class="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-6">
-                    <h2 class="font-bold text-slate-900">${esc(t('mode'))}</h2>
+                    ${hasA && hasD ? `<h2 class="font-bold text-slate-900">${esc(t('texts'))}</h2>
+                    <div class="mt-3 grid grid-cols-3 gap-2">${srcBtn('all', t('srcAll'))}${srcBtn('academic', t('srcAcademic'))}${srcBtn('daily', t('srcDaily'))}</div>
+                    <h2 class="mt-5 font-bold text-slate-900">${esc(t('mode'))}</h2>` : `<h2 class="font-bold text-slate-900">${esc(t('mode'))}</h2>`}
                     <div class="mt-3 grid gap-2.5">${modeBtn('learn', t('learn'), t('learnNote'))}${modeBtn('exam', t('exam'), t('examNote'))}</div>
                     ${n ? `<button type="button" id="trGo" class="r-btn mt-5 w-full rounded-xl py-3 font-bold">${esc(t('start'))} · ${esc(plural(Math.min(SESSION, n), 'qs'))}</button>`
                         : `<p class="mt-5 text-sm text-slate-500 r-bg rounded-xl p-4">${esc(t('none'))}</p>`}
-                    ${g && g.total > g.open ? `<div class="mt-4 rounded-xl border border-slate-200 p-4">
-                        <p class="flex items-start gap-2 text-sm text-slate-600 leading-relaxed"><span class="mt-0.5 shrink-0 text-slate-500">${LOCK}</span><span>${esc(t('freeNote', { a: g.open, b: g.total }))}</span></p>
-                        <button type="button" id="trUnlock" class="mt-3 text-sm font-bold r-ink hover:underline">${esc(t('unlock'))}</button>
+                    ${guest && n ? `<div class="mt-4 rounded-xl border border-slate-200 p-4">
+                        <p class="text-sm text-slate-600 leading-relaxed">${esc(t('guestNote'))}</p>
+                        <button type="button" id="trUnlock" class="mt-2 text-sm font-bold r-ink hover:underline">${esc(t('unlock'))}</button>
                     </div>` : ''}
                 </aside>
             </div>`;
         root.querySelector('#trAll').addEventListener('click', showTypes);
         root.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => {
             mode = b.dataset.mode;
-            try { localStorage.setItem('trainerMode', mode); } catch (e) { /* только на этот раз */ }
+            store.set('trainerMode', mode);
             root.querySelectorAll('[data-mode]').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.mode === mode)));
         }));
+        root.querySelectorAll('[data-src]').forEach(b => b.addEventListener('click', () => {
+            source = b.dataset.src;
+            store.set('trainerSource', source);
+            showStart(type);
+        }));
         const go = root.querySelector('#trGo');
-        if (go) go.addEventListener('click', () => startSession(type));
+        if (go) go.addEventListener('click', () => startSession(type, src));
         const unlock = root.querySelector('#trUnlock');
         if (unlock) unlock.addEventListener('click', () => { if (typeof authShowUpsell === 'function') authShowUpsell(); });
         icons();
@@ -267,35 +469,50 @@
     }
 
     // ---------------------------------------------------------------
-    // Подход: 10 заданий одного типа, сначала те, что ещё не встречались
+    // Подход: 10 вопросов одного типа, сначала те, что ещё не встречались (новые — первыми).
+    // Вопросы одного текста в подходе не идут подряд, если есть из чего выбрать.
     // ---------------------------------------------------------------
-    async function startSession(type) {
-        root.innerHTML = `<p class="text-sm text-slate-400">${esc(RU ? 'Загрузка…' : 'Loading…')}</p>`;
-        try {
-            const { data, error } = await db().from('reading_trainer_items').select('*').eq('question_type', type).range(0, 1999);
-            if (error) throw error;
-            const seen = new Set();
-            results.filter(r => r.question_type === type).forEach(r => (r.item_ids || []).forEach(id => seen.add(String(id))));
-            const all = data || [];
-            const fresh = shuffle(all.filter(x => !seen.has(String(x.id))));
-            const old = shuffle(all.filter(x => seen.has(String(x.id))));
-            const items = fresh.concat(old).slice(0, SESSION);
-            if (!items.length) { showStart(type); return; }
-            S = { type: type, mode: mode, items: items, i: 0, answers: {}, checked: {}, total: all.length };
-            showItem();
-        } catch (e) {
-            console.error(e);
-            root.innerHTML = `<p class="text-rose-600">${esc(t('loadFail'))}</p>`;
-        }
+    function pick(pool, type) {
+        const seen = new Set();
+        results.filter(r => r.question_type === type).forEach(r => (r.item_ids || []).forEach(id => seen.add(String(id))));
+        // сначала новые задания тренажёра, потом реальные (их ученица могла видеть в практике)
+        const unseen = pool.filter(x => !seen.has(String(x.id)));
+        const fresh = shuffle(unseen.filter(x => x.isNew)).concat(shuffle(unseen.filter(x => !x.isNew)));
+        const old = shuffle(pool.filter(x => seen.has(String(x.id))));
+        const queue = fresh.concat(old), out = [], used = new Set();
+        // первый проход — по одному вопросу с текста, второй — добираем остальное
+        queue.forEach(x => { const key = x.source + x.task_id; if (out.length < SESSION && !used.has(key)) { out.push(x); used.add(key); } });
+        queue.forEach(x => { if (out.length < SESSION && !out.includes(x)) out.push(x); });
+        return out;
+    }
+    function startSession(type, src) {
+        const pool = itemsOf(type, src);
+        const chosen = pick(pool, type);
+        if (!chosen.length) { showStart(type); return; }
+        S = { type: type, src: src, mode: mode, items: chosen, i: 0, answers: {}, checked: {}, total: pool.length };
+        showItem();
+        window.scrollTo(0, 0);
     }
 
     const quoted = text => { const m = String(text || '').match(/["“]([^"”]{1,60})["”]/); return m ? m[1] : ''; };
-    function kindOf(it) { return it.question_type === 'Select a Sentence' ? 'select' : it.question_type === 'Insert Text' ? 'insert' : 'mc'; }
+    const kindOf = it => kindOfType(it.question_type);
     function isRight(it, a) { return a !== undefined && a !== null && Number(a) === Number(it.correct); }
 
+    // Разметка для Select a Sentence и Insert Text нужна только своему типу вопроса:
+    // в остальных вопросах того же текста квадратиков и кликабельных предложений быть не должно.
+    function cleanPassage(raw, k) {
+        let s = String(raw || '');
+        if (k !== 'select') s = s.replace(/\[s\d+\]/g, '');
+        if (k !== 'insert') s = s.replace(/[ \t]*\[(?:sq\d+|■)\][ \t]*/g, ' ');
+        return s.replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n').replace(/ {2,}/g, ' ').trim();
+    }
     function renderPassage(it, box) {
-        if (it.source === 'daily' && window.DailyLayouts) box.innerHTML = DailyLayouts.render(it.passage, it.layout_type, '');
-        else box.innerHTML = window.PassageMarkup ? PassageMarkup.parsePassage(it.passage) : esc(it.passage).replace(/\n\n/g, '<br><br>');
+        const k = kindOf(it);
+        if (it.source === 'daily' && window.DailyLayouts) box.innerHTML = DailyLayouts.render(it.passage, it.layout_type, it.title);
+        else {
+            const clean = cleanPassage(it.passage, k);
+            box.innerHTML = window.PassageMarkup ? PassageMarkup.parsePassage(clean) : esc(clean).split('\n\n').map(p => `<p>${p}</p>`).join('');
+        }
         // подсветка: заданный фрагмент или слово в кавычках из вопроса (Vocabulary, Reference)
         const hl = it.highlight || (['Vocabulary', 'Reference'].includes(it.question_type) ? quoted(it.question) : '');
         if (hl && window.PassageMarkup) PassageMarkup.applyHighlight(box, { type: it.question_type === 'Reference' ? 'Reference' : 'Simplification', highlight: hl, highlight_occurrence: it.highlight_occurrence });
@@ -309,18 +526,22 @@
         const last = S.i === S.items.length - 1;
         const opts = arr(it.options);
         const steps = stepsOf(typeInfo(S.type));
+        const showTitle = it.source === 'academic' && it.title;
         root.innerHTML = `
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <button type="button" id="trAll" class="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-slate-800"><i data-lucide="arrow-left" class="w-4 h-4"></i>${esc(S.type)}</button>
                 <div class="flex items-center gap-3">
                     <span class="text-sm font-semibold text-slate-500">${S.i + 1} / ${S.items.length}</span>
                     <div class="w-28 h-1.5 rounded-full bg-slate-200 overflow-hidden"><div class="h-full rounded-full" style="width:${Math.round((S.i + 1) / S.items.length * 100)}%;background:var(--r-bar)"></div></div>
-                    ${steps.length ? `<button type="button" id="trHint" aria-expanded="false" class="inline-flex items-center gap-1.5 text-sm font-semibold r-ink border r-ring rounded-lg px-3 py-1.5 bg-white"><i data-lucide="lightbulb" class="w-4 h-4"></i>${esc(t('hint'))}</button>` : ''}
+                    ${steps.length && S.mode === 'learn' ? `<button type="button" id="trHint" aria-expanded="false" class="inline-flex items-center gap-1.5 text-sm font-semibold r-ink border r-ring rounded-lg px-3 py-1.5 bg-white"><i data-lucide="lightbulb" class="w-4 h-4"></i>${esc(t('hint'))}</button>` : ''}
                 </div>
             </div>
             <div id="trHintBox" class="hidden mt-3 r-bg border r-ring rounded-xl p-4"><ol class="tr-steps space-y-2 list-none p-0">${steps.map(s => `<li class="flex gap-3 text-sm text-slate-700">${esc(s)}</li>`).join('')}</ol></div>
             <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
                 <section class="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 min-w-0">
+                    <p class="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">${esc(it.source === 'academic' ? 'Academic Passage' : 'Read in Daily Life')}
+                        ${!it.isNew ? `<span class="normal-case tracking-normal r-chip r-ink rounded-full px-2 py-0.5">${esc(t('realTag'))}</span>` : ''}</p>
+                    ${showTitle ? `<h2 class="mt-1 mb-3 font-bold text-slate-900 leading-snug">${esc(it.title)}</h2>` : '<div class="mt-3"></div>'}
                     <div id="trPassage" class="tr-passage text-[15px] leading-relaxed text-slate-800 ${k === 'select' && !checked ? 'select-mode' : ''}"></div>
                 </section>
                 <section class="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 min-w-0 md:sticky md:top-4">
@@ -343,7 +564,7 @@
                 <span class="font-bold text-slate-400">${String.fromCharCode(65 + i)}</span><span>${esc(o)}</span></button>`).join('');
             optsBox.querySelectorAll('[data-i]').forEach(b => b.addEventListener('click', () => { if (!checked) choose(Number(b.dataset.i)); }));
         } else if (k === 'insert') {
-            optsBox.innerHTML = window.PassageMarkup ? PassageMarkup.positionButtons(box, it.insert_sentence || '', '__trInsert') : '';
+            optsBox.innerHTML = window.PassageMarkup ? PassageMarkup.positionButtons(box, esc(it.insert_sentence || ''), '__trInsert') : '';
             optsBox.querySelectorAll('.insert-option span:last-child').forEach(s => { s.textContent = s.textContent.replace('Позиция', t('position')); });
             box.querySelectorAll('.insert-square').forEach((sq, i) => sq.addEventListener('click', () => { if (!checked) choose(i); }));
             if (ans !== undefined) PassageMarkup.choosePosition(box, Number(ans), it.insert_sentence || '', { silent: true });
@@ -377,24 +598,19 @@
         if (k === 'mc') { const o = arr(it.options)[a]; return (String.fromCharCode(65 + Number(a))) + '. ' + (o || ''); }
         if (k === 'insert') return t('position') + ' ' + String.fromCharCode(65 + Number(a));
         const tmp = document.createElement('div');
-        tmp.innerHTML = window.PassageMarkup ? PassageMarkup.parsePassage(it.passage) : '';
+        tmp.innerHTML = window.PassageMarkup ? PassageMarkup.parsePassage(cleanPassage(it.passage, 'select')) : '';
         const s = tmp.querySelector(`.clickable-sentence[data-id="${a}"]`);
         return s ? s.textContent.trim() : t('sentence') + ' ' + a;
     }
 
-    // Разбор одного задания: верно/неверно, верный ответ, почему, про каждый вариант
+    // Разбор одного вопроса: верно/неверно, верный ответ, почему
     function feedbackHtml(it) {
         const a = S.answers[it.id];
         const ok = isRight(it, a);
-        const expl = RU ? it.explanation : (it.explanation_en || it.explanation);
-        const notes = arr(RU ? it.option_notes : (arr(it.option_notes_en).length ? it.option_notes_en : it.option_notes));
-        const opts = arr(it.options);
         return `<div class="mt-4 rounded-xl border ${ok ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50'} p-4">
             <p class="font-bold ${ok ? 'text-emerald-800' : 'text-rose-800'}">${esc(ok ? t('right') : t('wrong'))}</p>
             ${ok ? '' : `<p class="mt-1 text-sm text-slate-700"><span class="font-semibold">${esc(t('answer'))}:</span> ${esc(answerText(it, it.correct))}</p>`}
-            ${expl ? `<p class="mt-2 text-sm text-slate-700 leading-relaxed"><span class="font-semibold">${esc(t('why'))}:</span> ${esc(expl)}</p>` : ''}
-            ${notes.length && kindOf(it) === 'mc' ? `<details class="mt-2 text-sm"><summary class="cursor-pointer font-semibold text-slate-700">${esc(t('options'))}</summary>
-                <ul class="mt-2 space-y-1.5">${notes.map((n, i) => `<li class="flex gap-2 text-slate-600"><span class="font-bold ${i === Number(it.correct) ? 'text-emerald-700' : 'text-slate-400'}">${String.fromCharCode(65 + i)}</span><span>${esc(n || opts[i] || '')}</span></li>`).join('')}</ul></details>` : ''}
+            ${it.explanation ? `<p class="mt-2 text-sm text-slate-700 leading-relaxed"><span class="font-semibold">${esc(t('why'))}:</span> ${esc(it.explanation)}</p>` : ''}
         </div>`;
     }
     function paintFeedback(it, box) {
@@ -431,17 +647,11 @@
     // ---------------------------------------------------------------
     // Итог подхода
     // ---------------------------------------------------------------
-    async function finish() {
-        const items = S.items;
-        const earned = items.filter(it => isRight(it, S.answers[it.id])).length;
-        let saveErr = false;
-        try {
-            const row = { user_id: user.id, question_type: S.type, mode: S.mode, item_ids: items.map(it => it.id), answers: S.answers, score_earned: earned, score_total: items.length };
-            const { error } = await db().from('reading_trainer_results').insert([row]);
-            if (error) throw error;
-            results.unshift(Object.assign({ created_at: new Date().toISOString() }, row));
-        } catch (e) { console.error(e); saveErr = true; }
-        const pct = Math.round(earned / items.length * 100);
+    function finish() {
+        const list = S.items;
+        const earned = list.filter(it => isRight(it, S.answers[it.id])).length;
+        saveResult({ question_type: S.type, mode: S.mode, item_ids: list.map(it => it.id), score_earned: earned, score_total: list.length, created_at: new Date().toISOString() });
+        const pct = Math.round(earned / list.length * 100);
         root.innerHTML = `
             <section class="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center gap-6">
                 <div class="relative w-28 h-28 shrink-0">
@@ -452,8 +662,7 @@
                 <div class="min-w-0">
                     <p class="text-xs font-bold r-ink">${esc(S.type)}</p>
                     <h1 class="mt-1 text-2xl font-extrabold text-slate-900">${esc(t('done'))}</h1>
-                    <p class="mt-1 text-slate-600">${esc(t('score', { a: earned, b: items.length }))}</p>
-                    ${saveErr ? `<p class="mt-2 text-sm text-rose-600">${esc(t('saveFail'))}</p>` : ''}
+                    <p class="mt-1 text-slate-600">${esc(t('score', { a: earned, b: list.length }))}</p>
                     ${guest ? `<p class="mt-2 text-sm text-slate-600">${esc(t('guestMore'))}</p>` : ''}
                     <div class="mt-4 flex flex-wrap gap-2.5">
                         <button type="button" id="trAgain" class="r-btn rounded-xl px-5 py-2.5 font-bold text-sm">${esc(t('again'))}</button>
@@ -462,7 +671,7 @@
                 </div>
             </section>
             <h2 class="mt-8 font-bold text-slate-900">${esc(t('review'))}</h2>
-            <div class="mt-3 grid gap-3">${items.map((it, i) => {
+            <div class="mt-3 grid gap-3">${list.map((it, i) => {
                 const a = S.answers[it.id], ok = isRight(it, a);
                 return `<details class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5" ${!ok && S.mode === 'exam' ? 'open' : ''}>
                     <summary class="cursor-pointer flex items-start gap-3 list-none">
@@ -473,7 +682,10 @@
                     <div class="mt-3 pl-10">${feedbackHtml(it)}</div>
                 </details>`;
             }).join('')}</div>`;
-        root.querySelector('#trAgain').addEventListener('click', () => { if (guest && S.total <= items.length && typeof authShowUpsell === 'function') authShowUpsell(); else startSession(S.type); });
+        root.querySelector('#trAgain').addEventListener('click', () => {
+            if (guest && S.total <= list.length && typeof authShowUpsell === 'function') authShowUpsell();
+            else startSession(S.type, S.src);
+        });
         root.querySelector('#trOther').addEventListener('click', showTypes);
         icons();
         window.scrollTo(0, 0);
@@ -485,9 +697,13 @@
             user = typeof requireAuth === 'function' ? await requireAuth() : null;
             if (!user) return;
             guest = typeof authIsGuest === 'function' ? await authIsGuest() : false;
+            try {
+                const a = typeof authLoadAccess === 'function' ? await authLoadAccess() : null;
+                teacher = !!(a && a.profile && a.profile.role === 'teacher');
+            } catch (e) { teacher = false; }
             await loadAll();
-            const want = new URLSearchParams(location.search).get('type');
-            if (want && types.some(x => x.question_type === want)) showStart(want); else showTypes();
+            const want = normType(new URLSearchParams(location.search).get('type'));
+            if (want && typeList().includes(want)) showStart(want); else showTypes();
         } catch (e) {
             console.error(e);
             root.innerHTML = `<p class="text-rose-600">${esc(t('loadFail'))}</p>`;

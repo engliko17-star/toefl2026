@@ -58,6 +58,7 @@ const PAGE_SECTIONS = {
     'article-select-sentence.html': 'reading',
     'article-greek-latin.html':     'reading',
     'article-time-management.html': 'reading',
+    'reading-trainer.html': 'reading',
 
     // --- Listening ---
     'listening.html':       'listening',
