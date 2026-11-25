@@ -2076,7 +2076,7 @@ index 0000000..3e5ce8f
 + ]
 +};
 diff --git a/reading-trainer.html b/reading-trainer.html
-index 9e75a97..c5373b2 100644
+index 9e75a97..0f17be7 100644
 --- a/reading-trainer.html
 +++ b/reading-trainer.html
 @@ -14,6 +14,7 @@
@@ -2096,7 +2096,7 @@ index 9e75a97..c5373b2 100644
          .tr-passage.select-mode .clickable-sentence:hover { background: #ecfdf5; }
          .tr-passage .clickable-sentence.selected { background: var(--r-deep); color: #fff; }
          .tr-passage .clickable-sentence.review-correct { background: #dcfce7; box-shadow: 0 0 0 1px #86efac; }
-@@ -57,19 +58,138 @@
+@@ -57,19 +58,140 @@
      'use strict';
      // =====================================================================
      // Тренажёр Reading по типам вопросов.
@@ -2121,7 +2121,9 @@ index 9e75a97..c5373b2 100644
      // Сам экзамен (текст, вопрос, варианты) — на английском; интерфейс вокруг — RU / EN.
      // =====================================================================
      const SESSION = 10;
-+    const INCLUDE_REAL = true;        // false — в тренажёре только новые задания
++    // Реальные TOEFL (is_real_toefl) — только образец для новых заданий, в тренажёр не идут.
++    // true — показывать их вместе с новыми (с плашкой «Из реального TOEFL»).
++    const INCLUDE_REAL = false;
 +    const GUEST_NEW_PER_TYPE = 2;     // сколько новых вопросов каждого типа открыто гостю
      const lang = (window.I18N && window.I18N.lang) || (function () { try { return localStorage.getItem('appLang') === 'ru' ? 'ru' : 'en'; } catch (e) { return 'en'; } })();
      const RU = lang === 'ru';
@@ -2235,12 +2237,12 @@ index 9e75a97..c5373b2 100644
          title: ['Question Type Trainer', 'Тренажёр по типам вопросов'],
 -        lead: ['Short texts with one question each. Pick a question type and practise it ten times in a row.', 'Короткие тексты, к каждому один вопрос. Выберите тип вопроса и потренируйте его десять раз подряд.'],
 -        tasks: [['task', 'tasks'], ['задание', 'задания', 'заданий']],
-+        lead: ['Exam-style questions: new tasks modelled on real TOEFL, plus questions from real exams. Pick a question type and practise it ten times in a row — each question comes with its own text.', 'Вопросы в формате экзамена: новые задания по образцу реального TOEFL и вопросы из реальных экзаменов. Выберите тип вопроса и потренируйте его десять раз подряд — каждый вопрос со своим текстом.'],
++        lead: ['Exam-style questions modelled on the real TOEFL. Pick a question type and practise it ten times in a row — each question comes with its own text.', 'Вопросы в формате реального TOEFL. Выберите тип вопроса и потренируйте его десять раз подряд — каждый вопрос со своим текстом.'],
 +        qs: [['question', 'questions'], ['вопрос', 'вопроса', 'вопросов']],
          soon: ['Coming soon', 'Скоро'],
          accuracy: ['Your accuracy', 'Ваша точность'],
          notYet: ['Not practised yet', 'Ещё не тренировали'],
-@@ -77,13 +197,18 @@
+@@ -77,13 +199,18 @@
          allTypes: ['All question types', 'Все типы вопросов'],
          how: ['How to solve it', 'Как решать'],
          article: ['Read the full guide', 'Подробный разбор в статье'],
@@ -2260,7 +2262,7 @@ index 9e75a97..c5373b2 100644
          none: ['Tasks for this question type are on their way.', 'Задания этого типа скоро появятся.'],
          hint: ['Hint', 'Подсказка'],
          check: ['Check', 'Проверить'],
-@@ -94,7 +219,6 @@
+@@ -94,7 +221,6 @@
          answer: ['Correct answer', 'Верный ответ'],
          yours: ['Your answer', 'Ваш ответ'],
          why: ['Why', 'Почему'],
@@ -2268,7 +2270,7 @@ index 9e75a97..c5373b2 100644
          pickSentence: ['Click the sentence in the text.', 'Нажмите на предложение в тексте.'],
          pickSquare: ['Choose where the sentence fits best.', 'Выберите, где предложение подходит лучше всего.'],
          position: ['Position', 'Позиция'],
-@@ -105,21 +229,19 @@
+@@ -105,21 +231,19 @@
          other: ['Another type', 'Другой тип'],
          review: ['Review', 'Разбор'],
          noAnswer: ['No answer', 'Без ответа'],
@@ -2295,7 +2297,7 @@ index 9e75a97..c5373b2 100644
      function plural(n, k) {
          const f = TXT[k][RU ? 1 : 0];
          if (!RU) return n + ' ' + (n === 1 ? f[0] : f[1]);
-@@ -132,46 +254,106 @@
+@@ -132,46 +256,106 @@
      const root = document.getElementById('trainer');
      const arr = v => { if (Array.isArray(v)) return v; if (typeof v === 'string') { try { const x = JSON.parse(v); return Array.isArray(x) ? x : []; } catch (e) { return []; } } return []; };
      const shuffle = a => { const b = a.slice(); for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; };
@@ -2429,7 +2431,7 @@ index 9e75a97..c5373b2 100644
  
      // ---------------------------------------------------------------
      // Экран 1: все типы
-@@ -181,85 +363,105 @@
+@@ -181,85 +365,105 @@
              <h1 class="mt-3 text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">${esc(t('title'))}</h1>
              ${sub ? `<p class="mt-2 text-slate-500 max-w-2xl leading-relaxed">${esc(sub)}</p>` : ''}`;
      }
@@ -2571,7 +2573,7 @@ index 9e75a97..c5373b2 100644
          const unlock = root.querySelector('#trUnlock');
          if (unlock) unlock.addEventListener('click', () => { if (typeof authShowUpsell === 'function') authShowUpsell(); });
          icons();
-@@ -267,35 +469,50 @@
+@@ -267,35 +471,50 @@
      }
  
      // ---------------------------------------------------------------
@@ -2644,7 +2646,7 @@ index 9e75a97..c5373b2 100644
          // подсветка: заданный фрагмент или слово в кавычках из вопроса (Vocabulary, Reference)
          const hl = it.highlight || (['Vocabulary', 'Reference'].includes(it.question_type) ? quoted(it.question) : '');
          if (hl && window.PassageMarkup) PassageMarkup.applyHighlight(box, { type: it.question_type === 'Reference' ? 'Reference' : 'Simplification', highlight: hl, highlight_occurrence: it.highlight_occurrence });
-@@ -309,18 +526,22 @@
+@@ -309,18 +528,22 @@
          const last = S.i === S.items.length - 1;
          const opts = arr(it.options);
          const steps = stepsOf(typeInfo(S.type));
@@ -2668,7 +2670,7 @@ index 9e75a97..c5373b2 100644
                      <div id="trPassage" class="tr-passage text-[15px] leading-relaxed text-slate-800 ${k === 'select' && !checked ? 'select-mode' : ''}"></div>
                  </section>
                  <section class="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 min-w-0 md:sticky md:top-4">
-@@ -343,7 +564,7 @@
+@@ -343,7 +566,7 @@
                  <span class="font-bold text-slate-400">${String.fromCharCode(65 + i)}</span><span>${esc(o)}</span></button>`).join('');
              optsBox.querySelectorAll('[data-i]').forEach(b => b.addEventListener('click', () => { if (!checked) choose(Number(b.dataset.i)); }));
          } else if (k === 'insert') {
@@ -2677,7 +2679,7 @@ index 9e75a97..c5373b2 100644
              optsBox.querySelectorAll('.insert-option span:last-child').forEach(s => { s.textContent = s.textContent.replace('Позиция', t('position')); });
              box.querySelectorAll('.insert-square').forEach((sq, i) => sq.addEventListener('click', () => { if (!checked) choose(i); }));
              if (ans !== undefined) PassageMarkup.choosePosition(box, Number(ans), it.insert_sentence || '', { silent: true });
-@@ -377,24 +598,19 @@
+@@ -377,24 +600,19 @@
          if (k === 'mc') { const o = arr(it.options)[a]; return (String.fromCharCode(65 + Number(a))) + '. ' + (o || ''); }
          if (k === 'insert') return t('position') + ' ' + String.fromCharCode(65 + Number(a));
          const tmp = document.createElement('div');
@@ -2705,7 +2707,7 @@ index 9e75a97..c5373b2 100644
          </div>`;
      }
      function paintFeedback(it, box) {
-@@ -431,17 +647,11 @@
+@@ -431,17 +649,11 @@
      // ---------------------------------------------------------------
      // Итог подхода
      // ---------------------------------------------------------------
@@ -2728,7 +2730,7 @@ index 9e75a97..c5373b2 100644
          root.innerHTML = `
              <section class="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center gap-6">
                  <div class="relative w-28 h-28 shrink-0">
-@@ -452,8 +662,7 @@
+@@ -452,8 +664,7 @@
                  <div class="min-w-0">
                      <p class="text-xs font-bold r-ink">${esc(S.type)}</p>
                      <h1 class="mt-1 text-2xl font-extrabold text-slate-900">${esc(t('done'))}</h1>
@@ -2738,7 +2740,7 @@ index 9e75a97..c5373b2 100644
                      ${guest ? `<p class="mt-2 text-sm text-slate-600">${esc(t('guestMore'))}</p>` : ''}
                      <div class="mt-4 flex flex-wrap gap-2.5">
                          <button type="button" id="trAgain" class="r-btn rounded-xl px-5 py-2.5 font-bold text-sm">${esc(t('again'))}</button>
-@@ -462,7 +671,7 @@
+@@ -462,7 +673,7 @@
                  </div>
              </section>
              <h2 class="mt-8 font-bold text-slate-900">${esc(t('review'))}</h2>
@@ -2747,7 +2749,7 @@ index 9e75a97..c5373b2 100644
                  const a = S.answers[it.id], ok = isRight(it, a);
                  return `<details class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5" ${!ok && S.mode === 'exam' ? 'open' : ''}>
                      <summary class="cursor-pointer flex items-start gap-3 list-none">
-@@ -473,7 +682,10 @@
+@@ -473,7 +684,10 @@
                      <div class="mt-3 pl-10">${feedbackHtml(it)}</div>
                  </details>`;
              }).join('')}</div>`;
@@ -2759,7 +2761,7 @@ index 9e75a97..c5373b2 100644
          root.querySelector('#trOther').addEventListener('click', showTypes);
          icons();
          window.scrollTo(0, 0);
-@@ -485,9 +697,13 @@
+@@ -485,9 +699,13 @@
              user = typeof requireAuth === 'function' ? await requireAuth() : null;
              if (!user) return;
              guest = typeof authIsGuest === 'function' ? await authIsGuest() : false;
