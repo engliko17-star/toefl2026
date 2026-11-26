@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Health, Sleep & Well-being — Speaking Topics — TOEFL Prep</title>
+
+<!-- Те же подключения, что на остальных страницах платформы -->
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="auth.js"></script>
+<script src="topics.js"></script>
+
+<link rel="stylesheet" href="topic-engine.css">
+</head>
+<body>
+<div class="tl-layout flex flex-col md:flex-row min-h-screen">
+  <div id="app-sidebar"></div>
+  <script src="nav.js"></script>
+
+  <main class="tl-main">
+    <div class="tl-wrap" id="lesson"></div>
+  </main>
+</div>
+
+<!-- Панель ответа -->
+<div class="tl-dock" id="dock" aria-live="polite">
+  <div class="tl-dock-top"><span id="dockLabel">Ответ</span><button class="tl-dock-close" id="dockClose" aria-label="Закрыть">✕</button></div>
+  <div class="tl-dock-q" id="dockQ"></div>
+  <div class="tl-dock-status">
+    <div class="tl-dock-state"><span class="tl-rec-dot" id="recDot"></span><span id="dockState">Готово</span></div>
+    <div class="tl-dock-time" id="dockTime">0:45</div>
+  </div>
+  <div class="tl-phase" id="dockPhase"></div>
+  <div class="tl-dock-bar" id="dockBar"></div>
+  <div class="tl-dock-ctrl">
+    <label><input type="checkbox" id="recToggle"> Записывать голос</label>
+    <div class="tl-row">
+      <button class="tl-dock-btn" id="dockShowQ">Показать текст</button>
+      <button class="tl-dock-btn" id="dockStop">Стоп</button>
+    </div>
+  </div>
+  <div class="tl-dock-msg" id="dockMsg"></div>
+  <div class="tl-dock-out" id="dockOut"></div>
+</div>
+
+<script>
+/* =====================================================================
+   КОНТЕНТ УРОКА: HEALTH, SLEEP & WELL-BEING
+   Новая тема = копия файла: меняются LESSON, HERO_ART и IDIOM_ART.
+   Общий движок и стили — topic-engine.js и topic-engine.css.
+   **слово** — подсветка целевой лексики.
+   _слово_ в коллокациях — «ключевой кубик».
+   [A] [R] [E] [C] в модельных ответах — цветная структура:
+   A = прямой ответ, R = причина, E = пример, C = вывод.
+   ===================================================================== */
+const LESSON = {
+  slug: "health",
+  titleEn: "Health, Sleep & Well-being",
+  titleRu: "Здоровье, сон и самочувствие",
+  category: "Здоровье и образ жизни",
+  intro: "Сон и вечерние ритуалы, энергия и продуктивность, экраны и телефон, здоровые привычки, стресс и ментальное здоровье, природа, хобби и люди, которые помогают держаться. Разбираем лексику, с которой о самочувствии можно говорить спокойно и по-взрослому, и проходим все вопросы по теме из базы.",
+  meta: [["≈ 60", "минут"], ["27", "слов · 2 уровня"], ["20", "коллокаций"], ["9", "идиом"], ["{Q}", "вопросов для обсуждения"]],
+
+  frames: {
+    warmup:    { icon: "flame",      time: "3 мин",  steps: ["Нажми динамик или прочитай вопрос", "Ответь вслух за 20 секунд", "Без подсказок — это «до урока»"] },
+    vocab:     { icon: "book",       time: "10 мин", steps: ["Посмотри на три опоры самочувствия", "Найди себя на шкале", "Слова: начни с Core, слушай и повторяй"] },
+    coll:      { icon: "link",       time: "8 мин",  steps: ["Учи сочетание целиком", "Цветной кубик — то, что чаще путают", "Опиши свой вечер с 5 сочетаниями"] },
+    idioms:    { icon: "quote",      time: "6 мин",  steps: ["Посмотри картинку — запомни образ", "Плашка «Можно» — смело в ответы", "Выбери 2 идиомы на сегодня"] },
+    expr:      { icon: "megaphone",  time: "5 мин",  steps: ["Послушай интонацию", "По 1 фразе из каждой группы", "Запомни шкалу 45 секунд"] },
+    check:     { icon: "puzzle",     time: "10 мин", steps: ["4 мини-игры", "Цель — 100% в Matching и Gap-fill", "Карточки — пока не узнаёшь все"] },
+    repeat:    { icon: "headphones", time: "5 мин",  steps: ["Слушай, не читая", "Повтори слово в слово", "Включи запись и сравни"] },
+    interview: { icon: "mic",        time: "15 мин", steps: ["Выбери сет — начни с Official", "Пройди все вопросы подряд, без пауз", "Сравни с моделью: цвета = структура"] },
+    club:      { icon: "chat",       time: "30+ мин", steps: ["Возьми 1–2 блока на занятие", "Ответь, потом — на «Копнём глубже»", "Отметь «Обсудили» или крути рулетку"] },
+    self:      { icon: "checkCircle",time: "3 мин",  steps: ["Прослушай свои записи", "Отметь, что получилось", "Цель — 15+ отмеченных слов"] }
+  },
+
+  warmup: [
+    "How many hours did you sleep last night?",
+    "What do you usually do to relax after a long day?",
+    "What's one healthy habit you have?",
+    "Do you check your phone right before you fall asleep?"
+  ],
+
+  /* Три опоры самочувствия: равные ветки, вместо процента — tag */
+  flow: {
+    icon: "heart",
+    title: "Три опоры самочувствия",
+    source: { kicker: "Чувствовать себя хорошо…", title: "Well-being", ru: "самочувствие", words: ["look after yourself", "a healthy lifestyle", "feel your best"] },
+    branches: [
+      { title: "Sleep", ru: "сон", sub: "the base for everything", tag: "Сон", color: "#6366f1", words: ["get enough sleep", "a bedtime routine", "recharge", "sleep-deprived"] },
+      { title: "Body", ru: "тело", sub: "small daily habits", tag: "Тело", color: "#0ea5e9", words: ["a balanced diet", "stay hydrated", "cut down on sugar", "a check-up"] },
+      { title: "Mind", ru: "голова", sub: "as important as the body", tag: "Голова", color: "#ec4899", words: ["cope with stress", "unwind", "open up", "seek help"] }
+    ],
+    notes: [
+      "Сильный ответ почти всегда связывает ветки: <b>мало сна → плохое настроение → хуже учёба</b>. Причина и следствие — это и есть хорошее «R» в ответе",
+      "Готовая фраза: <i>When I don't get enough sleep, everything else falls apart.</i>"
+    ]
+  },
+
+  scale: {
+    title: "Как ты сейчас? Перетащи кружок туда, где ты",
+    left: "RUNNING ON EMPTY", right: "FULLY RECHARGED",
+    words: [
+      { w: "running on empty", p: 4 }, { w: "sleep-deprived", p: 17 }, { w: "stressed out", p: 30 }, { w: "getting by", p: 44 },
+      { w: "balanced", p: 58 }, { w: "well-rested", p: 71 }, { w: "full of energy", p: 85 }, { w: "thriving", p: 97 }
+    ],
+    says: [
+      { max: 25,  t: "Honestly, I'm **running on empty** right now — I'm **sleep-deprived** and exhausted." },
+      { max: 50,  t: "I'm a bit **stressed out** with exams, but I'm **getting by**." },
+      { max: 75,  t: "Overall, I feel quite **balanced** — I'm usually **well-rested** and calm." },
+      { max: 101, t: "I'm **full of energy** these days — I'd say I'm genuinely **thriving**." }
+    ]
+  },
+
+  vocab: [
+    { en: "well-being", pos: "n", ru: "благополучие, самочувствие", ex: "Sleep has a huge effect on our well-being.", level: "core" },
+    { en: "healthy lifestyle", pos: "n", ru: "здоровый образ жизни", ex: "A healthy lifestyle doesn't have to be expensive.", level: "core" },
+    { en: "balanced diet", pos: "n", ru: "сбалансированное питание", ex: "It's hard to eat a balanced diet in a student dorm.", level: "core" },
+    { en: "get enough sleep", pos: "phr", ru: "высыпаться", ex: "Most students don't get enough sleep during exams.", level: "core" },
+    { en: "nap", pos: "n / v", ru: "короткий дневной сон; вздремнуть", ex: "A twenty-minute nap helps me focus in the afternoon.", level: "core" },
+    { en: "bedtime routine", pos: "n", ru: "вечерний ритуал перед сном", ex: "My bedtime routine includes reading and no screens.", level: "core" },
+    { en: "stressed out", pos: "adj", ru: "в сильном стрессе, на нервах", ex: "I get really stressed out before exams.", level: "core" },
+    { en: "anxiety", pos: "n", ru: "тревога, тревожность", ex: "Too much coffee gives me anxiety.", level: "core" },
+    { en: "unwind", pos: "v", ru: "расслабиться, «выдохнуть»", ex: "I unwind by going for a walk after class.", level: "core" },
+    { en: "mental health", pos: "n", ru: "психическое (ментальное) здоровье", ex: "Mental health is just as important as physical health.", level: "core" },
+    { en: "check-up", pos: "n", ru: "профилактический осмотр у врача", ex: "I go for a check-up once a year.", level: "core" },
+    { en: "screen time", pos: "n", ru: "время перед экраном", ex: "I try to reduce my screen time in the evening.", level: "core" },
+    { en: "mood", pos: "n", ru: "настроение", ex: "Bad sleep always puts me in a bad mood.", level: "core" },
+    { en: "energy levels", pos: "n", ru: "уровень энергии", ex: "My energy levels drop after lunch.", level: "core" },
+    { en: "insomnia", pos: "n", ru: "бессонница", ex: "My mother has suffered from insomnia for years.", level: "core" },
+
+    { en: "sleep-deprived", pos: "adj", ru: "хронически невыспавшийся", ex: "Sleep-deprived drivers can be as dangerous as drunk ones.", level: "adv" },
+    { en: "recharge", pos: "v", ru: "восстановить силы, «перезарядиться»", ex: "I need a quiet weekend to recharge.", level: "adv" },
+    { en: "cope with", pos: "phr v", ru: "справляться с", ex: "Everyone needs healthy ways to cope with stress.", level: "adv" },
+    { en: "resilience", pos: "n", ru: "устойчивость, способность восстанавливаться", ex: "Good friends build our resilience.", level: "adv" },
+    { en: "mindfulness", pos: "n", ru: "осознанность (практика)", ex: "Five minutes of mindfulness helps me calm down.", level: "adv" },
+    { en: "stigma", pos: "n", ru: "стигма, общественное осуждение", ex: "There's still a stigma around asking for therapy.", level: "adv" },
+    { en: "seek professional help", pos: "phr", ru: "обратиться к специалисту", ex: "If anxiety affects your daily life, seek professional help.", level: "adv" },
+    { en: "open up", pos: "phr v", ru: "открыться, поделиться переживаниями", ex: "It took me months to open up to my friends.", level: "adv" },
+    { en: "body clock", pos: "n", ru: "биологические часы", ex: "Night shifts completely confuse your body clock.", level: "adv" },
+    { en: "self-care", pos: "n", ru: "забота о себе", ex: "Self-care isn't selfish; it's necessary.", level: "adv" },
+    { en: "emotional distress", pos: "n", ru: "эмоциональное неблагополучие, тяжёлое состояние", ex: "Teachers should be trained to notice signs of emotional distress.", level: "adv" },
+    { en: "prevention", pos: "n", ru: "профилактика", ex: "Prevention is cheaper than treatment.", level: "adv" }
+  ],
+
+  collocations: [
+    { icon: "moon", group: "Сон", items: [
+      { en: "_get_ a good night's sleep", ru: "хорошо выспаться", ex: "I always get a good night's sleep before an exam." },
+      { en: "_fall_ asleep", ru: "заснуть", ex: "I can't fall asleep if I drink coffee after four." },
+      { en: "_stay up_ late", ru: "засиживаться допоздна", ex: "I stayed up late watching a series again." },
+      { en: "_take_ a nap", ru: "вздремнуть", ex: "On Sundays, I take a nap after lunch." },
+      { en: "_catch up on_ sleep", ru: "отоспаться", ex: "I try to catch up on sleep at the weekend." }
+    ]},
+    { icon: "heart", group: "Тело", items: [
+      { en: "_eat_ a balanced diet", ru: "питаться сбалансированно", ex: "Eating a balanced diet gives me more energy." },
+      { en: "_stay_ hydrated", ru: "пить достаточно воды", ex: "I carry a bottle to stay hydrated." },
+      { en: "_cut down on_ sugar", ru: "сократить сахар", ex: "I've cut down on sugar and coffee this year." },
+      { en: "_go for_ a check-up", ru: "сходить на осмотр", ex: "Students rarely go for regular check-ups." },
+      { en: "_build_ healthy habits", ru: "выработать полезные привычки", ex: "It's easier to build healthy habits when you're young." }
+    ]},
+    { icon: "bulb", group: "Голова", items: [
+      { en: "_cope with_ stress", ru: "справляться со стрессом", ex: "Running helps me cope with stress." },
+      { en: "_open up_ about sth", ru: "рассказать о переживаниях", ex: "It's hard for many men to open up about their feelings." },
+      { en: "_seek_ help", ru: "обратиться за помощью", ex: "There's no shame in seeking help." },
+      { en: "_clear_ your head", ru: "проветрить голову", ex: "A walk in the park clears my head." },
+      { en: "_take_ a mental health day", ru: "взять день для восстановления", ex: "Some companies let employees take a mental health day." }
+    ]},
+    { icon: "battery", group: "Отдых", items: [
+      { en: "_recharge_ your batteries", ru: "восстановить силы", ex: "A weekend in the countryside recharges my batteries." },
+      { en: "_unwind_ after a long day", ru: "расслабиться после долгого дня", ex: "I unwind after a long day with a hot shower." },
+      { en: "_take_ a break from", ru: "сделать перерыв в", ex: "I sometimes take a break from social media." },
+      { en: "_spend_ time in nature", ru: "проводить время на природе", ex: "Spending time in nature lowers stress." },
+      { en: "_practice_ mindfulness", ru: "практиковать осознанность", ex: "I practice mindfulness for five minutes every morning." }
+    ]}
+  ],
+
+  idioms: [
+    { art: "log", lit: "буквально: «спать как бревно»", en: "sleep like a log", ru: "спать как убитый", meaning: "спать очень крепко", ex: "After a day of hiking, I slept like a log.", reg: "ok", note: "Идеально для вопроса «can you sleep in unfamiliar places»." },
+    { art: "toss", lit: "буквально: «бросаться и ворочаться»", en: "toss and turn", ru: "ворочаться без сна", meaning: "долго не мочь уснуть, крутиться в кровати", ex: "The night before my exam, I tossed and turned until three.", reg: "ok", note: "Пара к sleep like a log — противоположная ситуация." },
+    { art: "sack", lit: "буквально: «ударить мешок»", en: "hit the sack", ru: "завалиться спать", meaning: "лечь спать (разговорное)", ex: "I usually hit the sack around midnight.", reg: "ok", note: "Разговорно, но для Interview нормально." },
+    { art: "candle", lit: "буквально: «жечь свечу с двух концов»", en: "burn the candle at both ends", ru: "работать на износ", meaning: "много работать и мало спать, истощая силы", ex: "During finals, I was burning the candle at both ends.", reg: "ok", note: "Сильная идиома про недосып и стресс." },
+    { art: "weather", lit: "буквально: «под погодой»", en: "feel under the weather", ru: "неважно себя чувствовать", meaning: "быть слегка больным или уставшим", ex: "I stayed home because I was feeling a bit under the weather.", reg: "ok", note: "Мягкий способ сказать «приболел»." },
+    { art: "fiddle", lit: "буквально: «здоров как скрипка»", en: "(as) fit as a fiddle", ru: "здоров как бык", meaning: "в отличной физической форме", ex: "My grandmother is ninety and fit as a fiddle.", reg: "ok", note: "Удобно про пожилых родственников и здоровые привычки." },
+    { art: "chest", lit: "буквально: «снять что-то с груди»", en: "get something off your chest", ru: "выговориться", meaning: "рассказать о том, что давно беспокоит, и почувствовать облегчение", ex: "Talking to my sister helped me get it off my chest.", reg: "ok", note: "Лучшая идиома для вопросов о ментальном здоровье." },
+    { art: "battery", lit: "буквально: «зарядить батарейки»", en: "recharge your batteries", ru: "восстановить силы", meaning: "отдохнуть и набраться энергии", ex: "I spend Sundays offline to recharge my batteries.", reg: "ok", note: "Подходит к вопросам про отдых, отпуск и выходные." },
+    { art: "apple", lit: "буквально: «яблоко в день — и врач не нужен»", en: "an apple a day keeps the doctor away", ru: "кто ест яблоки — тот не болеет", meaning: "полезные привычки помогают не болеть", ex: "My grandmother still believes an apple a day keeps the doctor away.", reg: "careful", note: "Поговорка-клише. Лучше с иронией или от лица бабушки." }
+  ],
+
+  expressions: [
+    { icon: "play", fn: "Начать ответ", items: [
+      "Honestly, my sleep isn't great at the moment.",
+      "I'd say I'm fairly health-conscious.",
+      "For me, the most important thing is …"
+    ]},
+    { icon: "bulb", fn: "Причина и следствие", items: [
+      "When I don't sleep enough, I can't concentrate.",
+      "That's why I've started …",
+      "The knock-on effect is that …"
+    ]},
+    { icon: "camera", fn: "Пример из жизни", items: [
+      "During exam week, for example, I …",
+      "Last semester, I went through a stressful period when …",
+      "My grandmother, for instance, …"
+    ]},
+    { icon: "scales", fn: "Баланс и контраст", items: [
+      "Phones help us relax; that said, they also keep us awake.",
+      "While some stress is useful, too much is harmful.",
+      "On the flip side, …"
+    ]},
+    { icon: "heart", fn: "Говорить о чувствах аккуратно", items: [
+      "I went through a difficult period when …",
+      "It helped me to talk to someone I trust.",
+      "Everyone struggles sometimes, and that's okay."
+    ]},
+    { icon: "flag", fn: "Завершить", items: [
+      "So for me, sleep is the foundation of everything.",
+      "In the end, looking after your mind is just as important.",
+      "All in all, small habits make the biggest difference."
+    ]}
+  ],
+
+  answerSteps: [
+    { k: "A", s: 5,  i: "Honestly, I don't get enough sleep." },
+    { k: "R", s: 12, i: "The main reason is that I stay up late on my phone…" },
+    { k: "E", s: 22, i: "Last week, for example…" },
+    { k: "C", s: 6,  i: "So I'm trying to build a better bedtime routine." }
+  ],
+
+  matching: [
+    { a: "sleep like a log", b: "sleep very deeply" },
+    { a: "toss and turn", b: "move around in bed because you can't sleep" },
+    { a: "burn the candle at both ends", b: "work too hard and sleep too little" },
+    { a: "feel under the weather", b: "feel slightly ill" },
+    { a: "get something off your chest", b: "talk about something that has been worrying you" },
+    { a: "recharge your batteries", b: "rest and get your energy back" }
+  ],
+
+  gapfill: [
+    { t: "I can't ___ asleep if I drink coffee after four.", a: ["fall"] },
+    { t: "On Sundays, I ___ a nap after lunch.", a: ["take", "have"] },
+    { t: "I try to catch ___ on sleep at the weekend.", a: ["up"] },
+    { t: "I carry a water bottle to stay ___.", a: ["hydrated"] },
+    { t: "I've cut ___ on sugar this year.", a: ["down"] },
+    { t: "Running helps me ___ with stress.", a: ["cope", "deal"] },
+    { t: "It took me months to open ___ to my friends.", a: ["up"] },
+    { t: "There's no shame in ___ help.", a: ["seeking", "asking for", "getting"] }
+  ],
+
+  paraphrase: [
+    { plain: "I didn't sleep well — I was moving in bed all night.", better: ["I **tossed and turned** all night."] },
+    { plain: "I sleep very well after sport.", better: ["After a workout, I **sleep like a log**."] },
+    { plain: "I'm a little bit sick today.", better: ["I'm **feeling a bit under the weather** today."] },
+    { plain: "I work a lot and sleep little.", better: ["I've been **burning the candle at both ends**.", "I'm completely **sleep-deprived**."] },
+    { plain: "I want to rest and have energy again.", better: ["I need to **recharge my batteries**.", "I need a weekend to **recharge**."] },
+    { plain: "I told my friend about my problem and felt better.", better: ["**Opening up** to my friend helped me **get it off my chest**."] },
+    { plain: "Stress is a big problem for me, but I can manage it.", better: ["I've found healthy ways to **cope with stress**."] },
+    { plain: "I go to the doctor to check my health every year.", better: ["I **go for a check-up** once a year."] }
+  ],
+
+  repeat: {
+    scenario: "Вы подрабатываете в университетском центре здоровья. Координатор рассказывает о программе для студентов — повторите каждое предложение точно так, как услышали.",
+    sentences: [
+      "Welcome to the student wellness center.",
+      "We're open until eight on weekdays.",
+      "All counseling sessions are free and confidential.",
+      "Students can book an appointment online or at the front desk.",
+      "This month, we're running a series of workshops on healthy sleep.",
+      "Please remind students that the meditation room on the second floor is open to everyone.",
+      "If a student seems to be in serious distress, contact the counselor on duty immediately."
+    ]
+  },
+
+  /* ===== Реальные сеты Take an Interview по теме (из базы платформы) ===== */
+  sets: [
+    { id: "s099", badge: "official", title: "Health and Wellness Habits", src: "Official TOEFL · 099",
+      scenario: "As part of a university project, you have agreed to take part in a short research interview about health and wellness habits. A graduate student conducting the research will ask some questions online.",
+      questions: [
+        { q: "First, do you have any specific routines or practices you use to maintain your physical well-being? If so, what are they?",
+          lx: ["stay active", "get enough sleep", "stay hydrated"],
+          model: "[A] Yes, I have three main habits: running, sleep and water. [R] I sit at a desk most of the day, so I need to move, and I noticed that I feel terrible when I sleep less than seven hours. [E] For example, I run three times a week in the morning, and on other days I walk to class instead of taking the bus. I also try to go to bed before midnight, and I carry a water bottle everywhere to **stay hydrated**. These simple things give me much more energy. [C] So my routine is simple, but it works for me.",
+          model5: "[A] I do — my routine rests on three simple pillars: exercise, sleep and staying hydrated. [R] Since I spend most of the day sitting in lectures, regular movement is essential, and I've learned the hard way that I function terribly on less than seven hours' sleep. [E] I run three mornings a week, for instance, and on the other days I walk to campus rather than taking the bus. I'm also strict about being in bed by midnight, and I carry a water bottle everywhere, because even mild dehydration leaves me with headaches. None of this is particularly sophisticated, yet together these habits have transformed my **energy levels**. [C] So for me, consistency with the basics matters more than any fancy regime." },
+        { q: "Can you describe any dietary choices or habits that you follow to stay healthy? Give details to explain your answer.",
+          lx: ["balanced diet", "cut down on", "cook at home"],
+          model: "[A] I try to eat a **balanced diet**, and I cook at home most of the time. [R] When I eat fast food, I feel tired and heavy, and it's also expensive. Home-cooked food is healthier and cheaper. [E] For example, every Sunday I cook a big pot of vegetable soup or chicken with rice for three or four days. I also **cut down on** sugar — I stopped drinking soda last year, and now I drink water or tea. I still eat pizza with friends sometimes, but only once a week. [C] So I'm not perfect, but I try to make good choices most of the time.",
+          model5: "[A] My main habits are cooking at home and **cutting down on** sugar, although I'm far from strict. [R] Whenever I rely on fast food, I feel sluggish and unfocused, and it drains my budget too, whereas home-cooked meals leave me feeling noticeably better. [E] Every Sunday, for example, I batch-cook something simple, such as a vegetable stew or chicken with rice, which covers three or four days. Last year I also gave up soft drinks entirely, replacing them with water and tea, and within a month my afternoon energy crashes had largely disappeared. I still enjoy pizza with friends, but it's a weekly treat rather than a habit. [C] So I aim for a **balanced diet** most of the time, not perfection." },
+        { q: "If you could make one significant change to your diet or exercise routine to stay healthy, what would it be? Why would you make that particular choice?",
+          lx: ["build healthy habits", "strength training", "cut down on"],
+          model: "[A] I would add strength training to my exercise routine. [R] I run a lot, but I almost never train my upper body, and doctors say strong muscles protect your back and joints, especially when you get older. [E] For example, after long days at my laptop, my back and shoulders often hurt. My father started lifting weights at fifty, and his back pain disappeared. I think if I start now, at twenty, I'll avoid those problems later. [C] So two short strength workouts a week would be my one big change.",
+          model5: "[A] If I could make one change, I'd add regular strength training to my routine. [R] Although I run frequently, I almost completely neglect my upper body, and there's strong evidence that muscle strength protects the back and joints, becoming increasingly important as we age. [E] After long days hunched over my laptop, for instance, my back and shoulders often ache. My father, meanwhile, took up weightlifting at fifty, and within a year his chronic back pain had vanished. If he could see such a difference starting at fifty, then starting at twenty seems like an obvious investment. [C] So two short strength sessions a week would be my one significant change — small effort now, big payoff later." },
+        { q: "Some people believe that mental health is just as important as physical health and should be given equal attention. Do you agree or disagree with this viewpoint? Why?",
+          lx: ["mental health", "stigma", "seek professional help"],
+          model: "[A] I completely agree. [R] Our mind and body are connected. If you're stressed or depressed, you can't sleep, eat or study well, and you can even get physically sick. But people still feel embarrassed to talk about **mental health** problems. [E] For example, in my first semester, I felt very anxious and homesick, and I had headaches every day. A doctor checked my body and found nothing. Only when I talked to a university counselor did the headaches stop. [C] So we should take care of our minds as seriously as our bodies.",
+          model5: "[A] I wholeheartedly agree, and I'd even argue that the two are inseparable. [R] When we're anxious or depressed, our sleep, appetite and concentration suffer, and prolonged stress can even make us physically ill. Yet there's still a **stigma** around mental health that rarely exists for a broken arm. [E] During my first semester, for example, I was so anxious and homesick that I developed daily headaches. A doctor ran several tests and found nothing physically wrong. It was only after I **sought** help from a university counselor that the headaches gradually disappeared. [C] So treating the mind with the same seriousness as the body isn't a luxury; it's simply good medicine." }
+      ]},
+    { id: "s063", badge: "official", title: "Sleep Habits", src: "Official TOEFL · 063",
+      scenario: "You have volunteered for a research study about sleep habits. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "First, do you usually go to bed early or late?",
+          lx: ["a night owl / an early bird", "body clock", "routine"],
+          model: "[A] I usually go to bed quite late, around midnight, so I'm more of a **night owl**. [R] In the evening my brain feels more awake, and it's quiet, so I can concentrate. But because I have morning classes, I can't sleep as long as I'd like. [E] For example, I often write my essays between nine and midnight, because that's when I have the best ideas. But last semester I had eight a.m. classes and felt like a zombie every morning. Now I try to be in bed by twelve at the latest. [C] So I'm a night owl by nature, but I'm learning to be a bit of an **early bird**.", model5: "[A] I tend to go to bed fairly late, usually around midnight, so I'd call myself a **night owl**. [R] My mind simply feels sharper in the evening, when everything is quiet and there are no messages coming in. The problem, of course, is that university doesn't adjust to my body clock. [E] I write most of my essays between nine and midnight, for instance, as that's when ideas come most easily. Last semester, however, I had eight a.m. lectures and spent every morning half asleep. Since then, I've forced myself to be in bed by midnight at the latest, which has made a noticeable difference. [C] So I'm a night owl by nature, but I'm slowly training myself to be more of an **early bird**." },
+        { q: "What is your typical routine before bedtime? What do you usually do before going to bed?",
+          lx: ["bedtime routine", "unwind", "screen time"],
+          model: "[A] My **bedtime routine** is quite simple and takes about forty minutes. [R] I learned that if I go straight from my laptop to bed, I can't **fall asleep** for a long time, so I need time to **unwind**. [E] For example, at about eleven, I stop studying and take a warm shower. Then I prepare my bag and clothes for the next day, so my morning is easier. After that, I read a paper book in bed for twenty minutes — my phone stays on my desk, not next to my bed. Usually, I fall asleep before midnight. [C] So my routine helps my brain understand it's time to sleep.",
+          model5: "[A] My **bedtime routine** is fairly simple, lasting roughly forty minutes. [R] I've discovered that if I go straight from studying to bed, my mind keeps racing and I can't **fall asleep**, so I deliberately give myself time to **unwind**. [E] At around eleven, for instance, I close my laptop and take a warm shower. I then pack my bag and lay out my clothes for the next day, which makes my mornings far less chaotic. Finally, I read a paper book in bed for twenty minutes, while my phone charges on the desk across the room — out of reach and out of mind. More often than not, I'm asleep before midnight. [C] Essentially, my routine signals to my brain that the day is over." },
+        { q: "Some people have trouble sleeping when they stay overnight at a hotel or at a friend's house. Are you able to sleep well in unfamiliar places? Why or why not?",
+          lx: ["sleep like a log", "toss and turn", "noise"],
+          model: "[A] Usually not — the first night in a new place is always hard for me. [R] New noises, a different bed and a strange room make my brain stay alert. After one or two nights, I get used to it. [E] For example, when I stayed at a hotel in Barcelona with friends, I **tossed and turned** the whole first night because of the street noise and an uncomfortable pillow. But on the second night, I was so tired from walking all day that I **slept like a log**. Now I always take earplugs and a sleep mask. [C] So I can sleep in new places, but only after one bad night.",
+          model5: "[A] Not particularly well, at least on the first night. [R] Apparently, the brain stays partly alert in unfamiliar surroundings, almost as a survival instinct, so unfamiliar noises, a different bed and even the unfamiliar smell of a room keep me half awake. [E] When I stayed at a hotel in Barcelona with friends, for instance, I **tossed and turned** all night, thanks to the street noise and a rock-hard pillow. By the second night, however, I was so exhausted from exploring that I **slept like a log**. Since then, I never travel without earplugs and a sleep mask, which have made a remarkable difference. [C] So I adapt eventually, but the first night is usually a write-off." },
+        { q: "Many parents worry about their teenage children getting enough sleep. Some high schools have considered starting later in the morning to allow teenage students more time to sleep each night. What do you think of this idea? Explain why.",
+          lx: ["body clock", "sleep-deprived", "concentrate"],
+          model: "[A] I think it's a great idea. [R] Teenagers' **body clocks** are different — they naturally fall asleep later and wake up later. If school starts at eight, they're always tired, and they can't learn well. [E] For example, when I was in high school, classes started at eight, and I was half asleep in every first lesson, especially in math. My cousin's school now starts at nine, and he says students are more awake, and fewer people are late. [C] So a later start would help teenagers learn better and be healthier.",
+          model5: "[A] I think it's an excellent idea, and one backed by science. [R] During adolescence, the **body clock** naturally shifts later, so teenagers genuinely struggle to fall asleep early. Forcing them to start school at eight leaves them chronically **sleep-deprived**, which harms their concentration, mood and health. [E] When I was in high school, for example, classes began at eight, and I spent every first-period math lesson in a fog. My cousin's school, by contrast, recently moved its start time to nine, and he says students are noticeably more alert and far fewer arrive late. [C] So rather than blaming teenagers for being tired, schools should simply adapt to their biology." }
+      ]},
+    { id: "ssl", badge: "platform", title: "Sleep and Daily Routines", src: "Практика платформы",
+      scenario: "I'm conducting a study on sleep and how people manage their time, energy, and daily schedules. I'd like to ask you a few questions to better understand your sleep habits.",
+      questions: [
+        { q: "First, on average, how many hours of sleep do you get on a typical night? And would you say that amount feels sufficient for your body and mind to function well?",
+          lx: ["get enough sleep", "catch up on sleep", "sleep-deprived"],
+          model: "[A] I usually sleep about seven hours on weekdays, and honestly, it's not quite enough. [R] I feel okay in the morning, but by the afternoon, I'm tired and can't concentrate well. I think I need about eight hours to feel really good. [E] For example, on weekends I sleep eight or nine hours, and I feel completely different — more energetic and in a better mood. But during exam weeks, I sometimes sleep only five or six hours, and then I feel terrible. [C] So I'm trying to go to bed earlier, but it isn't easy.",
+          model5: "[A] On weekdays I average about seven hours, which, if I'm honest, isn't quite enough for me. [R] I function reasonably well in the mornings, but by mid-afternoon my concentration fades and I find myself rereading the same paragraph several times. I suspect my body needs closer to eight hours. [E] At weekends, for instance, when I **catch up on sleep** and get eight or nine hours, I feel like a different person — sharper, calmer and far more cheerful. During exam weeks, by contrast, I sometimes survive on five or six hours, and I become irritable and noticeably less productive. [C] So I'm gradually moving my bedtime earlier, although it's proving harder than it sounds." },
+        { q: "How does sleep—or a lack of sleep—affect your mood, focus, or energy levels throughout the day? Can you give an example of how it impacts your performance at school, work, or even in social situations?",
+          lx: ["sleep-deprived", "mood", "concentrate"],
+          model: "[A] Lack of sleep affects me a lot — especially my mood and focus. [R] When I'm tired, I get irritated easily, I make silly mistakes and I can't remember what I read. [E] For example, last month I slept only four hours before a presentation because I was finishing the slides. During the presentation, I forgot what I wanted to say twice, and later I was rude to my friend for no reason. I had to apologize the next day. [C] So I know that a good night's sleep is more useful than a few extra hours of work.",
+          model5: "[A] It affects me enormously, particularly my mood and my ability to focus. [R] When I'm **sleep-deprived**, I become irritable over trivial things, make careless mistakes and struggle to retain anything I read. [E] Last month, for instance, I stayed up until four finishing slides for a presentation. During the presentation itself, my mind went completely blank twice, and that evening I snapped at a close friend for no real reason — something I had to apologize for the next day. Ironically, the extra hours I'd spent on the slides were wiped out by how badly I delivered them. [C] So I've learned that a good night's sleep is usually worth more than a few extra hours of work." },
+        { q: "Many sleep experts recommend following a routine at night—such as reducing screen time, limiting caffeine, or dimming lights—to improve sleep quality. Do you currently follow any specific bedtime routines or habits to help you sleep better? If so, what works for you, and if not, is there something you wish you could change?",
+          lx: ["screen time", "cut down on", "bedtime routine"],
+          model: "[A] Yes, I follow two rules, and there's one thing I want to change. [R] I noticed that coffee and phones were the main reasons I couldn't fall asleep. [E] First, I don't drink coffee after three p.m. — I switched to herbal tea in the evening. Second, my phone stays on my desk, and I read a book in bed instead. But I still study on my laptop until late, and I want to change that, because I often lie awake thinking about my assignments. [C] So my routine is better than before, but not perfect yet.",
+          model5: "[A] I follow two rules quite strictly, though there's one habit I still need to change. [R] Through trial and error, I identified caffeine and screens as the main culprits behind my restless nights. [E] I never drink coffee after three p.m., for instance, having switched to herbal tea in the evenings, and my phone charges across the room while I read a paper book in bed. What I still struggle with, however, is studying on my laptop until the last minute, which leaves my mind racing with assignments as soon as I turn off the light. My next step is a one-hour, screen-free buffer before bed. [C] So my routine has improved considerably, but it's still a work in progress." },
+        { q: "Some schools and workplaces have started beginning later in the morning, with the idea that more rest can improve focus and productivity. Do you think this is a good idea, and would it make a difference in your own life or community?",
+          lx: ["productivity", "focus", "schedule"],
+          model: "[A] Yes, I think it's a good idea. [R] Many people, especially young people, don't get enough sleep, and tired people can't focus well. If the day starts later, they can sleep more and work better. [E] For example, I had a class at eight a.m. last semester, and I was half asleep every time. This semester my first class is at ten, and I understand much more and participate in discussions. [C] So I think a later start could really improve productivity, although it may not work for every job.", model5: "[A] I think it's an excellent idea, at least for schools and office jobs. [R] Many people, teenagers and students in particular, are chronically sleep-deprived, and tired brains simply don't absorb information or solve problems effectively. [E] Last semester, for instance, I had an eight a.m. statistics class, and I spent most of it struggling to stay awake. This semester, my first class starts at ten, and the difference is striking: I follow the material easily and actually contribute to discussions. Admittedly, a later start would be impractical for hospitals or delivery services. [C] Still, wherever it's feasible, starting later seems like a simple, almost cost-free way to boost **productivity**." }
+      ]},
+    { id: "smh", badge: "platform", title: "Mental Health", src: "Практика платформы",
+      scenario: "We're exploring how people think about mental health in their day-to-day lives, and how they respond to emotional challenges. I'd like to ask you a few questions about your own understanding and experience.",
+      questions: [
+        { q: "First, how would you describe your awareness or understanding of mental health issues? For example, do you feel confident recognizing signs of emotional distress in yourself or others?",
+          lx: ["emotional distress", "mental health", "warning signs"],
+          model: "[A] I'd say my awareness is better than before, but I'm not an expert. [R] At university, we had a workshop about **mental health**, and I also read and watch a lot about it. I can see some signs in others, but it's harder to notice them in myself. [E] For example, last year my roommate stopped going to classes and slept all day. I noticed something was wrong and encouraged her to talk to a counselor. But when I was stressed during exams, I didn't notice my own signs until my friend told me I seemed very tired and nervous. [C] So I'm learning, but I still need to listen to myself more.",
+          model5: "[A] I'd say my understanding has grown considerably, though I'm certainly no expert. [R] A university workshop on **mental health**, along with plenty of reading, has taught me the common **warning signs**. Interestingly, though, I find them far easier to spot in others than in myself. [E] Last year, for instance, I noticed my roommate had stopped attending lectures and was sleeping most of the day, so I gently encouraged her to see a counselor, which she later said really helped. During my own exam period, by contrast, it was a friend who pointed out that I seemed exhausted and on edge — something I'd completely failed to notice. [C] So my awareness is improving, but self-awareness remains a work in progress." },
+        { q: "When you find yourself feeling overwhelmed, mentally tired, or emotionally off-balance, what do you typically do to cope or recover? Do you have any personal strategies, habits, or routines that help you manage those moments?",
+          lx: ["cope with", "clear your head", "get something off your chest"],
+          model: "[A] I have three strategies: I move, I talk and I rest. [R] When I feel overwhelmed, my thoughts go round and round, so I need something to stop them. [E] First, I go for a run or a long walk without my phone — it really **clears my head**. Second, I call my sister and tell her everything; just talking about it helps me **get it off my chest**. And third, I give myself one evening without studying, just watching a comedy or cooking something nice. Usually, the next day I feel much better. [C] So movement, people and rest are my way to **cope**.",
+          model5: "[A] My strategy essentially comes down to three things: moving, talking and resting. [R] When I'm overwhelmed, my thoughts tend to spiral, so I need something that physically interrupts the loop. [E] My first step is usually a long run or walk without my phone, which **clears my head** like nothing else. Then I call my older sister; simply putting my worries into words and **getting them off my chest** shrinks them remarkably. Finally, I give myself permission to take one evening completely off — cooking something comforting or watching a silly comedy — without feeling guilty. More often than not, I wake up the next day with a far clearer perspective. [C] So, for me, coping is about body, people and rest, in that order." },
+        { q: "In recent years, we've seen more open conversations about mental health in schools, workplaces, and on social media. Do you think these discussions are genuinely helpful, or do they sometimes feel shallow or performative? What kind of communication actually helps reduce stigma?",
+          lx: ["burnout", "workload", "well-being"],
+          model: "[A] I think they are helpful, but only when companies do something real. [R] Talking about stress and **burnout** is important, because many people are afraid to say they feel bad. But if a company only talks and still gives people too much work, it's not honest. [E] For example, my friend's company sends emails about mental health every month, but everyone still works until nine p.m. Another company I know reduced overtime and offers free sessions with a psychologist, and that really helped people. [C] So words are a good start, but actions matter more.", model5: "[A] They're genuinely helpful, but only when they're backed up by real action. [R] Talking openly about stress and **burnout** reduces the stigma, so people feel able to ask for help. If a company simply talks, however, while continuing to overload its staff, the conversation feels hollow, even hypocritical. [E] A friend's company, for instance, sends out cheerful wellness newsletters every month, yet employees still routinely work until nine. Another company I know, by contrast, cut mandatory overtime and offers free counseling sessions, and staff there say it has made a real difference. [C] So these conversations are a valuable first step, but what ultimately counts is whether working conditions actually change." },
+        { q: "Access to mental health care is still a challenge in many communities, whether due to cost, stigma, or lack of available services. Do you think mental health support should be free or more accessible for everyone? Why or why not—and what changes would make the biggest difference?",
+          lx: ["seek professional help", "stigma", "prevention"],
+          model: "[A] Yes, I strongly believe mental health support should be free or at least much cheaper. [R] Many people need help but can't pay for a therapist, so they wait until the problem becomes very serious. Helping people early is cheaper for society in the end. [E] For example, at my university, counseling is free, but the waiting list is almost a month long. A friend of mine needed help urgently and couldn't get an appointment, so she had to pay a private therapist, which was very expensive for a student. [C] So I think we need more free services and more counselors, especially in schools.",
+          model5: "[A] I firmly believe it should be free, or at least far more affordable. [R] Many people who need support simply can't afford private therapy, so they wait until a manageable problem becomes a crisis. Early help, moreover, is far cheaper for society than treating serious illness later, so **prevention** makes economic sense as well as moral sense. [E] At my university, for instance, counseling is technically free, but the waiting list stretches to nearly a month. A friend who needed help urgently ended up paying for a private therapist, which put a huge strain on her student budget. [C] So the biggest difference would come from hiring more counselors, especially in schools and universities, so that free help is available when people actually need it." }
+      ]}
+  ],
+
+  /* ===== Speaking Club: тема вдоль и поперёк ===== */
+  club: [
+    { icon: "moon", title: "Мой сон", en: "My sleep", questions: [
+      { t: "personal", src: "Official 063", q: "Do you usually go to bed early or late? Are you a morning person or a night owl?", same: "s063-0",
+        f: ["Can a night owl become an early bird?", "What time would you go to bed if you had no obligations?"], lx: ["a night owl / an early bird", "body clock", "routine"] },
+      { t: "personal", src: "Платформа · Sleep and Daily Routines", q: "On average, how many hours of sleep do you get on a typical night? Is that enough for you?", same: "ssl-0",
+        f: ["How do you feel after a weekend of good sleep?", "Do you use an alarm?"], lx: ["get enough sleep", "catch up on sleep", "sleep-deprived"] },
+      { t: "personal", src: "Official 063", q: "What is your typical routine before bedtime?", same: "s063-1",
+        f: ["What's the last thing you do before sleeping?", "Did your routine change since you were a child?"], lx: ["bedtime routine", "unwind", "screen time"] },
+      { t: "personal", src: "Платформа · Sleep and Daily Routines", q: "Do you follow any bedtime habits — like reducing screen time, limiting caffeine or dimming lights — to sleep better? What would you like to change?", same: "ssl-2",
+        f: ["How much coffee do you drink?", "Have you tried any sleep apps?"], lx: ["screen time", "cut down on", "bedtime routine"] },
+      { t: "experience", src: "Official 063", q: "Are you able to sleep well in unfamiliar places, like a hotel or a friend's house? Why or why not?", same: "s063-2",
+        f: ["What's the strangest place you've ever slept?", "Can you sleep on planes?"], lx: ["sleep like a log", "toss and turn", "noise"] },
+      { t: "opinion", q: "Do you take naps during the day? Are naps good or bad for you?",
+        model: "[A] I sometimes take short naps, and I think they're good if they're short. [R] A twenty-minute nap gives me energy and helps me focus in the afternoon. But a long nap makes me feel worse and stops me from sleeping at night. [E] For example, on days when I have classes until evening, I **take a** short **nap** in the library at lunchtime, and I feel fresh afterwards. But once I slept for two hours on a Sunday afternoon, and I woke up with a headache and couldn't **fall asleep** until three a.m. [C] So short naps, yes — long naps, no.",
+        model5: "[A] I do occasionally, and I think naps are beneficial, provided they're short. [R] A twenty-minute nap restores alertness without leaving you groggy, whereas anything much longer plunges you into deep sleep, which is why you wake up feeling worse and then struggle to sleep at night. [E] On long university days, for instance, I sometimes **take a** quick **nap** in a quiet corner of the library and return to lectures noticeably sharper. On the other hand, I once dozed off for two hours on a Sunday afternoon, woke up with a pounding headache and lay awake until three in the morning. [C] So a short nap is a brilliant tool, but a long one is a trap.",
+        f: ["Should workplaces have nap rooms?", "Do people in your country nap?"], lx: ["take a nap", "energy levels", "fall asleep"] },
+      { t: "experience", q: "Have you ever pulled an all-nighter? Was it worth it?",
+        model: "[A] Yes, I've pulled an all-nighter twice, and it was never worth it. [R] I thought I'd get more work done, but after midnight, my brain worked very slowly, and the next day I was useless. [E] For example, before my history exam last year, I studied all night with coffee and energy drinks. During the exam, I couldn't remember things I knew very well, and I got a lower grade than usual. After that, I slept for twelve hours. [C] So now I know that sleep is part of studying, not a waste of time.",
+        model5: "[A] I've done it twice, and on neither occasion was it worth it. [R] I assumed I'd gain extra hours of study, but after midnight my brain slowed to a crawl, and the following day I was practically useless. Research also shows that sleep is when the brain consolidates what we've learned. [E] Before last year's history exam, for instance, I stayed up all night fueled by coffee and energy drinks. In the exam itself, I blanked on facts I genuinely knew and ended up with my lowest grade of the semester, before sleeping for twelve hours straight. [C] So I've come to see sleep not as time lost from studying, but as an essential part of it.",
+        f: ["Why do students do it anyway?", "What's a better alternative?"], lx: ["pull an all-nighter", "burn the candle at both ends", "sleep-deprived"] }
+    ]},
+    { icon: "battery", title: "Сон, энергия и учёба", en: "Sleep, energy & performance", questions: [
+      { t: "experience", src: "Платформа · Sleep and Daily Routines", q: "How does sleep — or a lack of sleep — affect your mood, focus or energy? Give an example of how it affects your performance.", same: "ssl-1",
+        f: ["Do you notice it in your relationships?", "What do you do on days after a bad night?"], lx: ["sleep-deprived", "mood", "concentrate"] },
+      { t: "opinion", src: "Official 063", q: "Some high schools have considered starting later in the morning to allow teenagers more sleep. What do you think of this idea?", same: "s063-3",
+        f: ["Would teenagers just stay up later?", "What about parents' work schedules?"], lx: ["body clock", "sleep-deprived", "concentrate"] },
+      { t: "opinion", src: "Платформа · Sleep and Daily Routines", q: "Some schools and workplaces now begin later in the morning to improve focus and productivity. Is this a good idea?", same: "ssl-3",
+        f: ["Would you prefer to start and finish later?", "Which jobs can't start later?"], lx: ["productivity", "focus", "schedule"] },
+      { t: "experience", src: "Платформа · Academic Life", q: "Many students say academic life affects more than study time — it affects sleep, stress and social life. How has school or studying influenced your day-to-day habits?",
+        model: "[A] Studying has changed my habits a lot — especially my sleep and stress levels. [R] During the semester, I have many deadlines, so I often study late and sleep less. Also, I have less time for friends and sport during exam periods. [E] For example, in my first year, I slept only five or six hours during exams, drank too much coffee and stopped running for a month. I felt terrible. Now I plan my studying earlier, so I can keep my sleep and my runs even in busy weeks. [C] So university affected my lifestyle, but I'm learning to control it.",
+        model5: "[A] Academic life has shaped my daily habits considerably, particularly my sleep and stress levels. [R] With deadlines piling up during the semester, it's tempting to study late into the night, and exam periods inevitably squeeze out time for friends and exercise. [E] In my first year, for instance, I survived exam season on five or six hours' sleep and far too much coffee, and I stopped running altogether for a month. Unsurprisingly, I felt exhausted and anxious. Since then, I've started revising much earlier, which allows me to protect both my sleep and my runs, even during the busiest weeks. [C] So university initially took over my lifestyle, but I've gradually learned to take it back.",
+        f: ["What's the worst habit students have?", "How do you protect your free time?"], lx: ["sleep-deprived", "stressed out", "cope with"] },
+      { t: "opinion", q: "Some people boast about how little they sleep, as if it shows they're hardworking. Is sleeping less a sign of success?",
+        model: "[A] No, I don't think sleeping less is a sign of success. [R] It's actually a sign of bad planning or too much stress. Without enough sleep, people make more mistakes, get sick more often and can't think creatively. [E] For example, my former manager at the café always said he slept four hours a night and was proud of it. But he was always irritated, forgot important things and once fell asleep in a meeting. The most successful people I know sleep seven or eight hours. [C] So sleep is not laziness — it's part of success.",
+        model5: "[A] Not at all; if anything, I'd see it as a warning sign. [R] Chronic sleep deprivation impairs judgment, memory and creativity, and it significantly increases the risk of illness, so bragging about it is a bit like boasting about skipping meals. Often it simply reflects poor planning or an unhealthy amount of pressure. [E] My former manager at the café, for instance, proudly claimed to survive on four hours a night. In reality, he was permanently irritable, regularly forgot important details and once nodded off during a staff meeting. The genuinely successful people I know, by contrast, guard their seven or eight hours fiercely. [C] So sleep isn't a sign of laziness; it's a performance tool.",
+        f: ["Why is 'hustle culture' popular?", "Should companies care how much employees sleep?"], lx: ["sleep-deprived", "burn the candle at both ends", "productivity"] }
+    ]},
+    { icon: "phone", title: "Экраны и самочувствие", en: "Screens & well-being", questions: [
+      { t: "personal", src: "Платформа · Mobile Phone Use", q: "How do you feel when you're away from your phone — by choice or when you forget it? Anxious, free, or something else? Why?",
+        model: "[A] At first I feel anxious, but after an hour I feel free and relaxed. [R] I'm used to checking my phone all the time, so without it I'm afraid I'll miss something important. But then I realize nothing bad happens. [E] For example, last month I forgot my phone at home for a whole day. In the morning, I kept reaching into my pocket. But by the afternoon, I was really enjoying my lecture and lunch with friends, and I noticed things around me I usually miss. [C] So my phone gives me anxiety and being without it gives me freedom.",
+        model5: "[A] Initially I feel uneasy, but surprisingly quickly that turns into a sense of freedom. [R] I'm so used to checking my phone constantly that its absence triggers a nagging fear of missing something important. Once I realize that nothing terrible happens, however, the **anxiety** gives way to relief. [E] Last month, for example, I left my phone at home for an entire day. All morning, I kept instinctively reaching for my pocket, but by the afternoon I was fully absorbed in a lecture and a long, uninterrupted lunch with friends, noticing details I'd normally scroll past. [C] Ironically, it seems the phone creates much of the anxiety it promises to relieve.",
+        f: ["How many hours a day do you spend on your phone?", "Would you try a phone-free week?"], lx: ["screen time", "anxiety", "take a break from"] },
+      { t: "opinion", src: "Платформа · Entertainment Habits", q: "Some people worry that too much screen time causes sleep disruption, lower productivity and screen fatigue. Are these concerns valid in your experience, or exaggerated? What do you do to manage your screen time?",
+        model: "[A] I think these concerns are valid, at least in my experience. [R] When I use my phone a lot, especially at night, I sleep worse and feel tired the next day. My eyes also get tired after many hours of screens. [E] For example, I once watched videos in bed until two a.m. and felt terrible the whole next day. Now I use a timer on my apps — after one hour of social media, the app closes. I also keep my phone outside my bedroom at night. [C] So screen time is a real problem, but we can control it with simple rules.",
+        model5: "[A] In my experience, they're entirely valid, although the solution is simpler than it seems. [R] Heavy evening screen use clearly worsens my sleep, partly because of the light and partly because of the endless stream of stimulating content, and after long days of screens my eyes feel strained and my attention scattered. [E] I once scrolled through videos in bed until two a.m., for example, and spent the following day in a fog. Since then, I've set a one-hour daily limit on social media apps, after which they lock automatically, and my phone now spends the night outside my bedroom. [C] So the concerns are real, but a few firm boundaries can make a remarkable difference.",
+        f: ["Which app takes most of your time?", "Do screen limits actually work?"], lx: ["screen time", "sleep-deprived", "set boundaries"] },
+      { t: "opinion", src: "Платформа · Mobile Phone Use", q: "Some argue that schools, workplaces or governments should help people manage screen time — like setting limits or promoting phone-free spaces. Should society play a role? What support would help you?",
+        model: "[A] I think society can help, but mostly through education, not strict rules. [R] Many apps are designed to keep us scrolling, so it's not fair to say it's only a personal problem. But adults don't like being controlled. [E] For example, my university created a phone-free study room, and it's always full, because people want help to focus. I also think schools should teach children how social media works and how to set limits. But I don't want the government to decide how many hours I use my phone. [C] So I support phone-free spaces and education, not bans.",
+        model5: "[A] I believe society has a role to play, though more through support and education than through restrictions. [R] Since many apps are deliberately engineered to be addictive, treating excessive screen time purely as a matter of personal willpower seems unfair. At the same time, adults rightly resist being told how to live. [E] My university, for instance, opened a phone-free study room last year, and it's permanently full, which suggests people actively want help to focus. Similarly, I think schools should teach children how algorithms capture their attention. A government-imposed time limit for adults, however, would feel intrusive. [C] So phone-free spaces and digital literacy, yes; bans, no.",
+        f: ["Should phones be banned in schools?", "Should apps be forced to show usage time?"], lx: ["screen time", "attention span", "self-discipline"] },
+      { t: "experience", q: "Have you ever tried a digital detox? What happened?",
+        model: "[A] Yes, last summer I tried a three-day digital detox during a hiking trip. [R] I wanted to see if I could live without my phone, and there was no internet in the mountains anyway. [E] On the first day, I felt strange and kept looking for my phone. But on the second day, I started to enjoy the views, talked more with my friends and slept much better. When I came back, I had two hundred messages, and almost none of them were important. [C] So it showed me that I can live without my phone and feel better.",
+        model5: "[A] I did, almost by accident, during a three-day hiking trip last summer. [R] There was no signal in the mountains, so it became the perfect experiment to see whether I could actually function offline. [E] The first day was surprisingly uncomfortable; I kept reaching for my phone out of habit. By the second day, however, I was genuinely present — noticing the scenery, having long conversations with friends and sleeping more deeply than I had in months. When I got back, two hundred unread messages were waiting, and, tellingly, almost none of them mattered. [C] So the detox showed me that most of my phone use is habit rather than need, and that disconnecting genuinely **recharges my batteries**.",
+        f: ["Could you do a week?", "What would you miss the most?"], lx: ["recharge your batteries", "take a break from", "screen time"] },
+      { t: "opinion", q: "Does social media affect young people's self-esteem and mental health?",
+        model: "[A] Yes, I think social media often has a negative effect on young people's self-esteem. [R] People post only their best moments and edited photos, so others compare their normal life with a perfect picture and feel bad about themselves. But social media can also help people find support. [E] For example, my younger sister felt bad about her body after following many influencers. When she unfollowed them and started following art accounts, she felt much better. On the other hand, my friend found an online group for people with anxiety, and it really helped her. [C] So it depends on how you use it.",
+        model5: "[A] I think it frequently harms young people's self-esteem, although it can also be a source of support. [R] Feeds are filled with carefully edited highlights, so young people constantly compare their ordinary lives with a polished fantasy, which can fuel **anxiety** and insecurity. Yet the same platforms can connect isolated people with communities that understand them. [E] My younger sister, for instance, felt increasingly unhappy with her appearance after following dozens of fitness influencers; once she unfollowed them and filled her feed with art accounts, her mood improved noticeably. A friend of mine, by contrast, found an online group for people with anxiety that genuinely helped her feel less alone. [C] So the impact depends largely on what — and whom — we choose to follow.",
+        f: ["Should there be an age limit for social media?", "Do you curate your feed?"], lx: ["anxiety", "mental health", "compare yourself"] }
+    ]},
+    { icon: "heart", title: "Здоровые привычки", en: "Healthy habits", questions: [
+      { t: "personal", src: "Official 099", q: "Do you have any specific routines or practices you use to maintain your physical well-being?", same: "s099-0",
+        f: ["Which habit is the hardest to keep?", "Who taught you these habits?"], lx: ["stay active", "get enough sleep", "stay hydrated"] },
+      { t: "personal", src: "Official 099", q: "Can you describe any dietary choices or habits that you follow to stay healthy?", same: "s099-1",
+        f: ["What's your weakness when it comes to food?", "Is it expensive to eat healthily?"], lx: ["balanced diet", "cut down on", "cook at home"] },
+      { t: "hypo", src: "Official 099", q: "If you could make one significant change to your diet or exercise routine to stay healthy, what would it be? Why?", same: "s099-2",
+        f: ["What's stopping you from doing it now?", "How would you make it stick?"], lx: ["build healthy habits", "strength training", "cut down on"] },
+      { t: "opinion", q: "Is it harder for students to live a healthy lifestyle than for other people?",
+        model: "[A] Yes, I think it's harder for students in many ways. [R] Students have little money, irregular schedules and a lot of stress. Healthy food is often more expensive, and late-night studying ruins sleep. Also, many students live alone for the first time and don't know how to cook. [E] For example, in my first year, I lived on instant noodles and pizza because I couldn't cook and had no time. I gained weight and felt tired. Then my roommate taught me five simple recipes, and everything changed. [C] So it's harder, but with a few skills, it's possible.",
+        model5: "[A] In many ways, yes, it's considerably harder. [R] Students typically juggle tight budgets, irregular schedules and high stress, while many are living independently for the first time and have never learned to cook. Healthy options also tend to cost more, and late-night studying undermines sleep. [E] During my first year, for instance, I lived almost entirely on instant noodles and pizza, partly through lack of time and partly through lack of skill, and I soon felt sluggish and unwell. What changed everything was my roommate teaching me five simple, cheap recipes, which made healthy eating far more realistic. [C] So it's undeniably harder for students, but a few basic skills can close much of the gap.",
+        f: ["What should universities do?", "What's the cheapest healthy meal you know?"], lx: ["healthy lifestyle", "balanced diet", "build healthy habits"] },
+      { t: "opinion", q: "Do young people today care about their health more or less than previous generations?",
+        model: "[A] I think young people care more about their health than previous generations. [R] Today, there is much more information about healthy food, exercise and mental health. Many young people go to the gym, don't smoke and drink less alcohol than their parents did. But they also have new problems, like too much screen time. [E] For example, my father started smoking at sixteen, and so did most of his friends. Among my friends, nobody smokes, and many of us track our sleep and steps. But we spend six hours a day on our phones. [C] So we're healthier in some ways, but not in all.",
+        model5: "[A] On the whole, I think young people are more health-conscious than previous generations, though they face new challenges. [R] Information about nutrition, exercise and mental health is now everywhere, and statistics suggest young people smoke and drink considerably less than their parents did at the same age. On the other hand, excessive screen time and poor sleep are distinctly modern problems. [E] My father, for instance, started smoking at sixteen, as did most of his friends. In my circle, by contrast, nobody smokes, and many of us track our sleep and daily steps. Yet, paradoxically, we also spend around six hours a day staring at our phones. [C] So we're healthier in many respects, just not in every one.",
+        f: ["What's the biggest health problem of your generation?", "What can we learn from our grandparents?"], lx: ["healthy lifestyle", "screen time", "mental health"] }
+    ]},
+    { icon: "bulb", title: "Ментальное здоровье", en: "Mental health", questions: [
+      { t: "personal", src: "Платформа · Mental Health", q: "How would you describe your awareness of mental health issues? Do you feel confident recognizing signs of emotional distress in yourself or others?", same: "smh-0",
+        f: ["What signs would worry you in a friend?", "Where did you learn about mental health?"], lx: ["emotional distress", "mental health", "warning signs"] },
+      { t: "personal", src: "Платформа · Mental Health", q: "When you feel overwhelmed, mentally tired or emotionally off-balance, what do you typically do to cope or recover?", same: "smh-1",
+        f: ["Which strategy doesn't work for you?", "Who do you talk to?"], lx: ["cope with", "clear your head", "get something off your chest"] },
+      { t: "opinion", src: "Official 099", q: "Some people believe that mental health is just as important as physical health and should be given equal attention. Do you agree?", same: "s099-3",
+        f: ["Why is there still a stigma?", "Should schools teach about mental health?"], lx: ["mental health", "stigma", "seek professional help"] },
+      { t: "opinion", src: "Платформа · Mental Health", q: "Are today's open conversations about mental health genuinely helpful, or do they sometimes feel shallow? What kind of communication actually helps?", same: "smh-2",
+        f: ["Has social media helped or harmed?", "How can you support a friend who is struggling?"], lx: ["burnout", "workload", "well-being"] },
+      { t: "opinion", src: "Платформа · Mental Health", q: "Should mental health support be free or more accessible for everyone? What changes would make the biggest difference?", same: "smh-3",
+        f: ["Who should pay for it?", "Is online therapy as good as face-to-face?"], lx: ["seek professional help", "stigma", "prevention"] }
+    ]},
+    { icon: "chat", title: "Стресс и как с ним жить", en: "Living with stress", questions: [
+      { t: "experience", src: "Платформа · University Education", q: "Have you personally experienced stress related to academic performance or the cost of education? How do you deal with those pressures, and what has helped you most?",
+        model: "[A] Yes, I've felt a lot of stress about grades, and also about money. [R] My parents pay for part of my studies, so I feel I must get good grades, and at the same time, I work at a café to pay for my rent. Sometimes it's too much. [E] For example, last spring, I had exams and extra shifts in the same week, and I couldn't sleep from stress. What helped most was talking honestly to my parents. They told me they cared more about my health than my grades, and I felt much lighter. [C] So for me, talking about the pressure helped the most.",
+        model5: "[A] I have, both about grades and about money. [R] Because my parents cover part of my tuition, I feel a strong obligation to perform well, while also working at a café to pay my rent, and occasionally the combination becomes overwhelming. [E] Last spring, for instance, exams coincided with extra shifts, and I was so **stressed out** that I couldn't sleep. What helped most, surprisingly, was finally **opening up** to my parents about it. They told me they cared far more about my health than my grades, and that single conversation lifted an enormous weight off my shoulders. [C] So, for me, the most effective way to **cope with** pressure has been talking about it rather than hiding it.",
+        f: ["Do parents put too much pressure on students?", "Is education too expensive?"], lx: ["stressed out", "open up", "cope with"] },
+      { t: "opinion", q: "Is some stress actually good for us?",
+        model: "[A] Yes, I think a little stress is good, but too much is dangerous. [R] A small amount of stress gives us energy and focus — it helps us prepare for exams and meet deadlines. But when stress lasts for weeks, it makes us sick and exhausted. [E] For example, I always feel a bit nervous before a presentation, and that helps me prepare well and speak with energy. But during my first semester, I was stressed every day for two months, and I had headaches and couldn't sleep. [C] So short-term stress helps, but long-term stress hurts.",
+        model5: "[A] In moderation, I think it can be genuinely useful, although chronic stress is harmful. [R] A short burst of stress sharpens focus and provides the energy to rise to a challenge, which is exactly what we need before an exam or a deadline. When stress persists for weeks on end, however, it wears down both body and mind. [E] Before a presentation, for instance, a few nerves push me to prepare thoroughly and deliver it with more energy. During my first semester, by contrast, I was anxious almost every day for two months, which left me with constant headaches and broken sleep. [C] So the key distinction is between short-term stress, which motivates, and long-term stress, which damages.",
+        f: ["How do you know when stress becomes too much?", "What's your stress signal?"], lx: ["stressed out", "cope with", "resilience"] },
+      { t: "opinion", q: "Do meditation and mindfulness really work, or are they just a trend?",
+        model: "[A] I think they really work for many people, although they're also a trend. [R] Even a few minutes of slow breathing can calm your body and mind. But some people expect magic results and give up after one try. [E] For example, I was skeptical at first, but my sister convinced me to try a meditation app for five minutes before bed. After two weeks, I noticed that I fell asleep faster and felt calmer before exams. It's not magic, but it helps. [C] So it's a trend, but a useful one.",
+        model5: "[A] I'd say they genuinely work, even if they've also become something of a trend. [R] Research suggests that even brief daily practice can lower stress levels, simply because slow breathing calms the nervous system. The trouble is that many people expect instant transformation and give up after a single attempt. [E] I was rather skeptical myself, for instance, until my sister persuaded me to try a five-minute guided meditation before bed. Within a couple of weeks, I was falling asleep faster and felt noticeably calmer in the run-up to exams. It's hardly magic, but it's surprisingly effective. [C] So **mindfulness** may be fashionable, but it's one trend that's actually worth following.",
+        f: ["Have you tried it?", "What else helps you calm down?"], lx: ["mindfulness", "unwind", "cope with"] },
+      { t: "opinion", q: "In your culture or family, do people talk openly about stress and feelings?",
+        model: "[A] In my family, not really, but it's changing with my generation. [R] My parents and grandparents grew up believing you should be strong and not complain. Talking about feelings seemed weak to them. Young people today are much more open. [E] For example, when my grandfather was stressed, he just worked more and never talked about it. My mother is a bit more open, but only with her sister. But my friends and I talk about stress and anxiety very easily — we even joke about our therapists. [C] So the culture is slowly becoming more open.",
+        model5: "[A] In my family, traditionally not, although that's gradually changing with my generation. [R] My parents and grandparents grew up believing that strong people keep their struggles to themselves, so discussing feelings was often seen as a sign of weakness. Younger people, by contrast, tend to be far more open. [E] Whenever my grandfather was under pressure, for example, he simply worked harder and said nothing. My mother is slightly more open, but only with her sister. My friends and I, meanwhile, discuss stress and **anxiety** quite freely, and some even joke about what their therapist said that week. [C] So the **stigma** hasn't disappeared, but it's fading noticeably from one generation to the next.",
+        f: ["Is it different for men and women?", "How can families talk more openly?"], lx: ["open up", "stigma", "get something off your chest"] },
+      { t: "opinion", q: "Should students and employees be allowed to take 'mental health days'?",
+        model: "[A] Yes, I think people should be allowed to take mental health days. [R] Sometimes you're not physically sick, but you're so exhausted or anxious that you can't work well. One day of rest can prevent a much bigger problem, like **burnout**. Of course, there should be a limit. [E] For example, my sister's company gives everyone three mental health days a year. She used one after a very stressful project, spent the day in nature and came back calm and productive. Without it, she says she would have gotten sick. [C] So a few mental health days are a smart idea.",
+        model5: "[A] I believe they should, within reasonable limits. [R] There are days when you're not physically ill but so drained or anxious that you'd achieve very little anyway, and a single day's rest can prevent something far more serious, like **burnout**. Naturally, there should be a cap to prevent misuse. [E] My sister's company, for instance, offers three mental health days a year. After an exhausting project, she took one, spent it hiking and returned the next day refreshed and focused; she's convinced that without it she'd have ended up on sick leave. [C] So offering a few mental health days is both humane and, from the employer's perspective, a smart investment in **prevention**.",
+        f: ["Would people abuse it?", "Should schools have them too?"], lx: ["take a mental health day", "burnout", "prevention"] }
+    ]},
+    { icon: "leaf", title: "Природа и хобби для души", en: "Nature, hobbies & the mind", questions: [
+      { t: "opinion", src: "Official 121 · Nature and the Outdoors", q: "Do you think avoiding spending time outdoors in nature makes a difference in people's health and well-being? Why or why not?",
+        model: "[A] Yes, I think it makes a big difference. [R] When people stay inside all the time, they get less sunlight and fresh air, move less and feel more stressed. Nature helps us relax and forget our problems for a while. [E] For example, during my exam period last winter, I stayed inside for almost two weeks, and I felt tired and sad. Then a friend took me for a walk in the forest, and after one hour, I felt like a new person. Now I try to go to the park every day, even for fifteen minutes. [C] So nature is like free medicine.",
+        model5: "[A] I'm convinced it makes a significant difference. [R] People who rarely go outdoors miss out on sunlight, fresh air and movement, all of which affect mood and sleep. Nature also has a unique ability to quiet our thoughts, which no indoor activity quite replicates. [E] During last winter's exam period, for instance, I barely left my room for two weeks and became increasingly drained and low. Then a friend dragged me out for a walk in the forest, and within an hour I felt completely transformed. Since then, I've made a point of **spending time in nature** daily, even if it's just fifteen minutes in the park. [C] So nature is essentially free medicine, and we're foolish not to use it.",
+        f: ["Where do you go to be in nature?", "Should schools have more outdoor lessons?"], lx: ["spend time in nature", "clear your head", "recharge your batteries"] },
+      { t: "opinion", src: "Official 118 · Leisure Activities", q: "Some people believe that regularly engaging in leisure activities is important for mental health. What are your thoughts? How do leisure activities impact your own well-being?",
+        model: "[A] I agree that leisure activities are very important for mental health. [R] When we only work and study, we get tired and stressed. Hobbies give our brain a break and help us feel happy and creative. [E] For example, I play guitar for half an hour almost every evening. Even after a very bad day, when I start playing, I forget about my problems and feel calm. And on weekends, I go hiking with friends, which is the best way for me to **recharge my batteries**. [C] So for me, free time is not a luxury but a necessity.",
+        model5: "[A] I strongly agree; regular leisure time is essential for mental health. [R] A life consisting solely of work and study inevitably leads to exhaustion, whereas hobbies give the mind a genuine rest and restore a sense of enjoyment and creativity. [E] Most evenings, for instance, I play the guitar for half an hour. However rough the day has been, within minutes of starting, my worries fade into the background. At weekends, meanwhile, hiking with friends is my most reliable way to **recharge my batteries**. On the rare weeks when I skip both, I notice my mood dipping almost immediately. [C] So leisure isn't an indulgence; it's what keeps the rest of my life running smoothly.",
+        f: ["Do you feel guilty resting?", "Which hobby helps you the most?"], lx: ["unwind", "recharge your batteries", "well-being"] },
+      { t: "opinion", src: "Official 097 · Art and Creativity", q: "Some people believe that engaging in creative activities can improve mental well-being. Do you agree or disagree? Why?",
+        model: "[A] I agree that creative activities can improve mental well-being. [R] When you draw, write or play music, you focus on one thing, and your worries disappear for a while. It's also a way to express feelings that are hard to say in words. [E] For example, my best friend started painting during a difficult time after her parents' divorce. She says painting helped her understand her emotions, and now she feels much calmer. Also, finishing a painting gives her a nice feeling of achievement. [C] So creativity can be a kind of therapy.",
+        model5: "[A] I agree, and I think creativity can be genuinely therapeutic. [R] Creative activities demand complete focus, which pushes anxious thoughts aside, and they offer a way to express emotions that are difficult to put into words. On top of that, completing something creative brings a real **sense of accomplishment**. [E] A close friend of mine, for instance, took up painting during a painful period after her parents' divorce. She says it allowed her to process feelings she couldn't talk about, and over several months she became noticeably calmer and more confident. Many of her paintings from that time, she admits, are far from masterpieces, but that was never the point. [C] So creativity can be a powerful form of self-care, whatever the result looks like.",
+        f: ["Are you a creative person?", "Should art therapy be more common?"], lx: ["self-care", "cope with", "sense of accomplishment"] },
+      { t: "opinion", src: "Official 096 · Music Preferences", q: "Some people believe that music can have a powerful effect on our emotions and moods. Do you agree or disagree with this viewpoint? Why?",
+        model: "[A] I completely agree. [R] Music can change my mood in just a few seconds. Fast music gives me energy, and slow music helps me relax or feel my emotions. [E] For example, I always listen to an energetic playlist when I run, and it helps me run faster. When I'm sad, I listen to calm songs, and it somehow makes me feel better and less alone. Also, one song from my childhood always makes me smile because it reminds me of family trips. [C] So music is a very powerful tool for our emotions.",
+        model5: "[A] I wholeheartedly agree; music affects my mood more quickly than almost anything else. [R] An upbeat track can energize me within seconds, while slower music either calms me down or helps me process what I'm feeling. Music is also strongly tied to memory, so a single song can transport you back years. [E] When I run, for instance, an energetic playlist noticeably improves my pace, whereas on difficult days, quiet songs make me feel understood and less alone. There's also one particular song from my childhood that instantly reminds me of family road trips and never fails to make me smile. [C] So music isn't just entertainment; it's one of our most accessible tools for managing emotions.",
+        f: ["What do you listen to when you're stressed?", "Can music help you study?"], lx: ["mood", "boost your mood", "unwind"] },
+      { t: "opinion", src: "Official 069 · Gardening", q: "Some people believe that gardening can have positive effects on mental health and well-being. Do you agree or disagree?",
+        model: "[A] I agree that gardening can be good for mental health. [R] It's calm and slow, you're outside, and you see the results of your work. Taking care of plants also gives you a reason to get up and a small sense of responsibility. [E] For example, my grandmother has a small garden, and she says it's her therapy. After my grandfather died, she spent hours in the garden every day, and it helped her a lot. Even I have a few plants on my windowsill, and watering them in the morning is a relaxing moment. [C] So gardening is a simple way to feel calmer.",
+        model5: "[A] I agree; gardening seems to combine several things that are good for the mind. [R] It's slow and calming, it gets you outdoors and moving, and it offers the quiet satisfaction of watching something grow thanks to your care. It also provides gentle structure and responsibility, which can be especially valuable during difficult times. [E] My grandmother, for instance, calls her small vegetable garden her therapy. After my grandfather passed away, she spent hours there every day, and she says it gave her a reason to get up in the morning. Even my modest collection of windowsill plants gives me a peaceful few minutes each morning. [C] So gardening is a simple, low-cost way to nurture your own well-being.",
+        f: ["Do you have any plants?", "Should cities have community gardens?"], lx: ["well-being", "unwind", "self-care"] }
+    ]},
+    { icon: "users", title: "Люди и одиночество", en: "People & loneliness", questions: [
+      { t: "opinion", src: "Official 068 · Friendship", q: "Some people believe that maintaining friendships is essential for emotional well-being and life satisfaction. Do you agree or disagree?",
+        model: "[A] I strongly agree. [R] Friends support us in difficult times, make good times better and help us see problems from a different side. Without friends, people often feel lonely, and loneliness is bad for both mental and physical health. [E] For example, during my first semester, I was very homesick and anxious. My new friends from the dorm invited me to dinners and runs, and slowly I started to feel at home. I don't know how I would have managed without them. [C] So friendships are one of the most important things for our well-being.",
+        model5: "[A] I strongly agree; I'd say friendships are among the most important foundations of well-being. [R] Friends support us through difficult periods, amplify our happiness and help us see problems from new angles. Loneliness, by contrast, has been linked to serious mental and even physical health risks. [E] During my first semester, for instance, I was intensely homesick and anxious. It was the people on my dorm floor, inviting me to shared dinners and evening runs, who gradually made the new city feel like home. Honestly, I'm not sure how I'd have coped without them. [C] So investing time in friendships isn't a distraction from a successful life; it's a central part of one.",
+        f: ["How do you keep old friendships alive?", "Is it harder to make friends as an adult?"], lx: ["resilience", "open up", "well-being"] },
+      { t: "opinion", src: "Платформа · Community Involvement", q: "Do you think volunteering is beneficial not only for the people receiving help, but also for those offering it? Why might that be the case?",
+        model: "[A] Yes, I think volunteering helps the volunteers too. [R] When you help others, you feel useful and needed, and you meet people with similar values. It also helps you see your own problems in a different way. [E] For example, last year I volunteered at an animal shelter on Saturdays during a stressful time at university. Walking the dogs and seeing them happy made me feel calm and useful. I also made two good friends there. [C] So volunteering is good for the heart and the mind.",
+        model5: "[A] I'm convinced it benefits volunteers just as much, in some cases even more. [R] Helping others gives us a sense of purpose and usefulness, connects us with like-minded people and, quite often, puts our own worries into perspective. [E] Last year, for instance, during a particularly stressful semester, I started volunteering at an animal shelter on Saturday mornings. Walking the dogs and seeing them visibly happier became the calmest part of my week, and I also made two close friends there. Interestingly, I came away each time feeling more energized than when I arrived. [C] So volunteering is a rare activity where everyone involved comes out better off.",
+        f: ["What kind of volunteering would you choose?", "Should schools require volunteering?"], lx: ["well-being", "sense of purpose", "resilience"] },
+      { t: "opinion", q: "Many young people feel lonely even though they're constantly connected online. Why do you think that is?",
+        model: "[A] I think online contact can't fully replace meeting people in real life. [R] On social media, we have many \"friends\", but the conversations are short and not very deep. We see other people having fun and feel left out. Real connection needs time together, eye contact and honest talks. [E] For example, I have over five hundred followers, but when I was sad last winter, there were only two people I could really call. And a long dinner with one friend made me feel much better than a hundred likes. [C] So we're connected, but not always close.",
+        model5: "[A] I think online contact simply can't replace the depth of real-life connection. [R] Social media gives us hundreds of \"friends\", but most interactions are brief and superficial, and constantly seeing others' highlights can make us feel left out. Genuine connection, by contrast, requires time, presence and honest conversation. [E] I have over five hundred followers, for instance, yet during a low period last winter, there were only two people I felt I could actually call. And a single long dinner with a close friend did more for my mood than any number of likes ever could. [C] So young people are more connected than ever, but not necessarily closer — and that gap is where loneliness grows.",
+        f: ["How can people make real friends today?", "Do you feel lonely sometimes?"], lx: ["open up", "well-being", "compare yourself"] },
+      { t: "opinion", q: "Can pets improve people's mental health?",
+        model: "[A] Yes, I believe pets can improve mental health a lot. [R] Pets give you love without judging you, and they make you feel needed. Dogs also make you go outside and walk every day, and they help you meet people. [E] For example, my neighbor is an old man who lives alone. After his wife died, he was very sad and rarely left the house. Then his son gave him a dog. Now he walks it three times a day, talks to other dog owners in the park and looks much happier. [C] So pets can be wonderful for our well-being.",
+        model5: "[A] I'm convinced they can, sometimes dramatically. [R] Pets offer unconditional affection, give us a sense of being needed and introduce gentle routine into our days. Dogs, in particular, get people outdoors and naturally spark conversations with strangers. [E] My elderly neighbor, for instance, became deeply withdrawn after his wife died and barely left his apartment. When his son gave him a rescue dog, everything changed: he now walks it three times a day, chats with other dog owners in the park and seems a completely different person. [C] So pets aren't a substitute for human relationships, but they can be a remarkable bridge back to them.",
+        f: ["Do you have a pet?", "Should dorms allow pets?"], lx: ["well-being", "loneliness", "routine"] }
+    ]},
+    { icon: "building", title: "Город, погода и среда", en: "Place, weather & mood", questions: [
+      { t: "opinion", src: "Official 112 · Urban Life", q: "Do you think city governments should create more parks in urban areas to promote a general sense of happiness and life satisfaction? Why or why not?",
+        model: "[A] Yes, I think city governments should create more parks. [R] Cities are noisy, crowded and stressful, and parks give people a place to relax, exercise and meet each other for free. Studies show that people who live near green spaces are happier. [E] For example, when I moved to my current dorm next to a big park, I started walking there every evening. I feel much calmer than when I lived near a busy road. On weekends, the park is full of families and friends having picnics. [C] So parks are a cheap way to make cities happier.",
+        model5: "[A] I'm firmly in favor. [R] Urban life is noisy, crowded and often stressful, and parks offer a free, accessible refuge where anyone can unwind, exercise or socialize. There's also growing evidence that living near green space is linked to greater life satisfaction. [E] When I moved into my current dorm beside a large park, for instance, evening walks there quickly became part of my routine, and I feel noticeably calmer than when I lived beside a busy main road. At weekends, the park fills with families and groups of friends picnicking, which gives the whole area a sense of community. [C] So parks are one of the most cost-effective investments a city can make in its residents' happiness.",
+        f: ["What's missing in your city?", "Parks or housing — which is more important?"], lx: ["spend time in nature", "well-being", "unwind"] },
+      { t: "personal", src: "Платформа · Weather in Lives", q: "What type of weather do you enjoy the most, and why? How does it typically influence your mood, your energy or your activities?",
+        model: "[A] I like sunny, cool weather the most, like a bright autumn day. [R] Sunshine gives me energy and puts me in a good mood, but I don't like heat because it makes me tired. In dark winter months, I often feel sleepy and less motivated. [E] For example, on sunny autumn days, I run longer, study better and want to meet friends. But in December, when it's dark at four p.m., I just want to stay at home under a blanket. To feel better, I try to go outside at lunchtime when it's light. [C] So the weather really affects my mood and energy.",
+        model5: "[A] My favorite is crisp, sunny weather, like a bright autumn morning. [R] Sunshine noticeably lifts my mood and energy levels, while cool temperatures keep me alert, unlike summer heat, which leaves me sluggish. Dark winter months, by contrast, tend to drain my motivation. [E] On clear autumn days, for instance, I run further, concentrate better and actively want to see people. In December, however, when it's dark by four, I'm tempted to hibernate under a blanket. To counter that, I make a point of getting outside during the brightest part of the day, which genuinely helps. [C] So weather has a much bigger influence on my mood than I'd like to admit.",
+        f: ["Do you get the 'winter blues'?", "Would you live somewhere sunny all year?"], lx: ["mood", "energy levels", "body clock"] },
+      { t: "compare", q: "Is life in the city or in the countryside better for people's health?",
+        model: "[A] I think the countryside is better for health, but the city has some important advantages. [R] In the countryside, there is cleaner air, less noise and more nature, so people feel less stressed. But in the city, there are better hospitals, gyms and healthier food options, and people often walk more. [E] For example, my grandparents live in a village. They're very active, work in the garden and look very healthy for their age. But when my grandfather needed heart surgery, they had to travel three hours to the city hospital. [C] So both places have pros and cons for health.",
+        model5: "[A] In terms of day-to-day well-being, I'd say the countryside has the edge, although cities offer crucial advantages too. [R] Rural areas typically mean cleaner air, less noise and easy access to nature, all of which reduce stress. Cities, on the other hand, provide better hospitals, more fitness facilities and, often, more walking in daily life. [E] My grandparents, for instance, live in a small village, where they garden every day and are remarkably fit for their age. Yet when my grandfather needed heart surgery, they had to travel three hours to the nearest specialist hospital. [C] So the countryside may be better for staying healthy, but the city is better when you need treatment.",
+        f: ["Where would you like to live when you're old?", "Is noise really a health problem?"], lx: ["healthy lifestyle", "spend time in nature", "stressed out"] }
+    ]},
+    { icon: "landmark", title: "Здоровье и общество", en: "Health & society", questions: [
+      { t: "opinion", q: "Should healthcare be free for everyone?",
+        model: "[A] Yes, I believe basic healthcare should be free for everyone. [R] Health is a basic human need, and nobody should have to choose between seeing a doctor and paying rent. Also, when people get treatment early, it's cheaper for society than treating serious illnesses later. [E] For example, in my country, visiting a family doctor is free, so my parents go for check-ups every year. A friend who studied in another country didn't go to a doctor for months because it was too expensive, and a small problem became much worse. [C] So free healthcare helps everyone in the end.",
+        model5: "[A] I firmly believe basic healthcare should be free at the point of use. [R] Health is a fundamental need, and nobody should have to choose between seeing a doctor and paying their rent. Moreover, early treatment is invariably cheaper than dealing with serious illness later, so universal access often saves money overall. [E] In my country, for instance, visits to a family doctor are free, which is why my parents go for **check-ups** every year without a second thought. A friend who studied abroad, by contrast, avoided seeing a doctor for months because of the cost, and a minor issue developed into something far more serious. [C] So free healthcare isn't just fairer; it's often the more sensible economic choice.",
+        f: ["Who should pay for it?", "Should people who smoke pay more?"], lx: ["prevention", "check-up", "public health"] },
+      { t: "opinion", q: "Should governments try to change people's health habits — for example, with taxes on sugary drinks or bans on smoking in public places?",
+        model: "[A] I think governments should do this, but carefully. [R] Unhealthy habits cost society a lot of money in healthcare. Taxes and bans can change behavior, especially for young people. But governments shouldn't control every part of our lives. [E] For example, when my country banned smoking in cafés and restaurants, many of my parents' friends smoked less, and now it seems normal. A sugar tax in some countries also made companies put less sugar in their drinks. [C] So some rules are useful, as long as people still have freedom of choice.",
+        model5: "[A] I believe governments should intervene, though within sensible limits. [R] Unhealthy habits place an enormous burden on public healthcare systems, and well-designed taxes or bans can genuinely shift behavior, particularly among young people. That said, a state that micromanages every aspect of our lives would be both unpopular and counterproductive. [E] When my country banned smoking in cafés and restaurants, for instance, many of my parents' friends cut down significantly, and smoke-free venues quickly became the norm. Similarly, sugar taxes in several countries prompted manufacturers to reformulate their drinks with less sugar. [C] So targeted measures work well, provided they nudge people rather than dictate every choice.",
+        f: ["Should fast food be taxed?", "Is it the government's business what we eat?"], lx: ["prevention", "cut down on", "public health"] },
+      { t: "opinion", q: "Many people search their symptoms online before seeing a doctor. Is 'Dr Google' helpful or harmful?",
+        model: "[A] I think it's both helpful and harmful. [R] The internet can give you basic information and help you decide if you need a doctor. But it often shows the worst possible illnesses, which makes people very anxious, and some websites give wrong advice. [E] For example, once I had a headache for three days and searched online. After ten minutes, I was sure I had something terrible. My doctor said it was just stress and lack of sleep. On the other hand, my friend found information online that made her see a doctor early, and it really helped. [C] So we should use the internet carefully and always check with a doctor.",
+        model5: "[A] It's a mixed blessing, in my view. [R] Online information can help people understand basic symptoms and decide whether they need medical attention. However, search results often highlight the most alarming possibilities, which fuels unnecessary **anxiety**, and plenty of websites offer unreliable advice. [E] Once, for instance, after three days of headaches, I spent ten minutes online and became convinced I had something terrible; my doctor diagnosed stress and lack of sleep. A friend of mine, by contrast, read about a symptom online that prompted her to see a doctor early, which turned out to be important. [C] So the internet can be a useful starting point, but it should never replace a professional opinion.",
+        f: ["Do you trust health advice on social media?", "Will AI replace doctors?"], lx: ["anxiety", "seek professional help", "check-up"] },
+      { t: "opinion", q: "Should schools teach students more about health — sleep, nutrition and mental health?",
+        model: "[A] Yes, I think schools should teach much more about health. [R] Children learn many facts at school, but often they don't learn how to sleep well, cook simple healthy meals or deal with stress. These skills are useful for the whole life. [E] For example, at my school, we had biology classes about the heart, but nobody taught us what to do when we feel anxious before exams. When I got to university, I had to learn everything by myself, and it was difficult. [C] So health education should be a normal part of school.",
+        model5: "[A] I'm convinced they should. [R] Schools teach students an impressive range of facts, yet often neglect practical knowledge such as how to sleep well, cook a simple healthy meal or recognize and **cope with** stress — skills that matter for a lifetime. [E] At my school, for instance, we studied the anatomy of the heart in detail, but nobody ever explained what to do when anxiety struck before exams. When I started university, I had to figure all of this out on my own, largely through trial and error. [C] So practical health education deserves a regular place in the timetable, since **prevention** begins with knowledge.",
+        f: ["What would you put in such a course?", "Who should teach it?"], lx: ["prevention", "cope with", "healthy lifestyle"] }
+    ]},
+    { icon: "sparkles", title: "Представь, что…", en: "What if…?", questions: [
+      { t: "hypo", q: "If you didn't need to sleep at all, what would you do with the extra hours?",
+        model: "[A] If I didn't need sleep, I'd use the extra hours to learn new things and travel more. [R] I always feel there isn't enough time for everything I want to do, like learning languages and reading books. [E] For example, I'd spend two hours every night learning Spanish and another two reading novels. I'd also take night trains to new cities and explore them at sunrise. But honestly, I'd miss sleep — waking up after a good night's sleep is one of the best feelings. [C] So it would be useful, but I'm not sure I'd really want it.",
+        model5: "[A] I'd probably devote the extra hours to learning and exploring. [R] I constantly feel I lack time for things that genuinely matter to me, such as languages and reading, and an extra eight hours a day would solve that overnight — quite literally. [E] I imagine spending part of each night finally mastering Spanish and the rest working through the stack of novels on my desk. I might even take night trains to explore new cities at dawn. Having said that, I suspect I'd miss sleep itself; waking up genuinely rested is one of life's simplest pleasures. [C] So it would be a fascinating ability, but I'm not entirely convinced it would make life better.",
+        f: ["Would people just work more?", "What's the best part of sleeping?"], lx: ["make time for", "get a good night's sleep", "recharge"] },
+      { t: "hypo", q: "If you could change one thing about your lifestyle overnight, what would it be?",
+        model: "[A] I would stop using my phone in the evening. [R] I know it's my worst habit. It keeps me awake, makes me compare myself with others and takes time I could use for reading or sleeping. [E] For example, I often plan to go to bed at eleven, but then I start scrolling and suddenly it's one a.m. The next day I'm tired and irritated. If I could change this overnight, I'd sleep better, read more and probably feel happier. [C] So one small change would improve many parts of my life.",
+        model5: "[A] I'd eliminate my evening phone use, without a doubt. [R] It's my most damaging habit: it delays my sleep, invites unhelpful comparisons with others and eats up time I'd otherwise spend reading or resting. [E] I'll often intend to be asleep by eleven, for instance, only to start scrolling and suddenly discover it's past one, which leaves me irritable and unfocused the next day. If that habit vanished overnight, I'd gain better sleep, more reading time and, I suspect, a noticeably better mood. [C] So it's a single change, but one with a remarkable knock-on effect across almost every area of my well-being.",
+        f: ["Why is it so hard to change habits?", "What would your friends change?"], lx: ["screen time", "build healthy habits", "sleep-deprived"] },
+      { t: "hypo", q: "If medicine allowed people to live to 120, would you want to? Why or why not?",
+        model: "[A] I'd want to live to 120, but only if I stayed healthy. [R] A long life is wonderful if you can still move, think clearly and enjoy time with people you love. But living for many years while being sick or lonely doesn't sound good. [E] For example, my great-grandmother lived to ninety-eight and was active until the end — she gardened and played cards with friends every week. But I've also seen older people in hospitals who were very ill for many years. [C] So for me, the quality of life matters more than the number of years.",
+        model5: "[A] I would, but only on the condition that those extra years were healthy ones. [R] A long life is a gift if you can still move freely, think clearly and share it with people you love; decades of illness or isolation, by contrast, sound more like a burden. [E] My great-grandmother, for instance, lived to ninety-eight and remained wonderfully active almost to the end, gardening and hosting weekly card games with friends. Yet I've also visited relatives in care homes who spent their final years in pain and largely alone. [C] So what really matters to me isn't how long we live, but how well — and that depends partly on the habits we build now.",
+        f: ["What would society look like?", "What's the secret of a long life?"], lx: ["healthy lifestyle", "fit as a fiddle", "prevention"] },
+      { t: "hypo", q: "Describe your perfect 'wellness day' — a day just for recharging.",
+        model: "[A] My perfect wellness day would be slow, outdoors and without my phone. [R] On normal days, I'm always busy and connected, so to really recharge, I need the opposite: nature, rest and good people. [E] I'd wake up without an alarm, have a long breakfast and go hiking with two close friends. After lunch in a small village café, I'd take a nap, then read a book in a hammock. In the evening, I'd cook dinner with my family and go to bed early. No emails, no social media. [C] So my perfect day is simple, but it would **recharge my batteries** completely.",
+        model5: "[A] My ideal wellness day would be slow, spent largely outdoors and completely offline. [R] Since my ordinary days are busy and constantly connected, genuine recharging requires the opposite: nature, unhurried time and people I'm close to. [E] I'd wake naturally, without an alarm, and linger over breakfast before heading into the hills with two close friends. After a long lunch at a village café, I'd allow myself a short nap and then read in a hammock for an hour or two. The day would end with dinner cooked together with my family and an early night, with my phone switched off throughout. [C] Simple as it sounds, a day like that would **recharge my batteries** for weeks.",
+        f: ["When did you last have a day like this?", "Is it selfish to take a day for yourself?"], lx: ["recharge your batteries", "unwind", "self-care"] }
+    ]}
+  ],
+
+  checklist: [
+    "Ответил(а) на вопрос прямо в первом предложении",
+    "Связал(а) причину и следствие: lack of sleep → mood → focus",
+    "Вставил(а) одну идиому — естественно, а не «для галочки»",
+    "Привёл(а) конкретный пример: экзамены, ночь без сна, прогулка, разговор",
+    "Использовал(а) фразу контраста: While it's true that… / That said…",
+    "Уложился(ась) в 45 секунд без длинных пауз"
+  ],
+
+  targetLexis: ["get enough sleep", "get a good night's sleep", "fall asleep", "stay up late", "take a nap", "bedtime routine", "screen time", "balanced diet", "cut down on", "stay hydrated", "cope with stress", "open up", "seek help", "clear my head", "unwind", "recharge my batteries", "well-being", "mental health", "sleep-deprived", "resilience", "stigma", "toss and turn", "that said"]
+};
+
+/* =====================================================================
+   ИЛЛЮСТРАЦИИ (SVG)
+   ===================================================================== */
+const HERO_ART = `
+<svg viewBox="0 0 320 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Луна, подушка, сердце и батарейка">
+  <ellipse cx="165" cy="230" rx="128" ry="10" fill="rgba(0,0,0,.22)"/>
+  <path d="M96 44 a40 40 0 1 0 44 58 a32 32 0 1 1 -44 -58z" fill="#fde68a"/>
+  <g fill="#c7d2fe"><path d="M176 40 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3z"/><circle cx="54" cy="44" r="3"/><circle cx="190" cy="92" r="2.5"/></g>
+  <text x="150" y="56" font-family="system-ui" font-size="20" font-weight="800" fill="#e0e7ff">z</text>
+  <text x="166" y="38" font-family="system-ui" font-size="14" font-weight="800" fill="#c7d2fe">z</text>
+  <rect x="40" y="168" width="200" height="54" rx="14" fill="#6366f1"/>
+  <rect x="40" y="168" width="200" height="18" rx="9" fill="#818cf8"/>
+  <path d="M60 170 c0 -22 16 -30 40 -30 h40 c24 0 36 10 36 30z" fill="#fff"/>
+  <path d="M84 156 q20 -6 44 0" stroke="#e0e7ff" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M40 222 v8 M240 222 v8" stroke="#3730a3" stroke-width="6" stroke-linecap="round"/>
+  <g class="tl-coin">
+    <path d="M262 128 c14 -12 30 -2 30 12 c0 16 -20 28 -30 36 c-10 -8 -30 -20 -30 -36 c0 -14 16 -24 30 -12z" fill="#f472b6"/>
+    <path d="M242 142 h10 l5 -8 l7 16 l5 -8 h12" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g transform="translate(250 196)">
+    <rect x="0" y="0" width="50" height="26" rx="6" fill="#fff"/><rect x="50" y="8" width="5" height="10" rx="2" fill="#fff"/>
+    <rect x="4" y="4" width="12" height="18" rx="2" fill="#38bdf8"/><rect x="18" y="4" width="12" height="18" rx="2" fill="#38bdf8"/><rect x="32" y="4" width="12" height="18" rx="2" fill="#38bdf8"/>
+  </g>
+  <g transform="translate(222 40) rotate(20)"><path d="M0 30 c0 -20 16 -30 30 -30 c0 20 -14 30 -30 30z" fill="#a5f3fc"/><path d="M2 28 l22 -22" stroke="#0891b2" stroke-width="2.5" stroke-linecap="round"/></g>
+</svg>`;
+
+/* Мини-иллюстрации к идиомам (160×96). Классы a-* анимируются при наведении. */
+const IDIOM_ART = {
+  log: `<rect x="20" y="58" width="120" height="26" rx="13" fill="#b45309"/><ellipse cx="134" cy="71" rx="10" ry="13" fill="#fcd34d"/>
+         <ellipse cx="134" cy="71" rx="5" ry="7" fill="none" stroke="#b45309" stroke-width="2"/><path d="M40 66 h60 M50 76 h50" stroke="#92400e" stroke-width="2.5" stroke-linecap="round"/>
+         <g class="a-drop"><text x="58" y="44" font-family="system-ui" font-size="22" font-weight="800" fill="#6366f1">Z</text><text x="80" y="30" font-family="system-ui" font-size="16" font-weight="800" fill="#818cf8">z</text><text x="96" y="18" font-family="system-ui" font-size="12" font-weight="800" fill="#a5b4fc">z</text></g>`,
+  toss: `<rect x="22" y="54" width="116" height="26" rx="8" fill="#818cf8"/><rect x="26" y="40" width="30" height="16" rx="7" fill="#fff"/>
+         <path d="M22 80 v10 M138 80 v10" stroke="#4338ca" stroke-width="4" stroke-linecap="round"/>
+         <g class="a-belt"><path d="M54 52 q30 -22 70 -2 q-20 14 -70 2z" fill="#c7d2fe"/><circle cx="44" cy="42" r="8" fill="#fecaca"/></g>
+         <path d="M64 24 q6 -8 12 0 M86 18 q6 -8 12 0" stroke="#94a3b8" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+         ${'<text x="118" y="30" font-family="system-ui" font-size="11" font-weight="800" fill="#e11d48">3:00</text>'}`,
+  sack: `<rect x="24" y="62" width="112" height="20" rx="8" fill="#6366f1"/><rect x="30" y="50" width="34" height="14" rx="6" fill="#fff"/>
+         <path d="M24 82 v8 M136 82 v8" stroke="#3730a3" stroke-width="4" stroke-linecap="round"/>
+         <g class="a-drop"><path d="M84 22 h20 l10 34 c2 6 -2 10 -8 10 h-24 c-6 0 -10 -4 -8 -10z" fill="#d6a46b" stroke="#92400e" stroke-width="2"/>
+         <path d="M84 22 c-4 -6 0 -12 4 -8 M104 22 c4 -6 0 -12 -4 -8" stroke="#92400e" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+         <path d="M82 26 h24" stroke="#78350f" stroke-width="3" stroke-linecap="round"/>
+         <text x="94" y="52" text-anchor="middle" font-family="system-ui" font-size="11" font-weight="800" fill="#78350f">Zz</text></g>
+         <path d="M140 14 a10 10 0 1 0 10 14 a8 8 0 1 1 -10 -14z" fill="#c7d2fe"/>`,
+  candle: `<rect x="20" y="44" width="120" height="16" rx="4" fill="#fef3c7" stroke="#f59e0b" stroke-width="2"/>
+         <g class="a-flame"><path d="M14 52 c-10 -6 -6 -16 0 -22 c4 8 8 14 0 22z" fill="#f97316"/><path d="M146 52 c10 -6 6 -16 0 -22 c-4 8 -8 14 0 22z" fill="#f97316"/>
+         <path d="M14 48 c-3 -3 -2 -7 0 -10 c2 3 3 7 0 10z M146 48 c3 -3 2 -7 0 -10 c-2 3 -3 7 0 10z" fill="#fde68a"/></g>
+         <path d="M40 60 v10 M60 60 v6 M110 60 v12" stroke="#fde68a" stroke-width="4" stroke-linecap="round"/>
+         <path d="M60 82 h40" stroke="#cbd5e1" stroke-width="4" stroke-linecap="round"/>`,
+  weather: `<g class="a-drop"><path d="M48 40 a16 16 0 0 1 30 -8 a14 14 0 0 1 26 8 a12 12 0 0 1 0 24 h-56 a12 12 0 0 1 0 -24z" fill="#94a3b8"/>
+         <path d="M56 70 l-4 8 M74 70 l-4 8 M92 70 l-4 8" stroke="#60a5fa" stroke-width="3" stroke-linecap="round"/></g>
+         <circle cx="80" cy="88" r="0" fill="none"/>
+         <circle cx="126" cy="70" r="10" fill="#fecaca"/><path d="M120 68 q6 -3 12 0" stroke="#991b1b" stroke-width="2" fill="none"/>
+         <rect x="118" y="80" width="16" height="10" rx="3" fill="#fff" stroke="#94a3b8" stroke-width="1.5"/><path d="M126 52 v8" stroke="#e11d48" stroke-width="3" stroke-linecap="round"/>`,
+  fiddle: `<g class="a-tag" style="transform-origin:80px 60px"><path d="M80 30 c-14 0 -20 8 -16 18 c-8 6 -8 20 0 26 c-4 12 4 18 16 18 s20 -6 16 -18 c8 -6 8 -20 0 -26 c4 -10 -2 -18 -16 -18z" fill="#c2410c"/>
+         <path d="M74 54 q6 4 0 8 M86 54 q-6 4 0 8" stroke="#7c2d12" stroke-width="2.5" fill="none"/><rect x="77" y="4" width="6" height="34" rx="2" fill="#7c2d12"/>
+         <path d="M78 14 v70 M82 14 v70" stroke="#fde68a" stroke-width="1"/></g>
+         <path d="M108 20 l40 40" stroke="#92400e" stroke-width="3" stroke-linecap="round"/>
+         <path d="M28 30 l4 -10 l4 10 M24 26 h16" stroke="#0ea5e9" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M128 76 l6 -6 m0 6 l-6 -6" stroke="#ec4899" stroke-width="2.5" stroke-linecap="round"/>`,
+  chest: `<circle cx="46" cy="34" r="12" fill="#fecaca"/><path d="M28 86 c0 -22 8 -34 18 -34 s18 12 18 34z" fill="#8b5cf6"/>
+         <circle cx="116" cy="34" r="12" fill="#fde68a"/><path d="M98 86 c0 -22 8 -34 18 -34 s18 12 18 34z" fill="#0ea5e9"/>
+         <g class="a-r"><path d="M66 28 h26 a8 8 0 0 1 8 8 v8 a8 8 0 0 1 -8 8 h-14 l-8 8 v-8 h-4 a8 8 0 0 1 -8 -8 v-8 a8 8 0 0 1 8 -8z" fill="#fff" stroke="#ec4899" stroke-width="2.5"/>
+         <path d="M79 46 c-6 -4 -8 -8 -4 -10 c2 -1 4 0 4 2 c0 -2 2 -3 4 -2 c4 2 2 6 -4 10z" fill="#ec4899"/></g>`,
+  battery: `<rect x="34" y="30" width="86" height="44" rx="10" fill="#fff" stroke="#334155" stroke-width="4"/><rect x="120" y="44" width="8" height="16" rx="3" fill="#334155"/>
+         <g class="a-l"><rect x="42" y="38" width="20" height="28" rx="4" fill="#0ea5e9"/><rect x="66" y="38" width="20" height="28" rx="4" fill="#38bdf8"/><rect x="90" y="38" width="20" height="28" rx="4" fill="#7dd3fc"/></g>
+         <path d="M76 6 l-10 16 h10 l-6 14" stroke="#f59e0b" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`,
+  apple: `<g class="a-tag" style="transform-origin:60px 60px"><path d="M60 34 c-16 -8 -36 2 -34 24 c2 22 18 34 34 28 c16 6 32 -6 34 -28 c2 -22 -18 -32 -34 -24z" fill="#e11d48"/>
+         <path d="M60 34 c0 -10 4 -16 10 -20" stroke="#78350f" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M64 22 c8 -8 18 -6 20 -2 c-6 4 -14 6 -20 2z" fill="#22d3ee"/>
+         <path d="M40 50 q4 -8 12 -8" stroke="#fda4af" stroke-width="4" fill="none" stroke-linecap="round"/></g>
+         <g transform="translate(112 24)"><rect x="0" y="0" width="32" height="44" rx="6" fill="#fff" stroke="#94a3b8" stroke-width="2"/><path d="M16 10 v16 M8 18 h16" stroke="#e11d48" stroke-width="4" stroke-linecap="round"/></g>
+         <path d="M104 22 l46 52" stroke="#e11d48" stroke-width="4" stroke-linecap="round"/>`
+};
+</script>
+<script src="topic-engine.js"></script>
+</body>
+</html>

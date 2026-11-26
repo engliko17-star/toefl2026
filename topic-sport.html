@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sport & Exercise — Speaking Topics — TOEFL Prep</title>
+
+<!-- Те же подключения, что на остальных страницах платформы -->
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="auth.js"></script>
+<script src="topics.js"></script>
+
+<link rel="stylesheet" href="topic-engine.css">
+</head>
+<body>
+<div class="tl-layout flex flex-col md:flex-row min-h-screen">
+  <div id="app-sidebar"></div>
+  <script src="nav.js"></script>
+
+  <main class="tl-main">
+    <div class="tl-wrap" id="lesson"></div>
+  </main>
+</div>
+
+<!-- Панель ответа -->
+<div class="tl-dock" id="dock" aria-live="polite">
+  <div class="tl-dock-top"><span id="dockLabel">Ответ</span><button class="tl-dock-close" id="dockClose" aria-label="Закрыть">✕</button></div>
+  <div class="tl-dock-q" id="dockQ"></div>
+  <div class="tl-dock-status">
+    <div class="tl-dock-state"><span class="tl-rec-dot" id="recDot"></span><span id="dockState">Готово</span></div>
+    <div class="tl-dock-time" id="dockTime">0:45</div>
+  </div>
+  <div class="tl-phase" id="dockPhase"></div>
+  <div class="tl-dock-bar" id="dockBar"></div>
+  <div class="tl-dock-ctrl">
+    <label><input type="checkbox" id="recToggle"> Записывать голос</label>
+    <div class="tl-row">
+      <button class="tl-dock-btn" id="dockShowQ">Показать текст</button>
+      <button class="tl-dock-btn" id="dockStop">Стоп</button>
+    </div>
+  </div>
+  <div class="tl-dock-msg" id="dockMsg"></div>
+  <div class="tl-dock-out" id="dockOut"></div>
+</div>
+
+<script>
+/* =====================================================================
+   КОНТЕНТ УРОКА: SPORT & EXERCISE
+   Новая тема = копия файла: меняются LESSON, HERO_ART и IDIOM_ART.
+   Общий движок и стили — topic-engine.js и topic-engine.css.
+   **слово** — подсветка целевой лексики.
+   _слово_ в коллокациях — «ключевой кубик».
+   [A] [R] [E] [C] в модельных ответах — цветная структура:
+   A = прямой ответ, R = причина, E = пример, C = вывод.
+   ===================================================================== */
+const LESSON = {
+  slug: "sport",
+  titleEn: "Sport & Exercise",
+  titleRu: "Спорт и физическая активность",
+  category: "Здоровье и образ жизни",
+  intro: "Какой спорт ты любишь, зал или улица, одному или в компании, мотивация и награды, фитнес-приложения, дети и контактные виды спорта, профессиональный спорт и Олимпиада. Разбираем лексику, без которой ответ про спорт звучит по-детски, и проходим все вопросы по теме из базы.",
+  meta: [["≈ 60", "минут"], ["27", "слов · 2 уровня"], ["20", "коллокаций"], ["9", "идиом"], ["{Q}", "вопроса для обсуждения"]],
+
+  frames: {
+    warmup:    { icon: "flame",      time: "3 мин",  steps: ["Нажми динамик или прочитай вопрос", "Ответь вслух за 20 секунд", "Без подсказок — это «до урока»"] },
+    vocab:     { icon: "book",       time: "10 мин", steps: ["Посмотри на схему: зачем мы двигаемся", "Найди себя на шкале", "Слова: начни с Core, слушай и повторяй"] },
+    coll:      { icon: "link",       time: "8 мин",  steps: ["Учи сочетание целиком", "do / go / play — самая частая ошибка", "Расскажи о своём спорте с 5 сочетаниями"] },
+    idioms:    { icon: "quote",      time: "6 мин",  steps: ["Посмотри картинку — запомни образ", "Плашка «Можно» — смело в ответы", "Выбери 2 идиомы на сегодня"] },
+    expr:      { icon: "megaphone",  time: "5 мин",  steps: ["Послушай интонацию", "По 1 фразе из каждой группы", "Запомни шкалу 45 секунд"] },
+    check:     { icon: "puzzle",     time: "10 мин", steps: ["4 мини-игры", "Цель — 100% в Matching и Gap-fill", "Карточки — пока не узнаёшь все"] },
+    repeat:    { icon: "headphones", time: "5 мин",  steps: ["Слушай, не читая", "Повтори слово в слово", "Включи запись и сравни"] },
+    interview: { icon: "mic",        time: "15 мин", steps: ["Выбери сет — все пять официальные", "Пройди все вопросы подряд, без пауз", "Сравни с моделью: цвета = структура"] },
+    club:      { icon: "chat",       time: "30+ мин", steps: ["Возьми 1–2 блока на занятие", "Ответь, потом — на «Копнём глубже»", "Отметь «Обсудили» или крути рулетку"] },
+    self:      { icon: "checkCircle",time: "3 мин",  steps: ["Прослушай свои записи", "Отметь, что получилось", "Цель — 15+ отмеченных слов"] }
+  },
+
+  warmup: [
+    "Do you do any sport or exercise regularly?",
+    "Gym, running, yoga or a team sport — what's your favorite?",
+    "Do you prefer playing sports or watching them?",
+    "What were PE classes like at your school?"
+  ],
+
+  /* Зачем мы двигаемся: равные ветки, вместо процента — tag */
+  flow: {
+    icon: "heart",
+    title: "Зачем мы двигаемся",
+    source: { kicker: "Начинаю двигаться…", title: "Get moving", ru: "встать с дивана", words: ["work out", "stay active", "take up a sport"] },
+    branches: [
+      { title: "Body", ru: "тело", sub: "stronger and healthier", tag: "Тело", color: "#0ea5e9", words: ["get in shape", "build strength", "improve stamina", "burn calories"] },
+      { title: "Mind", ru: "голова", sub: "the best antidepressant", tag: "Голова", color: "#8b5cf6", words: ["relieve stress", "clear my head", "endorphins", "sleep better"] },
+      { title: "People", ru: "люди", sub: "more fun together", tag: "Люди", color: "#ec4899", words: ["team spirit", "a workout buddy", "make friends", "compete"] }
+    ],
+    notes: [
+      "Почти любой вопрос «зачем спорт» закрывается одной из веток. Сильный ответ берёт <b>Mind</b> или <b>People</b> — о теле говорят все",
+      "Готовая фраза: <i>For me, exercise is less about my body and more about clearing my head.</i>"
+    ]
+  },
+
+  scale: {
+    title: "Диван или стадион? Перетащи кружок туда, где ты",
+    left: "COUCH POTATO", right: "FITNESS FANATIC",
+    words: [
+      { w: "couch potato", p: 4 }, { w: "sedentary", p: 17 }, { w: "the odd walk", p: 30 }, { w: "stay active", p: 44 },
+      { w: "work out regularly", p: 58 }, { w: "in good shape", p: 71 }, { w: "train hard", p: 84 }, { w: "fitness fanatic", p: 97 }
+    ],
+    says: [
+      { max: 25,  t: "I'll be honest — I'm a bit of a **couch potato**. My lifestyle is pretty **sedentary**." },
+      { max: 50,  t: "I'm not sporty, but I try to **stay active** — I walk everywhere and go for **the odd** run." },
+      { max: 75,  t: "I **work out regularly**, about three times a week, so I'm **in** fairly **good shape**." },
+      { max: 101, t: "I'm a total **fitness fanatic** — I **train hard** almost every day and feel terrible if I miss a session." }
+    ]
+  },
+
+  vocab: [
+    { en: "work out", pos: "v", ru: "тренироваться (в зале, дома)", ex: "I work out three times a week before class.", level: "core" },
+    { en: "be in shape", pos: "phr", ru: "быть в форме", ex: "I was in much better shape when I played football.", level: "core" },
+    { en: "fit", pos: "adj", ru: "в хорошей физической форме", ex: "My grandfather is eighty and still very fit.", level: "core" },
+    { en: "team sport", pos: "n", ru: "командный вид спорта", ex: "Team sports teach you to rely on other people.", level: "core" },
+    { en: "gym membership", pos: "n", ru: "абонемент в зал", ex: "Lots of people buy a gym membership in January and never use it.", level: "core" },
+    { en: "coach", pos: "n / v", ru: "тренер; тренировать", ex: "My football coach was strict but fair.", level: "core" },
+    { en: "warm up / cool down", pos: "v", ru: "разминаться / делать заминку", ex: "Always warm up before you run.", level: "core" },
+    { en: "injury", pos: "n", ru: "травма", ex: "A knee injury stopped me from running for a month.", level: "core" },
+    { en: "stamina", pos: "n", ru: "выносливость (запас сил)", ex: "Swimming is great for building stamina.", level: "core" },
+    { en: "compete", pos: "v", ru: "соревноваться", ex: "I like to compete, but I hate losing.", level: "core" },
+    { en: "competitive", pos: "adj", ru: "соревновательный; любящий побеждать", ex: "My brother is so competitive that even board games get serious.", level: "core" },
+    { en: "PE (physical education)", pos: "n", ru: "физкультура", ex: "PE was my favorite subject at school.", level: "core" },
+    { en: "amateur / professional", pos: "adj / n", ru: "любитель / профессионал", ex: "I play in an amateur basketball league.", level: "core" },
+    { en: "spectator", pos: "n", ru: "зритель (на соревновании)", ex: "Over fifty thousand spectators watched the final.", level: "core" },
+    { en: "outdoor activities", pos: "n", ru: "активный отдых на улице", ex: "Hiking and cycling are my favorite outdoor activities.", level: "core" },
+
+    { en: "sedentary", pos: "adj", ru: "сидячий, малоподвижный", ex: "Students often have a very sedentary lifestyle.", level: "adv" },
+    { en: "endurance", pos: "n", ru: "выносливость (длительная)", ex: "Marathon running is all about endurance.", level: "adv" },
+    { en: "endorphins", pos: "n", ru: "эндорфины, «гормоны радости»", ex: "After a run, the endorphins put me in a great mood.", level: "adv" },
+    { en: "sportsmanship", pos: "n", ru: "спортивное поведение, честная игра", ex: "Shaking hands after a match is basic sportsmanship.", level: "adv" },
+    { en: "consistency", pos: "n", ru: "регулярность, постоянство", ex: "In fitness, consistency beats intensity.", level: "adv" },
+    { en: "recovery", pos: "n", ru: "восстановление", ex: "Sleep is the most important part of recovery.", level: "adv" },
+    { en: "push yourself", pos: "phr", ru: "выкладываться, заставлять себя", ex: "A good coach pushes you harder than you'd push yourself.", level: "adv" },
+    { en: "high-intensity", pos: "adj", ru: "высокоинтенсивный", ex: "A twenty-minute high-intensity workout can be very effective.", level: "adv" },
+    { en: "adrenaline", pos: "n", ru: "адреналин", ex: "I love the adrenaline of the last minute of a close game.", level: "adv" },
+    { en: "camaraderie", pos: "n", ru: "товарищество, дух команды", ex: "What I miss most about my team is the camaraderie.", level: "adv" },
+    { en: "grassroots sport", pos: "n", ru: "массовый, любительский спорт", ex: "Governments should invest more in grassroots sport.", level: "adv" },
+    { en: "physically demanding", pos: "adj", ru: "физически тяжёлый", ex: "Rugby is one of the most physically demanding sports.", level: "adv" }
+  ],
+
+  collocations: [
+    { icon: "activity", group: "do / go / play", items: [
+      { en: "_play_ football / tennis", ru: "играть (игры с мячом и счётом)", ex: "I play football with friends every Sunday." },
+      { en: "_go_ running / swimming", ru: "бегать / плавать (глаголы на -ing)", ex: "I go running before breakfast." },
+      { en: "_do_ yoga / karate", ru: "заниматься (без мяча и -ing)", ex: "My sister does yoga every evening." },
+      { en: "_do_ exercise", ru: "делать упражнения, заниматься (не make!)", ex: "Doctors say we should do some exercise every day." },
+      { en: "_lift_ weights", ru: "поднимать веса, качаться", ex: "I lift weights at the gym twice a week." }
+    ]},
+    { icon: "trending", group: "Форма и прогресс", items: [
+      { en: "_get_ in shape", ru: "прийти в форму", ex: "I want to get in shape before the summer." },
+      { en: "_stay_ active", ru: "оставаться активным", ex: "Walking to class helps me stay active." },
+      { en: "_build_ strength", ru: "становиться сильнее", ex: "Climbing is a fun way to build strength." },
+      { en: "_improve_ your stamina", ru: "повысить выносливость", ex: "Cycling really improved my stamina." },
+      { en: "_burn_ calories", ru: "сжигать калории", ex: "Swimming burns a lot of calories." }
+    ]},
+    { icon: "trophy", group: "Соревнования", items: [
+      { en: "_win_ a match", ru: "выиграть матч (win + матч, приз)", ex: "We won the final match 3–1." },
+      { en: "_beat_ the other team", ru: "обыграть соперника (beat + соперник)", ex: "We finally beat our biggest rivals." },
+      { en: "_score_ a goal", ru: "забить гол", ex: "I scored the winning goal in the last minute." },
+      { en: "_break_ a record", ru: "побить рекорд", ex: "She broke the school record for the 100 meters." },
+      { en: "_take part in_ a competition", ru: "участвовать в соревновании", ex: "I took part in my first race last spring." }
+    ]},
+    { icon: "heart", group: "Тело и голова", items: [
+      { en: "_take up_ a sport", ru: "начать заниматься спортом", ex: "I took up tennis at the age of twenty." },
+      { en: "_pull_ a muscle", ru: "потянуть мышцу", ex: "I pulled a muscle because I didn't warm up." },
+      { en: "_recover from_ an injury", ru: "восстановиться после травмы", ex: "It took me six weeks to recover from my knee injury." },
+      { en: "_relieve_ stress", ru: "снять стресс", ex: "Running is the best way for me to relieve stress." },
+      { en: "_boost_ your mood", ru: "поднять настроение", ex: "Even a short walk can boost your mood." }
+    ]}
+  ],
+
+  idioms: [
+    { art: "couch", lit: "буквально: «диванная картошка»", en: "a couch potato", ru: "лежебока, домосед", meaning: "человек, который много сидит на диване и мало двигается", ex: "In winter, I turn into a real couch potato.", reg: "ok", note: "Отлично для честного ответа: I used to be a couch potato, but…" },
+    { art: "steam", lit: "буквально: «закончился пар»", en: "run out of steam", ru: "выдохнуться", meaning: "потерять энергию или мотивацию", ex: "I usually run out of steam after about five kilometers.", reg: "ok", note: "Подходит и к спорту, и к мотивации: many people run out of steam by February." },
+    { art: "towel", lit: "буквально: «выбросить полотенце» (как в боксе)", en: "throw in the towel", ru: "сдаться", meaning: "прекратить попытки, признать поражение", ex: "My knee hurt so much that I almost threw in the towel.", reg: "ok", note: "Сильная фраза для истории про сложную тренировку." },
+    { art: "distance", lit: "буквально: «пройти всю дистанцию»", en: "go the distance", ru: "дойти до конца", meaning: "выдержать до финиша, не сдаться", ex: "Nobody believed I would go the distance, but I finished the race.", reg: "ok", note: "Красиво в выводе про упорство." },
+    { art: "teamplayer", lit: "буквально: «командный игрок»", en: "a team player", ru: "командный человек", meaning: "тот, кто хорошо работает с другими ради общей цели", ex: "Team sports taught me to be a team player.", reg: "ok", note: "Мост к теме работы: в спорте и в офисе." },
+    { art: "swing", lit: "буквально: «войти в ритм замаха»", en: "get into the swing of things", ru: "втянуться, войти в ритм", meaning: "привыкнуть к новому занятию и начать получать удовольствие", ex: "The first two weeks at the gym were hard, but then I got into the swing of things.", reg: "ok", note: "Идеально для вопроса «what challenges would a beginner face»." },
+    { art: "field", lit: "буквально: «ровное игровое поле»", en: "a level playing field", ru: "равные условия", meaning: "ситуация, где у всех одинаковые шансы", ex: "Doping rules are there to keep a level playing field.", reg: "ok", note: "Для мнений о профессиональном спорте, допинге, призовых." },
+    { art: "bandwagon", lit: "буквально: «запрыгнуть в фургон с оркестром»", en: "jump on the bandwagon", ru: "поддаться моде, следовать тренду", meaning: "начать делать что-то, потому что это популярно", ex: "Everyone jumped on the bandwagon when padel became trendy.", reg: "ok", note: "Удобно про фитнес-тренды, приложения и инфлюенсеров." },
+    { art: "nopain", lit: "буквально: «нет боли — нет результата»", en: "no pain, no gain", ru: "без труда не выловишь и рыбку", meaning: "чтобы добиться результата, надо потрудиться", ex: "My coach always said 'no pain, no gain' — but real pain means stop!", reg: "careful", note: "Клише, и буквально — плохой совет (боль = травма). Лучше с иронией или оговоркой." }
+  ],
+
+  expressions: [
+    { icon: "play", fn: "Начать ответ", items: [
+      "I'd say I'm a fairly active person.",
+      "To be honest, I'm not very sporty, but …",
+      "These days, my main form of exercise is …"
+    ]},
+    { icon: "bulb", fn: "Причина", items: [
+      "For me, exercise is mainly about clearing my head.",
+      "The main reason is that I sit at a desk all day.",
+      "What I love about it is the feeling after a workout."
+    ]},
+    { icon: "camera", fn: "Пример из жизни", items: [
+      "When I was at school, for example, I played on the football team …",
+      "Last spring, I ran my first half marathon …",
+      "I remember one match in particular …"
+    ]},
+    { icon: "scales", fn: "Баланс и контраст", items: [
+      "Gyms are convenient; that said, nothing beats running outdoors.",
+      "While team sports are more fun, individual sports teach discipline.",
+      "On the flip side, …"
+    ]},
+    { icon: "trending", fn: "Будущее и тренды", items: [
+      "With more people working from home, I think …",
+      "Fitness apps are only going to get more popular.",
+      "I can easily imagine a future where …"
+    ]},
+    { icon: "flag", fn: "Завершить", items: [
+      "So for me, the best exercise is the one you actually enjoy.",
+      "In the end, consistency matters more than intensity.",
+      "That's why I'd never go back to being a couch potato."
+    ]}
+  ],
+
+  answerSteps: [
+    { k: "A", s: 5,  i: "Yes — I go running three times a week." },
+    { k: "R", s: 12, i: "The main reason is that it helps me clear my head…" },
+    { k: "E", s: 22, i: "Last spring, for example, I ran my first half marathon…" },
+    { k: "C", s: 6,  i: "So for me, running is therapy, not just exercise." }
+  ],
+
+  matching: [
+    { a: "a couch potato", b: "someone who sits on the sofa a lot and rarely exercises" },
+    { a: "run out of steam", b: "lose energy or motivation" },
+    { a: "throw in the towel", b: "give up" },
+    { a: "go the distance", b: "continue until the very end" },
+    { a: "get into the swing of things", b: "get used to a new activity" },
+    { a: "a level playing field", b: "a situation where everyone has the same chances" }
+  ],
+
+  gapfill: [
+    { t: "I ___ football with my friends every Sunday.", a: ["play"] },
+    { t: "My sister ___ yoga every evening.", a: ["does"] },
+    { t: "I ___ running before breakfast.", a: ["go"] },
+    { t: "We finally ___ our biggest rivals 2–0.", a: ["beat"] },
+    { t: "We ___ the final match and got the trophy.", a: ["won"] },
+    { t: "I ___ a muscle because I didn't warm up.", a: ["pulled"] },
+    { t: "I ___ up tennis at the age of twenty.", a: ["took"] },
+    { t: "Running is the best way for me to ___ stress.", a: ["relieve", "reduce"] }
+  ],
+
+  paraphrase: [
+    { plain: "I make sport every day.", better: ["I **do some exercise** every day.", "I **work out** every day."] },
+    { plain: "I sit a lot and don't move much.", better: ["I have a very **sedentary** lifestyle.", "I'm a bit of **a couch potato**."] },
+    { plain: "I won the other team.", better: ["We **beat the other team**.", "We **won the match**."] },
+    { plain: "Sport makes me less stressed and happier.", better: ["Exercise helps me **relieve stress** and **boosts my mood**.", "After a workout, the **endorphins** kick in."] },
+    { plain: "I started to play tennis.", better: ["I **took up** tennis last year."] },
+    { plain: "I got tired and stopped.", better: ["I **ran out of steam** halfway through.", "I almost **threw in the towel**."] },
+    { plain: "I want to be in good form for summer.", better: ["I want to **get in shape** before the summer."] },
+    { plain: "At first it was hard, but then I got used to it.", better: ["It was tough at first, but then I **got into the swing of things**."] }
+  ],
+
+  repeat: {
+    scenario: "Вы подрабатываете в университетском спортивном центре. Менеджер проводит инструктаж для новых сотрудников — повторите каждое предложение точно так, как услышали.",
+    sentences: [
+      "Welcome to the recreation center.",
+      "The gym opens at six every morning.",
+      "Students must show their ID at the front desk.",
+      "Please wipe down the machines after each use.",
+      "Fitness classes are free, but you need to book a spot online.",
+      "The swimming pool will be closed for cleaning on the first Monday of every month.",
+      "If someone gets injured, call the first aid team right away and fill out an incident report."
+    ]
+  },
+
+  /* ===== Реальные сеты Take an Interview по теме (из базы платформы) ===== */
+  sets: [
+    { id: "s075", badge: "official", title: "Sports Participation", src: "Official TOEFL · 075",
+      scenario: "You have volunteered for a research study at your university about sports participation. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "First, do you currently play any sports or engage regularly in any physical activities?",
+          lx: ["go running", "work out", "stay active"],
+          model: "[A] Yes, I do. I **go running** three times a week, and I go to the gym twice a week. [R] I sit a lot during the day — at lectures and in the library — so I need to move to feel good. Running also helps me relax after studying. [E] For example, every Monday, Wednesday and Friday I run about five kilometers in the park near my dorm before breakfast. On weekends, I sometimes play football with my old school friends. [C] So sport is a regular part of my life, and I feel strange when I skip it.",
+          model5: "[A] Yes, I'd say I'm fairly active: I **go running** three times a week and **work out** at the gym twice. [R] Since I spend most of my day sitting in lectures or in the library, regular exercise is what keeps both my body and my mind in balance. [E] Every Monday, Wednesday and Friday, for instance, I run about five kilometers in the park next to my dorm before breakfast, which sets me up for the whole day. On weekends, I also play the occasional football match with old school friends — mostly for fun, although things do get competitive. [C] So exercise has become such a fixed part of my routine that I genuinely miss it when I skip a session." },
+        { q: "If you were able to, what sport that you do not currently play would you like to be really good at? Why that particular sport?",
+          lx: ["take up a sport", "physically demanding", "adrenaline"],
+          model: "[A] I'd love to be really good at surfing. [R] It looks exciting and free, and it's a sport where you're in nature, not in a gym. It's also very difficult, so being good at it would make me proud. [E] For example, last summer I tried a surfing lesson in Portugal. I fell off the board about fifty times and stood up only once, for two seconds — but that moment was amazing. I watched the instructor and thought, \"I want to do that.\" [C] So if I had more time and lived near the sea, I'd definitely **take up** surfing.",
+          model5: "[A] If I could master any sport, I'd choose surfing. [R] It combines everything I love — the ocean, freedom and a fair amount of **adrenaline** — and it's so **physically demanding** that being genuinely good at it would feel like a real achievement. [E] Last summer, for example, I took a beginner's lesson in Portugal. I fell off the board about fifty times and managed to stand up just once, for roughly two seconds, yet that brief moment was exhilarating. Watching the instructor glide effortlessly across the waves, I remember thinking that's exactly what I want to be able to do. [C] So if I ever live near the coast, surfing is the first sport I'll **take up**." },
+        { q: "Tell me about an experience you had while playing a sport or engaging in a physical activity that you remember well. What made it memorable?",
+          lx: ["go the distance", "take part in", "sense of accomplishment"],
+          model: "[A] The experience I remember best is running my first half marathon last spring. [R] It was memorable because it was very hard and I almost gave up, but I finished. [E] Around kilometer fifteen, my legs hurt so much that I wanted to stop and walk. But then I saw my friends at the side of the road with a funny poster with my name on it. They shouted and cheered, and I found new energy. I crossed the finish line in two hours and five minutes. [C] So it was special because of the pain, my friends and the proud feeling at the end.",
+          model5: "[A] The experience I remember most vividly is **taking part in** my first half marathon last spring. [R] What made it so memorable was the contrast between how close I came to giving up and how incredible finishing felt. [E] Around the fifteenth kilometer, my legs were burning and I was seriously tempted to start walking. Just then, I spotted my friends by the roadside, holding a ridiculous homemade poster with my face on it and cheering at the top of their lungs. Somehow, that gave me the energy I needed to **go the distance**, and I crossed the line in just over two hours. [C] It taught me how much support from others can matter." },
+        { q: "Some people believe that children should not participate in contact sports like rugby or hockey, because they could get hurt, while others believe that these sports teach awareness and teamwork. What do you think, and why?",
+          lx: ["injury", "a team player", "safety rules"],
+          model: "[A] I think children should be allowed to play contact sports, but with good rules and coaches. [R] These sports teach teamwork, discipline and how to deal with difficult moments. Of course, **injuries** can happen, but kids can also get hurt riding a bike. [E] For example, my cousin played hockey from the age of eight. He broke his wrist once, but he says hockey made him confident and taught him to be **a team player**. His coach always taught safe techniques first. [C] So the benefits are bigger than the risks, if adults make the sport safe.",
+          model5: "[A] I believe children should be allowed to play contact sports, provided they're properly supervised. [R] Sports like rugby or hockey teach teamwork, discipline and resilience in a way few other activities can. Admittedly, the risk of **injury** is real, but children also get hurt climbing trees or riding bikes, and we don't ban those. [E] My cousin, for instance, has played hockey since he was eight. He did break his wrist once, but he insists the sport made him confident and taught him to be **a team player**, partly because his coach drilled safe techniques long before allowing any physical contact. [C] So with qualified coaches and strict rules, the benefits clearly outweigh the risks." }
+      ]},
+    { id: "s101", badge: "official", title: "Exercise Habits", src: "Official TOEFL · 101",
+      scenario: "You have agreed to participate in a research study about exercise habits. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "What kind of exercise do you or your friends like? For example, do you like running, swimming, yoga, or other types?",
+          lx: ["go running", "do yoga", "lift weights"],
+          model: "[A] I like running the most, and my friends like different things — yoga, swimming and the gym. [R] Running is simple and cheap. You just need shoes, and you can do it anywhere. It also helps me think and relax. [E] For example, my best friend **does yoga** every evening because it helps her with back pain from sitting all day. My roommate prefers to **lift weights** at the gym, and another friend swims twice a week. Sometimes we try each other's sports, which is fun. [C] So we all like different activities, but we all try to stay active.",
+          model5: "[A] My own favorite is running, whereas my friends are into a real mix of activities — yoga, swimming and weightlifting. [R] What I love about running is its simplicity: all you need is a pair of shoes, and you can do it anywhere, at any time. It's also when I do my best thinking. [E] My best friend, by contrast, **does yoga** every evening, mainly to ease the back pain she gets from sitting at a desk all day. My roommate is devoted to **lifting weights**, and another friend swims twice a week. Every so often, we swap and try each other's activities, usually with hilarious results. [C] So our tastes differ, but we all make staying active a priority." },
+        { q: "When you exercise, do you prefer to do it alone, or do you like to exercise with other people? Why?",
+          lx: ["clear my head", "a workout buddy", "motivation"],
+          model: "[A] It depends. I usually run alone, but I prefer the gym with a friend. [R] When I run alone, I can listen to music or podcasts and **clear my head**. But at the gym, a friend helps me stay motivated and try harder. [E] For example, when I go to the gym alone, I often leave after thirty minutes. When my roommate comes with me, we stay for an hour, push each other and even have fun. Also, it's harder to skip a workout when someone is waiting for you. [C] So running is my \"me time\", and the gym is better with a buddy.",
+          model5: "[A] It really depends on the activity: I run alone, but I much prefer the gym with **a workout buddy**. [R] Running on my own is my time to switch off — I listen to podcasts or simply let my mind wander, which **clears my head** like nothing else. At the gym, however, company makes a huge difference to my **motivation**. [E] When I go alone, for instance, I often call it a day after thirty minutes, whereas with my roommate we easily stay an hour, pushing each other to lift a little more. Crucially, it's far harder to skip a session when someone is counting on you. [C] So running is my personal therapy, while the gym is definitely better as a team effort." },
+        { q: "In the past, most people exercised outdoors, but now many people prefer indoor gyms and fitness centers. Do you think that in the future, indoor gyms will become even more popular? Why or why not?",
+          lx: ["gym membership", "convenient", "outdoor activities"],
+          model: "[A] I think gyms will stay popular, but they won't grow very much more. [R] Gyms are convenient — you can exercise in any weather and use good equipment. But now many people work out at home with online videos, and outdoor activities like hiking and running clubs are becoming trendy again. [E] For example, during the pandemic, my parents canceled their **gym membership** and started doing online workouts at home. They never went back. At the same time, my city has three new running clubs that meet in parks. [C] So I think people will mix gyms, home and outdoor exercise.",
+          model5: "[A] I suspect gyms will remain popular, but I doubt they'll keep growing as fast as before. [R] They're undeniably convenient, offering professional equipment regardless of the weather. However, they now face strong competition from home workouts streamed online and from a revival of **outdoor activities** such as hiking and social running clubs. [E] My parents, for instance, canceled their **gym membership** during the pandemic, switched to online classes at home and never returned. Meanwhile, three new running clubs have sprung up in my city, all of which meet in local parks. [C] So rather than gyms dominating, I think the future belongs to people who mix gym, home and outdoor training." },
+        { q: "Some people believe that exercising regularly is essential for developing self-discipline. Do you agree with this idea? Or do you think there are other activities that can also help build discipline? Explain your answer.",
+          lx: ["self-discipline", "consistency", "routine"],
+          model: "[A] I agree that regular exercise builds **self-discipline**, but it's not the only way. [R] When you exercise regularly, you have to do it even when you're tired or lazy, and that habit helps in other parts of life too. But learning a musical instrument or a language also needs daily effort. [E] For example, since I started running three times a week, I've become better at studying regularly, because I'm used to doing hard things on a schedule. My friend developed the same discipline by practicing the piano every day for ten years. [C] So exercise is a great way, but any regular challenge can build discipline.",
+          model5: "[A] I'd agree that regular exercise is one of the best ways to build **self-discipline**, although it's certainly not the only one. [R] Training consistently means turning up even when you're tired or unmotivated, and that habit inevitably spills over into other areas of life. **That said**, anything that requires daily effort — learning an instrument or a language, for example — can have the same effect. [E] Since I started running three times a week, I've noticed I'm far more consistent with my studies, simply because I'm used to doing difficult things on schedule. A friend of mine, meanwhile, developed exactly the same discipline through ten years of daily piano practice. [C] Ultimately, it's **consistency**, not sport itself, that builds discipline." }
+      ]},
+    { id: "s109", badge: "official", title: "Exercise Habits", src: "Official TOEFL · 109",
+      scenario: "You have volunteered for a research study about exercise habits. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "First, can you describe the type of exercise you or someone you know typically does regularly, such as running, yoga, or weightlifting? Why?",
+          lx: ["lift weights", "build strength", "be in shape"],
+          model: "[A] My father **lifts weights** at the gym four times a week. [R] He's fifty, and his doctor told him that strength training is important at his age to keep his bones and back healthy. He also says it gives him energy for work. [E] For example, he goes to the gym every morning before work, at six a.m. He started two years ago, and now he's much stronger and his back doesn't hurt anymore. He even beats me at arm wrestling! [C] So he started for his health, but now he really enjoys it.",
+          model5: "[A] My father, at fifty, **lifts weights** at the gym four mornings a week. [R] He started on his doctor's advice, as strength training becomes increasingly important with age for protecting the bones and the back, but he's since discovered that it also gives him far more energy at work. [E] He's at the gym by six a.m. every weekday, before most people are even awake. In the two years since he began, he's **built** remarkable **strength**, his chronic back pain has disappeared and, somewhat embarrassingly for me, he now beats me at arm wrestling. [C] So what began as medical advice has turned into a genuine passion — proof that it's never too late to get **in shape**." },
+        { q: "Some exercise programs are done alone, and some are designed to be done with others. Would you prefer to exercise alone, or would you prefer to exercise with others? Why?",
+          lx: ["camaraderie", "motivation", "a team player"],
+          model: "[A] I prefer exercising with others. [R] With other people, exercise feels like fun, not like work. People also motivate each other, and it's harder to skip a training session. [E] For example, I used to play football on my school team, and those were the best years of my sports life. Even in cold, rainy weather, everyone came to training because we didn't want to let the team down. When I exercise alone now, I miss that feeling. [C] So for me, exercise is much better with other people.",
+          model5: "[A] Given the choice, I'd much rather exercise with others. [R] Exercising in a group turns a workout into a social occasion rather than a chore, and the sense of shared effort keeps everyone's **motivation** high. Besides, skipping a session is far harder when people are expecting you. [E] At school, for instance, I played on the football team, and those remain the best years of my sporting life. Even on freezing, rainy evenings, the whole team turned up, simply because nobody wanted to let the others down. What I miss most now isn't the football itself but the **camaraderie**. [C] So for me, exercise is always more rewarding when it's shared." },
+        { q: "Some people believe that exercising outdoors is both more beneficial and more enjoyable than exercising indoors. Do you agree or disagree and why?",
+          lx: ["fresh air", "clear my head", "boost your mood"],
+          model: "[A] I agree. For me, exercising outdoors is better in almost every way. [R] You get fresh air and sunlight, and the views make exercise more interesting, so you don't feel bored. It also **boosts my mood** much more than the gym. [E] For example, when I run on a treadmill, thirty minutes feel like two hours, and I keep looking at the clock. But when I run in the park, I watch the trees, the dogs and the people, and an hour passes very quickly. Of course, in heavy rain or snow, the gym is a good option. [C] So outdoors is my first choice whenever the weather allows.",
+          model5: "[A] I largely agree; in my experience, exercising outdoors is both more pleasant and more beneficial. [R] Fresh air and natural light **boost your mood** far more than a crowded gym, and changing scenery makes the time pass so quickly that you hardly notice the effort. [E] On a treadmill, for instance, thirty minutes feels like an eternity, and I can't stop checking the clock. Running through the park, by contrast, I'm distracted by the trees, the dogs and the other runners, and an hour simply flies by. **That said**, indoor gyms are invaluable in heavy rain or freezing temperatures. [C] So whenever the weather permits, I'll always choose the outdoors." },
+        { q: "Some people like to use fitness apps on smartphones to organize their fitness schedules. Do you agree this is a good way to keep track of your exercising goals? Why or why not?",
+          lx: ["keep track of", "track your progress", "self-discipline"],
+          model: "[A] Yes, I think fitness apps are a good way to **keep track of** exercise goals. [R] They show your progress clearly, remind you to train and make you feel proud when you see your results. But they don't work if you only download them and never open them. [E] For example, I used a running app to prepare for my half marathon. It gave me a plan for every week and showed my distance and speed. Seeing my progress kept me motivated on lazy days. [C] So apps are helpful, but you still need **self-discipline**.", model5: "[A] I think fitness apps are an excellent way to **keep track of** exercise goals, as long as they're actually used. [R] They make progress visible, send timely reminders and provide a structured plan, which removes a lot of the guesswork. They can't, however, replace **self-discipline**; plenty of people download them with great enthusiasm and never open them again. [E] When I trained for my half marathon, for instance, my running app gave me a week-by-week plan and recorded every run. On days when I felt lazy, seeing how far I'd already come was often what got me out the door. [C] So apps are a powerful support tool, but the motivation still has to come from you." }
+      ]},
+    { id: "s098", badge: "official", title: "Exercise Programs", src: "Official TOEFL · 098",
+      scenario: "You have volunteered for a research study at your university about exercise programs. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "First, do you think exercising daily is important for good health? Why or why not?",
+          lx: ["stay active", "recovery", "sedentary"],
+          model: "[A] I think moving every day is important, but hard training every day isn't necessary. [R] Our bodies need rest to recover. But many people have a very **sedentary** lifestyle, so even a short walk every day makes a big difference for the heart, the back and the mood. [E] For example, I run three times a week and go to the gym twice, but on rest days I still walk for thirty minutes. My doctor said this is perfect. My friend tried to train hard every day and got an injury after a month. [C] So daily activity, yes — daily intense exercise, no.",
+          model5: "[A] I'd say staying active every day is essential, whereas intense training every day isn't. [R] With so many of us leading **sedentary** lives, even a brisk daily walk does wonders for the heart, the back and our mood. Hard workouts, however, require **recovery** days, because that's when the body actually gets stronger. [E] I run three times a week and lift weights twice, for instance, but on rest days I still walk for at least half an hour, which my doctor described as an ideal balance. A friend of mine, by contrast, insisted on training hard every single day and ended up injured within a month. [C] So the key is daily movement, not daily exhaustion." },
+        { q: "Imagine you are going to recommend or create an exercise program for a friend or family member who does not currently exercise. What kind of exercise or fitness routine would you recommend? Why?",
+          lx: ["take it one step at a time", "warm up", "build a habit"],
+          model: "[A] For my mom, who doesn't exercise, I'd recommend walking and simple home exercises. [R] When you start, it's important to choose something easy and pleasant, so you don't give up. Walking is free, safe and doesn't need any equipment. [E] For example, in the first month, she would walk for twenty minutes three times a week. Then I'd add ten minutes of easy exercises at home, like squats and stretching, with a video. After two or three months, she could try a yoga class or swimming. [C] So my program would start very small and slowly get harder.",
+          model5: "[A] For my mother, who's never really exercised, I'd design a program based on walking and simple home exercises. [R] For a beginner, the priority isn't intensity but enjoyment; if the first weeks feel miserable, people quit. Walking is free, low-risk and requires no equipment, which removes most excuses. [E] In the first month, she'd walk briskly for twenty minutes three times a week. In month two, I'd add ten minutes of gentle home exercises, such as squats and stretching, following a beginner video. By month three, once she'd **built the habit**, she might be ready for a yoga class or swimming. [C] In short, I'd **take it one step at a time**, so that exercise becomes a routine rather than a punishment." },
+        { q: "For that same friend or family member, what do you think might challenge them the most about a regular exercise program? How would you help them through this challenge?",
+          lx: ["run out of steam", "motivation", "accountability"],
+          model: "[A] I think the biggest challenge for my mom would be staying motivated after the first few weeks. [R] At the beginning, everyone is excited, but then work, tiredness and bad weather appear, and people find excuses. [E] To help her, I'd walk with her on Sundays and call her on other days to ask how her walk went. I'd also suggest she listen to her favorite podcasts while walking, so it becomes \"her time\". And I'd remind her of her progress — for example, how much less tired she feels on the stairs. [C] So support and small rewards would help her not give up.",
+          model5: "[A] The biggest challenge, I suspect, would be sustaining her **motivation** once the initial excitement wore off. [R] Most beginners start enthusiastically, but after a few weeks, work, fatigue and bad weather provide endless excuses, and they gradually **run out of steam**. [E] To help her through that stage, I'd join her for walks on Sundays and check in by phone on the other days, giving her a bit of friendly **accountability**. I'd also encourage her to save her favorite podcasts for her walks, so the exercise becomes something she looks forward to. Above all, I'd regularly point out her progress, such as how much easier the stairs have become. [C] Support and visible progress, I think, are what keep beginners going." },
+        { q: "Some people believe that it is important to have some sort of reward after a good week of exercising. What do you think would be a good reward for the program you created, and why?",
+          lx: ["reward", "sense of accomplishment", "treat yourself"],
+          model: "[A] I think a good reward for my mom would be a nice experience, like a trip to a spa or a new book. [R] Rewards help people stay motivated, especially at the beginning. But the reward shouldn't be unhealthy, like a big cake, because that goes against the goal. [E] For example, after each good week, she could buy herself a new audiobook to listen to on her walks. After a whole month, we could go to the spa together. This way, the rewards are connected to her new healthy lifestyle. [C] So the best rewards are pleasant and support the habit.",
+          model5: "[A] The ideal reward, in my view, would be something enjoyable that reinforces the habit rather than undermines it. [R] Rewards are particularly useful for beginners, before exercise becomes rewarding in itself. A huge slice of cake, however, would send exactly the wrong message. [E] For my mother, for instance, every successful week could earn her a new audiobook, which she'd then listen to on her next walks, so the reward literally feeds the routine. After a full month, we could **treat ourselves** to a day at a spa together. [C] So I'd choose rewards that feel like a celebration, but that also make her look forward to the next workout." }
+      ]},
+    { id: "s105", badge: "official", title: "Outdoor Activities", src: "Official TOEFL · 105",
+      scenario: "You have volunteered for a research study about outdoor activities. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "First, what kind of outdoor sports do you or your friends generally like to do? For example, do you like hiking, cycling, tennis, or other types of sport?",
+          lx: ["go hiking", "outdoor activities", "fresh air"],
+          model: "[A] My friends and I love hiking, and in summer we also play beach volleyball. [R] We spend all week inside — at lectures and in front of laptops — so on weekends we want to be in nature and get some fresh air. [E] For example, once a month we take a train to the mountains outside the city and **go hiking** for the whole day. Last month we walked twenty kilometers and had a picnic at a lake. In summer, we play volleyball on the beach almost every Saturday. [C] So **outdoor activities** are our favorite way to relax together.",
+          model5: "[A] My friends and I are really into hiking, and in summer, beach volleyball becomes our weekend obsession. [R] After spending the entire week indoors, staring at screens in lectures and libraries, we crave **fresh air** and open space. [E] Roughly once a month, for instance, we catch an early train to the mountains and **go hiking** for the whole day. Last month we covered twenty kilometers and finished with a picnic beside a glacier lake, which more than made up for our aching legs. During the summer, meanwhile, we play volleyball on the beach almost every Saturday, mostly badly but always enthusiastically. [C] So **outdoor activities** are, above all, how we recharge together." },
+        { q: "When you participate in your favorite outdoor activity, do you prefer to do it alone, or do you like to do it together with your family or friends? Why?",
+          lx: ["safety", "share the experience", "camaraderie"],
+          model: "[A] For hiking, I definitely prefer going with friends. [R] First, it's safer — if someone gets hurt or lost in the mountains, others can help. Second, it's much more fun to share beautiful views and talk on the way. [E] For example, last year on a hike, my friend twisted her ankle far from the town. Because we were a group, two of us helped her walk while another person called for help. If she had been alone, it could have been dangerous. Also, our best conversations happen on long walks. [C] So for hiking, a group is both safer and more enjoyable.",
+          model5: "[A] When it comes to hiking, I'd always choose to go with friends. [R] For one thing, it's considerably safer: if someone gets injured or lost in the mountains, others are there to help. For another, a stunning view is somehow twice as rewarding when you **share the experience**. [E] Last year, for instance, a friend twisted her ankle badly several kilometers from the nearest village. Because we were a group, two of us supported her while a third called the mountain rescue service. Had she been alone, the situation could have turned serious. Besides, some of our best conversations have taken place on long trails. [C] So company makes hiking both safer and far more memorable." },
+        { q: "Where I live, outdoor activities are becoming increasingly popular. Do you think that in the place you live, the popularity of outdoor activities will increase in the future? Why or why not?",
+          lx: ["outdoor activities", "jump on the bandwagon", "sedentary"],
+          model: "[A] Yes, I think outdoor activities will become more popular in my city. [R] People work and study in front of screens all day, so they want to spend free time in nature. Also, social media makes hiking and cycling look cool and trendy. [E] For example, three years ago, there was only one running club in my city. Now there are five, and every weekend I see big groups of young people cycling along the river. The city also built new bike lanes and an outdoor gym in the park. [C] So I'm sure this trend will continue.",
+          model5: "[A] I'm fairly confident they will. [R] As our lives become ever more **sedentary** and screen-based, people increasingly crave time outdoors. Social media has played a role too, making hiking and cycling look trendy, so many people are **jumping on the bandwagon**. [E] Three years ago, for example, my city had a single running club; today there are five, and every weekend the riverside is packed with groups of young cyclists. The local government has also built new bike lanes and an open-air gym in the central park, which suggests it expects demand to keep growing. [C] So, whether driven by health or by fashion, outdoor activities look set to become even more popular." },
+        { q: "Some people believe that outdoor activities are essential for children's physical and mental health. Do you agree with this idea or do you think indoor activities can be just as beneficial for children? Explain why you think so.",
+          lx: ["screen time", "physical and mental health", "well-rounded"],
+          model: "[A] I agree that outdoor activities are essential for children. [R] Kids today spend a lot of time with phones and tablets inside. Playing outside helps them move, get fresh air, take small risks and make friends. Indoor activities like chess or music are useful too, but they can't replace running around outside. [E] For example, my little cousin used to play video games all day and was often grumpy. Since his parents started taking him to the park every day after school, he sleeps better and has made new friends. [C] So indoor activities are good, but outdoor play is necessary.",
+          model5: "[A] I'd agree that outdoor activities are essential, although indoor ones have their own value. [R] With children's **screen time** at record levels, outdoor play offers something nothing else can: physical movement, fresh air and the chance to take small, healthy risks while learning to get along with others. Indoor activities like chess or music certainly develop the mind, but they can't replace that. [E] My younger cousin, for instance, used to spend entire afternoons gaming and was constantly irritable. Since his parents started taking him to the park after school, he sleeps better, seems calmer and has made several new friends. [C] So a **well-rounded** childhood needs both, but outdoor play is non-negotiable." }
+      ]}
+  ],
+
+  /* ===== Speaking Club: тема вдоль и поперёк ===== */
+  club: [
+    { icon: "activity", title: "Мой спорт", en: "My sporting life", questions: [
+      { t: "personal", src: "Official 075", q: "Do you currently play any sports or engage regularly in any physical activities?", same: "s075-0",
+        f: ["How long have you been doing it?", "What made you start?"], lx: ["go running", "work out", "stay active"] },
+      { t: "personal", src: "Official 101", q: "What kind of exercise do you or your friends like? Running, swimming, yoga, or other types?", same: "s101-0",
+        f: ["Which sport would you never try?", "Is there a sport that's popular only in your country?"], lx: ["go running", "do yoga", "lift weights"] },
+      { t: "experience", src: "Official 109", q: "Can you describe the type of exercise you or someone you know typically does regularly? Why?", same: "s109-0",
+        f: ["Who is the sportiest person you know?", "Is it ever too late to start?"], lx: ["lift weights", "build strength", "be in shape"] },
+      { t: "experience", src: "Official 075", q: "Tell me about an experience you had while playing a sport or doing a physical activity that you remember well. What made it memorable?", same: "s075-2",
+        f: ["What did you learn from it?", "Who was with you?"], lx: ["go the distance", "take part in", "sense of accomplishment"] },
+      { t: "personal", q: "Were you a sporty child? What were PE classes like at your school?",
+        model: "[A] Yes, I was quite a sporty child, and I really liked PE at school. [R] I had a lot of energy, and PE was the only lesson where we could run and shout. But I know many of my classmates hated it. [E] For example, our PE teacher was very competitive, and he always chose the two best players as captains. The same kids were always picked last, and they felt embarrassed. I loved football, so I joined the school team, but my best friend stopped doing any sport because of those lessons. [C] So PE was great for me, but not for everyone.",
+        model5: "[A] I was a very sporty child, and PE was easily my favorite subject. [R] Bursting with energy, I lived for the one lesson where running and shouting were actually encouraged. Looking back, though, I realize that many of my classmates had a very different experience. [E] Our PE teacher, for instance, was extremely **competitive** and always let the two strongest kids pick teams, so the same children were humiliated by being chosen last every week. While I went on to join the school football team, my best friend came to associate sport with embarrassment and stopped exercising altogether. [C] So PE worked brilliantly for sporty kids like me, but it arguably put off the very children who needed it most.",
+        f: ["How should PE be taught?", "Should PE be graded?"], lx: ["PE (physical education)", "competitive", "team sport"] },
+      { t: "experience", q: "Has the way you exercise changed over the years? Why?",
+        model: "[A] Yes, it has changed a lot. [R] At school, I played football because it was fun and all my friends were on the team. At university, I have less time and no team, so I chose sports that I can do alone and at any time. [E] For example, three years ago I trained with my football team four evenings a week. Now I run in the morning before classes and go to the gym twice a week. It's less social, but it fits my busy schedule. [C] So my exercise changed because my life changed.",
+        model5: "[A] It's changed considerably, mainly because my life has. [R] At school, exercise meant football, largely because it was fun and the whole of my friendship group was on the team. University, however, brought a hectic schedule and no team, so I gradually shifted towards activities I can do alone and at any time. [E] Three years ago, for instance, I trained with my team four evenings a week; nowadays I go running before lectures and lift weights twice a week. It's admittedly far less social, yet it fits around classes and work far better. [C] So my exercise has evolved from a social activity into a personal routine, although I still miss the **camaraderie**.",
+        f: ["What will your exercise look like at forty?", "Do you miss anything?"], lx: ["work out", "routine", "camaraderie"] }
+    ]},
+    { icon: "users", title: "Одному или в компании", en: "Alone or together", questions: [
+      { t: "compare", src: "Official 101", q: "When you exercise, do you prefer to do it alone, or with other people? Why?", same: "s101-1",
+        f: ["Do you listen to music when you exercise?", "What's a good workout buddy like?"], lx: ["clear my head", "a workout buddy", "motivation"] },
+      { t: "compare", src: "Official 109", q: "Some exercise programs are done alone, and some with others. Which would you prefer? Why?", same: "s109-1",
+        f: ["Have you tried group fitness classes?", "Is it awkward to exercise in front of others?"], lx: ["camaraderie", "motivation", "a team player"] },
+      { t: "compare", src: "Official 105", q: "Do you prefer your favorite outdoor activity alone or with family and friends? Why?", same: "s105-1",
+        f: ["Have you ever done something risky outdoors?", "Who is your best outdoor partner?"], lx: ["safety", "share the experience", "camaraderie"] },
+      { t: "compare", q: "Which are better for young people: team sports or individual sports?",
+        model: "[A] I think team sports are a little better for young people. [R] They teach important life skills — communication, responsibility and how to win and lose together. Individual sports teach discipline, but young people also need to learn to work with others. [E] For example, football taught me to be **a team player**. When we lost, nobody blamed one person; we talked about it and trained harder together. My friend did tennis, and she's very disciplined, but she says she always felt alone after losing. [C] So both are good, but team sports teach more social skills.",
+        model5: "[A] On balance, I'd say team sports offer slightly more to young people. [R] Besides fitness, they teach communication, shared responsibility and, crucially, how to win and lose gracefully as a group. Individual sports are excellent for developing discipline, but young people arguably need social skills just as much. [E] Football, for example, taught me to be **a team player**: after a defeat, we never singled anyone out; instead, we analyzed what went wrong and trained harder together. A friend who played competitive tennis, by contrast, is incredibly disciplined, yet she says losing always felt lonely and crushing. [C] So both have value, but team sports prepare young people better for life with others.",
+        f: ["Which teaches more discipline?", "Can you be a team player in an individual sport?"], lx: ["team sport", "a team player", "sportsmanship"] },
+      { t: "opinion", q: "Is it worth paying for a personal trainer, or can people learn everything from free online videos?",
+        model: "[A] I think a personal trainer is worth it at the beginning, but later online videos are enough. [R] Beginners often use the wrong technique, and this can cause injuries. A trainer can correct your mistakes and make a plan for you. But trainers are expensive, so after you learn the basics, free videos are fine. [E] For example, when I started at the gym, I paid for five sessions with a trainer. He showed me how to lift weights safely and made a plan. Now I use apps and videos, and I haven't had any injuries. [C] So a few sessions with a trainer are a good investment.",
+        model5: "[A] I'd say a handful of sessions with a personal trainer is well worth it, but beyond that, free resources are usually enough. [R] Beginners frequently use poor technique without realizing it, which is a common cause of **injury**, and online videos can't watch you and correct you. Ongoing sessions, however, are expensive, and once you've mastered the basics, there's little a trainer adds. [E] When I joined the gym, for instance, I booked five sessions with a trainer, who fixed my posture and designed a program for me. Since then, I've relied entirely on apps and videos, and I haven't been injured once. [C] So a trainer is a smart investment at the start, rather than a permanent necessity.",
+        f: ["Have you ever had a coach?", "What makes a good coach?"], lx: ["coach", "injury", "push yourself"] }
+    ]},
+    { icon: "leaf", title: "На улице или в зале", en: "Outdoors or indoors", questions: [
+      { t: "opinion", src: "Official 101", q: "Many people now prefer indoor gyms and fitness centers. Will indoor gyms become even more popular in the future? Why or why not?", same: "s101-2",
+        f: ["What would make you cancel a gym membership?", "What will gyms look like in twenty years?"], lx: ["gym membership", "convenient", "outdoor activities"] },
+      { t: "compare", src: "Official 109", q: "Some people believe that exercising outdoors is both more beneficial and more enjoyable than exercising indoors. Do you agree?", same: "s109-2",
+        f: ["What's the worst weather you've exercised in?", "Is city air good for running?"], lx: ["fresh air", "clear my head", "boost your mood"] },
+      { t: "personal", src: "Official 105", q: "What kind of outdoor sports do you or your friends generally like to do?", same: "s105-0",
+        f: ["What's the best place for outdoor activities near you?", "What outdoor sport would you like to try?"], lx: ["go hiking", "outdoor activities", "fresh air"] },
+      { t: "opinion", src: "Official 105", q: "Do you think the popularity of outdoor activities will increase where you live in the future? Why or why not?", same: "s105-2",
+        f: ["Is it just a trend?", "What could your city do to encourage it?"], lx: ["outdoor activities", "jump on the bandwagon", "sedentary"] },
+      { t: "compare", q: "Are home workouts as effective as going to the gym?",
+        model: "[A] I think home workouts can be just as effective, but it depends on the person. [R] At home, you save time and money, and you don't need special equipment for exercises like push-ups and squats. But at the gym, there are fewer distractions and more equipment, and many people work harder there. [E] For example, during exam season I do twenty-minute workouts in my room, and they keep me in shape. But my roommate tried home workouts and always ended up lying on the sofa watching TV. [C] So home workouts work well if you have self-discipline.",
+        model5: "[A] They can be just as effective, but only for people with a fair amount of **self-discipline**. [R] Working out at home saves both time and money, and bodyweight exercises like push-ups and squats require no equipment at all. The gym, however, offers fewer distractions and a wider range of equipment, and simply being surrounded by people training hard tends to make you **push yourself** more. [E] During exam season, for instance, I switch to twenty-minute **high-intensity** workouts in my room, and they keep me perfectly **in shape**. My roommate, by contrast, attempted home workouts and invariably ended up on the sofa. [C] So the location matters less than your ability to motivate yourself.",
+        f: ["What equipment would you buy for home?", "Do online classes work?"], lx: ["high-intensity", "self-discipline", "push yourself"] }
+    ]},
+    { icon: "heart", title: "Зачем двигаться", en: "Why exercise", questions: [
+      { t: "opinion", src: "Official 098", q: "Do you think exercising daily is important for good health? Why or why not?", same: "s098-0",
+        f: ["How many rest days do you need?", "Is walking real exercise?"], lx: ["stay active", "recovery", "sedentary"] },
+      { t: "opinion", src: "Official 101", q: "Is exercising regularly essential for developing self-discipline, or can other activities also build discipline?", same: "s101-3",
+        f: ["What else builds discipline?", "Are athletes more disciplined in other areas?"], lx: ["self-discipline", "consistency", "routine"] },
+      { t: "opinion", q: "How does exercise affect your mental health?",
+        model: "[A] Exercise helps my mental health a lot, maybe even more than my physical health. [R] When I run, I stop thinking about my problems, and after a workout I feel calm and happy because of the **endorphins**. It also helps me sleep better. [E] For example, during my first semester, I felt very stressed and homesick. A friend invited me to run with her, and after two weeks of running, I felt much better and more positive. Now, when I feel anxious, the first thing I do is go for a run. [C] So for me, exercise is the best medicine for stress.",
+        model5: "[A] Its impact on my mental health is, if anything, even greater than on my physical health. [R] While running, my mind gradually lets go of whatever is worrying me, and afterwards the **endorphins** leave me noticeably calmer and more optimistic. On top of that, I sleep far better on days I exercise. [E] During my first semester, for instance, I was stressed and badly homesick. A classmate persuaded me to join her for evening runs, and within a couple of weeks I felt like a different person. Since then, whenever anxiety creeps in, my first response is to lace up my running shoes. [C] So, for me, exercise is the most reliable way to **relieve stress** that I know.",
+        f: ["What do you do when you feel stressed?", "Should doctors prescribe exercise?"], lx: ["endorphins", "relieve stress", "boost your mood"] },
+      { t: "opinion", q: "Many people say they don't have time for exercise. Is lack of time a real reason or just an excuse?",
+        model: "[A] I think for most people it's more of an excuse. [R] Of course, some people really are very busy, like parents with small kids or people with two jobs. But most of us have time for social media and TV, so we can find twenty minutes for exercise. [E] For example, my sister works full-time and has a baby, and she still does fifteen-minute workouts during his naps. Meanwhile, I have friends with much more free time who say they're \"too busy\" but spend hours on their phones. [C] So it's usually about priorities, not time.",
+        model5: "[A] For the majority of people, I suspect it's more of an excuse than a genuine reason. [R] There are, of course, people with truly packed lives — parents of young children or those juggling two jobs. Yet most of us somehow find a couple of hours a day for social media, so finding twenty minutes for exercise is really a question of priorities. [E] My sister, for instance, works full-time and has a baby, yet she squeezes in a fifteen-minute workout during his naps. Meanwhile, I know people with far more free time who claim to be too busy while spending entire evenings scrolling. [C] So, in most cases, \"no time\" really means \"not a priority\".",
+        f: ["What's the shortest workout that still helps?", "What's your favorite excuse?"], lx: ["make time for", "priority", "stay active"] },
+      { t: "experience", q: "Tell me about a time an injury or illness stopped you from exercising. How did you deal with it?",
+        model: "[A] Last year, I injured my knee while training for a half marathon. [R] I didn't **warm up** properly and ran too much too quickly, so my knee started to hurt. I couldn't run for three weeks, which was very frustrating. [E] At first, I felt sad and almost **threw in the towel**. But then I went to a physiotherapist, did special exercises for my knee every day and swam instead of running. After a month, I slowly started running again and finished the race. [C] It taught me that rest and **recovery** are part of training.",
+        model5: "[A] Last year, I **pulled** a muscle in my knee while training for a half marathon. [R] I'd been increasing my distance far too quickly and, embarrassingly, often skipped **warming up**, so it was really only a matter of time. Being unable to run for three weeks was deeply frustrating. [E] Initially, I was so disheartened that I nearly **threw in the towel** on the race altogether. Instead, I saw a physiotherapist, did strengthening exercises every day and switched to swimming to maintain my fitness. A month later, I eased back into running and ultimately completed the race. [C] Above all, the experience taught me that **recovery** is as much a part of training as the training itself.",
+        f: ["Do people return to sport too early after injuries?", "How can you avoid injuries?"], lx: ["injury", "recover from an injury", "throw in the towel"] }
+    ]},
+    { icon: "list", title: "Программа для новичка", en: "A beginner's program", questions: [
+      { t: "hypo", src: "Official 098", q: "Imagine you are creating an exercise program for a friend or family member who doesn't exercise. What would you recommend? Why?", same: "s098-1",
+        f: ["What should a beginner never do?", "How long until they see results?"], lx: ["take it one step at a time", "warm up", "build a habit"] },
+      { t: "hypo", src: "Official 098", q: "What might challenge that person most about a regular exercise program? How would you help them?", same: "s098-2",
+        f: ["What's the hardest week for beginners?", "How do you deal with soreness?"], lx: ["run out of steam", "motivation", "accountability"] },
+      { t: "opinion", src: "Official 098", q: "Is it important to have some sort of reward after a good week of exercising? What would be a good reward?", same: "s098-3",
+        f: ["Can rewards become a problem?", "What reward works for you?"], lx: ["reward", "sense of accomplishment", "treat yourself"] },
+      { t: "opinion", q: "Gyms are full in January and empty by March. Why do so many people give up on exercise so quickly?",
+        model: "[A] I think people give up because they start too hard and expect fast results. [R] In January, people are very motivated and train every day, but they get tired, their muscles hurt, and they don't see big changes after a few weeks. So they lose motivation. [E] For example, my friend bought a gym membership in January and went six times in the first week. By February, she was exhausted and stopped completely. This year, she started with two short workouts a week, and she's still going in November. [C] So the secret is to start slowly and be patient.",
+        model5: "[A] Most people, I think, give up because they start far too ambitiously and expect results almost overnight. [R] Fueled by New Year's enthusiasm, they train every day, quickly end up sore and exhausted, and when the mirror shows little change after three weeks, they **run out of steam**. [E] A friend of mine, for instance, bought an annual **gym membership** in January and went six times in the very first week; by February, she'd stopped entirely. This year, she started with just two short sessions a week, and, remarkably, she's still going strong in November. [C] So the secret isn't intensity but patience and **consistency** — or, as the saying goes, Rome wasn't built in a day.",
+        f: ["How can gyms keep new members?", "What keeps you going?"], lx: ["run out of steam", "consistency", "get into the swing of things"] },
+      { t: "opinion", q: "Should people exercise even when they feel tired or stressed?",
+        model: "[A] I think usually yes, but not when you're sick or exhausted. [R] Very often, light exercise gives you more energy and reduces stress. But if your body is really tired or ill, it needs rest, not training. [E] For example, after a long day of classes, I often don't want to run, but after ten minutes I feel much better and more awake. But last month I had a cold and tried to go to the gym anyway, and I felt terrible for a week. [C] So you should listen to your body — tired mind, go; sick body, rest.",
+        model5: "[A] Generally yes, though there's an important difference between mental tiredness and physical exhaustion. [R] When you're mentally drained or stressed, a light workout often restores energy rather than depleting it. When your body is genuinely ill or worn out, however, it needs **recovery**, and pushing through can do real harm. [E] After a long day of lectures, for instance, I rarely feel like running, yet ten minutes in, I'm invariably more alert and cheerful. Last month, on the other hand, I insisted on going to the gym with a heavy cold and ended up feeling dreadful for a week. [C] So my rule is simple: a tired mind should move, while a sick body should rest.",
+        f: ["How do you know when to rest?", "Is 'no pain, no gain' good advice?"], lx: ["recovery", "relieve stress", "no pain, no gain"] }
+    ]},
+    { icon: "phone", title: "Технологии и фитнес", en: "Tech & fitness", questions: [
+      { t: "opinion", src: "Official 109", q: "Some people use fitness apps on smartphones to organize their fitness schedules. Is this a good way to keep track of your exercise goals?", same: "s109-3",
+        f: ["Which app do you use?", "Do you share your workouts online?"], lx: ["keep track of", "track your progress", "self-discipline"] },
+      { t: "opinion", q: "Fitness influencers on social media are hugely popular. Do they help people get active, or do they do more harm than good?",
+        model: "[A] I think they do both — they inspire people, but they can also create unrealistic expectations. [R] Many people start exercising because of a video they saw, which is great. But influencers often show perfect bodies, use filters and sell products, so viewers feel bad about themselves. [E] For example, I learned a great beginner workout from a fitness YouTuber, and it helped me a lot. But my younger sister started comparing her body to influencers and felt depressed for months. [C] So influencers can be useful, but people should follow them carefully.",
+        model5: "[A] They're a double-edged sword: they inspire many people to get moving, yet they often promote unrealistic ideals. [R] Countless people have started exercising thanks to a single motivating video, which is undeniably positive. However, carefully filtered images of flawless bodies, often combined with aggressive product promotion, can leave viewers feeling inadequate. [E] I picked up an excellent beginner routine from a fitness YouTuber, for instance, and it genuinely transformed my training. My younger sister, by contrast, began comparing herself to influencers and spent months feeling miserable about her body. [C] So influencers can be a useful starting point, provided people remember that social media shows a carefully edited version of reality.",
+        f: ["Do you follow any fitness accounts?", "Should influencers say when photos are edited?"], lx: ["jump on the bandwagon", "unrealistic", "motivation"] },
+      { t: "opinion", q: "Smartwatches count our steps, heart rate and sleep. Is this useful, or are people becoming obsessed with numbers?",
+        model: "[A] I think smartwatches are useful, but some people use them too much. [R] They show you how active you really are and motivate you to move more. But if you check every number all the time, exercise stops being fun and becomes stressful. [E] For example, my dad's smartwatch showed that he walked only two thousand steps a day, so he started walking to work. That was great. But my friend gets upset if she doesn't reach exactly ten thousand steps, and she walks around her room at midnight to finish them! [C] So the numbers should help us, not control us.",
+        model5: "[A] They're genuinely useful, though I do think some people have become rather obsessed. [R] Seeing objective data reveals how active — or inactive — we really are, and that awareness can be a powerful motivator. Taken too far, however, constantly monitoring numbers can turn exercise from a pleasure into a source of anxiety. [E] My father's smartwatch, for instance, showed he averaged barely two thousand steps a day, which prompted him to start walking to work. A friend of mine, on the other hand, gets genuinely upset if she misses her ten-thousand-step target and has been known to pace around her room at midnight to reach it. [C] So data should serve us, not rule us.",
+        f: ["Do you wear a fitness tracker?", "What number matters most?"], lx: ["track your progress", "keep track of", "consistency"] },
+      { t: "opinion", q: "Should esports — competitive video gaming — be considered real sports?",
+        model: "[A] I don't think esports are real sports, although they are real competitions. [R] Sports, for me, need physical effort. Esports players need fast reactions, strategy and teamwork, which is impressive, but they sit in a chair. [E] For example, my cousin plays an online game at a high level. He trains eight hours a day and has a coach, just like an athlete. But he admits that he isn't fit at all, and his coach even makes him go to the gym. [C] So esports deserve respect, but I'd call them \"mind sports\", like chess.",
+        model5: "[A] I'd hesitate to call esports real sports, though they're certainly serious competitions. [R] To my mind, a sport requires meaningful physical exertion. Top gamers undoubtedly need lightning reflexes, sophisticated strategy and excellent teamwork, yet they compete sitting down. [E] My cousin, for instance, plays an online strategy game at a semi-professional level, training eight hours a day under a dedicated coach, much like an athlete. Ironically, though, his coach insists he goes to the gym, precisely because gaming itself does nothing for his fitness. [C] So esports deserve recognition, but they probably belong alongside chess as \"mind sports\" rather than alongside football.",
+        f: ["Should esports be in the Olympics?", "Is chess a sport?"], lx: ["compete", "professional", "sedentary"] }
+    ]},
+    { icon: "cap", title: "Дети, школа и спорт", en: "Kids, school & sport", questions: [
+      { t: "opinion", src: "Official 075", q: "Should children play contact sports like rugby or hockey, given the risk of injury, or do these sports teach valuable skills like teamwork?", same: "s075-3",
+        f: ["At what age is it safe to start?", "Would you let your child play rugby?"], lx: ["injury", "a team player", "safety rules"] },
+      { t: "opinion", src: "Official 105", q: "Are outdoor activities essential for children's physical and mental health, or can indoor activities be just as beneficial?", same: "s105-3",
+        f: ["How much screen time is OK for kids?", "What did you play outside as a child?"], lx: ["screen time", "physical and mental health", "well-rounded"] },
+      { t: "opinion", q: "Should schools have PE every day?",
+        model: "[A] Yes, I think schools should have PE or some physical activity every day. [R] Children sit at their desks for six or seven hours, which is bad for their health and concentration. Even thirty minutes of movement helps them focus better in other lessons. [E] For example, in my primary school we had PE only twice a week, and by the last lesson, everyone was restless. My cousin's school now has a fifteen-minute exercise break every morning, and his teacher says the kids are calmer and pay more attention. [C] So daily activity is good for both health and learning.",
+        model5: "[A] I'm convinced schools should include some form of physical activity every day. [R] Children spend six or seven hours a day sitting at desks, which harms not only their health but also their concentration. Even half an hour of movement has been shown to improve focus in academic lessons. [E] At my primary school, for instance, we had PE just twice a week, and by the final lesson of the day, the whole class was restless and distracted. My cousin's school, by contrast, introduced a fifteen-minute exercise break every morning, and his teacher reports that pupils are calmer and noticeably more attentive. [C] So daily activity would benefit children's learning just as much as their fitness.",
+        f: ["What should PE include?", "Should PE be optional for teenagers?"], lx: ["PE (physical education)", "sedentary", "concentrate"] },
+      { t: "compare", q: "In children's sports, what matters more: winning or just taking part?",
+        model: "[A] For young children, taking part is more important, but older kids should learn to compete. [R] Small children should enjoy sport and not feel like failures. But when kids get older, competition teaches them to work hard and to deal with losing. [E] For example, in my little brother's football league for seven-year-olds, they don't count the score, and every child gets a medal. The kids love it. But when I was fifteen, losing a final taught me more than any win — we trained harder and won the next year. [C] So it depends on the age.",
+        model5: "[A] I think it depends on the child's age: for young children, participation matters most, whereas older ones benefit from genuine competition. [R] Young kids need to fall in love with sport without feeling like failures. As they grow older, however, competition teaches them to work hard and, just as importantly, to cope with defeat. [E] In my little brother's under-eight football league, for instance, nobody keeps score and every child gets a medal, and the kids absolutely love it. Yet at fifteen, losing a regional final taught me more than any victory ever did; we trained twice as hard and **won** the title the following year. [C] So children should learn to enjoy sport first and to compete second.",
+        f: ["Should every child get a medal?", "Is it healthy to hate losing?"], lx: ["competitive", "sportsmanship", "take part in"] },
+      { t: "opinion", q: "Some parents push their children very hard in sport. Where is the line between support and too much pressure?",
+        model: "[A] I think the line is when the child stops enjoying the sport. [R] Support means helping your child, driving them to training and cheering for them. Pressure is when parents care more about winning than the child does, and the child feels afraid to fail. [E] For example, a boy on my school team had a father who shouted at him from the side of the pitch during every match. The boy was talented, but he quit football at fourteen and never played again. My parents just came to matches and said, \"Did you have fun?\" [C] So parents should support, not push.",
+        model5: "[A] In my view, the line is crossed when the child stops enjoying the sport and starts fearing failure. [R] Supportive parents drive their kids to training, cheer them on and help them through disappointments. Pushy parents, by contrast, care more about results than their children do, which turns a hobby into a source of anxiety. [E] A boy on my school team, for instance, had a father who yelled instructions from the sideline throughout every match. Despite being extremely talented, he quit at fourteen and never played again. My own parents, meanwhile, simply asked after each game whether I'd had fun. [C] So the best thing parents can do is encourage rather than push.",
+        f: ["Did your parents push you in anything?", "Should coaches stop pushy parents?"], lx: ["pressure", "competitive", "push yourself"] }
+    ]},
+    { icon: "trophy", title: "Профессиональный спорт", en: "Professional sport", questions: [
+      { t: "opinion", q: "Do you think top athletes are paid too much?",
+        model: "[A] Yes, I think top athletes are often paid too much, especially compared to nurses or teachers. [R] Their work is hard and their careers are short, but it's strange that a football player earns more in a week than a doctor earns in a year. [E] For example, I read that some football stars earn over a million dollars a week. At the same time, many athletes in less popular sports, like athletics or swimming, can hardly pay their bills, even if they're Olympic champions. [C] So the problem is not only high salaries, but also how unequal they are.",
+        model5: "[A] I'd say the very top athletes are overpaid, particularly when you compare them with nurses or teachers. [R] Admittedly, their careers are short and physically punishing, and they generate enormous revenue. Even so, it's hard to justify a footballer earning more in a week than a surgeon earns in a year. [E] Some football stars reportedly earn over a million dollars a week, for instance, while many athletes in less commercial sports, such as track and field or swimming, struggle to pay their bills despite winning Olympic medals. [C] So the real problem isn't just that some salaries are huge, but that the money is distributed so unequally across sports.",
+        f: ["Who should earn more: athletes or doctors?", "Why do fans accept it?"], lx: ["professional", "a level playing field", "unequal"] },
+      { t: "opinion", q: "Should famous athletes be role models for young people?",
+        model: "[A] I think athletes are role models whether they want it or not, so they should behave responsibly. [R] Kids watch them on TV and social media and copy their behavior. Athletes can show the value of hard work, discipline and fair play. [E] For example, when I was a child, my favorite football player always helped opponents get up after a foul, and I started doing the same. But when a famous player gets angry at referees, you can see kids copying that on school fields the next weekend. [C] So athletes have a big responsibility.",
+        model5: "[A] Whether they like it or not, famous athletes are role models, so I believe they have a duty to behave responsibly. [R] Young people follow them obsessively and imitate their behavior, which gives athletes a unique opportunity to model hard work, discipline and **sportsmanship**. [E] As a child, for instance, I idolized a footballer who always helped opponents to their feet after a foul, and I quickly started doing the same. Conversely, whenever a star screams at a referee on television, you can see children copying that behavior on school pitches the following weekend. [C] So athletes may not have chosen the role, but they certainly can't escape it.",
+        f: ["Who was your sports hero?", "Should athletes speak about politics?"], lx: ["sportsmanship", "role model", "professional"] },
+      { t: "opinion", q: "How should sport deal with athletes who use performance-enhancing drugs?",
+        model: "[A] I think athletes who use doping should get very strict punishments. [R] Doping is cheating. It's unfair to clean athletes who train honestly, and it's also dangerous for health. If punishments are small, more people will try it. [E] For example, a few years ago, a famous runner from my country was caught doping and lost his medals. Another athlete who finished fourth got the bronze medal years later, but she missed the celebration and the sponsors. [C] So sport needs strict rules to keep **a level playing field**.",
+        model5: "[A] I believe doping should be punished severely, ideally with long or even lifetime bans. [R] It's not just cheating; it robs clean athletes of results they've earned honestly and sends young athletes the dangerous message that health is worth sacrificing for success. Lenient punishments only encourage others to take the risk. [E] A few years ago, for instance, a celebrated runner from my country was stripped of his medals after testing positive. The athlete who'd originally finished fourth was eventually awarded the bronze, but years too late to enjoy the podium moment or the sponsorship deals that come with it. [C] So strict enforcement is essential to keep **a level playing field**.",
+        f: ["Why do athletes take the risk?", "Should there be a second chance?"], lx: ["a level playing field", "compete", "professional"] },
+      { t: "personal", q: "Do you enjoy watching sports? Do you prefer watching on TV or live at the stadium?",
+        model: "[A] Yes, I enjoy watching sports, especially football, and I prefer watching live. [R] At the stadium, the atmosphere is amazing — thousands of people singing and shouting together. On TV, you see the game better, but it's not the same feeling. [E] For example, last year my friends and I went to a big match in the capital. When our team scored in the last minute, everyone jumped and hugged strangers. I still get goosebumps when I remember it. On TV, I would just say \"Yes!\" on the sofa. [C] So TV is convenient, but live sports are unforgettable.",
+        model5: "[A] I love watching sports, football in particular, and nothing compares to being there live. [R] Television certainly gives you a better view of the action, but it can't replicate the atmosphere of tens of thousands of **spectators** singing and holding their breath together. [E] Last year, for instance, a group of friends and I traveled to the capital for a crucial match. When our team **scored** in the final minute, the entire stadium erupted, and I found myself hugging complete strangers. I still get goosebumps thinking about it, whereas on TV I'd probably have just cheered quietly from the sofa. [C] So television is convenient, but live sport creates memories.",
+        f: ["What's the best match you've ever seen?", "Are tickets too expensive?"], lx: ["spectator", "score a goal", "adrenaline"] },
+      { t: "experience", src: "Official 104 · Travel Habits", q: "Have your family or friends ever traveled to see a sporting event, like a football or basketball game? Why or why not?",
+        model: "[A] Yes, my uncle and my cousin often travel to see football matches. [R] They're huge fans of our local team, and for them, going to away games is a way to spend time together and visit new cities. [E] For example, last season they traveled to four different cities to watch our team play. They took long bus rides with other fans, sang songs all the way and explored each city before the match. My cousin says those trips are his favorite memories with his dad. [C] So for them, sports travel is about family as much as football.",
+        model5: "[A] Yes, my uncle and cousin regularly travel to see our local football team play away. [R] For them, it's about far more than the match itself: it's a chance to spend quality time together while exploring new places. [E] Last season, for instance, they followed the team to four different cities, traveling on overnight buses packed with fellow fans who sang for most of the journey. They always arrive early to explore the city, and my cousin says these trips have given him his best memories with his father, regardless of whether the team **won** or lost. [C] So, for them, traveling to sporting events is as much about family bonding as about football.",
+        f: ["Would you travel abroad for a big event?", "Is sports tourism good for cities?"], lx: ["spectator", "fan", "share the experience"] }
+    ]},
+    { icon: "globe", title: "Спорт и общество", en: "Sport & society", questions: [
+      { t: "opinion", q: "Is hosting the Olympics or the World Cup worth the cost for a country?",
+        model: "[A] I think it's usually not worth the cost. [R] Countries spend billions on stadiums and security, but after the event, many stadiums stay empty. That money could go to schools, hospitals or local sports clubs. Of course, the event brings tourists and national pride, but only for a few weeks. [E] For example, after some Olympic Games, the new stadiums were abandoned and became very expensive to maintain. On the other hand, the 2012 London Olympics improved a poor area of the city. [C] So it can work, but only with very careful planning.",
+        model5: "[A] More often than not, I don't think it's worth it, although there are exceptions. [R] Host countries typically spend billions on stadiums and security, only for many venues to sit empty afterwards, while the boost in tourism and national pride rarely lasts beyond a few weeks. That money could transform schools, hospitals or **grassroots sport**. [E] After several recent Olympics, for instance, purpose-built venues were left abandoned and became costly burdens. London 2012, by contrast, is often cited as a success, since it regenerated a neglected part of the city. [C] So hosting can pay off, but only when long-term use is planned from the very beginning.",
+        f: ["Would you like your city to host the Olympics?", "Who really benefits?"], lx: ["grassroots sport", "spectator", "national pride"] },
+      { t: "opinion", q: "Can sport bring people and countries together?",
+        model: "[A] Yes, I think sport can bring people together, but it can also divide them. [R] Sport is a language everyone understands. People from different backgrounds can play together without speaking the same language. But sometimes fans become aggressive and see the other team as enemies. [E] For example, at my university, students from ten different countries play football every Sunday, and it's the easiest way to make international friends. But I've also seen fans fighting after a match. [C] So sport has the power to unite, if people remember it's just a game.",
+        model5: "[A] I believe it can, although it occasionally does the opposite. [R] Sport is a universal language: people who share no common tongue can play together and instantly feel connected. At the same time, extreme rivalry can turn opponents into enemies, as fan violence sadly shows. [E] At my university, for instance, students from about ten countries meet for football every Sunday, and it's easily the quickest way to make international friends — the **camaraderie** forms within minutes. On the other hand, I've also witnessed rival fans fighting in the street after a derby. [C] So sport has enormous power to unite, provided we remember that, ultimately, it's just a game.",
+        f: ["Do you feel national pride when your country wins?", "Why are some fans violent?"], lx: ["camaraderie", "sportsmanship", "team spirit"] },
+      { t: "opinion", q: "Women's sports get less TV coverage and lower pay than men's. Should this change?",
+        model: "[A] Yes, I think this should change. [R] Female athletes train just as hard as men, so they deserve similar respect and opportunities. And when women's sports get more TV time, more people become fans, so the money grows too. [E] For example, women's football used to be shown very rarely in my country. Last year, the women's national team played on prime-time TV for the first time, and millions watched. Now many young girls in my city want to play football. [C] So more coverage creates more fans and fairer pay.",
+        model5: "[A] I firmly believe it should. [R] Female athletes train every bit as hard as their male counterparts, so they deserve comparable respect and opportunities. Moreover, the pay gap is partly self-reinforcing: less coverage means fewer fans, which then justifies less investment. [E] Women's football, for example, was barely shown in my country until recently. Last year, however, the women's national team played on prime-time television for the first time and attracted millions of viewers. Since then, my local club has had a waiting list of girls wanting to join. [C] So greater visibility creates fans, and fans, in turn, create the money for fairer pay — a genuinely **level playing field**.",
+        f: ["Would you watch women's sports?", "Should men and women ever compete together?"], lx: ["a level playing field", "professional", "role model"] },
+      { t: "compare", q: "Should governments spend more money on elite athletes or on sport for ordinary people?",
+        model: "[A] I think governments should spend more on sport for ordinary people. [R] Elite athletes bring medals and national pride, but only a few people benefit. Investing in local sports clubs, parks and school sports makes the whole population healthier and saves money on healthcare. [E] For example, my city built a free outdoor gym and a running track in a park two years ago. Now hundreds of people of all ages use them every day. And the best athletes usually come from strong local clubs anyway. [C] So money for everyone is a better investment.",
+        model5: "[A] I'd argue that the priority should be **grassroots sport** for ordinary people. [R] Elite athletes undoubtedly bring medals and national pride, but the direct benefits reach relatively few. Investment in local clubs, parks and school sport, by contrast, improves public health on a massive scale, which ultimately saves money on healthcare. [E] Two years ago, for instance, my city built a free outdoor gym and running track in a public park; today hundreds of people of every age use them daily. What's more, future champions almost always emerge from strong local clubs, so the two goals aren't really in conflict. [C] Funding everyday sport, then, is both the fairer and the smarter investment.",
+        f: ["What sport facility does your city need?", "Do medals make people exercise more?"], lx: ["grassroots sport", "stay active", "public health"] }
+    ]},
+    { icon: "building", title: "Город и активная жизнь", en: "Active cities", questions: [
+      { t: "opinion", src: "Official 054 / 117 · Public Parks", q: "Public parks play a crucial role in community health by offering areas for relaxing, exercising and playing. Should local governments spend more money on such places?",
+        model: "[A] Yes, I agree that local governments should spend more money on parks. [R] Parks are free, so everyone can use them — rich or poor, young or old. They help people exercise, relax and meet neighbors, which makes the whole community healthier. [E] For example, the park near my dorm has a running track, an outdoor gym and a basketball court. Every evening it's full of students, families and older people doing exercise. Without it, many of them would just stay at home. [C] So parks are one of the best investments a city can make.",
+        model5: "[A] I wholeheartedly agree. [R] Parks are one of the few truly free and inclusive spaces in a city: anyone, regardless of age or income, can use them to exercise, unwind or socialize. As a result, they benefit both physical and mental health across the entire community. [E] The park next to my dorm, for instance, has a running track, an open-air gym and a basketball court, and every evening it's buzzing with students, families and pensioners alike. For many of them, I suspect, it's the only exercise they get, since gyms are simply too expensive. [C] So investing in parks is one of the most cost-effective ways a city can improve public health.",
+        f: ["What's your favorite park?", "What would make parks better?"], lx: ["stay active", "outdoor activities", "public health"] },
+      { t: "opinion", src: "Платформа · Transportation in Cities", q: "What are the advantages of living in a place that is walkable or bikeable? How does it affect the daily lives and health of the people who live there?",
+        model: "[A] Living in a walkable or bikeable place has big advantages, especially for health. [R] When you can walk or cycle to school, work and shops, you exercise every day without thinking about it. There is also less traffic and pollution, and people meet each other on the street. [E] For example, when I lived in my hometown, I needed a car for everything, and I rarely walked. Now I live in a city with bike lanes, and I cycle about forty minutes a day. I've become fitter, and I don't even feel like it's exercise. [C] So walkable cities make healthy habits easy.",
+        model5: "[A] The advantages are considerable, and health is perhaps the greatest of them. [R] When walking or cycling is the easiest way to reach work, school and shops, people build exercise into their day without even noticing. Beyond that, there's less traffic and pollution, and streets feel livelier, since neighbors actually encounter each other. [E] In my hometown, for instance, I needed a car for virtually everything and rarely walked anywhere. Now that I live in a city with an extensive network of bike lanes, I cycle about forty minutes a day, and I'm noticeably fitter without ever consciously \"working out\". [C] So walkable cities make the healthy choice the default choice.",
+        f: ["Is your city bike-friendly?", "Would you give up a car?"], lx: ["stay active", "sedentary", "commute"] },
+      { t: "opinion", q: "Should employers encourage employees to exercise — for example, with gym memberships or exercise breaks?",
+        model: "[A] Yes, I think employers should encourage exercise, but not force it. [R] Healthy employees get sick less often, feel less stressed and work better, so it's good for the company too. But exercise should be a choice, not a rule. [E] For example, my sister's company pays for half of a gym membership and has a yoga class every Wednesday at lunchtime. She says many colleagues started exercising because of it, and the office atmosphere is more relaxed. [C] So it's a smart investment for companies.",
+        model5: "[A] I think employers should actively encourage exercise, as long as it remains voluntary. [R] Physically active employees tend to take fewer sick days, cope better with stress and perform better, so the company benefits as much as the staff. Making it compulsory, however, would feel intrusive and probably backfire. [E] My sister's company, for instance, covers half the cost of a **gym membership** and runs a lunchtime yoga class every Wednesday. She says plenty of colleagues who'd never exercised have since become regulars, and the office atmosphere has become noticeably more relaxed. [C] So supporting employees' fitness is a smart investment, provided it's offered, not imposed.",
+        f: ["Would you do yoga with your boss?", "Should schools offer the same for students?"], lx: ["gym membership", "relieve stress", "productivity"] },
+      { t: "experience", q: "Do you walk or cycle instead of using a car or public transport? Why or why not?",
+        model: "[A] Yes, I usually cycle to university instead of taking the bus. [R] It's free, it's often faster than the bus in traffic, and I get exercise without spending extra time at the gym. [E] For example, my ride to campus takes fifteen minutes, while the bus takes twenty-five because of traffic jams. In the morning, cycling wakes me up better than coffee. In winter, when it's icy, I take the bus, but the rest of the year I'm always on my bike. [C] So cycling saves me money and time and keeps me fit.",
+        model5: "[A] Most days, I cycle to campus rather than taking the bus. [R] It's free, frequently quicker than public transport during rush hour, and it lets me **stay active** without having to find extra time for the gym. [E] My ride to university, for instance, takes fifteen minutes, whereas the bus can take twenty-five when the traffic is bad. What's more, cycling in the morning wakes me up far more effectively than coffee. In midwinter, when the roads are icy, I do switch to the bus, but for the rest of the year I'm on my bike. [C] So cycling saves me money and time, while quietly keeping me fit.",
+        f: ["Is cycling in your city safe?", "What would make more people cycle?"], lx: ["stay active", "commute", "burn calories"] }
+    ]},
+    { icon: "sparkles", title: "Представь, что…", en: "What if…?", questions: [
+      { t: "hypo", src: "Official 075", q: "If you were able to, what sport that you don't currently play would you like to be really good at? Why?", same: "s075-1",
+        f: ["What's stopping you from trying it?", "Which sport looks easy but isn't?"], lx: ["take up a sport", "physically demanding", "adrenaline"] },
+      { t: "hypo", q: "If you could compete in the Olympics in any sport, which would you choose and why?",
+        model: "[A] I would choose the marathon. [R] It's the oldest and most famous Olympic event, and it's a sport I already love. It's not about being the fastest for ten seconds — it's about **endurance** and not giving up. [E] For example, when I ran my first half marathon, I almost stopped at kilometer fifteen, but I didn't. I imagine running the Olympic marathon through a famous city with millions of people watching. Even finishing last would be an incredible experience. [C] So the marathon would be my dream.",
+        model5: "[A] I'd choose the marathon without hesitation. [R] It's one of the oldest and most symbolic Olympic events, and, crucially, it rewards **endurance** and mental strength rather than a few seconds of explosive speed. It's also a sport I already love. [E] When I ran my first half marathon, for instance, I nearly gave up at the fifteenth kilometer, and pushing through that moment is still one of my proudest memories. I can only imagine running through the streets of a host city with millions watching around the world. Even finishing last would feel like a triumph. [C] So the Olympic marathon would be the ultimate test of whether I could truly **go the distance**.",
+        f: ["Which Olympic sport is the hardest?", "Would you prefer gold or a world record?"], lx: ["endurance", "go the distance", "compete"] },
+      { t: "hypo", q: "Imagine scientists invented a pill that gives you all the benefits of exercise. Would you take it instead of exercising?",
+        model: "[A] No, I wouldn't take it instead of exercising. [R] For me, exercise is not only about health. It's about fun, friends, nature and the good feeling after a workout. A pill can't give you that. [E] For example, my favorite part of hiking is the views and the conversations with friends, not the calories I burn. And after a run, I feel proud of myself, which I wouldn't feel after swallowing a pill. Maybe I'd take it on very busy days, but not every day. [C] So the pill would make us healthy, but not happy.",
+        model5: "[A] I wouldn't, at least not as a replacement. [R] Exercise gives me far more than physical health: it's time with friends, time in nature and that unique sense of accomplishment after a tough workout, none of which could come in tablet form. [E] When I go hiking, for instance, what I treasure are the views and the long conversations, not the calories I **burn**. Likewise, crossing the finish line of a race made me proud in a way swallowing a pill never could. I might take it on exceptionally busy weeks, admittedly, but certainly not every day. [C] So such a pill might keep us healthy, but it would rob us of much of what makes exercise worthwhile.",
+        f: ["Who would benefit most from such a pill?", "Would it make people lazier?"], lx: ["sense of accomplishment", "burn calories", "endorphins"] },
+      { t: "hypo", q: "If you could invent a new sport, what would it be like?",
+        model: "[A] I would invent a sport that mixes football and a treasure hunt. [R] I love team sports, but I also like solving puzzles, and I think it would be fun for people who aren't very sporty too. [E] For example, two teams would play in a big park. Each team would have to find hidden clues, solve them and use them to get the ball to a secret goal. Fast runners would help, but smart players would be just as important. [C] So my sport would be good for both the body and the brain.",
+        model5: "[A] I'd create a hybrid of football and a treasure hunt, played across an entire park. [R] I love the energy of team sports, but I've always enjoyed puzzles too, and combining them would make the sport appealing even to people who don't consider themselves sporty. [E] Two teams would race around the park searching for hidden clues; each solved clue would reveal the location of a secret goal, where they'd have to score with the ball. Speed would certainly help, but clever strategy and teamwork would matter just as much, so a slower but sharper team could easily win. [C] In short, it would be a sport that challenges the brain as much as the legs.",
+        f: ["What would the rules be?", "Would it be in the Olympics?"], lx: ["team sport", "compete", "a team player"] }
+    ]}
+  ],
+
+  checklist: [
+    "Ответил(а) на вопрос прямо в первом предложении",
+    "Правильно использовал(а) do / go / play",
+    "Вставил(а) одну идиому — естественно, а не «для галочки»",
+    "Привёл(а) конкретный пример: матч, тренировка, забег, человек",
+    "Использовал(а) фразу контраста: While it's true that… / That said…",
+    "Уложился(ась) в 45 секунд без длинных пауз"
+  ],
+
+  targetLexis: ["work out", "be in shape", "stay active", "get in shape", "take up a sport", "do exercise", "go running", "play football", "lift weights", "build strength", "improve stamina", "relieve stress", "boost my mood", "endorphins", "sedentary", "team sport", "a team player", "camaraderie", "consistency", "recovery", "run out of steam", "go the distance", "that said"]
+};
+
+/* =====================================================================
+   ИЛЛЮСТРАЦИИ (SVG)
+   ===================================================================== */
+const HERO_ART = `
+<svg viewBox="0 0 320 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Кроссовок, гантель, медаль и секундомер">
+  <ellipse cx="165" cy="228" rx="128" ry="10" fill="rgba(0,0,0,.22)"/>
+  <g transform="rotate(-6 130 190)">
+    <path d="M44 214 c0 -22 10 -40 30 -48 l40 -16 c10 -4 20 -2 26 6 l8 10 c6 8 18 12 30 12 h30 c18 0 32 12 32 28 v8z" fill="#f472b6"/>
+    <path d="M44 214 h196 v10 a6 6 0 0 1 -6 6 h-184 a6 6 0 0 1 -6 -6z" fill="#fff"/>
+    <path d="M96 160 l10 14 M110 154 l10 14 M124 150 l10 14" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+    <path d="M60 196 h40" stroke="#be185d" stroke-width="4" stroke-linecap="round"/>
+  </g>
+  <g transform="translate(176 120) rotate(-20)">
+    <rect x="0" y="16" width="80" height="10" rx="5" fill="#94a3b8"/>
+    <rect x="-8" y="0" width="16" height="42" rx="5" fill="#334155"/><rect x="-22" y="6" width="14" height="30" rx="5" fill="#475569"/>
+    <rect x="72" y="0" width="16" height="42" rx="5" fill="#334155"/><rect x="88" y="6" width="14" height="30" rx="5" fill="#475569"/>
+  </g>
+  <g class="tl-coin">
+    <path d="M232 20 l14 34 M266 20 l-14 34" stroke="#0ea5e9" stroke-width="10" stroke-linecap="round"/>
+    <circle cx="249" cy="78" r="28" fill="#fde68a"/><circle cx="249" cy="78" r="20" fill="#facc15"/>
+    <path d="M249 64 l4 9 l10 1 l-7 7 l2 10 l-9 -5 l-9 5 l2 -10 l-7 -7 l10 -1z" fill="#fff"/>
+  </g>
+  <g transform="translate(40 40)">
+    <rect x="32" y="0" width="16" height="10" rx="3" fill="#475569"/>
+    <circle cx="40" cy="54" r="40" fill="#fff"/><circle cx="40" cy="54" r="32" fill="#e0f2fe"/>
+    <path d="M40 30 v24 l14 -10" stroke="#0f172a" stroke-width="5" fill="none" stroke-linecap="round"/>
+    <path d="M40 54 m-32 0 a32 32 0 0 1 32 -32" stroke="#8b5cf6" stroke-width="6" fill="none" stroke-linecap="round"/>
+    <path d="M72 18 l8 -8" stroke="#475569" stroke-width="5" stroke-linecap="round"/>
+  </g>
+  <path d="M150 40 l4 10 l10 4 l-10 4 l-4 10 l-4 -10 l-10 -4 l10 -4 z" fill="#a5f3fc"/>
+  <path d="M296 120 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3 z" fill="#fbcfe8"/>
+</svg>`;
+
+/* Мини-иллюстрации к идиомам (160×96). Классы a-* анимируются при наведении. */
+const PERSON = (x, y, c) => `<circle cx="${x}" cy="${y}" r="6" fill="${c}"/><path d="M${x} ${y + 6} v14 M${x} ${y + 12} l-8 6 M${x} ${y + 12} l8 -4 M${x} ${y + 20} l-6 10 M${x} ${y + 20} l6 10" stroke="${c}" stroke-width="3.5" fill="none" stroke-linecap="round"/>`;
+const IDIOM_ART = {
+  couch: `<rect x="22" y="48" width="116" height="30" rx="10" fill="#8b5cf6"/><rect x="14" y="40" width="20" height="44" rx="8" fill="#7c3aed"/><rect x="126" y="40" width="20" height="44" rx="8" fill="#7c3aed"/>
+         <rect x="34" y="30" width="92" height="24" rx="8" fill="#a78bfa"/><path d="M26 84 v8 M134 84 v8" stroke="#4c1d95" stroke-width="4" stroke-linecap="round"/>
+         <g class="a-belt"><ellipse cx="80" cy="44" rx="26" ry="15" fill="#d6a46b"/><circle cx="70" cy="40" r="2" fill="#7c2d12"/><circle cx="86" cy="48" r="2" fill="#7c2d12"/><circle cx="94" cy="38" r="1.8" fill="#7c2d12"/>
+         <path d="M66 48 q4 3 8 0" stroke="#7c2d12" stroke-width="2" fill="none" stroke-linecap="round"/></g>
+         <rect x="112" y="10" width="34" height="22" rx="3" fill="#334155"/><rect x="115" y="13" width="28" height="16" rx="2" fill="#93c5fd"/>`,
+  steam: `<path d="M30 86 h100" stroke="#cbd5e1" stroke-width="4" stroke-linecap="round"/>
+         <path d="M46 82 c-6 -26 6 -42 34 -42 s40 16 34 42z" fill="#94a3b8"/><path d="M112 54 l22 -12 l4 8 l-20 12z" fill="#64748b"/><rect x="60" y="30" width="40" height="10" rx="4" fill="#64748b"/>
+         <g class="a-drain"><path d="M136 36 q8 -6 4 -14 q-4 -8 6 -14" stroke="#cbd5e1" stroke-width="4" fill="none" stroke-linecap="round"/></g>
+         <text x="80" y="70" text-anchor="middle" font-size="12" font-weight="800" font-family="system-ui" fill="#fff">0%</text>`,
+  towel: `<path d="M14 88 h132" stroke="#94a3b8" stroke-width="4" stroke-linecap="round"/>
+         <path d="M20 88 v-50 M140 88 v-50" stroke="#475569" stroke-width="5" stroke-linecap="round"/>
+         <path d="M20 46 h120 M20 60 h120 M20 74 h120" stroke="#e11d48" stroke-width="3"/>
+         <g class="a-drop"><g transform="rotate(-18 82 22)"><rect x="66" y="6" width="32" height="34" rx="3" fill="#fff" stroke="#94a3b8" stroke-width="2"/>
+         <path d="M66 30 h32 M66 35 h32" stroke="#38bdf8" stroke-width="3"/></g></g>
+         <path d="M108 14 l6 -4 M112 24 h8" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round"/>`,
+  distance: `<path d="M4 76 C40 60 90 84 156 64" stroke="#cbd5e1" stroke-width="12" fill="none" stroke-linecap="round"/>
+         <path d="M122 30 v40 M146 26 v40" stroke="#475569" stroke-width="3"/><path d="M122 34 h24" stroke="#e11d48" stroke-width="4"/>
+         <g><rect x="124" y="12" width="20" height="12" fill="#fff" stroke="#334155" stroke-width="1.5"/><path d="M124 12 h5v6h-5z M134 12 h5v6h-5z M129 18 h5v6h-5z M139 18 h5v6h-5z" fill="#334155"/></g>
+         <g class="a-r">${PERSON(80, 32, "#0284c7")}</g>
+         <path d="M50 44 h14 M46 52 h14" stroke="#93c5fd" stroke-width="3" stroke-linecap="round"/>`,
+  teamplayer: `<g class="a-tag">${PERSON(42, 30, "#2563eb")}${PERSON(80, 24, "#db2777")}${PERSON(118, 30, "#7c3aed")}</g>
+         <path d="M50 42 h22 M88 40 h22" stroke="#94a3b8" stroke-width="3.5" stroke-linecap="round"/>
+         <path d="M20 86 h120" stroke="#cbd5e1" stroke-width="4" stroke-linecap="round"/>
+         <circle cx="80" cy="80" r="7" fill="#fff" stroke="#334155" stroke-width="2"/>`,
+  swing: `<path d="M8 86 h144" stroke="#cbd5e1" stroke-width="4" stroke-linecap="round"/>
+         <g class="a-tag" style="transform-origin:70px 70px"><path d="M70 70 L104 30" stroke="#475569" stroke-width="5" stroke-linecap="round"/>
+         <ellipse cx="112" cy="20" rx="16" ry="18" fill="none" stroke="#0891b2" stroke-width="4" transform="rotate(40 112 20)"/>
+         <path d="M104 10 l16 20 M100 18 l16 16 M110 6 l12 18 M98 26 l14 10" stroke="#67e8f9" stroke-width="1.5"/></g>
+         <circle cx="140" cy="44" r="7" fill="#facc15"/>
+         <path d="M30 40 q20 -20 46 -8" stroke="#a5f3fc" stroke-width="3" fill="none" stroke-dasharray="4 5" stroke-linecap="round"/>`,
+  field: `<g class="a-crack"><rect x="14" y="40" width="132" height="44" rx="4" fill="#bfdbfe"/><path d="M80 40 v44" stroke="#fff" stroke-width="3"/><circle cx="80" cy="62" r="10" fill="none" stroke="#fff" stroke-width="3"/>
+         <rect x="14" y="52" width="8" height="20" fill="none" stroke="#fff" stroke-width="2.5"/><rect x="138" y="52" width="8" height="20" fill="none" stroke="#fff" stroke-width="2.5"/></g>
+         <path d="M14 30 h132" stroke="#4f46e5" stroke-width="3" stroke-linecap="round"/><path d="M80 22 v16" stroke="#4f46e5" stroke-width="3"/>
+         <path d="M72 14 l8 -8 l8 8" fill="#4f46e5"/>`,
+  bandwagon: `<rect x="24" y="44" width="92" height="30" rx="5" fill="#ec4899"/><path d="M116 52 h16 l12 12 v10 h-28z" fill="#db2777"/>
+         <circle cx="44" cy="80" r="9" fill="#334155"/><circle cx="100" cy="80" r="9" fill="#334155"/><circle cx="130" cy="80" r="9" fill="#334155"/>
+         <path d="M34 58 h70" stroke="#fbcfe8" stroke-width="3"/>
+         <g class="a-l">${PERSON(14, 20, "#7c3aed")}</g>
+         <g fill="#fbcfe8"><circle cx="50" cy="30" r="5"/><circle cx="70" cy="26" r="5"/><circle cx="90" cy="30" r="5"/></g>
+         <path d="M50 35 v9 M70 31 v13 M90 35 v9" stroke="#f9a8d4" stroke-width="3"/>`,
+  nopain: `<g class="a-up"><rect x="40" y="44" width="80" height="10" rx="5" fill="#94a3b8"/>
+         <rect x="28" y="30" width="14" height="38" rx="4" fill="#334155"/><rect x="16" y="36" width="12" height="26" rx="4" fill="#475569"/>
+         <rect x="118" y="30" width="14" height="38" rx="4" fill="#334155"/><rect x="132" y="36" width="12" height="26" rx="4" fill="#475569"/></g>
+         <path d="M70 76 q10 10 20 0" stroke="#e11d48" stroke-width="3" fill="none" stroke-linecap="round"/>
+         <g fill="#93c5fd"><path d="M60 72 q-4 6 0 10 q4 -4 0 -10z"/><path d="M100 72 q-4 6 0 10 q4 -4 0 -10z"/></g>
+         <circle cx="140" cy="14" r="10" fill="#fff" stroke="#e11d48" stroke-width="2.5"/><text x="140" y="19" text-anchor="middle" font-size="13" font-weight="800" font-family="system-ui" fill="#e11d48">!</text>`
+};
+</script>
+<script src="topic-engine.js"></script>
+</body>
+</html>

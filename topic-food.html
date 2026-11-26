@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Food & Nutrition — Speaking Topics — TOEFL Prep</title>
+
+<!-- Те же подключения, что на остальных страницах платформы -->
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="auth.js"></script>
+<script src="topics.js"></script>
+
+<link rel="stylesheet" href="topic-engine.css">
+</head>
+<body>
+<div class="tl-layout flex flex-col md:flex-row min-h-screen">
+  <div id="app-sidebar"></div>
+  <script src="nav.js"></script>
+
+  <main class="tl-main">
+    <div class="tl-wrap" id="lesson"></div>
+  </main>
+</div>
+
+<!-- Панель ответа -->
+<div class="tl-dock" id="dock" aria-live="polite">
+  <div class="tl-dock-top"><span id="dockLabel">Ответ</span><button class="tl-dock-close" id="dockClose" aria-label="Закрыть">✕</button></div>
+  <div class="tl-dock-q" id="dockQ"></div>
+  <div class="tl-dock-status">
+    <div class="tl-dock-state"><span class="tl-rec-dot" id="recDot"></span><span id="dockState">Готово</span></div>
+    <div class="tl-dock-time" id="dockTime">0:45</div>
+  </div>
+  <div class="tl-phase" id="dockPhase"></div>
+  <div class="tl-dock-bar" id="dockBar"></div>
+  <div class="tl-dock-ctrl">
+    <label><input type="checkbox" id="recToggle"> Записывать голос</label>
+    <div class="tl-row">
+      <button class="tl-dock-btn" id="dockShowQ">Показать текст</button>
+      <button class="tl-dock-btn" id="dockStop">Стоп</button>
+    </div>
+  </div>
+  <div class="tl-dock-msg" id="dockMsg"></div>
+  <div class="tl-dock-out" id="dockOut"></div>
+</div>
+
+<script>
+/* =====================================================================
+   КОНТЕНТ УРОКА: FOOD & NUTRITION
+   Новая тема = копия файла: меняются LESSON, HERO_ART и IDIOM_ART.
+   Общий движок и стили — topic-engine.js и topic-engine.css.
+   **слово** — подсветка целевой лексики.
+   _слово_ в коллокациях — «ключевой кубик».
+   [A] [R] [E] [C] в модельных ответах — цветная структура:
+   A = прямой ответ, R = причина, E = пример, C = вывод.
+   ===================================================================== */
+const LESSON = {
+  slug: "food",
+  titleEn: "Food & Nutrition",
+  titleRu: "Еда и питание",
+  category: "Здоровье и образ жизни",
+  intro: "Что ты ешь в обычный день, готовить или заказать, рестораны и любимые кухни, здоровое питание и диеты, растительное меню, еда и культура, пищевые отходы и будущее еды. Учим говорить о еде вкусно и точно — не только «it's delicious» — и проходим все вопросы по теме из базы.",
+  meta: [["≈ 60", "минут"], ["27", "слов · 2 уровня"], ["20", "коллокаций"], ["9", "идиом"], ["{Q}", "вопросов для обсуждения"]],
+
+  frames: {
+    warmup:    { icon: "flame",      time: "3 мин",  steps: ["Нажми динамик или прочитай вопрос", "Ответь вслух за 20 секунд", "Без подсказок — это «до урока»"] },
+    vocab:     { icon: "book",       time: "10 мин", steps: ["Посмотри на схему: дома, в ресторане, доставка", "Найди себя на шкале", "Слова: начни с Core, слушай и повторяй"] },
+    coll:      { icon: "link",       time: "8 мин",  steps: ["Учи сочетание целиком", "Цветной кубик — то, что чаще путают", "Опиши свой обычный ужин с 5 сочетаниями"] },
+    idioms:    { icon: "quote",      time: "6 мин",  steps: ["Посмотри картинку — запомни образ", "Плашка «Можно» — смело в ответы", "Выбери 2 идиомы на сегодня"] },
+    expr:      { icon: "megaphone",  time: "5 мин",  steps: ["Послушай интонацию", "По 1 фразе из каждой группы", "Запомни шкалу 45 секунд"] },
+    check:     { icon: "puzzle",     time: "10 мин", steps: ["4 мини-игры", "Цель — 100% в Matching и Gap-fill", "Карточки — пока не узнаёшь все"] },
+    repeat:    { icon: "headphones", time: "5 мин",  steps: ["Слушай, не читая", "Повтори слово в слово", "Включи запись и сравни"] },
+    interview: { icon: "mic",        time: "15 мин", steps: ["Выбери сет — начни с Official", "Пройди все вопросы подряд, без пауз", "Сравни с моделью: цвета = структура"] },
+    club:      { icon: "chat",       time: "30+ мин", steps: ["Возьми 1–2 блока на занятие", "Ответь, потом — на «Копнём глубже»", "Отметь «Обсудили» или крути рулетку"] },
+    self:      { icon: "checkCircle",time: "3 мин",  steps: ["Прослушай свои записи", "Отметь, что получилось", "Цель — 15+ отмеченных слов"] }
+  },
+
+  warmup: [
+    "What did you eat for breakfast today?",
+    "Do you cook, or do you usually eat out or order food?",
+    "What's your favorite dish from your country?",
+    "Is there any food you really can't stand?"
+  ],
+
+  /* Что на ужин: равные ветки, вместо процента — tag */
+  flow: {
+    icon: "utensils",
+    title: "Что на ужин?",
+    source: { kicker: "Я проголодался…", title: "What's for dinner?", ru: "что на ужин?", words: ["grab a bite", "I'm starving", "feel peckish"] },
+    branches: [
+      { title: "Cook at home", ru: "готовлю сам", sub: "cheaper and healthier", tag: "Дома", color: "#f97316", words: ["cook from scratch", "a home-cooked meal", "meal prep", "leftovers"] },
+      { title: "Eat out", ru: "иду в кафе", sub: "an experience", tag: "Ресторан", color: "#ec4899", words: ["try local cuisine", "book a table", "the atmosphere", "split the bill"] },
+      { title: "Order in", ru: "заказываю", sub: "convenient but pricey", tag: "Доставка", color: "#8b5cf6", words: ["a delivery app", "takeout", "delivery fees", "it adds up"] }
+    ],
+    notes: [
+      "Почти любой вопрос о еде — сравнение веток: <b>convenience vs health</b> или <b>convenience vs cost</b>. Назови, что выигрывает и что ты теряешь",
+      "Готовая фраза: <i>Delivery apps are incredibly convenient, but the fees really add up.</i>"
+    ]
+  },
+
+  scale: {
+    title: "Фастфуд или ЗОЖ? Перетащи кружок туда, где ты",
+    left: "FAST FOOD FAN", right: "HEALTH NUT",
+    words: [
+      { w: "junk food lover", p: 4 }, { w: "takeout regular", p: 17 }, { w: "a sweet tooth", p: 30 }, { w: "everything in moderation", p: 44 },
+      { w: "mostly home-cooked", p: 58 }, { w: "a balanced diet", p: 71 }, { w: "clean eating", p: 85 }, { w: "health nut", p: 97 }
+    ],
+    says: [
+      { max: 25,  t: "I'll admit it — I'm a **junk food lover**. I'm a **takeout regular** at three different places." },
+      { max: 50,  t: "I have **a sweet tooth**, but I believe in **everything in moderation**." },
+      { max: 75,  t: "My meals are **mostly home-cooked**, and I try to eat **a balanced diet**." },
+      { max: 101, t: "I'm a bit of a **health nut** — I read every label and I'm really into **clean eating**." }
+    ]
+  },
+
+  vocab: [
+    { en: "cuisine", pos: "n", ru: "кухня (национальная)", ex: "Japanese cuisine is my absolute favorite.", level: "core" },
+    { en: "dish", pos: "n", ru: "блюдо", ex: "My grandmother's signature dish is beef stew.", level: "core" },
+    { en: "ingredients", pos: "n", ru: "ингредиенты", ex: "The secret is to use fresh ingredients.", level: "core" },
+    { en: "recipe", pos: "n", ru: "рецепт", ex: "I found a great pasta recipe online.", level: "core" },
+    { en: "home-cooked", pos: "adj", ru: "домашний (приготовленный дома)", ex: "Nothing beats a home-cooked meal.", level: "core" },
+    { en: "takeout (UK takeaway)", pos: "n", ru: "еда навынос", ex: "We ordered Thai takeout after the exam.", level: "core" },
+    { en: "leftovers", pos: "n", ru: "остатки еды (на завтра)", ex: "I usually take leftovers for lunch.", level: "core" },
+    { en: "snack", pos: "n / v", ru: "перекус; перекусывать", ex: "I always keep a healthy snack in my bag.", level: "core" },
+    { en: "junk food", pos: "n", ru: "вредная еда, фастфуд", ex: "I eat too much junk food during exams.", level: "core" },
+    { en: "processed food", pos: "n", ru: "переработанные продукты", ex: "Processed food is often full of salt and sugar.", level: "core" },
+    { en: "portion", pos: "n", ru: "порция", ex: "Restaurant portions are much bigger than they used to be.", level: "core" },
+    { en: "vegetarian / vegan", pos: "adj / n", ru: "вегетарианец / веган", ex: "My sister has been vegan for three years.", level: "core" },
+    { en: "flavor", pos: "n", ru: "вкус (аромат блюда)", ex: "This soup is full of flavor.", level: "core" },
+    { en: "nutritious", pos: "adj", ru: "питательный, полезный", ex: "Oatmeal is cheap and very nutritious.", level: "core" },
+    { en: "appetite", pos: "n", ru: "аппетит", ex: "I lose my appetite when I'm stressed.", level: "core" },
+
+    { en: "nutrients", pos: "n", ru: "питательные вещества", ex: "Vegetables are packed with nutrients.", level: "adv" },
+    { en: "protein", pos: "n", ru: "белок", ex: "Lentils are an excellent source of protein.", level: "adv" },
+    { en: "plant-based", pos: "adj", ru: "растительный", ex: "I eat a plant-based dinner three times a week.", level: "adv" },
+    { en: "meat substitute", pos: "n", ru: "заменитель мяса", ex: "Some meat substitutes taste surprisingly real.", level: "adv" },
+    { en: "whole foods", pos: "n", ru: "необработанные, цельные продукты", ex: "I try to eat whole foods rather than packaged snacks.", level: "adv" },
+    { en: "moderation", pos: "n", ru: "умеренность", ex: "Chocolate is fine in moderation.", level: "adv" },
+    { en: "savory", pos: "adj", ru: "несладкий, солёный/пикантный", ex: "I prefer savory breakfasts to sweet ones.", level: "adv" },
+    { en: "wholesome", pos: "adj", ru: "полезный, здоровый (о еде)", ex: "My mom always made simple, wholesome meals.", level: "adv" },
+    { en: "culinary", pos: "adj", ru: "кулинарный", ex: "Italy has an incredibly rich culinary tradition.", level: "adv" },
+    { en: "food waste", pos: "n", ru: "пищевые отходы", ex: "Supermarkets are responsible for tons of food waste.", level: "adv" },
+    { en: "intermittent fasting", pos: "n", ru: "интервальное голодание", ex: "My brother tried intermittent fasting for a month.", level: "adv" },
+    { en: "carbon footprint", pos: "n", ru: "углеродный след", ex: "Eating less beef shrinks your carbon footprint.", level: "adv" }
+  ],
+
+  collocations: [
+    { icon: "utensils", group: "Готовим", items: [
+      { en: "_cook_ from scratch", ru: "готовить с нуля (не полуфабрикаты)", ex: "On Sundays, I cook everything from scratch." },
+      { en: "_follow_ a recipe", ru: "готовить по рецепту", ex: "I can't cook without following a recipe." },
+      { en: "_prepare_ a meal", ru: "приготовить еду", ex: "It takes me twenty minutes to prepare a meal." },
+      { en: "_heat up_ leftovers", ru: "разогреть остатки", ex: "For lunch, I usually heat up leftovers." },
+      { en: "_batch-cook_ for the week", ru: "готовить впрок на неделю", ex: "I batch-cook for the week every Sunday." }
+    ]},
+    { icon: "clock", group: "Как мы едим", items: [
+      { en: "_grab_ a bite", ru: "перекусить на бегу", ex: "Let's grab a bite before the lecture." },
+      { en: "_skip_ breakfast", ru: "пропустить завтрак", ex: "I often skip breakfast when I'm late." },
+      { en: "_eat_ out", ru: "есть вне дома (в кафе)", ex: "We eat out about once a week." },
+      { en: "_order_ takeout", ru: "заказать еду", ex: "We ordered takeout because nobody wanted to cook." },
+      { en: "_have_ a snack", ru: "перекусить", ex: "I have a snack between classes." }
+    ]},
+    { icon: "leaf", group: "Питание", items: [
+      { en: "_go_ vegetarian", ru: "стать вегетарианцем", ex: "My cousin went vegetarian after a documentary." },
+      { en: "_cut out_ meat / sugar", ru: "исключить мясо / сахар", ex: "I cut out sugary drinks last year." },
+      { en: "_get_ enough protein", ru: "получать достаточно белка", ex: "Vegans need to make sure they get enough protein." },
+      { en: "_eat_ in moderation", ru: "есть в меру", ex: "Sweets are fine if you eat them in moderation." },
+      { en: "_be on_ a diet", ru: "сидеть на диете", ex: "I'm not on a diet; I just eat less junk food." }
+    ]},
+    { icon: "store", group: "Ресторан и вкус", items: [
+      { en: "_book_ a table", ru: "забронировать столик", ex: "We booked a table for my mom's birthday." },
+      { en: "_try_ the local cuisine", ru: "попробовать местную кухню", ex: "When I travel, I always try the local cuisine." },
+      { en: "_taste_ amazing", ru: "быть очень вкусным (taste + прилагательное!)", ex: "This curry tastes amazing." },
+      { en: "_leave_ a tip", ru: "оставить чаевые", ex: "We left a big tip because the service was great." },
+      { en: "_split_ the bill", ru: "разделить счёт", ex: "With friends, we always split the bill." }
+    ]}
+  ],
+
+  idioms: [
+    { art: "tooth", lit: "буквально: «сладкий зуб»", en: "have a sweet tooth", ru: "быть сладкоежкой", meaning: "очень любить сладкое", ex: "I have a terrible sweet tooth — I can't say no to chocolate.", reg: "ok", note: "Самая частая «пищевая» идиома. Отлично для честного ответа о привычках." },
+    { art: "bird", lit: "буквально: «есть как птичка / как лошадь»", en: "eat like a bird / eat like a horse", ru: "клевать как птичка / есть за троих", meaning: "есть очень мало / очень много", ex: "My sister eats like a bird, but my brother eats like a horse.", reg: "ok", note: "Пара-противоположность — легко запомнить вместе." },
+    { art: "plate", lit: "буквально: «много на тарелке»", en: "have a lot on your plate", ru: "быть очень загруженным", meaning: "иметь много дел и обязанностей", ex: "I have a lot on my plate this week, so I'm living on takeout.", reg: "ok", note: "Мостик к вопросам «what do you eat on busy days»." },
+    { art: "turkey", lit: "буквально: «холодная индейка»", en: "go cold turkey", ru: "резко бросить", meaning: "сразу и полностью отказаться от привычки", ex: "I gave up soda cold turkey, and the first week was awful.", reg: "ok", note: "Идеально для вопроса «a significant change to your diet»." },
+    { art: "salt", lit: "буквально: «с щепоткой соли»", en: "take something with a pinch of salt", ru: "относиться скептически", meaning: "не верить полностью", ex: "I take diet advice from influencers with a pinch of salt.", reg: "ok", note: "Сильная фраза для вопросов о трендах и соцсетях." },
+    { art: "thought", lit: "буквально: «пища для мысли»", en: "food for thought", ru: "пища для размышлений", meaning: "то, о чём стоит серьёзно подумать", ex: "The documentary about food waste gave me a lot of food for thought.", reg: "ok", note: "Хорошо в выводе ответа." },
+    { art: "tea", lit: "буквально: «не моя чашка чая»", en: "not my cup of tea", ru: "не моё, не по вкусу", meaning: "то, что тебе не нравится", ex: "Spicy food just isn't my cup of tea.", reg: "ok", note: "Вежливый способ сказать «не люблю»." },
+    { art: "cooks", lit: "буквально: «слишком много поваров портят бульон»", en: "too many cooks spoil the broth", ru: "у семи нянек дитя без глазу", meaning: "когда слишком много людей командуют, выходит хуже", ex: "Cooking with five roommates? Too many cooks spoil the broth.", reg: "ok", note: "Пословица — подходит и к работе в команде." },
+    { art: "youare", lit: "буквально: «ты — то, что ты ешь»", en: "you are what you eat", ru: "ты — то, что ты ешь", meaning: "питание определяет здоровье и самочувствие", ex: "My grandmother always says you are what you eat.", reg: "careful", note: "Клише. Лучше от лица кого-то: as my grandmother says…" }
+  ],
+
+  expressions: [
+    { icon: "play", fn: "Начать ответ", items: [
+      "I'd say my diet is fairly balanced, but not perfect.",
+      "To be honest, I'm not much of a cook.",
+      "On a typical day, I start with …"
+    ]},
+    { icon: "bulb", fn: "Причина", items: [
+      "It's mainly a question of time and money.",
+      "Home-cooked food just makes me feel better.",
+      "What I love about it is the variety."
+    ]},
+    { icon: "camera", fn: "Описать вкус и блюдо", items: [
+      "It's rich and spicy, with a hint of lime.",
+      "It's simple, but full of flavor.",
+      "It melts in your mouth."
+    ]},
+    { icon: "scales", fn: "Баланс и контраст", items: [
+      "Delivery is convenient; that said, it's expensive and often unhealthy.",
+      "While I love trying new cuisines, nothing beats my mom's cooking.",
+      "On the flip side, …"
+    ]},
+    { icon: "trending", fn: "Будущее и тренды", items: [
+      "I think more and more people will cut back on meat.",
+      "In the future, lab-grown meat might become normal.",
+      "Food delivery is here to stay, but …"
+    ]},
+    { icon: "flag", fn: "Завершить", items: [
+      "So for me, it's all about moderation.",
+      "In the end, cooking at home wins on almost every count.",
+      "That's why I always try the local cuisine."
+    ]}
+  ],
+
+  answerSteps: [
+    { k: "A", s: 5,  i: "I mostly cook at home." },
+    { k: "R", s: 12, i: "The main reason is that it's cheaper and healthier…" },
+    { k: "E", s: 22, i: "Every Sunday, for example, I batch-cook…" },
+    { k: "C", s: 6,  i: "So for me, home-cooked food wins." }
+  ],
+
+  matching: [
+    { a: "have a sweet tooth", b: "love eating sweet things" },
+    { a: "eat like a bird", b: "eat very little" },
+    { a: "have a lot on your plate", b: "be very busy with many tasks" },
+    { a: "go cold turkey", b: "stop a habit suddenly and completely" },
+    { a: "take something with a pinch of salt", b: "not completely believe something" },
+    { a: "not my cup of tea", b: "something I don't like" }
+  ],
+
+  gapfill: [
+    { t: "On Sundays, I cook everything from ___.", a: ["scratch"] },
+    { t: "Let's ___ a bite before the lecture.", a: ["grab"] },
+    { t: "I often ___ breakfast when I'm late.", a: ["skip"] },
+    { t: "My cousin ___ vegetarian after watching a documentary.", a: ["went"] },
+    { t: "I ___ out sugary drinks last year.", a: ["cut"] },
+    { t: "This curry ___ amazing!", a: ["tastes"] },
+    { t: "We ___ a table for my mom's birthday.", a: ["booked", "reserved"] },
+    { t: "With friends, we always ___ the bill.", a: ["split"] }
+  ],
+
+  paraphrase: [
+    { plain: "I love sweet food very much.", better: ["I **have** a real **sweet tooth**."] },
+    { plain: "I make food myself from the beginning.", better: ["I **cook from scratch** — no ready-made sauces."] },
+    { plain: "This food is very tasty.", better: ["It **tastes amazing** — it's **full of flavor**."] },
+    { plain: "I stopped drinking cola immediately.", better: ["I gave up soda **cold turkey**."] },
+    { plain: "I don't fully believe diet advice from bloggers.", better: ["I **take** diet advice from influencers **with a pinch of salt**."] },
+    { plain: "I'm very busy, so I eat fast food.", better: ["I **have a lot on my plate**, so I usually **grab a bite** on the go."] },
+    { plain: "I don't eat meat now.", better: ["I've **gone vegetarian**.", "I've **cut out** meat completely."] },
+    { plain: "I eat the food from yesterday's dinner.", better: ["I **heat up the leftovers** from last night."] }
+  ],
+
+  repeat: {
+    scenario: "Вы подрабатываете в университетской столовой. Менеджер проводит инструктаж для новых сотрудников — повторите каждое предложение точно так, как услышали.",
+    sentences: [
+      "Good morning, and thanks for joining the team.",
+      "The dining hall opens at seven thirty.",
+      "Always wash your hands before handling food.",
+      "Vegetarian dishes are marked with a green label.",
+      "Please ask every student if they have any food allergies.",
+      "Any food that hasn't been served by two o'clock goes to the local food bank.",
+      "If the salad bar runs low during the lunch rush, let the kitchen know right away."
+    ]
+  },
+
+  /* ===== Реальные сеты Take an Interview по теме (из базы платформы) ===== */
+  sets: [
+    { id: "s064", badge: "official", title: "Food and Nutrition", src: "Official TOEFL · 064",
+      scenario: "As part of a university project, you have agreed to take part in a short research interview about food and nutrition. A graduate student conducting the research will ask you some questions online.",
+      questions: [
+        { q: "First, do you follow any specific diet or eating plan?",
+          lx: ["be on a diet", "in moderation", "cut out"],
+          model: "[A] No, I don't follow a specific diet, but I have a few simple rules. [R] I tried strict diets before, and they didn't work for me — I always gave up after two weeks. Simple rules are easier to follow for a long time. [E] For example, I don't drink soda, I eat vegetables with lunch and dinner, and I try to eat meat only three or four times a week. I still eat pizza or chocolate sometimes, but **in moderation**. [C] So I'd say I don't have a diet, just healthy habits.",
+          model5: "[A] Not a specific diet as such, but I do stick to a handful of simple rules. [R] I've tried strict diets in the past, and every time I abandoned them within a couple of weeks, whereas a few flexible guidelines are far easier to maintain in the long run. [E] I **cut out** soft drinks entirely last year, for instance, I make sure there are vegetables with lunch and dinner, and I limit meat to three or four meals a week. Pizza and chocolate haven't disappeared from my life, but I enjoy them **in moderation** rather than daily. [C] So rather than being **on a diet**, I'd say I've built a few healthy habits that I can actually live with." },
+        { q: "Can you describe some foods that you eat on a regular basis?",
+          lx: ["nutritious", "batch-cook", "leftovers"],
+          model: "[A] I eat quite simple food — mostly oatmeal, rice, chicken, lentils and lots of vegetables. [R] These foods are cheap, **nutritious** and easy to cook, which is important for a busy student. [E] For example, every morning I have oatmeal with a banana and peanut butter. For lunch, I usually eat **leftovers** from dinner — maybe chicken with rice and salad. Two or three times a week, I make a big pot of lentil soup. And, of course, I drink a lot of coffee! [C] So my food is not fancy, but it keeps me full and healthy.",
+          model5: "[A] My regular diet is fairly simple, built around oatmeal, rice, chicken, lentils and plenty of vegetables. [R] These staples are inexpensive, genuinely **nutritious** and quick to prepare, which matters enormously when you're juggling lectures and a part-time job. [E] Every morning, for instance, I have oatmeal topped with a banana and a spoonful of peanut butter, which keeps me full until lunch. Lunch is usually **leftovers** — chicken with rice and a salad — and a couple of times a week I **batch-cook** a big pot of lentil soup. I'll admit, though, that coffee is probably my most regular \"food\" of all. [C] So my meals aren't glamorous, but they're cheap, filling and reasonably healthy." },
+        { q: "Tell me about a time when you or someone you know made a significant change to their diet. What was the change and what motivated you or the person you know to make it?",
+          lx: ["go cold turkey", "cut out", "energy levels"],
+          model: "[A] My father made a big change last year — he stopped eating sugar and fast food. [R] His doctor told him his blood sugar was too high and that he could get diabetes if he didn't change his diet. That really scared him. [E] He stopped eating sweets and fast food **cold turkey**. Instead, he started cooking simple meals with vegetables and fish, and he even took a cooking class. The first month was hard, but after six months, he lost ten kilos, and his blood tests were normal. [C] So a health scare motivated him, and the change really worked.",
+          model5: "[A] My father overhauled his diet last year, **cutting out** sugar and fast food almost entirely. [R] The trigger was a routine check-up, at which his doctor warned him that his blood sugar was dangerously high and that he was at serious risk of developing diabetes. [E] Rather than easing into it, he **went cold turkey**, replacing his favorite pastries and burgers with home-cooked meals built around vegetables and fish; he even enrolled in an evening cooking class. The first month, by his own admission, was miserable. Six months later, however, he'd lost ten kilos, his test results were back to normal and his energy levels had soared. [C] So fear may have started the change, but the results are what made it stick." },
+        { q: "Some people say they have difficulty maintaining a healthy diet because they do not like the taste of healthier foods. What do you think about that argument? Why?",
+          lx: ["taste amazing", "flavor", "processed food"],
+          model: "[A] I think this argument is understandable, but it's usually not true. [R] Many people think healthy food means boiled vegetables and plain chicken, but healthy food can be delicious if you cook it well. Also, our taste changes — after a few weeks without junk food, we start to like healthier food more. [E] For example, I used to hate vegetables. Then my roommate showed me how to roast them with garlic and spices, and now roasted vegetables **taste amazing** to me. Also, after I stopped drinking soda, it started to taste too sweet. [C] So it's more about cooking skills and habits than about taste.",
+          model5: "[A] I'd say the argument is understandable but largely mistaken. [R] Many people equate healthy food with bland steamed vegetables and plain chicken, when in reality wholesome dishes can be packed with **flavor** if they're cooked well. Moreover, our taste buds adapt: after a few weeks away from **processed food**, healthier options genuinely start to taste better. [E] I used to detest vegetables, for instance, until my roommate showed me how to roast them with garlic, chili and olive oil; now they **taste amazing** to me. Similarly, after I gave up soda, the first sip I tried months later tasted unbearably sweet. [C] So the real obstacle isn't taste itself, but cooking skills and old habits." }
+      ]},
+    { id: "s102", badge: "official", title: "Dietary Habits", src: "Official TOEFL · 102",
+      scenario: "You have volunteered for a research study about dietary habits. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "When you have a meal at school or work, do you prefer to eat alone or do you like to eat with friends or co-workers? Why?",
+          lx: ["grab a bite", "take a break from", "socialize"],
+          model: "[A] I prefer to eat with friends. [R] Lunch is the only break in my busy day, and eating with friends helps me relax and forget about studying for a while. It's also the best time to talk and catch up. [E] For example, at university, my friends and I meet in the cafeteria at one o'clock every day. We talk about classes, plans for the weekend and funny things that happened. When I eat alone, I usually look at my phone or study, and I don't really rest. [C] So eating with friends makes lunch a real break.",
+          model5: "[A] I much prefer eating with friends. [R] Lunch is often the only genuine break in my day, and sharing it with friends lets me switch off from studying completely, whereas eating alone tends to blur into more work. [E] At university, for instance, a group of us meets in the cafeteria at one o'clock almost every day, and it's become the highlight of my schedule: we catch up, make weekend plans and laugh about whatever went wrong in our lectures. On the rare days I eat alone, I inevitably end up scrolling through my phone or reviewing notes, and I return to class feeling no more rested than before. [C] So for me, a shared meal is what turns lunch into a real break." },
+        { q: "What kind of meals do your family or friends generally like to eat? For example, do they prefer traditional home-cooked dishes, fast food, or other types?",
+          lx: ["home-cooked", "traditional dishes", "takeout"],
+          model: "[A] My family loves traditional **home-cooked** dishes, but my friends prefer fast food and international food. [R] My parents and grandparents grew up cooking at home, and for them, family meals are very important. My friends are students, so they want food that's quick and cheap. [E] For example, every Sunday my grandmother cooks a big traditional lunch with soup, meat and homemade bread, and the whole family comes. But when I'm with my friends, we usually order pizza or go to a cheap Asian restaurant near campus. [C] So the type of food depends on who I'm eating with.",
+          model5: "[A] My family overwhelmingly favors traditional **home-cooked** dishes, whereas my friends lean towards fast food and international cuisine. [R] My parents' and grandparents' generations grew up cooking almost every meal at home, and shared family meals remain central to their lives. My friends, by contrast, are students with little time and even less money, so convenience usually wins. [E] Every Sunday, for instance, my grandmother prepares an elaborate lunch — soup, slow-cooked meat and homemade bread — and the whole extended family gathers around the table. With my friends, meanwhile, it's typically pizza **takeout** or a cheap noodle bar near campus. [C] So what I eat depends very much on who I'm eating with." },
+        { q: "In recent years, many people have argued that plant-based diets are better for individual health and for the planet. Do you think that in the future more people will adopt plant-based diets? Why or why not?",
+          lx: ["plant-based", "carbon footprint", "meat substitute"],
+          model: "[A] Yes, I think more people will eat **plant-based** diets in the future, but most won't become fully vegan. [R] People are learning more about health and climate change, and plant-based food is becoming tastier and easier to find. But meat is a big part of many cultures, so it won't disappear. [E] For example, five years ago my local supermarket had almost no vegan products. Now there's a whole section with plant-based burgers and milk. Many of my friends aren't vegetarian, but they eat meat only a few times a week. [C] So I think people will eat less meat, not no meat.",
+          model5: "[A] I'm fairly confident more people will adopt **plant-based** diets, though most will probably cut back on meat rather than give it up entirely. [R] Growing awareness of both health benefits and the **carbon footprint** of meat production is shifting attitudes, and plant-based options are becoming tastier, cheaper and far more widely available. That said, meat is deeply embedded in many food cultures. [E] Five years ago, for instance, my local supermarket stocked virtually no vegan products, whereas today an entire aisle is devoted to plant-based burgers, milks and cheeses. Among my friends, very few are strictly vegetarian, yet most now eat meat only a few times a week. [C] So the future, I suspect, is \"less meat\" rather than \"no meat\"." },
+        { q: "Some people believe that having regular meal times contributes to better health and financial well-being. Do you agree or disagree with this idea? Explain your answer.",
+          lx: ["skip breakfast", "snack", "impulse buy"],
+          model: "[A] I agree with this idea. [R] When you eat at regular times, your body knows what to expect, so you have more energy and you don't feel very hungry. And when you're not starving, you don't buy expensive snacks or order fast food. [E] For example, when I **skip breakfast**, by eleven I'm so hungry that I buy a pastry and a coffee for six dollars. When I eat breakfast at home at seven-thirty, I'm fine until lunch, and I save about thirty dollars a week. [C] So regular meals are good for both your health and your wallet.",
+          model5: "[A] I agree, and in my experience the two benefits are closely connected. [R] Eating at regular times keeps your energy stable and prevents extreme hunger, and it's precisely when we're ravenous that we make our worst choices, both nutritionally and financially. [E] Whenever I **skip breakfast**, for instance, by eleven o'clock I'm so hungry that I end up spending six dollars on a pastry and a latte from the campus café. When I eat a proper breakfast at home at seven-thirty, by contrast, I comfortably last until lunch. Over a week, that difference adds up to around thirty dollars, not to mention far fewer sugar crashes. [C] So regular meals are, quite literally, good for both body and wallet." }
+      ]},
+    { id: "s107", badge: "official", title: "Food Preferences", src: "Official TOEFL · 107",
+      scenario: "You have volunteered for a research study about food preferences. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "First, in your opinion, what kinds of meals do people your age enjoy most? Are they traditional, modern, or something in between?",
+          lx: ["cuisine", "trendy", "fusion"],
+          model: "[A] I think people my age like something in between — modern food, but with traditional elements. [R] We grew up with home-cooked traditional food, but we also love trying international dishes we see on social media. [E] For example, my friends and I love sushi, ramen and Mexican tacos, but we also go to a modern café in my city that makes traditional dumplings with new fillings, like cheese and spinach. And when we visit our parents, we always want our mom's traditional dishes. [C] So we like a mix of old and new.",
+          model5: "[A] I'd say people my age gravitate towards something in between: modern, international food with a traditional twist. [R] We grew up on our families' traditional cooking, but social media has exposed us to **cuisines** from all over the world, so we're far more adventurous than our parents were at our age. [E] My friends and I, for instance, regularly eat sushi, ramen and tacos, yet our favorite spot in town is a modern café that reinvents traditional dumplings with unexpected fillings such as goat cheese and spinach. And, tellingly, whenever we visit home, it's still our mothers' classic dishes we ask for. [C] So my generation's taste is essentially a fusion of the familiar and the new." },
+        { q: "And what kind of meals do you usually have on busy days? Do you cook, eat out, or pick up something ready-made?",
+          lx: ["have a lot on your plate", "batch-cook", "grab a bite"],
+          model: "[A] On busy days, I usually eat food I prepared earlier, and sometimes I **grab a bite** on campus. [R] When I have a lot of classes and a work shift, I don't have time to cook, but buying food every day is expensive and not very healthy. [E] For example, every Sunday I cook a big pot of chili or curry and put it in containers. On busy days, I just **heat up** one portion in the microwave. If I forget my lunch, I buy a sandwich at the university café. [C] So cooking in advance is my secret for busy days.",
+          model5: "[A] On busy days, I mostly rely on meals I've prepared in advance, with the occasional sandwich grabbed on campus. [R] When I **have a lot on my plate** — back-to-back lectures followed by a work shift — there's simply no time to cook, yet buying lunch every day would be both expensive and unhealthy. [E] Every Sunday, for instance, I **batch-cook** a large pot of chili or curry and divide it into containers, so on hectic days I just **heat up** a portion in the microwave between classes. If I forget my container, which happens more often than I'd like, I **grab a bite** at the university café. [C] So a couple of hours of cooking on Sunday is what gets me through the week." },
+        { q: "Many people say that modern life has changed how we eat. Do you think people today have healthier eating habits than in the past? Why or why not?",
+          lx: ["processed food", "home-cooked", "nutritious"],
+          model: "[A] I think in some ways people eat healthier, but in other ways worse. [R] Today, we know much more about nutrition, and we can buy fresh fruit and vegetables all year. But we also eat much more **processed food**, sugar and fast food because life is so busy. [E] For example, my grandparents ate simple **home-cooked** meals every day, with no snacks or soda. Now people eat chips, energy drinks and delivery food. On the other hand, my friends read food labels and choose healthy options, which my grandparents never did. [C] So it's better in knowledge, but worse in habits.",
+          model5: "[A] I'd say it's a mixed picture: we know far more about nutrition, but we often eat worse. [R] Fresh produce is now available year-round, and information about healthy eating is everywhere. Busy modern lifestyles, however, have driven a huge rise in **processed food**, sugary drinks and takeout. [E] My grandparents, for instance, ate simple **home-cooked** meals three times a day and rarely snacked, simply because convenience food barely existed. Today, by contrast, many people live on chips, energy drinks and delivery. Paradoxically, though, my friends read nutrition labels and debate protein intake — something my grandparents never once did. [C] So we're far better informed than past generations, but not necessarily better fed." },
+        { q: "Some people believe that preparing traditional meals at home is an important way to stay connected to one's culture. Do you agree? Or do you think it's possible to connect with culture in other ways? Why?",
+          lx: ["traditional dishes", "culinary tradition", "pass down"],
+          model: "[A] I agree that cooking traditional meals is an important way to stay connected to culture, but it's not the only way. [R] Recipes carry family history and traditions, and cooking them together connects generations. But music, language, festivals and stories are also important. [E] For example, every New Year, my family makes dumplings together, using my great-grandmother's recipe. It's my favorite tradition, and I feel very connected to my roots. But my cousin, who doesn't cook at all, connects with our culture through traditional music. [C] So food is a strong connection, but there are other ways too.",
+          model5: "[A] I agree that it's one of the most powerful ways, although certainly not the only one. [R] Traditional recipes carry family history, and cooking them together creates a tangible link between generations; few things evoke a sense of belonging as vividly as the smell of a dish from childhood. Culture, however, also lives in language, music, festivals and stories. [E] Every New Year, for instance, my family gathers to make dumplings from my great-grandmother's recipe, which has been **passed down** for four generations, and it's the moment I feel most connected to my roots. My cousin, by contrast, can barely boil an egg, yet she's deeply engaged with our culture through folk music. [C] So food is a wonderful bridge to culture, but there are many others." }
+      ]},
+    { id: "s052", badge: "official", title: "Dining Preferences", src: "Official TOEFL · 052 / 060",
+      scenario: "You have volunteered for a research study at your university about dining preferences. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "First, how often do you eat out at restaurants? Do you do this daily, weekly, monthly, or less often?",
+          lx: ["eat out", "budget", "special occasion"],
+          model: "[A] I **eat out** about once or twice a month. [R] As a student, I don't have much money, and restaurants are expensive, so I usually cook at home. But I like going out for special occasions. [E] For example, last month I went to a nice Italian restaurant for my best friend's birthday, and a few weeks ago my parents visited and took me to a traditional restaurant in the city center. Sometimes, after exams, my friends and I also go to a cheap noodle place to celebrate. [C] So eating out is a treat for me, not a habit.",
+          model5: "[A] I **eat out** roughly once or twice a month, mainly on special occasions. [R] On a student budget, restaurants are a luxury, so cooking at home is my default; that also makes the occasional meal out feel genuinely special. [E] Last month, for instance, a group of us celebrated my best friend's birthday at a cozy Italian place, and a few weeks before that my parents visited and treated me to dinner at a traditional restaurant in the old town. We also have an unofficial rule that the end of exam week is always celebrated at a cheap but excellent noodle bar near campus. [C] So eating out is a treat rather than a routine for me, which is probably why I enjoy it so much." },
+        { q: "If you are going to eat out, what types of cuisine do you prefer? For example, do you like savory foods or desserts?",
+          lx: ["savory", "cuisine", "have a sweet tooth"],
+          model: "[A] I prefer **savory** food, especially Japanese and Mexican **cuisine**. [R] I love strong flavors — spicy, salty and sour — and these cuisines have a lot of them. Also, I can make simple food at home, so in a restaurant I want something I can't cook myself. [E] For example, my favorite restaurant meal is a big bowl of ramen with spicy broth, or tacos with lots of lime and chili. I don't usually order dessert, but my sister **has** a real **sweet tooth** and always orders two! [C] So for me, restaurants are for savory, interesting flavors.",
+          model5: "[A] I'm firmly in the **savory** camp, with Japanese and Mexican **cuisine** as my favorites. [R] I'm drawn to bold flavors — heat, acidity, umami — and both cuisines deliver them in abundance. Besides, since I can manage simple dishes at home, when I eat out I want something I couldn't realistically make myself. [E] My ideal restaurant meal, for instance, is a steaming bowl of ramen in a rich, spicy broth, or a plate of tacos loaded with fresh lime and chili. I rarely bother with dessert, whereas my sister, who **has** an incurable **sweet tooth**, has been known to order two and skip the main course entirely. [C] So, for me, restaurants are all about bold, savory flavors." },
+        { q: "Can you tell me about a memorable dining experience or meal you or a friend have had recently? What made it special or stand out?",
+          lx: ["taste amazing", "atmosphere", "the local cuisine"],
+          model: "[A] A memorable meal was a dinner at a small family restaurant in Portugal last summer. [R] It was special because of the food, the people and the surprise. [E] We found the restaurant by accident when it started raining. There was no menu — the owner's mother just brought us what she cooked that day: grilled fish, potatoes and salad. Everything **tasted amazing**. Then the owner played the guitar, and other guests started singing. We stayed there for four hours. [C] So it wasn't expensive, but it was the best meal of my life.",
+          model5: "[A] The most memorable meal I've had recently was at a tiny family-run restaurant in Portugal last summer. [R] What made it unforgettable wasn't sophistication but authenticity — the food, the people and the sheer serendipity of it. [E] We stumbled upon the place while sheltering from a sudden downpour. There was no menu; the owner's elderly mother simply brought out whatever she'd cooked that day — grilled sardines, roast potatoes and a tomato salad — and everything **tasted amazing**. Later, the owner picked up a guitar, and before long half the room was singing along. We ended up staying for four hours. [C] So it was far from the most expensive meal I've had, but it's easily the one I'll remember longest." },
+        { q: "Some people believe that the atmosphere and service at a restaurant are just as important as the food quality. Do you agree or disagree with this viewpoint? Why?",
+          lx: ["atmosphere", "service", "leave a tip"],
+          model: "[A] I agree that atmosphere and service are very important, almost as important as the food. [R] When we eat out, we don't just pay for food — we pay for an experience. Rude waiters or a noisy room can ruin even a delicious meal. [E] For example, last year I went to a famous restaurant with great reviews. The food was good, but the waiter was rude, and the music was so loud we couldn't talk. I never went back. But I visit a small café near my home every week because the owner remembers my name and the place feels cozy. [C] So the food matters, but the experience matters too.",
+          model5: "[A] I largely agree; in my view, atmosphere and service are almost as important as the food itself. [R] When we eat out, we're paying for an entire experience rather than just a meal, and indifferent service or an unpleasant setting can easily overshadow excellent cooking. [E] Last year, for instance, I went to a highly rated restaurant whose food was genuinely impressive, but the waiter was dismissive and the music so loud that conversation was impossible; I've never returned. By contrast, I happily visit a modest café near my apartment every week, largely because the owner greets me by name and the place feels like a second living room. [C] So great food may bring people in, but it's the experience that brings them back." }
+      ]},
+    { id: "seh", badge: "platform", title: "Eating Habits", src: "Практика платформы",
+      scenario: "We're conducting a study on everyday eating habits and how people make choices around food. I'd like to begin by asking you a few questions about your typical meals.",
+      questions: [
+        { q: "What kind of meals do you usually eat in a normal day—from morning to evening? Could you describe what a typical breakfast, lunch, and dinner might look like for you?",
+          lx: ["leftovers", "have a snack", "home-cooked"],
+          model: "[A] My meals are quite simple and mostly **home-cooked**. [R] I'm a student with a small budget and not much time, so I eat things that are cheap, quick and healthy. [E] For breakfast, I usually have oatmeal with fruit and a big coffee. For lunch, I eat **leftovers** from dinner at university — for example, chicken with rice and vegetables. In the afternoon, I **have a snack**, like an apple or some nuts. For dinner, I cook something quick, like pasta with vegetables or an omelet. On weekends, I sometimes eat out with friends. [C] So my food is simple but balanced.",
+          model5: "[A] My meals are simple and mostly **home-cooked**, built around what's cheap, quick and reasonably healthy. [R] As a student juggling lectures and a part-time job, I simply don't have the time or budget for anything elaborate on weekdays. [E] Breakfast is almost always oatmeal with fruit and a generous mug of coffee. Lunch tends to be **leftovers** from the night before — chicken with rice and roasted vegetables, say — which I eat between lectures. Mid-afternoon, I **have a snack**, usually an apple or a handful of nuts, to avoid the vending machine. Dinner is something quick, like pasta with vegetables or an omelet. At weekends, I'll occasionally eat out with friends. [C] So it's nothing fancy, but it's balanced and keeps me going." },
+        { q: "Many people today say it's harder to eat healthily because of busy routines, limited time, or the convenience of fast food and packaged meals. How easy or difficult do you find it to maintain a healthy, balanced diet in your own life? And what factors—like work, family, cost, or access—affect the choices you make?",
+          lx: ["balanced diet", "junk food", "batch-cook"],
+          model: "[A] It's not easy, but I manage most of the time. [R] The biggest problems for me are time and money. During exams, I'm very busy and tired, so fast food is tempting. Also, fresh food is more expensive than **junk food**. [E] For example, a burger near campus costs less than a salad, which is crazy. To solve this, I **batch-cook** on Sundays, so I always have healthy food ready. But during exam week, I still order pizza two or three times. [C] So planning helps me a lot, but it's still a challenge.",
+          model5: "[A] I'd say it's manageable most of the time, though it's a constant balancing act. [R] For me, the two biggest obstacles are time and cost: during exam periods, convenience food is extremely tempting, and, frustratingly, fresh produce is often pricier than **junk food**. [E] Near my campus, for instance, a burger is actually cheaper than a decent salad, which says a lot about our food system. My solution is to **batch-cook** every Sunday, so healthy meals are always ready in the fridge. Even so, I'll admit that during exam weeks pizza deliveries creep back in two or three times. [C] So planning ahead makes a **balanced diet** realistic for me, but it would certainly be easier if healthy food were cheaper." },
+        { q: "In recent years, there's been a lot of attention on food trends—things like plant-based diets, organic and local ingredients, low-carb eating, or intermittent fasting. Have you tried any of these food trends yourself? If so, what motivated you to try them, and how did they fit into your lifestyle?",
+          lx: ["intermittent fasting", "plant-based", "take something with a pinch of salt"],
+          model: "[A] Yes, I tried **intermittent fasting** last year, and now I eat **plant-based** meals a few times a week. [R] I tried fasting because many people online said it gives you more energy. Plant-based meals I started for health and for the environment. [E] For example, with fasting, I didn't eat until noon. It worked for two weeks, but then I felt tired and couldn't concentrate in morning classes, so I stopped. Plant-based meals were easier — now I eat lentil curry or bean tacos three times a week, and I really like them. [C] So some trends work for me, and some don't.",
+          model5: "[A] I've experimented with two: **intermittent fasting**, which I abandoned, and **plant-based** eating, which has stuck. [R] I tried fasting after countless videos promised boundless energy, whereas I started eating more plant-based meals for both health and environmental reasons. [E] With fasting, I skipped food until noon; for about two weeks it felt fine, but then I found myself struggling to concentrate in morning lectures, so I gave it up. Plant-based meals, by contrast, fitted seamlessly into my routine: lentil curry and black bean tacos now appear on my menu three times a week, and they're cheaper than meat. [C] So my experience taught me to **take** food trends **with a pinch of salt** and keep only what actually works for me." },
+        { q: "Many experts argue that healthy eating shouldn't just be a personal responsibility, but something supported by communities and public institutions. Do you believe schools, local governments, or communities should do more to promote healthy eating? And if so, what kinds of initiatives would you like to see?",
+          lx: ["nutritious", "affordable", "cooking classes"],
+          model: "[A] Yes, I think schools and local governments should do much more. [R] It's hard to eat healthily if healthy food is expensive and nobody teaches you how to cook. Institutions can make healthy choices easier for everyone, especially for children. [E] For example, I'd like schools to offer free, **nutritious** lunches and teach cooking classes, so kids learn to make simple healthy meals. Cities could also support farmers' markets and give discounts on fruit and vegetables. My university started cheap healthy lunches last year, and they're always sold out. [C] So it shouldn't only be a personal responsibility.",
+          model5: "[A] I strongly believe they should. [R] Telling people to eat healthily is pointless if nutritious food is expensive and nobody has taught them to cook. Institutions can make the healthy choice the easy and **affordable** one, which matters especially for children and low-income families. [E] I'd love to see schools providing free, **nutritious** lunches and practical **cooking classes**, so children leave school able to prepare a few simple meals. Cities, meanwhile, could support farmers' markets and subsidize fruit and vegetables. My university, for instance, launched a low-cost healthy lunch option last year, and it sells out almost every day, which proves the demand is there. [C] So healthy eating should be a shared responsibility, not purely an individual one." }
+      ]},
+    { id: "spb", badge: "platform", title: "Plant-based Diets", src: "Практика платформы",
+      scenario: "I'm doing a study on eating habits, especially around plant-based diets. I'd like to ask you a few questions about your experience.",
+      questions: [
+        { q: "Would you say you follow a fully plant-based diet, or do you simply try to include more plant-based meals in your routine? What motivated you to make that shift—was it for health, environmental reasons, animal welfare, or something else?",
+          lx: ["plant-based", "carbon footprint", "cut back on"],
+          model: "[A] I'm not fully plant-based, but I eat plant-based meals about three or four times a week. [R] I started mainly for the environment, after I learned how much meat production affects the climate. Health and money were also reasons — beans and lentils are cheaper than meat. [E] For example, last year I watched a documentary about the **carbon footprint** of beef, and it really shocked me. The next week I tried my first lentil curry, and I loved it. Now I eat meat only on weekends, usually with my family. [C] So I **cut back on** meat for the planet, and I'm happy with the change.",
+          model5: "[A] I wouldn't call myself fully plant-based; I'd describe myself as a flexitarian, eating plant-based meals three or four times a week. [R] My main motivation was environmental, though health and, frankly, my student budget played a role too, since beans and lentils cost a fraction of the price of meat. [E] The turning point came last year, when I watched a documentary on the **carbon footprint** of beef production. The following week, I cooked my first lentil curry, and, to my surprise, I loved it. These days, I mostly eat meat only at weekends, typically at family lunches. [C] So I **cut back on** meat primarily for the planet, but I've ended up healthier and better off as well." },
+        { q: "What are some of your go-to meals or favorite ingredients when you're eating plant-based? And do you find it easy to prepare satisfying meals, or does it take extra effort and planning?",
+          lx: ["protein", "flavor", "batch-cook"],
+          model: "[A] My go-to meals are lentil curry, bean tacos and pasta with roasted vegetables. [R] These dishes are easy, cheap and full of **flavor**, and they keep me full for a long time. [E] For example, my lentil curry takes only thirty minutes: lentils, tomatoes, coconut milk and spices. I make a big pot and eat it for three days. At first, it took more planning, because I had to learn new recipes and think about **protein**. But after a month, it became easy. [C] So plant-based cooking needed some effort at the start, but now it's simple.",
+          model5: "[A] My staples are lentil curry, black bean tacos and pasta with roasted vegetables. [R] They're inexpensive, quick, bursting with **flavor** and, thanks to the beans and lentils, surprisingly filling. [E] My lentil curry, for instance, takes barely thirty minutes — red lentils, tomatoes, coconut milk and a generous amount of spices — and since I **batch-cook** it, one pot lasts three days. Admittedly, the transition required some effort at first: I had to learn new recipes and think carefully about getting enough **protein**. Within about a month, however, it had become second nature. [C] So plant-based cooking demanded a little planning initially, but now it's actually easier than cooking meat." },
+        { q: "These days, there's a growing variety of plant-based products—meat substitutes, dairy alternatives, and so on. Have you tried any of those, and if so, how do you feel about them? Do they make it easier to stick with your eating habits, or do you prefer more natural, whole-food ingredients?",
+          lx: ["meat substitute", "whole foods", "processed food"],
+          model: "[A] I've tried a few, but I prefer natural **whole foods**. [R] Some **meat substitutes** taste good, but they're expensive and often very processed, with a lot of salt and long ingredient lists. Beans, lentils and tofu are cheaper and simpler. [E] For example, I tried plant-based burgers at a barbecue, and they tasted almost like real meat — I was surprised. But they cost twice as much as normal burgers. I do use oat milk every day in my coffee, because I like the taste. [C] So substitutes are useful sometimes, but my everyday food is natural ingredients.",
+          model5: "[A] I've tried several, but on a daily basis I much prefer **whole foods**. [R] Some **meat substitutes** are genuinely impressive, but they tend to be expensive and heavily **processed**, often with long ingredient lists and a lot of salt. Beans, lentils and tofu, by contrast, are cheaper, simpler and arguably healthier. [E] At a friend's barbecue, for instance, I tried a plant-based burger that was almost indistinguishable from beef, which genuinely surprised me; yet it cost twice as much as a regular one. The one alternative I use every day is oat milk in my coffee, simply because I prefer the taste. [C] So substitutes can be a helpful bridge, especially for beginners, but my everyday cooking relies on natural ingredients." },
+        { q: "Some people worry that switching to a plant-based diet might make it harder to get enough protein, vitamins, or other nutrients. From your experience, do you think that's a valid concern? And have you made any specific changes—like taking supplements or tracking your nutrition—to make sure your diet stays balanced?",
+          lx: ["get enough protein", "nutrients", "supplements"],
+          model: "[A] I think it's a valid concern, but the problem can be solved easily. [R] If you just remove meat and eat pasta every day, you won't get enough **protein** and vitamins. But with a little knowledge, a plant-based diet can be very healthy. [E] For example, I make sure every meal has beans, lentils, tofu or nuts. My doctor also recommended a vitamin B12 supplement, because it's hard to get from plants. Last year, my blood tests were completely normal. [C] So you need to plan a bit, but it's not a big problem.",
+          model5: "[A] It's a legitimate concern, but one that's fairly easy to address with a little knowledge. [R] Simply removing meat and replacing it with pasta would certainly leave gaps in **protein** and certain **nutrients**. A well-planned plant-based diet, however, can be perfectly balanced. [E] I make sure every meal includes a good protein source, for instance — beans, lentils, tofu or nuts — and, on my doctor's advice, I take a vitamin B12 **supplement**, since it's almost impossible to obtain from plants alone. For a couple of months, I also tracked my meals in an app, which reassured me that I was hitting my targets. My last blood test came back entirely normal. [C] So the concern is valid, but it calls for planning, not panic." }
+      ]},
+    { id: "sfd", badge: "platform", title: "Food Delivery Services", src: "Практика платформы",
+      scenario: "I'm conducting a study on how food delivery services are shaping people's eating habits and routines. I'd like to ask you a few questions to learn about your experience.",
+      questions: [
+        { q: "To start off, how often do you use food delivery apps such as Uber Eats, DoorDash, or similar platforms? Would you say this has become a regular part of your lifestyle?",
+          lx: ["order takeout", "delivery fees", "special occasion"],
+          model: "[A] I use delivery apps about two or three times a month, so it's not a regular part of my life. [R] Delivery is convenient, but with all the **delivery fees**, it's too expensive for a student. I prefer cooking or going to a cheap café. [E] For example, I usually **order takeout** during exam week, when I'm too tired to cook, or on Friday evenings when my friends come over to watch a movie. A pizza that costs ten dollars in the restaurant costs eighteen with delivery! [C] So delivery is a treat for me, not a habit.",
+          model5: "[A] Two or three times a month at most, so I wouldn't call it a regular part of my lifestyle. [R] While the convenience is undeniable, the **delivery fees**, service charges and inflated menu prices make it a luxury on a student budget. [E] I typically **order takeout** during exam week, when I'm too exhausted to cook, or on Friday nights when friends come over to watch a film. What still shocks me is the price difference: a pizza that costs ten dollars in the restaurant can easily end up costing eighteen once it's delivered. [C] So for me, delivery remains an occasional treat rather than a habit — mainly because my budget simply wouldn't survive it." },
+        { q: "Food delivery services are often praised for being convenient and time-saving, but some people also feel they encourage unhealthy choices or lead to overspending. In your case, what are the main advantages and disadvantages you've experienced when using these services?",
+          lx: ["convenient", "it adds up", "junk food"],
+          model: "[A] The main advantage is convenience, but the disadvantages are money and health. [R] Delivery saves time and energy, especially when you're tired or sick. But it's expensive, and most delivery food is pizza, burgers and fried food. [E] For example, when I had the flu last winter, delivery was really helpful — I got hot soup without leaving my bed. But last exam period, I ordered food five times in one week. I spent almost a hundred dollars and felt heavy and tired. [C] So delivery is useful in difficult moments, but dangerous as a habit.",
+          model5: "[A] The obvious advantage is convenience, whereas the main drawbacks are cost and, often, nutrition. [R] Delivery is invaluable when you're exhausted, ill or short on time, but the fees quickly **add up**, and the apps nudge you towards pizza, burgers and fried food rather than anything wholesome. [E] When I had the flu last winter, for instance, being able to get hot soup delivered without leaving my bed felt like a lifesaver. During the last exam period, however, I ordered food five times in a single week, spent nearly a hundred dollars and ended up feeling sluggish and guilty. [C] So delivery is a fantastic safety net in difficult moments, but a costly and unhealthy habit if you let it become routine." },
+        { q: "Many people say that because it's so easy to order food now, they find themselves cooking at home less often. Would you say that using food delivery apps has changed how often—or how much—you cook at home? Why do you think that is?",
+          lx: ["cook from scratch", "convenient", "habit"],
+          model: "[A] Not really — I still cook at home most of the time. [R] Delivery is too expensive for me, and I actually enjoy cooking. It helps me relax after studying. But I can see that many of my friends cook much less because of these apps. [E] For example, my roommate used to cook dinner every day, but since he downloaded a delivery app, he orders food four or five times a week. He says it's because he's busy, but I think it's just a habit now — it's so easy to press a button. [C] So the apps haven't changed my cooking, but they've changed my roommate's.",
+          model5: "[A] Not significantly, at least not in my case; I still cook most of my meals. [R] Partly that's financial, but mostly it's because I genuinely enjoy cooking — chopping vegetables after a long day of studying is oddly therapeutic. That said, I've clearly seen the effect on others. [E] My roommate, for instance, used to **cook from scratch** almost every evening, but since downloading a delivery app, he orders in four or five times a week. He attributes it to being busy, yet his schedule hasn't really changed; ordering has simply become a **habit**, because it's so effortless. [C] So the apps haven't changed how much I cook, but they've certainly made it very easy for others to stop." },
+        { q: "In recent years, food delivery has become a huge part of urban life, especially during the pandemic. Looking ahead, do you think people will continue to rely heavily on food delivery apps, or do you think traditional habits like home-cooking and dining out will make a strong comeback? Why?",
+          lx: ["here to stay", "eat out", "home-cooked"],
+          model: "[A] I think delivery apps will stay popular, but home-cooking and eating out will also come back. [R] People got used to delivery during the pandemic, and it's very convenient, so it won't disappear. But delivery is expensive, and people also missed going to restaurants with friends. [E] For example, during the pandemic, my family ordered food almost every weekend. Now they order less, because prices went up, and they go to restaurants again because they enjoy the atmosphere. My mom also started cooking more after she saw how much they spent on delivery. [C] So I think we'll see a balance of all three.",
+          model5: "[A] I think delivery is **here to stay**, but home-cooking and dining out are already making a comeback. [R] The pandemic turned delivery into a deeply ingrained habit, and its convenience means it won't disappear. However, rising prices are making people more cautious, and many missed the social experience of eating out. [E] During the pandemic, for instance, my family ordered food almost every weekend. Since then, they've cut back considerably, partly because prices have risen sharply and partly because they'd missed restaurants. My mother even started cooking more after calculating how much they'd spent on delivery in a single year — the figure genuinely horrified her. [C] So rather than one habit winning, I expect a new balance between all three." }
+      ]}
+  ],
+
+  /* ===== Speaking Club: тема вдоль и поперёк ===== */
+  club: [
+    { icon: "utensils", title: "Моя еда", en: "My food", questions: [
+      { t: "personal", src: "Платформа · Eating Habits", q: "What do you usually eat in a normal day — breakfast, lunch and dinner?", same: "seh-0",
+        f: ["What's the best meal of your day?", "Do you eat differently at weekends?"], lx: ["leftovers", "have a snack", "home-cooked"] },
+      { t: "personal", src: "Official 064", q: "Can you describe some foods that you eat on a regular basis?", same: "s064-1",
+        f: ["What food could you never give up?", "What's always in your fridge?"], lx: ["nutritious", "batch-cook", "leftovers"] },
+      { t: "personal", src: "Official 107", q: "What kind of meals do you usually have on busy days? Do you cook, eat out, or pick up something ready-made?", same: "s107-1",
+        f: ["What's your fastest healthy meal?", "Do you ever skip meals when busy?"], lx: ["have a lot on your plate", "batch-cook", "grab a bite"] },
+      { t: "personal", src: "Official 064", q: "Do you follow any specific diet or eating plan?", same: "s064-0",
+        f: ["Have you ever tried a strict diet?", "Do you count calories?"], lx: ["be on a diet", "in moderation", "cut out"] },
+      { t: "opinion", q: "Many people say breakfast is the most important meal of the day. Do you agree?",
+        model: "[A] For me, yes — breakfast is very important, although I know it's different for other people. [R] If I don't eat in the morning, I can't concentrate in class, and by lunchtime I'm so hungry that I eat too much. But some people feel fine without breakfast. [E] For example, I always eat oatmeal with fruit before my first lecture, and I feel full and focused until lunch. My roommate never eats breakfast — he just drinks coffee — and he says he feels great. [C] So I think breakfast is important for me, but it depends on the person.",
+        model5: "[A] For me personally, absolutely, though I suspect it varies from person to person. [R] Without breakfast, my concentration collapses by mid-morning, and I arrive at lunch so ravenous that I overeat. Some people, however, genuinely function well without it, and research on the topic is surprisingly mixed. [E] I never skip my bowl of oatmeal and fruit before my first lecture, for instance, and it keeps me focused until noon. My roommate, by contrast, survives on black coffee until lunchtime and insists he's never felt better. [C] So breakfast is certainly the most important meal for me, but I'm not convinced there's one rule that suits everyone.",
+        f: ["What's a typical breakfast in your country?", "Sweet or savory breakfast?"], lx: ["skip breakfast", "energy levels", "savory"] },
+      { t: "personal", q: "What's your favorite comfort food, and when do you eat it?",
+        model: "[A] My favorite comfort food is my grandmother's chicken soup. [R] It reminds me of my childhood and of home, so it makes me feel safe and warm, especially when I'm sick or sad. [E] For example, when I was homesick in my first semester, I called my grandmother and asked for her recipe. I cooked it in my dorm kitchen, and the smell made me feel like I was at home again. Now I make it every time I get a cold or have a bad week. [C] So for me, comfort food is really about memories, not just taste.",
+        model5: "[A] My ultimate comfort food is my grandmother's chicken soup. [R] Its appeal has less to do with taste than with memory: it instantly takes me back to childhood, so it makes me feel safe and cared for, particularly when I'm ill or feeling low. [E] During my first, very homesick semester, for instance, I phoned my grandmother and asked her to talk me through the recipe step by step. The moment the smell filled my tiny dorm kitchen, I felt as though I were home again. Since then, it's become my go-to remedy for colds and bad weeks alike. [C] So for me, comfort food is really about the memories that come with it.",
+        f: ["Is comfort food always unhealthy?", "Does food affect your mood?"], lx: ["home-cooked", "recipe", "pass down"] }
+    ]},
+    { icon: "users", title: "Вместе за столом", en: "Eating together", questions: [
+      { t: "compare", src: "Official 102", q: "When you have a meal at school or work, do you prefer to eat alone or with friends or co-workers? Why?", same: "s102-0",
+        f: ["Is it weird to eat alone in a restaurant?", "Do you eat at your desk?"], lx: ["grab a bite", "take a break from", "socialize"] },
+      { t: "personal", src: "Official 102", q: "What kind of meals do your family or friends generally like to eat — traditional home-cooked dishes, fast food or other types?", same: "s102-1",
+        f: ["Who is the best cook in your family?", "What's a typical family celebration meal?"], lx: ["home-cooked", "traditional dishes", "takeout"] },
+      { t: "opinion", src: "Official 102", q: "Do regular meal times contribute to better health and financial well-being?", same: "s102-3",
+        f: ["Do you eat at the same times every day?", "Is late-night eating a problem?"], lx: ["skip breakfast", "snack", "impulse buy"] },
+      { t: "opinion", q: "Are family dinners still important today?",
+        model: "[A] Yes, I think family dinners are still very important, maybe even more than before. [R] Today, everyone is busy and spends a lot of time on their phones, so dinner is often the only time a family can talk. It helps parents and children stay close. [E] For example, when I was in school, my parents had a rule: dinner at seven, no phones at the table. As a teenager, I hated it, but now I understand that those dinners were where we talked about problems and plans. I miss them now that I live alone. [C] So family dinners keep families connected.",
+        model5: "[A] I'd argue they're more important than ever. [R] With everyone's schedules so packed and so much attention absorbed by screens, dinner is often the only moment a family genuinely spends together, which makes it crucial for keeping relationships close. [E] When I was at school, for instance, my parents had a strict rule: dinner at seven and no phones at the table. As a teenager I resented it deeply, yet in hindsight, those meals were where we discussed problems, celebrated small successes and simply caught up. Now that I live on my own, they're one of the things I miss most. [C] So family dinners may seem old-fashioned, but they're one of the simplest ways to keep a family connected.",
+        f: ["Did your family eat together?", "Should phones be banned at the table?"], lx: ["home-cooked", "traditional dishes", "family meals"] },
+      { t: "opinion", q: "Many people eat while watching a screen — TV, a laptop or a phone. Is this a bad habit?",
+        model: "[A] I think it's a bad habit, but almost everyone does it, including me. [R] When you eat in front of a screen, you don't notice how much you eat, so you often eat too much. You also don't really enjoy the food or talk to people around you. [E] For example, when I eat dinner while watching a series, I sometimes finish a big plate of pasta and don't remember tasting it. But when I eat with friends at the table, I eat slower and enjoy the meal more. [C] So I try to eat without screens at least once a day.",
+        model5: "[A] I'd say it's a bad habit, although I'm certainly guilty of it myself. [R] When our attention is on a screen, we barely register what or how much we're eating, which often leads to overeating, and we miss out on both the pleasure of the food and conversation with others. [E] Whenever I eat in front of a series, for example, I can finish an entire plate of pasta without really tasting a single bite. Eating with friends at the table, by contrast, I eat more slowly, notice the **flavors** and, ironically, feel fuller on less. [C] So these days I try to have at least one screen-free meal a day, which, small as it sounds, has made a noticeable difference.",
+        f: ["Do you watch something while eating?", "Is eating alone lonely?"], lx: ["portion", "flavor", "screen time"] }
+    ]},
+    { icon: "phone", title: "Готовить или заказать", en: "Cook or order in", questions: [
+      { t: "personal", src: "Платформа · Food Delivery", q: "How often do you use food delivery apps? Has it become a regular part of your lifestyle?", same: "sfd-0",
+        f: ["What do you usually order?", "What's the most you've paid for delivery?"], lx: ["order takeout", "delivery fees", "special occasion"] },
+      { t: "compare", src: "Платформа · Food Delivery", q: "What are the main advantages and disadvantages you've experienced when using food delivery services?", same: "sfd-1",
+        f: ["Are delivery workers treated fairly?", "Does delivery create too much packaging waste?"], lx: ["convenient", "it adds up", "junk food"] },
+      { t: "experience", src: "Платформа · Food Delivery", q: "Have food delivery apps changed how often you cook at home? Why?", same: "sfd-2",
+        f: ["What would make you cook more?", "Is cooking a waste of time?"], lx: ["cook from scratch", "convenient", "habit"] },
+      { t: "opinion", src: "Платформа · Food Delivery", q: "Will people keep relying on food delivery apps, or will home-cooking and dining out make a strong comeback?", same: "sfd-3",
+        f: ["Will robots or drones deliver food?", "Will restaurants survive?"], lx: ["here to stay", "eat out", "home-cooked"] },
+      { t: "opinion", q: "Should everyone learn how to cook? At what age?",
+        model: "[A] Yes, I think everyone should learn to cook, ideally as a teenager. [R] Cooking is a basic life skill. If you can cook, you eat healthier, save money and don't depend on fast food. Teenagers are old enough to use a kitchen safely and will need this skill soon. [E] For example, I didn't learn to cook before university, and in my first semester I lived on instant noodles and pizza. My roommate learned from his mom at fourteen, and he ate much better and spent half as much money as me. [C] So cooking should be learned early, at home or at school.",
+        model5: "[A] I'm convinced everyone should, ideally by their mid-teens. [R] Cooking is a fundamental life skill: people who can cook tend to eat more healthily, spend considerably less and depend far less on processed and delivery food. Teenagers, moreover, are old enough to handle a kitchen safely and will soon need these skills when they leave home. [E] I never learned before university, for instance, and spent my first semester surviving on instant noodles and pizza. My roommate, by contrast, had been taught by his mother at fourteen, and he ate far better while spending roughly half as much as I did. [C] So cooking should be taught early, whether at home or as part of the school curriculum.",
+        f: ["Who taught you to cook?", "What's the first dish everyone should learn?"], lx: ["cook from scratch", "follow a recipe", "life skills"] }
+    ]},
+    { icon: "store", title: "Рестораны и кафе", en: "Eating out", questions: [
+      { t: "personal", src: "Official 052 / 060", q: "How often do you eat out at restaurants — daily, weekly, monthly, or less often?", same: "s052-0",
+        f: ["What's your favorite place to eat out?", "Who do you usually go with?"], lx: ["eat out", "budget", "special occasion"] },
+      { t: "personal", src: "Official 052 / 060", q: "If you eat out, what types of cuisine do you prefer? Savory foods or desserts?", same: "s052-1",
+        f: ["Which cuisine have you never tried?", "What's the spiciest thing you've eaten?"], lx: ["savory", "cuisine", "have a sweet tooth"] },
+      { t: "experience", src: "Official 052 / 060", q: "Tell me about a memorable dining experience or meal you or a friend have had recently. What made it special?", same: "s052-2",
+        f: ["What's the worst meal you've had out?", "Would you go back?"], lx: ["taste amazing", "atmosphere", "the local cuisine"] },
+      { t: "opinion", src: "Official 052 / 060", q: "Are atmosphere and service at a restaurant just as important as food quality?", same: "s052-3",
+        f: ["Would you go to a great restaurant with rude staff?", "How do you choose a restaurant?"], lx: ["atmosphere", "service", "leave a tip"] },
+      { t: "opinion", q: "Do you trust online restaurant reviews when choosing where to eat?",
+        model: "[A] I use online reviews, but I don't trust them completely. [R] Reviews help you avoid really bad places, but some are fake, and people often write reviews only when they're very angry or very happy. Also, everyone's taste is different. [E] For example, I once chose a restaurant with five stars and hundreds of great reviews, but the food was average and very expensive. Later I read that the owner paid for reviews. Now I look at photos and read the medium reviews, which are usually more honest. I also ask friends. [C] So I take reviews **with a pinch of salt**.",
+        model5: "[A] I use them, but I definitely **take** them **with a pinch of salt**. [R] Reviews are useful for weeding out genuinely bad places; however, some are fake, and people tend to post only after extreme experiences, so the picture is often distorted. Taste is also highly personal. [E] I once chose a restaurant on the strength of hundreds of glowing five-star reviews, for instance, only to be served a mediocre, overpriced meal; I later read that the owner had been paying for reviews. These days I focus on customers' photos and the three-star reviews, which tend to be the most balanced, and above all I trust recommendations from friends. [C] So reviews are a helpful starting point, but never the final word.",
+        f: ["Have you ever written a review?", "Should fake reviews be illegal?"], lx: ["take something with a pinch of salt", "atmosphere", "service"] }
+    ]},
+    { icon: "heart", title: "Здоровое питание", en: "Healthy eating", questions: [
+      { t: "experience", src: "Платформа · Eating Habits", q: "How easy or difficult is it for you to maintain a healthy, balanced diet? What factors — work, family, cost or access — affect your choices?", same: "seh-1",
+        f: ["What's your biggest food weakness?", "Is it easier in your home town or here?"], lx: ["balanced diet", "junk food", "batch-cook"] },
+      { t: "opinion", src: "Official 064", q: "Some people say they can't maintain a healthy diet because they don't like the taste of healthier foods. What do you think about that argument?", same: "s064-3",
+        f: ["What healthy food do you secretly love?", "Can you train your taste?"], lx: ["taste amazing", "flavor", "processed food"] },
+      { t: "compare", src: "Official 107", q: "Do people today have healthier eating habits than in the past? Why or why not?", same: "s107-2",
+        f: ["What did your grandparents eat?", "What will people eat in fifty years?"], lx: ["processed food", "home-cooked", "nutritious"] },
+      { t: "personal", src: "Official 099 · Health and Wellness", q: "Can you describe any dietary choices or habits that you follow to stay healthy?",
+        model: "[A] I try to eat a **balanced diet**, and I cook at home most of the time. [R] When I eat fast food, I feel tired and heavy, and it's also expensive. Home-cooked food is healthier and cheaper. [E] For example, every Sunday I cook a big pot of vegetable soup or chicken with rice for three or four days. I also **cut down on** sugar — I stopped drinking soda last year, and now I drink water or tea. I still eat pizza with friends sometimes, but only once a week. [C] So I'm not perfect, but I try to make good choices most of the time.", model5: "[A] My main habits are cooking at home and **cutting down on** sugar, although I'm far from strict. [R] Whenever I rely on fast food, I feel sluggish and unfocused, and it drains my budget too, whereas home-cooked meals leave me feeling noticeably better. [E] Every Sunday, for example, I batch-cook something simple, such as a vegetable stew or chicken with rice, which covers three or four days. Last year I also gave up soft drinks entirely, replacing them with water and tea, and within a month my afternoon energy crashes had largely disappeared. I still enjoy pizza with friends, but it's a weekly treat rather than a habit. [C] So I aim for a **balanced diet** most of the time, not perfection.",
+        f: ["Which habit was hardest to start?", "What would you like to change?"], lx: ["balanced diet", "cut down on", "cook at home"] },
+      { t: "opinion", q: "Is healthy food too expensive for many people?",
+        model: "[A] Yes, I think healthy food is often too expensive, especially for students and poorer families. [R] Fresh vegetables, fish and fruit cost more than fast food and processed snacks. When people have little money, they choose food that's cheap and filling. But some healthy food, like beans and oats, is actually cheap. [E] For example, near my university, a burger costs four dollars, but a salad costs nine. At the same time, I make a big pot of lentil soup for about five dollars, and it lasts three days. [C] So healthy eating can be cheap, but it needs cooking skills and time.",
+        model5: "[A] In many cases, yes, particularly for students and low-income families. [R] Fresh produce, fish and whole grains often cost noticeably more than fast food and processed snacks, so when money is tight, people understandably choose whatever is cheapest and most filling. Some of the most nutritious foods, however, such as beans, lentils and oats, are remarkably affordable. [E] Near my campus, for instance, a burger costs four dollars while a salad costs nine. Yet I can make a large pot of lentil soup for about five dollars that lasts three days. [C] So healthy eating doesn't have to be expensive, but it does require cooking skills and time, which are exactly what many struggling families lack.",
+        f: ["What's the cheapest healthy meal you know?", "Should governments make healthy food cheaper?"], lx: ["nutritious", "affordable", "junk food"] }
+    ]},
+    { icon: "trending", title: "Диеты и тренды", en: "Diets & food trends", questions: [
+      { t: "experience", src: "Платформа · Eating Habits", q: "Have you tried any food trends — plant-based diets, organic food, low-carb eating, intermittent fasting? What motivated you, and how did they fit your lifestyle?", same: "seh-2",
+        f: ["Which trend seems silly to you?", "Why do food trends spread so fast?"], lx: ["intermittent fasting", "plant-based", "take something with a pinch of salt"] },
+      { t: "experience", src: "Official 064", q: "Tell me about a time when you or someone you know made a significant change to their diet. What motivated it?", same: "s064-2",
+        f: ["Was it hard at first?", "Did the change last?"], lx: ["go cold turkey", "cut out", "energy levels"] },
+      { t: "opinion", q: "Social media is full of diet advice and 'what I eat in a day' videos. Is this helpful or harmful?",
+        model: "[A] I think it's more harmful than helpful. [R] Some videos give useful recipes and ideas, but many influencers have no education in nutrition, and they promote extreme diets or expensive products. Young people can start to feel bad about their food and their bodies. [E] For example, my younger sister watched \"what I eat in a day\" videos from a fitness influencer and started eating very little. My parents were worried. On the other hand, I found great cheap recipes from a student cooking channel. [C] So people should be very careful about who they follow.",
+        model5: "[A] On balance, I'd say it does more harm than good, although there are some genuinely useful creators. [R] Many influencers have no qualifications in nutrition, yet they promote extreme diets, questionable supplements and unrealistic body ideals, which can be particularly damaging for impressionable young viewers. [E] My younger sister, for instance, started copying a fitness influencer's \"what I eat in a day\" videos and drastically cut her portions, which seriously worried my parents. On the other hand, I've discovered brilliant budget recipes through a student cooking channel. [C] So the key is choosing sources carefully and **taking** dramatic claims **with a pinch of salt**.",
+        f: ["Should influencers need qualifications to give diet advice?", "Who do you trust about food?"], lx: ["take something with a pinch of salt", "unrealistic", "be on a diet"] },
+      { t: "opinion", q: "Is organic food worth paying more for?",
+        model: "[A] I think organic food is sometimes worth it, but not always. [R] Organic farming uses fewer chemicals, which is better for the environment, and some people think the food tastes better. But it's much more expensive, and the health benefits are not always clear. [E] For example, I buy organic eggs and milk because I care about how animals are treated. But for things like bananas or avocados, which have thick skin, I buy normal ones and save money. My student budget doesn't allow me to buy everything organic. [C] So I choose organic only for some products.",
+        model5: "[A] Sometimes, though certainly not across the board. [R] Organic farming relies on fewer synthetic pesticides and generally treats animals better, which benefits the environment; the evidence that organic food is significantly healthier, however, is far less conclusive, and the price difference can be steep. [E] I buy organic eggs and milk, for example, mainly for animal welfare reasons. For produce with thick peels, such as bananas or avocados, by contrast, I stick to conventional options and save the difference. On a student budget, going fully organic simply isn't realistic. [C] So I'd say organic is worth paying for selectively, depending on your priorities and your wallet.",
+        f: ["Can you taste the difference?", "Is local better than organic?"], lx: ["whole foods", "sustainable", "affordable"] }
+    ]},
+    { icon: "leaf", title: "Растительное питание", en: "Plant-based eating", questions: [
+      { t: "personal", src: "Платформа · Plant-based Diets", q: "Do you follow a fully plant-based diet, or include more plant-based meals in your routine? What motivated you?", same: "spb-0",
+        f: ["Could you give up meat completely?", "What do your parents think?"], lx: ["plant-based", "carbon footprint", "cut back on"] },
+      { t: "personal", src: "Платформа · Plant-based Diets", q: "What are your go-to plant-based meals or favorite ingredients? Is it easy to prepare satisfying meals?", same: "spb-1",
+        f: ["What's the best vegetarian dish you've tried?", "Is your national cuisine vegetarian-friendly?"], lx: ["protein", "flavor", "batch-cook"] },
+      { t: "opinion", src: "Платформа · Plant-based Diets", q: "Have you tried meat substitutes or dairy alternatives? Do they help, or do you prefer natural, whole-food ingredients?", same: "spb-2",
+        f: ["Would you eat lab-grown meat?", "Why are substitutes so expensive?"], lx: ["meat substitute", "whole foods", "processed food"] },
+      { t: "opinion", src: "Платформа · Plant-based Diets", q: "Is it a valid concern that a plant-based diet makes it harder to get enough protein and nutrients? What changes help keep a diet balanced?", same: "spb-3",
+        f: ["Should children be vegan?", "Do you take any supplements?"], lx: ["get enough protein", "nutrients", "supplements"] },
+      { t: "opinion", src: "Official 102", q: "Do you think that in the future more people will adopt plant-based diets? Why or why not?", same: "s102-2",
+        f: ["Should schools serve meat-free days?", "Will meat become a luxury?"], lx: ["plant-based", "carbon footprint", "meat substitute"] }
+    ]},
+    { icon: "globe", title: "Еда и культура", en: "Food & culture", questions: [
+      { t: "opinion", src: "Official 107", q: "What kinds of meals do people your age enjoy most? Traditional, modern, or something in between?", same: "s107-0",
+        f: ["Do young people still cook traditional food?", "What food is trendy right now?"], lx: ["cuisine", "trendy", "fusion"] },
+      { t: "opinion", src: "Official 107", q: "Is preparing traditional meals at home an important way to stay connected to one's culture? Or can people connect with culture in other ways?", same: "s107-3",
+        f: ["Which family recipe would you like to learn?", "Should recipes be written down?"], lx: ["traditional dishes", "culinary tradition", "pass down"] },
+      { t: "experience", src: "Official 095 · Cultural Festivals", q: "Cultural festivals celebrate traditions like food, music, art or clothing. Have you ever been to one — for example, a food festival? Or would you like to go? Why?",
+        model: "[A] Yes, last summer I went to an international food festival in my city, and I'd love to go again. [R] It's a fun way to try food from many countries in one day and to learn about different cultures without traveling. [E] For example, I tried Ethiopian injera with spicy lentils, Korean street pancakes and Peruvian ceviche — all in one afternoon! People from each community cooked their traditional dishes and told us about their festivals and music. It felt like a small trip around the world. [C] So food festivals are a delicious way to learn about other cultures.",
+        model5: "[A] I have — last summer I went to an international food festival in my city, and I'd go again in a heartbeat. [R] It's a wonderfully accessible way to experience other cultures: you can sample a dozen **cuisines** in an afternoon and actually talk to the people behind them, all without buying a plane ticket. [E] In a single afternoon, for instance, I tried Ethiopian injera with spiced lentils, Korean street pancakes and Peruvian ceviche. What made it special, though, was that each stall was run by members of that community, who happily explained their dishes, their festivals and even the music playing in the background. [C] So food festivals offer something rare: a genuine cultural exchange that starts with a plate of food.",
+        f: ["What food from your country would you bring to a festival?", "Do festivals keep traditions alive?"], lx: ["cuisine", "try the local cuisine", "traditional dishes"] },
+      { t: "experience", q: "When you travel, do you always try the local food? Tell me about something new you tried.",
+        model: "[A] Yes, I always try the local food — for me, it's the best part of traveling. [R] Food tells you a lot about a culture, its history and its people. Also, food in its home country usually tastes much better than abroad. [E] For example, in Portugal last summer, I tried grilled sardines and a custard tart called pastel de nata. The tart was so good that I ate three every day! I also tried octopus for the first time. I was nervous, but it was delicious. [C] So trying local food makes a trip much more interesting.",
+        model5: "[A] Always — for me, eating is one of the main reasons to travel. [R] A country's food reveals so much about its history, climate and way of life, and dishes almost always taste better in the place they come from. I'm also happy to step outside my comfort zone. [E] In Portugal last summer, for instance, I **tried the local cuisine** at every opportunity: grilled sardines at a harbor stall and, above all, pastéis de nata, the custard tarts I became so addicted to that I ate at least three a day. I even tried octopus for the first time, despite serious reservations, and it turned out to be one of the best things I ate. [C] So for me, local food is the most delicious way to understand a place.",
+        f: ["What's the strangest thing you've eaten?", "Is there any food you'd never try?"], lx: ["try the local cuisine", "taste amazing", "not my cup of tea"] },
+      { t: "opinion", q: "Because of globalization, you can eat sushi, pizza and tacos almost anywhere. Is this good, or are local food traditions in danger?",
+        model: "[A] I think it's mostly good, but local traditions need some protection. [R] International food makes life more interesting and helps people learn about other cultures. But when fast food chains are everywhere, small traditional restaurants close, and young people stop cooking their own national dishes. [E] For example, in my city, you can find food from twenty countries, which I love. But the old restaurant where my grandparents had their first date closed and became a burger chain. My grandmother was very sad about it. [C] So variety is great, but we shouldn't lose our own food culture.",
+        model5: "[A] I see it as largely positive, though local traditions do need protecting. [R] Access to international cuisine enriches our lives and fosters curiosity about other cultures. At the same time, global chains can push out traditional family restaurants, and younger generations may drift away from their own **culinary traditions**. [E] In my city, for instance, you can eat food from at least twenty countries, which I absolutely love. Yet the traditional restaurant where my grandparents had their first date recently closed and reopened as a burger chain, which genuinely upset my grandmother. [C] So global variety is something to celebrate, provided we don't lose our own food heritage along the way.",
+        f: ["What's the most popular foreign food in your country?", "Can a dish be 'stolen' by another culture?"], lx: ["culinary tradition", "cuisine", "traditional dishes"] }
+    ]},
+    { icon: "landmark", title: "Еда, планета и общество", en: "Food, planet & society", questions: [
+      { t: "opinion", src: "Платформа · Eating Habits", q: "Should schools, local governments or communities do more to promote healthy eating? What initiatives would you like to see?", same: "seh-3",
+        f: ["What did you eat at school?", "Should junk food be banned at schools?"], lx: ["nutritious", "affordable", "cooking classes"] },
+      { t: "experience", src: "Платформа · Climate Change", q: "Some people change their lifestyles — reducing energy use, recycling more or cutting back on meat — to reduce their environmental impact. Have you taken any specific actions to reduce your carbon footprint? What motivated you?",
+        model: "[A] Yes, I've taken a few small actions, and eating less meat is the biggest one. [R] I learned that producing meat, especially beef, creates a lot of greenhouse gases, and I wanted to do something simple that I can do every day. [E] For example, I now eat meat only on weekends. I also try not to waste food, I bring my own bag to the supermarket and I cycle instead of taking the bus. My motivation came from a documentary about climate change that showed how much our food choices matter. [C] So I can't save the planet alone, but I can make small changes.",
+        model5: "[A] I have taken several small steps, the most significant being **cutting back on** meat. [R] When I learned how much greenhouse gas beef production generates, changing my diet seemed like one of the most impactful things an individual can do every single day. [E] These days, for instance, I eat meat mainly at weekends, plan my shopping carefully to avoid **food waste**, carry reusable bags and cycle to campus. What first motivated me was a documentary showing that food systems account for a substantial share of global emissions, which made me realize my plate was part of the problem — and potentially part of the solution. [C] So while no individual can fix the climate alone, small daily choices do add up.",
+        f: ["Should meat cost more because of its impact?", "Do individual actions really matter?"], lx: ["carbon footprint", "cut back on", "food waste"] },
+      { t: "opinion", q: "A huge amount of food is thrown away every year. Who should do more to reduce food waste — shops, restaurants or ordinary people?",
+        model: "[A] I think everyone should do more, but supermarkets and restaurants have the biggest responsibility. [R] They throw away huge amounts of food that's still good, just because it doesn't look perfect or the date is close. Ordinary people also waste food, but in smaller amounts. [E] For example, in some countries, supermarkets must give unsold food to charities, which is a great idea. At home, I try to plan my meals, buy only what I need and use leftovers. Last month I made soup from old vegetables instead of throwing them away. [C] So shops and restaurants should lead, and we should follow.",
+        model5: "[A] Everyone has a part to play, but I'd argue that supermarkets and restaurants bear the greatest responsibility. [R] They discard enormous quantities of perfectly edible food simply because it's cosmetically imperfect or close to its sell-by date, whereas individual households waste food on a far smaller scale. [E] Some countries, for instance, now legally require large supermarkets to donate unsold food to charities, which strikes me as an excellent model. At home, I do my bit by planning meals, buying only what I need and repurposing **leftovers**; last month, I turned a sad collection of wilting vegetables into a perfectly good soup. [C] So businesses should lead the way, but households can make a real difference too.",
+        f: ["What food do you throw away most often?", "Would you buy 'ugly' vegetables?"], lx: ["food waste", "leftovers", "sustainable"] },
+      { t: "opinion", q: "Scientists can now grow meat in a lab. Would you eat lab-grown meat? Is it the future?",
+        model: "[A] I would try lab-grown meat, but I'm not sure I'd eat it every day. [R] It could be good for the planet and for animals, because it doesn't need farms or killing animals. But it feels unnatural, and we don't know much about it yet. Also, it's very expensive now. [E] For example, I read that the first lab-grown burger cost hundreds of thousands of dollars, but now the price is much lower. If it becomes cheap and tastes like real meat, I think many people will choose it. My grandmother, though, says she'll never eat \"meat from a machine\". [C] So it might be the future, but not very soon.",
+        model5: "[A] I'd certainly try it, though I'm not sure it would become a regular part of my diet. [R] In theory, it could offer real meat without the environmental damage or animal suffering of industrial farming. Many people, however, find the idea unsettling, long-term research is limited and, for now, it remains expensive. [E] The very first lab-grown burger, for instance, reportedly cost hundreds of thousands of dollars, and although prices have fallen dramatically, it's still far from affordable. If it eventually becomes cheap and tastes identical to conventional meat, I suspect plenty of people will switch. My grandmother, on the other hand, insists she'll never eat \"meat from a machine\". [C] So it may well be the future, but probably not the near future.",
+        f: ["What about eating insects?", "Will farms disappear?"], lx: ["meat substitute", "sustainable", "carbon footprint"] },
+      { t: "opinion", q: "Should advertising for junk food aimed at children be banned?",
+        model: "[A] Yes, I think junk food ads for children should be banned or strongly limited. [R] Children can't understand that advertising tries to manipulate them. Colorful ads with cartoons and toys make them want unhealthy food, and this can create bad habits for life. [E] For example, when my little cousin watches cartoons, he sees ads for sugary cereal and burgers with toys, and then he cries in the supermarket until his mom buys them. Some countries have already banned these ads on children's TV, and I think that's a good idea. [C] So we should protect children from this kind of advertising.",
+        model5: "[A] I believe it should be banned, or at the very least strictly limited. [R] Young children can't recognize that advertising is designed to persuade them, and colorful campaigns featuring cartoon characters and free toys can shape eating habits that last a lifetime. Adults can make informed choices; small children simply can't. [E] My little cousin, for instance, sees a stream of ads for sugary cereals and burger meals with toys whenever he watches cartoons, and the result is regular tantrums in the supermarket until his mother gives in. Several countries have already restricted such ads during children's programming, and that seems entirely reasonable to me. [C] So protecting children from junk food marketing is, in my view, a basic public health measure.",
+        f: ["What about ads on social media?", "Should sugary drinks have warning labels?"], lx: ["junk food", "public health", "prevention"] }
+    ]},
+    { icon: "cart", title: "Продукты и покупки", en: "Food shopping", questions: [
+      { t: "personal", src: "Official 072 · Grocery Shopping", q: "What types of items do you usually buy when you go grocery shopping — fresh produce, dairy products or packaged foods?",
+        model: "[A] I mostly buy fresh produce and some basic packaged foods. [R] I'm trying to eat healthier, so fruit and vegetables are always at the top of my list, but as a student I also need quick and cheap options for busy days. [E] A typical shopping basket for me has apples, bananas, tomatoes, chicken, yogurt, and then some pasta and canned beans for nights when I'm too tired to cook. I rarely buy ready meals, because they're expensive and not very healthy. [C] So it's a mix of fresh food and practical **essentials**.", model5: "[A] I mostly buy fresh produce along with a few basic packaged foods. [R] I've been trying to eat more healthily, so fruit and vegetables are always at the top of my list; however, as a student, I also need quick, inexpensive options for particularly busy days. [E] A typical basket for me includes apples, bananas, tomatoes, chicken and yogurt, as well as pasta and canned beans for evenings when I'm too exhausted to cook properly. I rarely buy ready meals, since they're both expensive and not particularly nutritious. [C] In short, my shopping is a balance between fresh food and practical **essentials**.",
+        f: ["Do you use a shopping list?", "What do you always forget?"], lx: ["fresh produce", "impulse buy", "budget"] },
+      { t: "compare", q: "Do you prefer shopping for food at a local market or a big supermarket? Why?",
+        model: "[A] I prefer the local market for fresh food, but I buy most things at the supermarket. [R] At the market, fruit and vegetables are fresher and tastier, and I like supporting local farmers. But the supermarket is open longer and has everything in one place, so it's more convenient. [E] For example, every Saturday morning I go to the farmers' market near my dorm and buy vegetables, eggs and cheese. The sellers know me and give me tips about cooking. During the week, I go to the supermarket for pasta, rice and other basic things. [C] So I use both, for different reasons.",
+        model5: "[A] I genuinely prefer the local market, although, practically speaking, I do most of my shopping at the supermarket. [R] Market produce is fresher and tastes noticeably better, and I like knowing that my money goes directly to local farmers. Supermarkets, however, win on convenience: they're open late and stock everything under one roof. [E] Every Saturday morning, for instance, I visit the farmers' market near my dorm for vegetables, eggs and cheese; the stallholders now recognize me and often share cooking tips. During the week, by contrast, I pick up staples like pasta and rice at the supermarket. [C] So I use both — the market for quality and pleasure, the supermarket for practicality.",
+        f: ["Are markets more expensive?", "Do you buy groceries online?"], lx: ["fresh produce", "support local farmers", "convenient"] },
+      { t: "personal", q: "Do you read food labels when you shop? What do you look at?",
+        model: "[A] Yes, I read food labels, especially for packaged food. [R] Many products look healthy, but they have a lot of sugar, salt or strange ingredients. Labels help me make better choices. [E] For example, I always check the sugar in yogurt and cereal. Once I bought a \"healthy\" granola, and later I saw it had more sugar than chocolate cookies! Since then, I look at the ingredient list — if it's very long and I can't understand the words, I don't buy it. [C] So reading labels has changed what I buy.",
+        model5: "[A] I do, particularly for packaged foods. [R] Plenty of products are marketed as healthy while containing surprising amounts of sugar, salt or additives, so the label is often the only way to see past the packaging. [E] I always check the sugar content of yogurts and cereals, for instance, ever since I discovered that a granola proudly labeled \"natural\" contained more sugar per serving than chocolate cookies. I also follow a simple rule: if the ingredient list is very long and full of words I can't pronounce, it goes back on the shelf. [C] So reading labels has genuinely changed my shopping habits, and it's made me far more skeptical of marketing claims.",
+        f: ["Should labels be simpler?", "Do you believe 'natural' or 'light' on packages?"], lx: ["processed food", "whole foods", "take something with a pinch of salt"] }
+    ]},
+    { icon: "sparkles", title: "Представь, что…", en: "What if…?", questions: [
+      { t: "hypo", q: "If you could eat only one cuisine for the rest of your life, which would you choose and why?",
+        model: "[A] I would choose Japanese cuisine. [R] It's healthy, very varied and full of flavor. It has many different dishes, so I wouldn't get bored. [E] For example, I could eat sushi, ramen, tempura, curry and many kinds of fresh fish and vegetables. Japanese food also uses a lot of rice, soup and vegetables, so it's balanced and good for health — Japan has one of the highest life expectancies in the world. The only thing I'd miss is pizza! [C] So Japanese cuisine would make me happy and healthy.",
+        model5: "[A] I'd choose Japanese **cuisine** without much hesitation. [R] It's remarkably varied, consistently healthy and packed with subtle, complex **flavors**, so I doubt I'd ever get bored. [E] Within a single cuisine, I'd have sushi, ramen, tempura, curry and countless dishes built around fresh fish and seasonal vegetables. It's also notably balanced, relying heavily on rice, soups and fermented foods, which may partly explain why Japan has one of the highest life expectancies in the world. The one thing I'd genuinely mourn, admittedly, is a good pizza. [C] So Japanese cuisine would keep me both healthy and happy for life — pizza aside.",
+        f: ["Which cuisine would you never choose?", "What would you miss most?"], lx: ["cuisine", "flavor", "balanced diet"] },
+      { t: "hypo", q: "Imagine you could open your own restaurant or café. What would it be like?",
+        model: "[A] I would open a small café with books, where students can study and eat healthy, cheap food. [R] I love coffee and books, and I know students need a quiet, cozy place with good food that isn't expensive. [E] For example, the menu would have soups, sandwiches and plant-based bowls, and every day there would be one special dish from a different country. There would be big tables for studying, lots of plants and a shelf where people can exchange books. On Fridays, we'd have live music. [C] So my café would feel like a second home for students.",
+        model5: "[A] I'd open a small café combined with a second-hand bookshop, designed above all for students. [R] I love both coffee and books, and I know how hard it is for students to find somewhere cozy and quiet where they can eat well without spending a fortune. [E] The menu would feature soups, sandwiches and **plant-based** bowls, alongside a daily special from a different country's cuisine, perhaps cooked by international students themselves. There'd be long communal tables for studying, plenty of plants and a shelf where customers could swap books. On Friday evenings, local musicians would play. [C] Essentially, I'd want it to feel like a second living room for anyone far from home.",
+        f: ["What would you call it?", "Is running a restaurant a good business?"], lx: ["plant-based", "atmosphere", "be your own boss"] },
+      { t: "hypo", q: "Imagine you have to cook one meal that represents your country for guests from abroad. What would you cook and why?",
+        model: "[A] I would cook my grandmother's Sunday lunch: soup, slow-cooked beef and homemade bread. [R] This meal shows what my country is about — hospitality, family and simple, warm food. It's also a dish that I learned from my family, so it has a story. [E] For example, I'd start with a beetroot soup with sour cream, then beef stew with potatoes, and finish with a honey cake. While we eat, I'd tell my guests about our traditions and how my family makes this meal every Sunday. [C] So the meal would show both our food and our culture.",
+        model5: "[A] I'd recreate my grandmother's traditional Sunday lunch: soup, slow-cooked beef and homemade bread. [R] To me, this meal captures the essence of my culture — generous hospitality, family and hearty, comforting food — and, because it's a recipe that's been **passed down** in my family, it comes with a story. [E] I'd begin with a rich beetroot soup served with sour cream, followed by beef stewed for hours with potatoes and herbs, and finish with a layered honey cake. Throughout the meal, I'd tell my guests about our customs and explain why, in my family, Sunday lunch is practically sacred. [C] So the meal would introduce them not only to our food but to the way we live.",
+        f: ["What dish from your country is hardest to explain?", "What do foreigners think of your food?"], lx: ["traditional dishes", "pass down", "culinary tradition"] },
+      { t: "hypo", q: "What do you think people will eat in 2050?",
+        model: "[A] I think people in 2050 will eat less meat and more plant-based and lab-grown food. [R] The world population is growing, and the climate is changing, so we'll need food that uses less land and water. Technology will also change how we produce and buy food. [E] For example, I imagine supermarkets selling lab-grown chicken next to normal chicken, and vertical farms growing vegetables inside city buildings. Maybe apps will create personal diets based on our health data. But I hope people will still cook their grandmothers' recipes. [C] So food will be more high-tech, but tradition won't disappear.",
+        model5: "[A] I suspect that by 2050 we'll eat considerably less conventional meat and far more plant-based and lab-grown alternatives. [R] With a growing global population and an increasingly unpredictable climate, we'll need food systems that use far less land and water, and technology is already pointing the way. [E] I can easily imagine, for instance, supermarkets stocking cultivated chicken alongside conventional meat, vertical farms growing vegetables inside city skyscrapers and apps designing personalized diets based on our health data. At the same time, I hope — and believe — that people will still gather to cook their grandparents' recipes. [C] So food will undoubtedly become more high-tech, but tradition, I think, will prove surprisingly resilient.",
+        f: ["Would you eat insects?", "Will people still cook?"], lx: ["plant-based", "meat substitute", "sustainable"] }
+    ]}
+  ],
+
+  checklist: [
+    "Ответил(а) на вопрос прямо в первом предложении",
+    "Описал(а) вкус точнее, чем «delicious»: rich, spicy, full of flavor…",
+    "Вставил(а) одну идиому — естественно, а не «для галочки»",
+    "Привёл(а) конкретный пример: блюдо, ресторан, привычка, человек",
+    "Использовал(а) фразу контраста: While it's true that… / That said…",
+    "Уложился(ась) в 45 секунд без длинных пауз"
+  ],
+
+  targetLexis: ["cook from scratch", "home-cooked", "batch-cook", "leftovers", "grab a bite", "skip breakfast", "eat out", "order takeout", "cuisine", "taste amazing", "full of flavor", "a balanced diet", "in moderation", "cut out", "go vegetarian", "plant-based", "get enough protein", "processed food", "carbon footprint", "food waste", "a sweet tooth", "take it with a pinch of salt", "that said"]
+};
+
+/* =====================================================================
+   ИЛЛЮСТРАЦИИ (SVG)
+   ===================================================================== */
+const HERO_ART = `
+<svg viewBox="0 0 320 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Тарелка, вилка, кастрюля и чек-лист продуктов">
+  <ellipse cx="165" cy="230" rx="128" ry="10" fill="rgba(0,0,0,.22)"/>
+  <ellipse cx="150" cy="178" rx="92" ry="40" fill="#fff"/><ellipse cx="150" cy="174" rx="70" ry="28" fill="#fce7f3"/>
+  <circle cx="124" cy="168" r="16" fill="#f97316"/><circle cx="160" cy="160" r="14" fill="#fb7185"/><circle cx="178" cy="178" r="12" fill="#fdba74"/>
+  <path d="M132 186 q16 8 34 0" stroke="#e11d48" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <circle cx="146" cy="178" r="5" fill="#fde68a"/>
+  <path d="M40 126 v80 M32 126 v22 a8 8 0 0 0 16 0 v-22 M40 126 v22" stroke="#cbd5e1" stroke-width="5" stroke-linecap="round"/>
+  <path d="M262 126 c12 0 16 20 0 34 v46" stroke="#cbd5e1" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <g class="tl-coin">
+    <rect x="196" y="28" width="100" height="70" rx="14" fill="#8b5cf6"/><rect x="190" y="22" width="112" height="14" rx="7" fill="#7c3aed"/>
+    <rect x="236" y="12" width="20" height="12" rx="4" fill="#7c3aed"/>
+    <path d="M220 52 q8 -10 16 0 M246 52 q8 -10 16 0 M232 70 q8 -10 16 0" stroke="#ddd6fe" stroke-width="3" fill="none" stroke-linecap="round"/>
+  </g>
+  <path d="M232 14 q-4 -8 2 -14 M260 14 q-4 -8 2 -14" stroke="#94a3b8" stroke-width="2.5" fill="none" stroke-linecap="round" transform="translate(0 0)"/>
+  <g transform="translate(36 30)">
+    <rect x="0" y="0" width="70" height="80" rx="10" fill="#fff"/>
+    <path d="M12 20 l4 4 l8 -8 M12 40 l4 4 l8 -8" stroke="#f97316" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="30" y="16" width="28" height="5" rx="2.5" fill="#fed7aa"/><rect x="30" y="36" width="24" height="5" rx="2.5" fill="#fed7aa"/>
+    <rect x="12" y="56" width="12" height="12" rx="3" fill="none" stroke="#f97316" stroke-width="2.5"/><rect x="30" y="60" width="28" height="5" rx="2.5" fill="#e2e8f0"/>
+  </g>
+  <path d="M150 40 l4 10 l10 4 l-10 4 l-4 10 l-4 -10 l-10 -4 l10 -4 z" fill="#a5f3fc"/>
+</svg>`;
+
+/* Мини-иллюстрации к идиомам (160×96). Классы a-* анимируются при наведении. */
+const IDIOM_ART = {
+  tooth: `<g class="a-tag"><path d="M58 22 c-14 0 -20 12 -16 26 c2 10 4 18 6 30 c1 6 8 6 9 0 l3 -14 c1 -4 7 -4 8 0 l3 14 c1 6 8 6 9 0 c2 -12 4 -20 6 -30 c4 -14 -2 -26 -16 -26 c-4 0 -6 2 -6 2 s-2 -2 -6 -2z" fill="#fff" stroke="#94a3b8" stroke-width="2.5"/>
+         <path d="M58 40 q6 4 12 0" stroke="#ec4899" stroke-width="2.5" fill="none" stroke-linecap="round"/></g>
+         <g transform="translate(104 30)"><path d="M0 18 l-12 -8 v16z M36 18 l12 -8 v16z" fill="#f472b6"/><rect x="0" y="6" width="36" height="24" rx="12" fill="#ec4899"/><path d="M8 8 l8 20 M18 8 l8 20" stroke="#fbcfe8" stroke-width="3"/></g>
+         <circle cx="118" cy="76" r="9" fill="#a78bfa"/><path d="M118 85 v8" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round"/>`,
+  bird: `<path d="M10 88 h140" stroke="#cbd5e1" stroke-width="4" stroke-linecap="round"/>
+         <ellipse cx="36" cy="82" rx="16" ry="5" fill="#fff" stroke="#94a3b8" stroke-width="2"/><circle cx="34" cy="78" r="2" fill="#f59e0b"/>
+         <g class="a-up"><path d="M26 54 c0 -10 8 -16 16 -14 c6 1 8 6 6 10 l8 2 l-8 3 c-2 6 -10 10 -16 8 c-4 -2 -6 -5 -6 -9z" fill="#38bdf8"/><circle cx="42" cy="46" r="2" fill="#0f172a"/></g>
+         <ellipse cx="116" cy="82" rx="28" ry="7" fill="#fff" stroke="#94a3b8" stroke-width="2"/><path d="M96 78 q20 -16 40 0" fill="#fdba74"/>
+         <g class="a-drop"><path d="M122 70 l-4 -26 c-2 -10 2 -20 10 -24 l2 -8 l4 7 c8 2 14 8 16 16 l4 12 c1 4 -2 7 -6 6 l-10 -4 l-2 21z" fill="#a16207"/>
+         <path d="M128 14 c-6 2 -10 8 -10 16 c0 6 2 12 2 18" stroke="#78350f" stroke-width="4" fill="none" stroke-linecap="round"/>
+         <circle cx="138" cy="30" r="2.2" fill="#fff"/><circle cx="148" cy="44" r="1.5" fill="#78350f"/></g>`,
+  plate: `<ellipse cx="80" cy="84" rx="52" ry="8" fill="#fff" stroke="#94a3b8" stroke-width="2"/>
+         <g class="a-drop"><rect x="50" y="64" width="60" height="16" rx="3" fill="#fde68a" stroke="#f59e0b" stroke-width="1.5"/><rect x="56" y="48" width="50" height="16" rx="3" fill="#fbcfe8" stroke="#ec4899" stroke-width="1.5"/>
+         <rect x="52" y="32" width="56" height="16" rx="3" fill="#bae6fd" stroke="#0ea5e9" stroke-width="1.5"/><rect x="60" y="16" width="42" height="16" rx="3" fill="#ddd6fe" stroke="#8b5cf6" stroke-width="1.5"/></g>
+         <path d="M58 72 h20 M64 56 h24 M60 40 h30 M68 24 h20" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+         <circle cx="136" cy="24" r="10" fill="#fff" stroke="#e11d48" stroke-width="2.5"/><path d="M136 18 v7 l4 2" stroke="#e11d48" stroke-width="2.5" fill="none" stroke-linecap="round"/>`,
+  turkey: `<rect x="20" y="30" width="44" height="54" rx="6" fill="#ef4444"/><rect x="26" y="18" width="32" height="14" rx="3" fill="#94a3b8"/>
+         <path d="M30 52 h24 M30 62 h20" stroke="#fff" stroke-width="3" stroke-linecap="round"/><text x="42" y="46" text-anchor="middle" font-size="10" font-weight="800" font-family="system-ui" fill="#fff">SODA</text>
+         <g class="a-no"><circle cx="42" cy="56" r="34" fill="none" stroke="#334155" stroke-width="5"/><path d="M18 32 l48 48" stroke="#334155" stroke-width="5" stroke-linecap="round"/></g>
+         <g class="a-beam" fill="#7dd3fc"><path d="M118 20 v40 M100 30 l36 20 M100 50 l36 -20" stroke="#38bdf8" stroke-width="4" stroke-linecap="round"/></g>
+         <circle cx="118" cy="40" r="5" fill="#fff"/>`,
+  salt: `<g class="a-tag" style="transform-origin:76px 60px"><path d="M60 34 h32 l6 50 h-44z" fill="#fff" stroke="#94a3b8" stroke-width="2.5"/>
+         <path d="M58 22 h36 a6 6 0 0 1 6 6 v6 h-48 v-6 a6 6 0 0 1 6 -6z" fill="#cbd5e1"/>
+         <circle cx="66" cy="27" r="1.8" fill="#64748b"/><circle cx="76" cy="27" r="1.8" fill="#64748b"/><circle cx="86" cy="27" r="1.8" fill="#64748b"/>
+         <text x="77" y="66" text-anchor="middle" font-size="18" font-weight="800" font-family="system-ui" fill="#94a3b8">S</text></g>
+         <g fill="#94a3b8"><rect x="118" y="50" width="3" height="3"/><rect x="126" y="60" width="3" height="3"/><rect x="114" y="68" width="3" height="3"/><rect x="132" y="74" width="3" height="3"/></g>
+         <rect x="104" y="14" width="44" height="22" rx="6" fill="#fff" stroke="#0ea5e9" stroke-width="2"/><text x="126" y="30" text-anchor="middle" font-size="12" font-weight="800" font-family="system-ui" fill="#0ea5e9">?!</text>`,
+  thought: `<circle cx="52" cy="56" r="26" fill="#fde68a"/><circle cx="44" cy="52" r="3" fill="#0f172a"/><circle cx="60" cy="52" r="3" fill="#0f172a"/><path d="M46 66 q6 4 12 0" stroke="#0f172a" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+         <circle cx="84" cy="32" r="4" fill="#e9d5ff"/><circle cx="94" cy="22" r="6" fill="#e9d5ff"/>
+         <g class="a-beam"><ellipse cx="124" cy="30" rx="30" ry="22" fill="#f5f3ff" stroke="#a78bfa" stroke-width="2.5"/>
+         <path d="M110 30 a14 6 0 0 0 28 0z" fill="#fff" stroke="#8b5cf6" stroke-width="2"/><path d="M118 26 q2 -6 6 0 M126 24 q2 -6 6 0" stroke="#94a3b8" stroke-width="2" fill="none" stroke-linecap="round"/>
+         <path d="M140 18 v18 M144 18 v8 a2 2 0 0 1 -4 0" stroke="#7c3aed" stroke-width="2" fill="none"/></g>`,
+  tea: `<path d="M44 40 h56 v18 a28 28 0 0 1 -56 0z" fill="#fff" stroke="#94a3b8" stroke-width="2.5"/><path d="M100 46 a10 10 0 0 1 0 20" stroke="#94a3b8" stroke-width="4" fill="none"/>
+         <ellipse cx="72" cy="88" rx="38" ry="5" fill="#e2e8f0"/><path d="M48 44 h48" stroke="#d97706" stroke-width="5" stroke-linecap="round"/>
+         <path d="M62 30 q-4 -8 2 -14 M80 30 q-4 -8 2 -14" stroke="#cbd5e1" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+         <g class="a-no"><circle cx="128" cy="34" r="14" fill="#fff" stroke="#e11d48" stroke-width="3"/><path d="M121 27 l14 14 M135 27 l-14 14" stroke="#e11d48" stroke-width="3" stroke-linecap="round"/></g>`,
+  cooks: `<path d="M44 58 h72 v20 a10 10 0 0 1 -10 10 h-52 a10 10 0 0 1 -10 -10z" fill="#64748b"/><path d="M36 58 h88" stroke="#334155" stroke-width="5" stroke-linecap="round"/>
+         <g class="a-belt"><path d="M60 52 q-4 -10 4 -16 M80 52 q-4 -10 4 -16 M100 52 q-4 -10 4 -16" stroke="#cbd5e1" stroke-width="3" fill="none" stroke-linecap="round"/></g>
+         <g fill="#fff" stroke="#94a3b8" stroke-width="1.5"><path d="M10 26 a7 7 0 0 1 10 -8 a7 7 0 0 1 12 6 v8 h-20z"/><path d="M58 14 a7 7 0 0 1 10 -8 a7 7 0 0 1 12 6 v8 h-20z"/><path d="M106 22 a7 7 0 0 1 10 -8 a7 7 0 0 1 12 6 v8 h-20z"/><path d="M132 40 a7 7 0 0 1 10 -8 a7 7 0 0 1 12 6 v8 h-20z"/></g>
+         <path d="M22 34 l22 22 M70 22 v30 M118 30 l-10 22 M142 48 l-26 10" stroke="#f97316" stroke-width="3" stroke-linecap="round"/>`,
+  youare: `<g class="a-up"><path d="M80 24 c-14 -6 -32 2 -30 22 c2 22 16 36 30 30 c14 6 28 -8 30 -30 c2 -20 -16 -28 -30 -22z" fill="#fb923c"/>
+         <path d="M80 24 c0 -8 4 -14 8 -16" stroke="#78350f" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M84 14 c6 -6 14 -4 16 -2 c-4 4 -12 6 -16 2z" fill="#22d3ee"/>
+         <circle cx="70" cy="46" r="3" fill="#0f172a"/><circle cx="90" cy="46" r="3" fill="#0f172a"/><path d="M72 58 q8 6 16 0" stroke="#0f172a" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+         <path d="M58 70 l-8 10 M102 70 l8 10 M72 76 l-4 12 M88 76 l4 12" stroke="#c2410c" stroke-width="4" stroke-linecap="round"/></g>`
+};
+</script>
+<script src="topic-engine.js"></script>
+</body>
+</html>

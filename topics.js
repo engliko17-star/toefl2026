@@ -8,7 +8,7 @@
 //   slug        — тот же, что LESSON.slug внутри страницы (по нему читается прогресс)
 //   file        — имя файла страницы
 //   title_en / title_ru / description — текст карточки
-//   category    — personal | society | work_study
+//   category    — personal | society | work_study | health
 //   cover_icon  — имя иконки Lucide (если для темы нет своей картинки в lessons.html)
 //   order_num   — место в списке
 //   frames      — сколько шагов в уроке (для полоски прогресса на карточке)
@@ -66,6 +66,45 @@ var TOPICS = [
         order_num: 5,
         frames: 10,
         words: 27, idioms: 9, sets: 7, questions: 91,
+        guest: false
+    },
+    {
+        slug: 'sport',
+        file: 'topic-sport.html',
+        title_en: 'Sport & Exercise',
+        title_ru: 'Спорт и физическая активность',
+        category: 'health',
+        description: 'Любимый спорт, зал или улица, одному или в команде, мотивация, фитнес-приложения, дети и контактный спорт, большой спорт.',
+        cover_icon: 'dumbbell',
+        order_num: 6,
+        frames: 10,
+        words: 27, idioms: 9, sets: 5, questions: 72,
+        guest: false
+    },
+    {
+        slug: 'health',
+        file: 'topic-health.html',
+        title_en: 'Health, Sleep & Well-being',
+        title_ru: 'Здоровье, сон и самочувствие',
+        category: 'health',
+        description: 'Сон и вечерние ритуалы, энергия, экраны, здоровые привычки, стресс и ментальное здоровье, природа и люди.',
+        cover_icon: 'heart-pulse',
+        order_num: 7,
+        frames: 10,
+        words: 27, idioms: 9, sets: 4, questions: 68,
+        guest: false
+    },
+    {
+        slug: 'food',
+        file: 'topic-food.html',
+        title_en: 'Food & Nutrition',
+        title_ru: 'Еда и питание',
+        category: 'health',
+        description: 'Что ты ешь, готовить или заказать, рестораны и кухни, здоровое питание и диеты, растительное меню, еда и культура.',
+        cover_icon: 'utensils',
+        order_num: 8,
+        frames: 10,
+        words: 27, idioms: 9, sets: 7, questions: 80,
         guest: false
     }
 ];
