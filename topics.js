@@ -171,5 +171,70 @@ var TOPICS = [
         frames: 10,
         words: 27, idioms: 9, sets: 6, questions: 68,
         guest: false
+    },
+    {
+        slug: 'books',
+        file: 'topic-books.html',
+        title_en: 'Books & Film',
+        title_ru: 'Книги и кино',
+        category: 'culture',
+        description: 'Что читаешь и смотришь, бумага, e-books и аудиокниги, классика, кинотеатр или стриминг, сериалы запоем и сила историй.',
+        cover_icon: 'book-open',
+        order_num: 14,
+        frames: 10,
+        words: 27, idioms: 9, sets: 5, questions: 55,
+        guest: false
+    },
+    {
+        slug: 'friends',
+        file: 'topic-friends.html',
+        title_en: 'Friends, Family & Gatherings',
+        title_ru: 'Друзья, семья и встречи',
+        category: 'personal',
+        description: 'Много друзей или мало, что делает дружбу крепкой, вечеринки и нетворкинг, семья и её ценности, дружба онлайн, ссоры и примирения.',
+        cover_icon: 'users',
+        order_num: 15,
+        frames: 10,
+        words: 27, idioms: 9, sets: 3, questions: 47,
+        guest: false
+    },
+    {
+        slug: 'city',
+        file: 'topic-city.html',
+        title_en: 'City & Transport',
+        title_ru: 'Город и транспорт',
+        category: 'society',
+        description: 'Жизнь в городе и за городом, дорога на учёбу и работу, общественный транспорт и велосипеды, жильё, безопасность на улицах и город будущего.',
+        cover_icon: 'bus',
+        order_num: 16,
+        frames: 10,
+        words: 27, idioms: 9, sets: 8, questions: 71,
+        guest: false
+    },
+    {
+        slug: 'education',
+        file: 'topic-education.html',
+        title_en: 'Education & Learning',
+        title_ru: 'Образование и обучение',
+        category: 'work_study',
+        description: 'Школьные годы, выбор вуза и студенческая жизнь, как мы учимся, онлайн-обучение, оценки и давление, система образования и учёба всю жизнь.',
+        cover_icon: 'graduation-cap',
+        order_num: 17,
+        frames: 10,
+        words: 27, idioms: 9, sets: 11, questions: 106,
+        guest: false
+    },
+    {
+        slug: 'travel',
+        file: 'topic-travel.html',
+        title_en: 'Travel & Tourism',
+        title_ru: 'Путешествия',
+        category: 'culture',
+        description: 'Последняя поездка и идеальный отпуск, план или спонтанность, путешествия в одиночку, культурные различия, экотуризм и толпы туристов.',
+        cover_icon: 'plane',
+        order_num: 18,
+        frames: 10,
+        words: 27, idioms: 9, sets: 6, questions: 61,
+        guest: false
     }
 ];

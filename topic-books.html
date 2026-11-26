@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Books & Film — Speaking Topics — TOEFL Prep</title>
+
+<!-- Те же подключения, что на остальных страницах платформы -->
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="auth.js"></script>
+<script src="topics.js"></script>
+
+<link rel="stylesheet" href="topic-engine.css">
+</head>
+<body>
+<div class="tl-layout flex flex-col md:flex-row min-h-screen">
+  <div id="app-sidebar"></div>
+  <script src="nav.js"></script>
+
+  <main class="tl-main">
+    <div class="tl-wrap" id="lesson"></div>
+  </main>
+</div>
+
+<!-- Панель ответа -->
+<div class="tl-dock" id="dock" aria-live="polite">
+  <div class="tl-dock-top"><span id="dockLabel">Ответ</span><button class="tl-dock-close" id="dockClose" aria-label="Закрыть">✕</button></div>
+  <div class="tl-dock-q" id="dockQ"></div>
+  <div class="tl-dock-status">
+    <div class="tl-dock-state"><span class="tl-rec-dot" id="recDot"></span><span id="dockState">Готово</span></div>
+    <div class="tl-dock-time" id="dockTime">0:45</div>
+  </div>
+  <div class="tl-phase" id="dockPhase"></div>
+  <div class="tl-dock-bar" id="dockBar"></div>
+  <div class="tl-dock-ctrl">
+    <label><input type="checkbox" id="recToggle"> Записывать голос</label>
+    <div class="tl-row">
+      <button class="tl-dock-btn" id="dockShowQ">Показать текст</button>
+      <button class="tl-dock-btn" id="dockStop">Стоп</button>
+    </div>
+  </div>
+  <div class="tl-dock-msg" id="dockMsg"></div>
+  <div class="tl-dock-out" id="dockOut"></div>
+</div>
+
+<script>
+/* =====================================================================
+   КОНТЕНТ УРОКА: BOOKS & FILM
+   Новая тема = копия файла: меняются LESSON, HERO_ART и IDIOM_ART.
+   Общий движок и стили — topic-engine.js и topic-engine.css.
+   **слово** — подсветка целевой лексики.
+   _слово_ в коллокациях — «ключевой кубик».
+   [A] [R] [E] [C] в модельных ответах — цветная структура:
+   A = прямой ответ, R = причина, E = пример, C = вывод.
+   ===================================================================== */
+const LESSON = {
+  slug: "books",
+  titleEn: "Books & Film",
+  titleRu: "Книги и кино",
+  category: "Культура и досуг",
+  intro: "Что ты читаешь и смотришь, бумажные книги, e-books и аудиокниги, классика или новинки, кино дома и в кинотеатре, сериалы и стриминг, сила историй — читают ли люди меньше и могут ли фильмы чему-то научить. Учим рассказывать о книгах и фильмах живо, без пересказа сюжета, и проходим все вопросы по теме из базы.",
+  meta: [["≈ 60", "минут"], ["27", "слов · 2 уровня"], ["20", "коллокаций"], ["9", "идиом"], ["{Q}", "вопросов для обсуждения"]],
+
+  frames: {
+    warmup:    { icon: "flame",      time: "3 мин",  steps: ["Нажми динамик или прочитай вопрос", "Ответь вслух за 20 секунд", "Без подсказок — это «до урока»"] },
+    vocab:     { icon: "book",       time: "10 мин", steps: ["Посмотри на схему: зачем нам истории", "Найди себя на шкале", "Слова: начни с Core, слушай и повторяй"] },
+    coll:      { icon: "link",       time: "8 мин",  steps: ["Учи сочетание целиком", "Цветной кубик — то, что чаще путают", "Расскажи о любимом фильме с 5 сочетаниями"] },
+    idioms:    { icon: "quote",      time: "6 мин",  steps: ["Посмотри картинку — запомни образ", "Плашка «Можно» — смело в ответы", "Выбери 2 идиомы на сегодня"] },
+    expr:      { icon: "megaphone",  time: "5 мин",  steps: ["Послушай интонацию", "По 1 фразе из каждой группы", "Запомни шкалу 45 секунд"] },
+    check:     { icon: "puzzle",     time: "10 мин", steps: ["4 мини-игры", "Цель — 100% в Matching и Gap-fill", "Карточки — пока не узнаёшь все"] },
+    repeat:    { icon: "headphones", time: "5 мин",  steps: ["Слушай, не читая", "Повтори слово в слово", "Включи запись и сравни"] },
+    interview: { icon: "mic",        time: "15 мин", steps: ["Выбери сет — начни с Official", "Пройди все вопросы подряд, без пауз", "Сравни с моделью: цвета = структура"] },
+    club:      { icon: "chat",       time: "30+ мин", steps: ["Возьми 1–2 блока на занятие", "Ответь, потом — на «Копнём глубже»", "Отметь «Обсудили» или крути рулетку"] },
+    self:      { icon: "checkCircle",time: "3 мин",  steps: ["Прослушай свои записи", "Отметь, что получилось", "Цель — 15+ отмеченных слов"] }
+  },
+
+  warmup: [
+    "What was the last book you read?",
+    "What's a film you could watch again and again?",
+    "Paper book, e-book or audiobook?",
+    "What series are you watching right now?"
+  ],
+
+  /* Зачем нам истории: равные ветки, вместо процента — tag */
+  flow: {
+    icon: "book",
+    title: "Зачем нам истории",
+    source: { kicker: "Хорошая история…", title: "Story", ru: "история, сюжет", words: ["a gripping plot", "relatable characters", "a twist ending"] },
+    branches: [
+      { title: "Escape", ru: "отвлечься", sub: "switch off", tag: "Отдых", color: "#8b5cf6", words: ["escapism", "unwind", "binge-watch", "a page-turner"] },
+      { title: "Learn", ru: "узнать", sub: "broaden your horizons", tag: "Знания", color: "#0ea5e9", words: ["nonfiction", "documentary", "based on a true story", "raise awareness"] },
+      { title: "Feel", ru: "почувствовать", sub: "see through others' eyes", tag: "Эмпатия", color: "#ec4899", words: ["relate to", "empathy", "move me to tears", "thought-provoking"] }
+    ],
+    notes: [
+      "Почти любой ответ этой темы — про то, <b>что история тебе дала</b>: отдых, знания или новое понимание людей. Не пересказывай сюжет!",
+      "Готовая фраза: <i>What I love about stories is that they let me live other lives for a few hours.</i>"
+    ]
+  },
+
+  scale: {
+    title: "Ты больше читатель или зритель? Перетащи кружок туда, где ты",
+    left: "SCREEN ONLY", right: "BOOKWORM",
+    words: [
+      { w: "screen only", p: 4 }, { w: "binge-watch series", p: 17 }, { w: "movie nights", p: 30 }, { w: "the odd audiobook", p: 44 },
+      { w: "a book on holiday", p: 58 }, { w: "read before bed", p: 71 }, { w: "always mid-book", p: 85 }, { w: "bookworm", p: 97 }
+    ],
+    says: [
+      { max: 25,  t: "Honestly, I mostly **binge-watch series** — I rarely pick up a book." },
+      { max: 50,  t: "I love **movie nights**, and I listen to **the odd audiobook** on the bus." },
+      { max: 75,  t: "I **read before bed** most nights, but I still love a good series." },
+      { max: 101, t: "I'm a real **bookworm** — I'm **always in the middle of a book**." }
+    ]
+  },
+
+  vocab: [
+    { en: "novel", pos: "n", ru: "роман", ex: "I'm reading a novel about a family in Ireland.", level: "core" },
+    { en: "fiction / nonfiction", pos: "n", ru: "художественная / нехудожественная литература", ex: "I read fiction to relax and nonfiction to learn.", level: "core" },
+    { en: "biography", pos: "n", ru: "биография", ex: "My dad loves biographies of famous musicians.", level: "core" },
+    { en: "plot", pos: "n", ru: "сюжет", ex: "The plot was so clever that I didn't guess the ending.", level: "core" },
+    { en: "character", pos: "n", ru: "персонаж", ex: "The main character is a young doctor.", level: "core" },
+    { en: "genre", pos: "n", ru: "жанр", ex: "Sci-fi is my favorite genre.", level: "core" },
+    { en: "e-book / audiobook", pos: "n", ru: "электронная книга / аудиокнига", ex: "I listen to audiobooks on the bus.", level: "core" },
+    { en: "chapter", pos: "n", ru: "глава", ex: "I read one chapter every night.", level: "core" },
+    { en: "documentary", pos: "n", ru: "документальный фильм", ex: "We watched a documentary about the ocean.", level: "core" },
+    { en: "series", pos: "n", ru: "сериал", ex: "This series has five seasons.", level: "core" },
+    { en: "episode", pos: "n", ru: "серия, эпизод", ex: "I watch one episode a night.", level: "core" },
+    { en: "subtitles", pos: "n", ru: "субтитры", ex: "I watch films in English with subtitles.", level: "core" },
+    { en: "streaming platform", pos: "n", ru: "стриминговый сервис", ex: "There are too many streaming platforms now.", level: "core" },
+    { en: "adaptation", pos: "n", ru: "экранизация", ex: "The film adaptation was better than the book.", level: "core" },
+    { en: "review", pos: "n / v", ru: "отзыв, рецензия; писать отзыв", ex: "The film got great reviews.", level: "core" },
+
+    { en: "gripping", pos: "adj", ru: "захватывающий", ex: "It was a gripping thriller.", level: "adv" },
+    { en: "thought-provoking", pos: "adj", ru: "заставляющий задуматься", ex: "The documentary was really thought-provoking.", level: "adv" },
+    { en: "binge-watch", pos: "v", ru: "смотреть сериал запоем", ex: "We binge-watched the whole season in two days.", level: "adv" },
+    { en: "escapism", pos: "n", ru: "уход от реальности", ex: "Fantasy books are pure escapism for me.", level: "adv" },
+    { en: "immerse yourself in", pos: "phr", ru: "погрузиться в", ex: "I love to immerse myself in another world.", level: "adv" },
+    { en: "narrative", pos: "n", ru: "повествование, история", ex: "The film tells a powerful narrative about migration.", level: "adv" },
+    { en: "broaden your horizons", pos: "phr", ru: "расширять кругозор", ex: "Reading broadens your horizons.", level: "adv" },
+    { en: "critically acclaimed", pos: "adj", ru: "признанный критиками", ex: "It's a critically acclaimed film.", level: "adv" },
+    { en: "attention span", pos: "n", ru: "способность концентрироваться", ex: "Short videos are ruining our attention span.", level: "adv" },
+    { en: "empathy", pos: "n", ru: "эмпатия, сопереживание", ex: "Novels help us develop empathy.", level: "adv" },
+    { en: "relatable", pos: "adj", ru: "близкий, понятный (о чём «это про меня»)", ex: "The characters are very relatable.", level: "adv" },
+    { en: "spoil", pos: "v", ru: "испортить (рассказав сюжет)", ex: "Don't spoil the ending for me!", level: "adv" }
+  ],
+
+  collocations: [
+    { icon: "book", group: "Чтение", items: [
+      { en: "_read for_ pleasure", ru: "читать для удовольствия", ex: "I don't have much time to read for pleasure." },
+      { en: "_get into_ a book", ru: "увлечься книгой", ex: "It took me fifty pages to get into the book." },
+      { en: "_borrow_ a book _from_ the library", ru: "взять книгу в библиотеке", ex: "I borrow most books from the library." },
+      { en: "_finish_ a book in one sitting", ru: "прочитать за один присест", ex: "I finished the novel in one sitting." },
+      { en: "_recommend_ a book _to_ someone", ru: "посоветовать книгу кому-то", ex: "My sister recommended this book to me." }
+    ]},
+    { icon: "play", group: "Кино", items: [
+      { en: "_go to_ the cinema", ru: "ходить в кино", ex: "We go to the cinema about once a month." },
+      { en: "the film _is set in_", ru: "действие фильма происходит в", ex: "The film is set in 1960s Paris." },
+      { en: "_be based on_ a true story", ru: "основан на реальной истории", ex: "The film is based on a true story." },
+      { en: "_get_ good reviews", ru: "получить хорошие отзывы", ex: "The film got great reviews." },
+      { en: "_star_ in a film", ru: "играть главную роль", ex: "A young unknown actor stars in the film." }
+    ]},
+    { icon: "laptop", group: "Сериалы", items: [
+      { en: "_binge-watch_ a series", ru: "смотреть сериал запоем", ex: "We binge-watched the series over the weekend." },
+      { en: "_stream_ a show", ru: "смотреть шоу онлайн", ex: "I stream most shows on my laptop." },
+      { en: "_watch_ with subtitles", ru: "смотреть с субтитрами", ex: "I watch English series with subtitles." },
+      { en: "a new season _comes out_", ru: "выходит новый сезон", ex: "The new season comes out in March." },
+      { en: "_be hooked on_ a series", ru: "подсесть на сериал (on!)", ex: "I'm completely hooked on this series." }
+    ]},
+    { icon: "heart", group: "Впечатление", items: [
+      { en: "_relate to_ a character", ru: "узнавать себя в персонаже (to!)", ex: "I could really relate to the main character." },
+      { en: "_move_ me to tears", ru: "растрогать до слёз", ex: "The ending moved me to tears." },
+      { en: "_make_ me think", ru: "заставить задуматься", ex: "The documentary really made me think." },
+      { en: "_leave_ a lasting impression", ru: "произвести сильное впечатление", ex: "That book left a lasting impression on me." },
+      { en: "_lose track of_ time", ru: "потерять счёт времени", ex: "I lost track of time and read until 3 a.m." }
+    ]}
+  ],
+
+  idioms: [
+    { art: "page", lit: "буквально: «переворачиватель страниц»", en: "a page-turner", ru: "книга, от которой не оторваться", meaning: "очень захватывающая книга", ex: "The thriller was a real page-turner.", reg: "ok", note: "Сразу звучит естественно в рассказе о книге." },
+    { art: "worm", lit: "буквально: «книжный червь»", en: "a bookworm", ru: "книголюб, книжный червь", meaning: "человек, который очень много читает", ex: "My little sister is a real bookworm.", reg: "ok", note: "Удобно, чтобы описать себя или друга." },
+    { art: "curl", lit: "буквально: «свернуться клубком с книгой»", en: "curl up with a good book", ru: "уютно устроиться с книгой", meaning: "читать, уютно расположившись", ex: "On rainy evenings, I curl up with a good book.", reg: "ok", note: "Тёплая картинка для вопроса «where do you read»." },
+    { art: "cover", lit: "буквально: «судить книгу по обложке»", en: "don't judge a book by its cover", ru: "не суди по внешности", meaning: "не делай выводов по внешнему виду", ex: "The film looked boring, but don't judge a book by its cover.", reg: "ok", note: "Работает и про книги, и про людей." },
+    { art: "lines", lit: "буквально: «читать между строк»", en: "read between the lines", ru: "читать между строк", meaning: "понимать скрытый смысл", ex: "Good readers learn to read between the lines.", reg: "ok", note: "Для вопроса о пользе чтения." },
+    { art: "seat", lit: "буквально: «на краю сиденья»", en: "on the edge of my seat", ru: "в напряжении, затаив дыхание", meaning: "очень взволнован, захвачен сюжетом", ex: "The final scene kept me on the edge of my seat.", reg: "ok", note: "Живо про триллеры и экшн." },
+    { art: "tear", lit: "буквально: «выжиматель слёз»", en: "a tearjerker", ru: "слезливая история, до слёз", meaning: "фильм или книга, от которых плачешь", ex: "That film is a real tearjerker — bring tissues.", reg: "ok", note: "Короткое слово, звучит как у носителя." },
+    { art: "couch", lit: "буквально: «диванная картошка»", en: "a couch potato", ru: "лежебока у телевизора", meaning: "человек, который много сидит перед экраном", ex: "In winter, I turn into a couch potato.", reg: "ok", note: "С юмором о себе — отлично." },
+    { art: "spoiler", lit: "буквально: «внимание, спойлер»", en: "spoiler alert", ru: "осторожно, спойлер", meaning: "предупреждение перед раскрытием сюжета", ex: "Spoiler alert: the main character dies at the end.", reg: "careful", note: "Разговорно. Уместно один раз, с улыбкой." }
+  ],
+
+  expressions: [
+    { icon: "play", fn: "Начать ответ", items: [
+      "I'm a big fan of …, especially …",
+      "Right now, I'm reading / watching …",
+      "To be honest, I read less than I'd like to."
+    ]},
+    { icon: "bulb", fn: "Что мне это даёт", items: [
+      "What I love about it is that it lets me switch off.",
+      "It made me see … from a completely different angle.",
+      "I could really relate to the main character."
+    ]},
+    { icon: "camera", fn: "Описать без пересказа", items: [
+      "It's set in … and follows a young …",
+      "Without giving too much away, …",
+      "The ending completely took me by surprise."
+    ]},
+    { icon: "scales", fn: "Баланс и контраст", items: [
+      "Streaming is convenient; that said, nothing beats the cinema.",
+      "While e-books are practical, I still prefer paper.",
+      "On the flip side, …"
+    ]},
+    { icon: "trending", fn: "Будущее", items: [
+      "I think people will read differently, not less.",
+      "Cinemas will survive, but as an experience.",
+      "More and more people are switching to audiobooks."
+    ]},
+    { icon: "flag", fn: "Завершить", items: [
+      "So for me, a good story is the best way to switch off.",
+      "That's why I'd recommend it to anyone.",
+      "In the end, format matters less than the story itself."
+    ]}
+  ],
+
+  answerSteps: [
+    { k: "A", s: 5,  i: "I mostly read fantasy and historical novels." },
+    { k: "R", s: 12, i: "What I love is that they let me escape for a while…" },
+    { k: "E", s: 22, i: "Right now, for example, I'm reading a novel set in…" },
+    { k: "C", s: 6,  i: "So reading is my favorite way to switch off." }
+  ],
+
+  matching: [
+    { a: "a page-turner", b: "a book you can't stop reading" },
+    { a: "a bookworm", b: "a person who reads a lot" },
+    { a: "read between the lines", b: "understand the hidden meaning" },
+    { a: "on the edge of my seat", b: "very excited and tense" },
+    { a: "a tearjerker", b: "a very sad, emotional story" },
+    { a: "a couch potato", b: "someone who watches a lot of TV" }
+  ],
+
+  gapfill: [
+    { t: "The film is based ___ a true story.", a: ["on"] },
+    { t: "The film is set ___ 1960s Paris.", a: ["in"] },
+    { t: "I'm completely hooked ___ this series.", a: ["on"] },
+    { t: "I borrow most books ___ the library.", a: ["from"] },
+    { t: "I could really relate ___ the main character.", a: ["to"] },
+    { t: "I don't have much time to read ___ pleasure.", a: ["for"] },
+    { t: "It took me fifty pages to get ___ the book.", a: ["into"] },
+    { t: "The new season comes ___ in March.", a: ["out"] }
+  ],
+
+  paraphrase: [
+    { plain: "I couldn't stop reading this book.", better: ["It was a real **page-turner**.", "I **finished it in one sitting**."] },
+    { plain: "I read a lot of books.", better: ["I'm a real **bookworm**."] },
+    { plain: "The film was very exciting at the end.", better: ["The ending kept me **on the edge of my seat**."] },
+    { plain: "I cried at the end of the film.", better: ["The ending **moved me to tears** — it's a real **tearjerker**."] },
+    { plain: "I watched all the episodes very quickly.", better: ["I **binge-watched** the whole season."] },
+    { plain: "The film made me think a lot.", better: ["It was really **thought-provoking**."] },
+    { plain: "The main character is like me.", better: ["I could really **relate to** the main character.", "The character is very **relatable**."] },
+    { plain: "Reading helps you learn about the world.", better: ["Reading **broadens your horizons**."] }
+  ],
+
+  repeat: {
+    scenario: "Вы подрабатываете в университетской библиотеке. Библиотекарь объясняет новым сотрудникам, как помогать читателям, — повторите каждое предложение точно так, как услышали.",
+    sentences: [
+      "Welcome to the reading room.",
+      "New books are on the shelf by the window.",
+      "Students can borrow up to ten books.",
+      "Audiobooks and e-books are available online.",
+      "If a book is checked out, students can reserve it at the front desk.",
+      "The film collection is on the second floor, next to the quiet study area.",
+      "Please remind visitors that books must be returned within three weeks, or they will have to pay a small fine."
+    ]
+  },
+
+  /* ===== Реальные сеты Take an Interview по теме (из базы платформы) ===== */
+  sets: [
+    { id: "s093", badge: "official", title: "Entertainment Preferences", src: "Official TOEFL · 093",
+      scenario: "You received an email from your university inviting you to join a research study about entertainment preferences. You have scheduled a short online interview with a researcher to answer a few questions.",
+      questions: [
+        { q: "What kind of movies do your family or friends generally like to watch? For example, do they prefer action movies, comedies, dramas, or other types?",
+          lx: ["genre", "go to the cinema", "on the edge of my seat"],
+          model: "[A] My friends mostly like action and sci-fi movies, while my family prefers comedies. [R] My friends are students, and after a stressful week, they want something exciting with special effects. My parents work a lot, so in the evening they just want to laugh and relax. [E] For example, last month my friends and I went to the cinema to see a new sci-fi film, and it kept us on the edge of our seats for three hours. At home, my parents watch the same old comedies every New Year, and they still laugh at every joke. My dad also loves documentaries about music. [C] So it depends on who I'm with — action with friends, comedy with family.",
+          model5: "[A] My friends lean toward action and sci-fi, whereas my family is firmly in the comedy camp. [R] My friends are students, and after a stressful week, they want something fast-paced and visually spectacular. My parents, on the other hand, work long hours, so by evening all they want is something light that makes them laugh. [E] Last month, for instance, my friends and I saw a new sci-fi epic at the cinema, and it kept us **on the edge of our seats** for nearly three hours. My parents, meanwhile, rewatch the same classic comedies every New Year and still laugh at every joke, while my dad also has a soft spot for music documentaries. [C] So my viewing depends entirely on the company: spectacle with friends, comedy with family." },
+        { q: "When you watch a movie, do you prefer to watch after work or school on weekdays? Or do you like to watch during the weekends? Why?",
+          lx: ["unwind", "lose track of time", "movie night"],
+          model: "[A] I prefer to watch movies on weekends. [R] On weekdays, I'm busy with classes, homework and my part-time job, and if I start a long movie in the evening, I go to bed too late. On weekends, I can relax and really enjoy the film without looking at the time. [E] For example, every Friday night, my roommates and I have a movie night in our dorm. We make popcorn, turn off the lights and watch something we've chosen together during the week. On weekdays, I watch only one short episode of a series to relax. [C] So weekends are for movies, and weekdays are for short episodes.",
+          model5: "[A] Definitely on weekends. [R] My weekdays are packed with lectures, assignments and shifts at the café, and starting a two-hour film in the evening inevitably pushes my bedtime far too late. At the weekend, by contrast, I can settle in and fully immerse myself in a story without glancing at the clock. [E] Every Friday, for instance, my roommates and I hold a movie night in our dorm: we make popcorn, switch off the lights and watch a film we've voted on during the week. On weeknights, I limit myself to a single short episode of a series to **unwind**. [C] So weekends are reserved for films, while weekdays get bite-sized episodes at most." },
+        { q: "In the past, people mostly watched movies in theaters. Today, many people watch movies at home. Do you think that movie theaters will continue to exist in the future? Why or why not?",
+          lx: ["go to the cinema", "streaming platform", "experience"],
+          model: "[A] Yes, I think movie theaters will continue to exist, but there will be fewer of them. [R] Streaming is cheap and convenient, so people will watch most films at home. But going to the cinema is a special experience — the huge screen, the sound and watching with other people. [E] For example, I watch most films on my laptop, but when a big sci-fi film comes out, I always go to the cinema, because at home it's just not the same. Also, some cinemas in my city now offer comfortable sofas, food and special events, and they're always full. [C] So cinemas will survive, but as a special experience, not an everyday thing.",
+          model5: "[A] I believe they'll survive, though probably in smaller numbers and in a different form. [R] Streaming is cheap and convenient, so most everyday viewing will happen at home; however, cinemas offer something streaming can't replicate — a giant screen, immersive sound and the shared reaction of an audience. [E] I watch most films on my laptop, for instance, but whenever a major sci-fi release comes out, I insist on the cinema, because the experience simply isn't comparable at home. Several cinemas in my city have also reinvented themselves with reclining seats, proper food and themed screenings, and they're consistently sold out. [C] So cinemas won't disappear, but they'll increasingly be treated as an occasion rather than a routine." },
+        { q: "Some people believe that movies can be a powerful tool for educating people and raising awareness about important issues. Do you agree with this idea? Or do you think there are other, more effective ways to educate people? Explain why you think so.",
+          lx: ["raise awareness", "thought-provoking", "based on a true story"],
+          model: "[A] I agree that movies are a powerful tool for raising awareness. [R] Films show real people and emotions, so viewers feel the problem, not just learn facts about it. Many people who never read reports will watch a film. [E] For example, I watched a documentary about plastic in the ocean, and after that, I completely stopped buying bottled water. A report with the same facts would never affect me so much. But films can also simplify things, so we should check the facts after watching. [C] So movies are a great way to start caring about an issue, but not the only way to learn about it.",
+          model5: "[A] I strongly agree, although films work best as a starting point rather than the whole education. [R] Movies make issues emotional and personal, so viewers feel a problem instead of merely processing information, and they reach audiences who would never read a report. [E] A documentary about ocean plastic, for instance, made me stop buying bottled water entirely, something a statistics-heavy article had never managed. That said, films inevitably simplify and sometimes dramatize, so it's worth checking the facts afterwards. [C] So films are arguably the most effective way to make people care, while books and reliable journalism are better at helping them understand." }
+      ]
+    },
+    { id: "s103", badge: "official", title: "Reading Habits", src: "Official TOEFL · 103",
+      scenario: "You have agreed to participate in a research study about reading habits. You will have a short online interview with a researcher. The researcher will ask you some questions.",
+      questions: [
+        { q: "First, what kind of books do your family or friends generally like to read? For example, do they prefer fiction, nonfiction, biographies, or other types?",
+          lx: ["fiction / nonfiction", "biography", "a bookworm"],
+          model: "[A] My family and friends read different kinds of books, but most of them prefer fiction. [R] They read mainly to relax, and a good story helps them forget about work or studies. Only my dad prefers nonfiction. [E] For example, my younger sister is a real bookworm — she reads fantasy novels and finishes a big book in three days. My mom likes detective stories, and my dad reads biographies of famous musicians, especially jazz players. My friends mostly read on their phones, usually popular novels that they find on social media. [C] So fiction is the favorite in my circle, but everyone has their own genre.",
+          model5: "[A] Fiction dominates in my circle, although everyone has their own niche. [R] Most people around me read primarily to relax, and a gripping story is the easiest way to switch off from work or studies; my dad is the notable exception. [E] My younger sister, for instance, is a genuine **bookworm** who devours fantasy novels, often finishing a five-hundred-page book in three days. My mother is hooked on detective fiction, while my father reads **biographies** of musicians, particularly jazz legends. My friends, meanwhile, tend to read on their phones, usually novels that have gone viral on social media. [C] So fiction is the common favorite, but each person's taste reflects what they need from reading." },
+        { q: "When you read your favorite book, do you prefer to read it in a quiet place, or do you like to read it where there is some background noise? Why?",
+          lx: ["curl up with a good book", "get into a book", "concentrate"],
+          model: "[A] I prefer to read in a quiet place. [R] When there's noise around me, I can't concentrate, and I read the same sentence again and again. In silence, I can really get into the story and forget about everything else. [E] For example, my favorite time to read is at night in bed, when my roommates are asleep and my phone is on my desk. I read for twenty minutes, and I feel calm and ready to sleep. On the bus, it's too noisy, so I listen to podcasts instead of reading. [C] So for me, reading needs silence, but for other activities, a bit of noise is fine.",
+          model5: "[A] I need quiet, otherwise I simply can't get absorbed in a book. [R] Background noise constantly pulls my attention away, so I end up rereading the same sentence; in silence, by contrast, I can fully **get into** the story and forget everything else. [E] My favorite time to read, for instance, is late at night in bed, when my roommates are asleep and my phone is charging on my desk; twenty minutes with a novel leaves me calm and ready to sleep. On noisy buses, I don't even attempt to read and listen to podcasts instead. [C] So reading, for me, is a quiet ritual, whereas noisier settings suit audio formats much better." },
+        { q: "If you have time to read one novel, do you think it more worthwhile to read an old classic that many readers love, or would you choose a newly published novel that tells a modern story? Why?",
+          lx: ["classic", "relatable", "stand the test of time"],
+          model: "[A] I would choose an old classic. [R] Classics have been loved by readers for many years, so I know the book is good. A new novel might be popular now, but people may forget it in a few years. Classics also help me understand culture and history. [E] For example, last summer I read a famous Russian classic that I had avoided at school because it was so long. I was surprised that the characters had the same problems as people today — love, money and family. It's still one of the best books I've read. [C] So if I have time for only one book, I want something that has already proved itself.",
+          model5: "[A] With time for just one, I'd choose a classic. [R] A classic has effectively been tested by generations of readers, so its quality is almost guaranteed, whereas many new releases are fashionable for a season and then forgotten. Classics also offer insight into the culture and history that shaped later writers. [E] Last summer, for instance, I finally read a long Russian classic I'd avoided at school, and I was struck by how **relatable** its characters were; they struggled with love, money and family pressure exactly as people do now. It remains one of the best books I've ever read. [C] So with limited time, I'd choose a book that has already **stood the test of time**." },
+        { q: "Some people believe that reading helps improve one's imagination and creativity. Do you agree with this idea or do you think there are other activities that can also enhance these skills? Explain why you think so.",
+          lx: ["imagination", "immerse yourself in", "read between the lines"],
+          model: "[A] I agree that reading improves imagination, but I think other activities like music and art also help. [R] When we read, we create the faces, places and voices ourselves, so our brain works much more than when we watch a film. But playing music or drawing also makes us create something new. [E] For example, when I read fantasy novels, I imagine whole worlds in my head, and sometimes I even dream about them. But I feel most creative when I play guitar and try to write my own melodies. My best friend, who paints, says that she gets ideas from walking in nature, not from books. [C] So reading is great for imagination, but it's not the only way.",
+          model5: "[A] I agree, though I'd argue reading is one of several powerful routes to creativity rather than the only one. [R] When we read, we have to construct faces, places and voices ourselves, so our imagination does far more work than when a film supplies everything visually. Creating something, however, such as music or art, develops creativity in a more active way. [E] When I read fantasy novels, for instance, I build entire worlds in my head and occasionally even dream about them. Yet I feel most creative when I'm improvising melodies on my guitar, and my best friend, who paints, says her ideas come mostly from walks in nature. [C] So reading feeds the imagination, but creativity grows best when we also make things ourselves." }
+      ]
+    },
+    { id: "s084", badge: "official", title: "Books and Reading", src: "Official TOEFL · 084",
+      scenario: "You have signed up for a study run by a university research group that is investigating people's experiences with books and reading. You will have a short online interview with a researcher. The researcher will ask you some questions.",
+      questions: [
+        { q: "Was there a time in your life when you read more, or less, than you do now? What changed?",
+          lx: ["read for pleasure", "attention span", "a page-turner"],
+          model: "[A] Yes, I read much more when I was about twelve or thirteen. [R] At that age, I had more free time and no smartphone, so books were my main entertainment. Later, at university, I had to read a lot for classes, and in my free time I preferred my phone. [E] For example, as a child, I read a whole seven-book fantasy series in one summer, sometimes until two in the morning. In my first year of university, I almost stopped reading for pleasure. Last year, I noticed I couldn't focus, so I started reading for twenty minutes every night. Now I read about one book a month. [C] So I read less than before, but I'm slowly coming back.",
+          model5: "[A] Yes, I read far more as a young teenager than I do now. [R] Back then, I had plenty of free time and no smartphone, so books were my main source of entertainment. At university, though, academic reading took over, and in my spare time I reached for my phone instead. [E] At twelve, for instance, I'd read until two in the morning, getting through an entire fantasy series in one summer. In my first year at university, by contrast, I barely read for pleasure at all, and last year I noticed my **attention span** had shrunk so much that I couldn't focus for ten minutes. So I committed to twenty minutes of reading every night, and I'm now back to about a book a month. [C] So I read less than I once did, but I'm gradually rebuilding the habit." },
+        { q: "In your opinion, is reading for pleasure a popular way people spend their free time where you live? Why do you think that is?",
+          lx: ["read for pleasure", "streaming platform", "attention span"],
+          model: "[A] I think reading for pleasure is less popular now than other free-time activities where I live. [R] Most people are busy and tired after work or study, and it's easier to watch a series or scroll social media than to concentrate on a book. Also, books are quite expensive. [E] For example, on the metro in my city, I see maybe one or two people with a book, while everyone else is looking at their phones. But there's also a new trend — young people share book reviews on social media, and my local bookstore now has a special table of popular books from there. [C] So reading is not the most popular hobby, but it's becoming more fashionable again.",
+          model5: "[A] It's not among the most popular pastimes where I live, although there are signs of a revival. [R] After long days at work or university, most people are exhausted, and streaming or scrolling demands far less effort than concentrating on a book; books are also relatively expensive. [E] On the metro, for instance, I typically see one or two people reading, while everyone else stares at a screen. Interestingly, though, young people have started sharing book recommendations on social media, and my local bookstore now dedicates an entire table to titles that went viral online. [C] So reading for pleasure is a minority activity for now, but it seems to be becoming fashionable again among younger people." },
+        { q: "Do you think reading different types of books helps people understand each other and get along better? Why or why not?",
+          lx: ["empathy", "broaden your horizons", "see the world through someone else's eyes"],
+          model: "[A] Yes, I think reading different types of books helps people understand each other. [R] When we read a story, we see the world through the eyes of another person — maybe from a different country, religion or generation. This helps us develop empathy and become less judgmental. [E] For example, last year I read a novel about a refugee family who moved to Europe. After reading it, I understood much better the people I meet at the refugee center where I volunteer — their fears, their hopes and why small things are so difficult for them. [C] So books can help us understand people we never met.",
+          model5: "[A] I'm convinced they do. [R] Fiction, in particular, allows us to **see the world through someone else's eyes**, whether that person belongs to a different culture, faith or generation, and this naturally builds **empathy** and makes us slower to judge. [E] Last year, for instance, I read a novel about a refugee family rebuilding their lives in Europe, and it transformed how I relate to the people I meet at the refugee center where I volunteer; I now understand far better their anxieties, their hopes and why everyday tasks can feel overwhelming. [C] So reading widely won't solve every conflict, but it can turn strangers into people we genuinely understand." },
+        { q: "Looking ahead, some people believe that future generations will read less than today's generation. Do you agree or disagree? Why?",
+          lx: ["attention span", "e-book / audiobook", "format"],
+          model: "[A] I disagree — I think future generations will read differently, but not necessarily less. [R] People already read a lot every day — messages, articles, posts. Also, new formats like audiobooks and e-books make reading easier for busy people. The problem is more about long, deep reading. [E] For example, my younger cousins hardly read paper books, but they listen to audiobooks on the way to school and read long stories online. My sister reads on her phone every night. So they're reading, just in another way. Schools will need to teach children how to focus on long texts. [C] So the format will change, but reading won't disappear.",
+          model5: "[A] I'd disagree; I suspect future generations will read differently rather than less. [R] Young people already read constantly — messages, articles, posts — and audiobooks and e-books make longer texts more accessible than ever. The real risk, in my view, is not the quantity of reading but the decline of deep, sustained reading. [E] My younger cousins, for instance, rarely pick up paper books, yet they listen to audiobooks on the way to school and read lengthy stories online, while my sister reads on her phone every night. Schools will therefore need to teach children to concentrate on long texts deliberately. [C] So the **format** will keep evolving, but reading itself isn't going anywhere." }
+      ]
+    },
+    { id: "srh", badge: "platform", title: "Reading Habits & Preferences", src: "Практика платформы",
+      scenario: "We're exploring how people engage with reading and what kinds of materials they enjoy. I'd like to ask you a few questions about your reading habits and preferences.",
+      questions: [
+        { q: "What kinds of books or reading materials do you usually read—fiction, nonfiction, news articles, magazines, or something else? And how often do you make time for reading?",
+          lx: ["novel", "fiction / nonfiction", "read for pleasure"],
+          model: "[A] I usually read novels, especially fantasy and historical fiction, plus news articles. [R] Novels help me relax and escape from studying, and news articles help me stay informed. I read every day, but not always books. [E] For example, every night I read a novel in bed for about twenty minutes, without my phone. Right now, I'm reading a historical novel set in Portugal in the sixteenth century — I chose it because I traveled there last summer. In the morning, while I have coffee, I read the news on a news app. [C] So I read every day — news for information and novels for pleasure.",
+          model5: "[A] Mainly novels, particularly fantasy and historical fiction, alongside news articles. [R] Novels are my way to unwind and escape from academic reading, whereas the news keeps me informed. I read daily, although not always books. [E] Every night, for instance, I spend about twenty minutes reading in bed with my phone well out of reach. At the moment, I'm halfway through a historical novel set in sixteenth-century Portugal, which I picked because I traveled there last summer. In the mornings, over coffee, I skim the headlines on a news app. [C] So reading is part of my daily routine: news for information and fiction for pleasure." },
+        { q: "What usually motivates you to pick up something to read? And how do you typically decide what to read next?",
+          lx: ["recommend a book to", "reviews", "get into a book"],
+          model: "[A] I usually read to relax or to learn about a place or topic that interests me, and I choose books mostly by recommendations. [R] I trust people who know me, because they know my taste. I also sometimes read a book after I watch a film or visit a new place. [E] For example, my sister recommended a fantasy series to me last year, and I loved it. Before my trip to Barcelona, I read a novel set in the city, and it made the trip much more interesting. I also check reviews online before I buy a book, because books are expensive. [C] So recommendations and my own interests decide what I read next.",
+          model5: "[A] I'm motivated mainly by curiosity and the need to switch off, and I usually choose based on personal recommendations. [R] People who know me understand my taste far better than any algorithm, although a film or a trip often sparks my interest in a particular book too. [E] My sister **recommended** a fantasy series **to me** last year, for instance, and I was hooked within twenty pages. Before visiting Barcelona, I read a novel set in the city, which made walking its streets far more meaningful. And since books aren't cheap, I always skim a few reader reviews before buying. [C] So my next book is usually chosen by a mix of trusted recommendations and whatever I'm curious about at that moment." },
+        { q: "Do you have a preferred format when you read—do you like physical books, digital screens, or listening to audiobooks? What do you like or dislike about that format?",
+          lx: ["e-book / audiobook", "paper book", "screen"],
+          model: "[A] I prefer physical books, although I use audiobooks too. [R] With a paper book, I can concentrate better, and I like the feeling of turning pages. On a screen, I get distracted by notifications and my eyes get tired. But paper books are heavy and take up space. [E] For example, at night I always read a paper book, because it helps me fall asleep. On the bus or when I go running, I listen to audiobooks — last month I finished a whole history book during my runs! I tried e-books, but I kept switching to social media. [C] So paper is my favorite, and audiobooks are for when my hands are busy.",
+          model5: "[A] Physical books are my clear favorite, with audiobooks as a useful supplement. [R] Paper helps me concentrate, and I genuinely enjoy the tactile experience of turning pages, whereas screens expose me to notifications and leave my eyes tired. Paper books do have drawbacks, however: they're heavy, pricey and take up space. [E] At night, for instance, I always read a paper book, as it helps me wind down. On buses or during runs, I switch to **audiobooks**; last month, I got through an entire history book purely while running. I did experiment with **e-books**, but I kept drifting to social media. [C] So paper is for deep reading, while audio fills the moments when my hands and eyes are busy." },
+        { q: "With social media, streaming, and other distractions, many people believe that reading habits are changing—especially among younger generations. From your perspective, do you think people are reading more or less now than in the past? And what do you think is causing that change?",
+          lx: ["attention span", "binge-watch", "short videos"],
+          model: "[A] I think people read fewer books now than in the past, although they read a lot of short texts online. [R] Social media and streaming are designed to keep our attention, and short videos make it harder to concentrate on long texts. Also, people are busier and more tired. [E] For example, my grandmother says that when she was young, everyone on the train was reading a book or a newspaper. Today, people watch videos. I noticed this problem myself — last year I couldn't read for more than ten minutes without checking my phone. After a month of practice, I could read for an hour again. [C] So people read less deeply, mostly because of digital distractions.",
+          model5: "[A] I'd say people read fewer books, although they consume more short-form text than ever. [R] Social media and streaming platforms are deliberately designed to capture our attention, and a diet of short videos makes sustained reading genuinely harder, a problem compounded by busier lives. [E] My grandmother, for instance, recalls that in her youth almost every train passenger had a book or newspaper, whereas today nearly everyone watches videos. I experienced the effect myself: last year, I couldn't read for more than ten minutes without checking my phone, and it took a month of deliberate practice to rebuild my focus. [C] So the main change isn't how much we read, but how deeply, and digital distractions are largely responsible." }
+      ]
+    },
+    { id: "stv", badge: "platform", title: "TV & Streaming Habits", src: "Практика платформы",
+      scenario: "I'm conducting a study on people's habits when it comes to watching television and streaming content. I'll ask you a few questions to understand how entertainment fits into your routine.",
+      questions: [
+        { q: "Can you tell me roughly how much time you spend watching TV or streaming shows and movies in a typical week? Are your viewing habits more regular, or do you tend to watch in longer sessions less frequently?",
+          lx: ["episode", "binge-watch", "movie night"],
+          model: "[A] I spend about seven or eight hours a week watching shows and movies. [R] On weekdays, I'm busy, so I watch just a little to relax, and on weekends, I have more time for longer sessions. [E] For example, from Monday to Thursday, I watch one episode of a series, about forty minutes, before I read and go to sleep. On Friday, my roommates and I have a movie night. And sometimes on Sunday, when a new season of my favorite series comes out, I watch three or four episodes in a row. [C] So I watch a bit every day, and a little more on weekends.",
+          model5: "[A] Roughly seven or eight hours a week, split between short regular sessions and the occasional longer one. [R] Weekdays are busy, so I limit myself to something brief to unwind, whereas weekends leave room for longer viewing. [E] From Monday to Thursday, for instance, I watch a single forty-minute **episode** before reading and going to sleep. On Fridays, my roommates and I have our movie night, and when a new season of a favorite show comes out, I'll admit to watching three or four episodes back-to-back on a Sunday. [C] So my viewing is mostly regular and moderate, with the odd weekend exception." },
+        { q: "What kinds of shows or films do you enjoy the most—dramas, comedies, documentaries, something else? And what draws you to those genres or stories?",
+          lx: ["genre", "gripping", "thought-provoking"],
+          model: "[A] I enjoy sci-fi series and documentaries the most. [R] Sci-fi stories are exciting, but they also make me think about the future, technology and what it means to be human. Documentaries help me learn something new in a relaxing way. [E] For example, my favorite series is about a group of people living on a spaceship after Earth becomes unlivable. It's gripping, but it also asks big questions about leadership and survival. I also watch nature documentaries with my dad when I'm at home — he loves them, and it's our time together. [C] So I like stories that are exciting and make me think at the same time.",
+          model5: "[A] Sci-fi series and documentaries are my favorites. [R] Good science fiction is gripping on the surface, yet underneath it raises **thought-provoking** questions about technology, society and what it means to be human; documentaries, meanwhile, let me learn without it feeling like work. [E] My current favorite, for instance, follows a community living aboard a spaceship after Earth has become uninhabitable, and alongside the action, it explores leadership, survival and moral compromise. When I'm home, I also watch nature documentaries with my dad, which has become a small ritual we both treasure. [C] So I'm drawn to stories that entertain me and make me think at the same time." },
+        { q: "Many people have access to multiple streaming platforms. Do you find it convenient to have so many options, or does it sometimes feel overwhelming to decide what to watch? How do you usually pick something?",
+          lx: ["streaming platform", "recommend", "reviews"],
+          model: "[A] It's convenient, but honestly, it often feels overwhelming. [R] There are so many shows that I sometimes spend half an hour scrolling and then watch nothing. Also, having many platforms is expensive, and the shows I want are always on different ones. [E] For example, last Saturday, my roommate and I spent forty minutes choosing a film, and in the end we were too tired to watch it! Now I have a list on my phone of films that friends recommend, so I just pick from the list. We also share one platform with my family to save money. [C] So more choice isn't always better — a short list helps me a lot.",
+          model5: "[A] Convenient in theory, but frequently overwhelming in practice. [R] With endless options, I sometimes spend half an hour scrolling only to watch nothing, and subscribing to several platforms is expensive, especially when the shows I want are scattered across all of them. [E] Last Saturday, for instance, my roommate and I spent forty minutes debating what to watch, by which point we were too tired to start anything. To solve this, I now keep a list on my phone of films friends have recommended, so I simply choose from that, and my family shares a single subscription to keep costs down. [C] So more choice isn't necessarily better; a short, trusted list works far better for me." },
+        { q: "Some experts have raised concerns about binge-watching—saying it can lead to sleep disruption, decreased productivity, or screen fatigue. Are those concerns valid based on your experience? What, if anything, do you do to manage your screen time?",
+          lx: ["binge-watch", "lose track of time", "screen time"],
+          model: "[A] Yes, I think those concerns are valid, because I've experienced them myself. [R] Series are made so that every episode ends with a surprise, and it's very hard to stop. When I watch late at night, I sleep badly and feel tired the next day. [E] For example, last winter I binge-watched a whole season in one night and went to bed at four in the morning. The next day, I missed an important lecture. After that, I made two rules: no more than one episode on weekdays, and no screens after eleven. I also turned off autoplay. [C] So binge-watching is fun, but I need clear rules to control it.",
+          model5: "[A] They're absolutely valid; I've experienced every one of them. [R] Series are deliberately structured so that each episode ends on a cliffhanger, which makes stopping remarkably difficult, and late-night viewing reliably wrecks my sleep and my concentration the next day. [E] Last winter, for instance, I **binge-watched** an entire season in one night, went to bed at four in the morning and slept through an important lecture. Since then, I've followed two rules — a single episode on weeknights and no screens after eleven — and I've switched off autoplay, which removes the temptation of the next episode starting automatically. [C] So binge-watching can be fun occasionally, but without firm rules, it quietly eats into sleep and productivity." }
+      ]
+    }
+  ],
+  /* ===== Speaking Club: тема вдоль и поперёк ===== */
+  club: [
+    { icon: "book", title: "Что я читаю", en: "What I read", questions: [
+      { t: "personal", src: "Платформа · Reading Habits", q: "What kinds of books or reading materials do you usually read? How often do you make time for reading?", same: "srh-0",
+        f: ["What are you reading right now?", "Do you ever reread books?"], lx: ["novel", "fiction / nonfiction", "read for pleasure"] },
+      { t: "personal", src: "Official 103", q: "What kind of books do your family or friends generally like to read?", same: "s103-0",
+        f: ["Do you swap books with friends?", "Who in your family reads the most?"], lx: ["fiction / nonfiction", "biography", "a bookworm"] },
+      { t: "personal", src: "Платформа · Reading Habits", q: "What usually motivates you to pick up something to read? How do you decide what to read next?", same: "srh-1",
+        f: ["Do you trust online reviews?", "Have you ever read a book because of a film?"], lx: ["recommend a book to", "reviews", "get into a book"] },
+      { t: "experience", src: "Official 084", q: "Was there a time in your life when you read more, or less, than you do now? What changed?", same: "s084-0",
+        f: ["What did you read as a child?", "Who made you love reading?"], lx: ["read for pleasure", "attention span", "a page-turner"] },
+      { t: "hypo", q: "If you could make everyone in the world read one book, which would you choose and why?",
+        model: "[A] I would choose a novel about a refugee family who move to Europe and start a new life. [R] It's beautifully written, but more importantly, it helps readers understand what it means to lose your home and start again. I think the world needs more empathy right now. [E] For example, after I read it, I started to see the people at the refugee center where I volunteer differently. I understood why simple things like filling in forms or going to the doctor can be so stressful for them. Two friends read it after me, and they now volunteer too. [C] So I'd choose it because it changes how people see each other.",
+        model5: "[A] I'd choose a novel about a refugee family rebuilding their lives in Europe. [R] Beyond being beautifully written, it captures, with remarkable honesty, what it means to lose everything and start again, and I genuinely believe the world could use more of that kind of **empathy**. [E] After reading it, for instance, I began to see the people I meet at the refugee center in an entirely new light, finally understanding why seemingly simple tasks like filling in forms or visiting a doctor can be so daunting. Two friends borrowed my copy afterwards, and both now volunteer alongside me. [C] So I'd choose it because a single book can quietly change how people treat one another.",
+        f: ["What book changed you most?", "Should schools choose more modern books?"], lx: ["empathy", "leave a lasting impression", "broaden your horizons"] }
+    ]},
+    { icon: "headphones", title: "Как и где читать", en: "Formats & habits", questions: [
+      { t: "personal", src: "Official 103", q: "Do you prefer to read in a quiet place, or where there is some background noise? Why?", same: "s103-1",
+        f: ["Where's the best place you've ever read?", "Can you read on public transport?"], lx: ["curl up with a good book", "get into a book", "concentrate"] },
+      { t: "compare", src: "Платформа · Reading Habits", q: "Do you prefer physical books, digital screens, or audiobooks? What do you like or dislike about that format?", same: "srh-2",
+        f: ["Do you take notes in books?", "Would you buy a special e-reader?"], lx: ["e-book / audiobook", "paper book", "screen"] },
+      { t: "opinion", src: "Mock Test", q: "Some people believe that reading a printed book is a better experience than reading on a screen. Do you agree or disagree? Why?",
+        model: "[A] I agree — for me, reading a printed book is a much better experience. [R] With paper, I can concentrate without notifications, and I remember the story better. Screens are practical, but they make me tired and distracted. [E] For example, I once tried to read a novel on my phone during a long train trip. After every few pages, I checked messages, and after two hours I didn't remember much. With a paper book, I read the same distance and finished a hundred pages. I also like seeing my books on the shelf — they remind me of good moments. [C] So screens are convenient, but paper gives me a real reading experience.",
+        model5: "[A] I'd agree, at least for longer, more immersive reading. [R] Paper allows me to concentrate without interruptions, and I find I retain the story far better; screens are undeniably practical, but they tire my eyes and constantly tempt me to switch apps. [E] On a long train journey, for instance, I once tried reading a novel on my phone and found myself checking messages every few pages, so after two hours I could barely recall what I'd read. On the return trip, with a paperback, I got through a hundred pages without a single distraction. I also love seeing my books on the shelf, each one tied to a particular memory. [C] So screens win on convenience, but paper wins on the actual experience of reading.",
+        f: ["Do you remember more from paper?", "Is it eco-friendly to print books?"], lx: ["concentrate", "attention span", "e-book / audiobook"] },
+      { t: "opinion", q: "Does listening to an audiobook count as \"reading\" a book?",
+        model: "[A] Yes, I think listening to an audiobook counts as reading, at least for most books. [R] The important thing is understanding the story and the ideas, not whether we use our eyes or ears. Audiobooks also help people who are busy or have problems with reading. [E] For example, I \"read\" a whole history book last month while running, and I remember it as well as books I read on paper. My grandmother can't read small print anymore, so audiobooks are the only way she can still enjoy novels. But for difficult books, like textbooks, I still need paper to take notes. [C] So for most stories, listening is reading — just in a different way.",
+        model5: "[A] For most books, I'd say it absolutely does. [R] What matters is engaging with the story and ideas, not whether they reach us through our eyes or ears, and audiobooks open reading up to busy people and those with visual or learning difficulties. [E] Last month, for instance, I \"read\" an entire history book while running, and I remember it as vividly as anything I've read on paper. My grandmother, whose eyesight no longer copes with small print, now relies entirely on audiobooks to keep enjoying novels. For dense or technical texts, however, I still need paper so I can underline and take notes. [C] So for stories, listening is simply reading in another form, though complex material still benefits from the page.",
+        f: ["What's a good book to listen to?", "Does the narrator's voice matter?"], lx: ["e-book / audiobook", "format", "immerse yourself in"] }
+    ]},
+    { icon: "landmark", title: "Классика и школа", en: "Classics & school", questions: [
+      { t: "compare", src: "Official 103", q: "If you have time to read one novel, would you choose an old classic or a newly published novel with a modern story? Why?", same: "s103-2",
+        f: ["Which classic was a surprise for you?", "Which modern book will become a classic?"], lx: ["classic", "relatable", "stand the test of time"] },
+      { t: "opinion", src: "Official 103", q: "Does reading improve imagination and creativity, or can other activities enhance these skills too?", same: "s103-3",
+        f: ["What makes you most creative?", "Do video games build imagination?"], lx: ["imagination", "immerse yourself in", "read between the lines"] },
+      { t: "opinion", q: "Should schools make students read classic novels, or let them choose what they read?",
+        model: "[A] I think schools should do both — read some classics together and let students choose other books. [R] Classics teach important things about history, culture and language, and students wouldn't usually read them alone. But if all books are forced, many students start to hate reading. [E] For example, at school, we had to read a long classic novel in two weeks, and most of my classmates just read a summary online. But in another year, our teacher let us choose any novel for a project, and almost everyone actually read their book and talked about it with passion. [C] So a mix of classics and free choice is the best way.",
+        model5: "[A] I'd advocate a balance: a few carefully chosen classics studied together, alongside plenty of free choice. [R] Classics offer insight into history, culture and the evolution of language, and few teenagers would discover them independently. Yet when every book is compulsory, reading quickly becomes a chore, and many students give up on it for good. [E] At school, for instance, we were given two weeks to read a very long classic, and most of my classmates simply read a summary online. The following year, however, our teacher let us choose any novel for a project, and almost everyone read theirs from cover to cover and discussed it enthusiastically. [C] So a mix of shared classics and genuine choice is the best way to create lifelong readers.",
+        f: ["Which school book did you hate?", "Should comics count as reading?"], lx: ["classic", "read for pleasure", "relatable"] },
+      { t: "opinion", q: "Are public libraries still important in the age of the internet?",
+        model: "[A] Yes, I think public libraries are still very important. [R] Not everyone can afford books, internet or a quiet place to study. Libraries also offer free events, help for older people and a safe space for children. [E] For example, I study in the university library almost every day, and it's always full of students whose dorm rooms are too noisy. In my hometown, the public library runs free computer classes for older people, and my grandmother learned to video call us there. [C] So libraries are not just about books — they're community centers for everyone.",
+        model5: "[A] Arguably more than ever. [R] Not everyone can afford books, a reliable internet connection or a quiet place to study, and libraries also host free events, support older residents and offer children a safe space after school. [E] I study in my university library almost daily, for instance, and it's always packed with students who come simply because their dorms are too noisy to work in. In my hometown, meanwhile, the public library runs free computer classes for seniors, and that's where my grandmother learned to video call us. [C] So libraries have evolved from book warehouses into genuine community hubs, and the internet hasn't replaced that role.",
+        f: ["When were you last in a library?", "What should modern libraries offer?"], lx: ["borrow a book from the library", "community", "access"] }
+    ]},
+    { icon: "users", title: "Чтение и общество", en: "Reading & society", questions: [
+      { t: "opinion", src: "Official 084", q: "Is reading for pleasure a popular way people spend their free time where you live? Why?", same: "s084-1",
+        f: ["Do your friends talk about books?", "Are books expensive in your country?"], lx: ["read for pleasure", "streaming platform", "attention span"] },
+      { t: "opinion", src: "Official 084", q: "Does reading different types of books help people understand each other and get along better?", same: "s084-2",
+        f: ["Which book helped you understand another culture?", "Can films do the same?"], lx: ["empathy", "broaden your horizons", "see the world through someone else's eyes"] },
+      { t: "opinion", src: "Official 084", q: "Will future generations read less than today's generation? Do you agree or disagree?", same: "s084-3",
+        f: ["What will books look like in 50 years?", "Can AI write good novels?"], lx: ["attention span", "e-book / audiobook", "format"] },
+      { t: "opinion", src: "Платформа · Reading Habits", q: "Are people reading more or less now than in the past? What is causing that change?", same: "srh-3",
+        f: ["How long can you read without your phone?", "How can people read more?"], lx: ["attention span", "binge-watch", "short videos"] },
+      { t: "opinion", q: "Social media now influences which books become popular. Is that a good thing?",
+        model: "[A] Mostly yes, I think it's a good thing. [R] Social media makes reading fashionable again for young people, who might not read otherwise. It also helps unknown authors become famous. But sometimes people read only what's trending, and good books get ignored. [E] For example, my sister started reading again after watching short videos where people talk emotionally about their favorite books. Now she reads two books a month. On the other hand, my local bookstore has a special table only for viral books, and the classics are hidden in the back. [C] So social media is great for getting people to read, but we shouldn't let it decide everything for us.",
+        model5: "[A] On balance, I'd say it's positive, though not without drawbacks. [R] Social media has made reading fashionable among young people who might otherwise never pick up a book, and it gives unknown authors a chance to break through. The risk, however, is that readers chase whatever is trending while excellent but less viral books are overlooked. [E] My sister, for instance, rediscovered reading through short, passionate videos of people raving about their favorite novels, and she now reads two books a month. At the same time, my local bookstore devotes its prime display to viral titles, while the classics have been pushed to a back corner. [C] So social media is a brilliant gateway to reading, as long as it doesn't become the only guide.",
+        f: ["Have you bought a book because of a video?", "Do bestseller lists matter?"], lx: ["recommend", "trend", "don't judge a book by its cover"] }
+    ]},
+    { icon: "play", title: "Кино", en: "Film", questions: [
+      { t: "personal", src: "Official 093", q: "What kind of movies do your family or friends generally like to watch?", same: "s093-0",
+        f: ["Which film does your family watch every year?", "What's the last film you saw at the cinema?"], lx: ["genre", "go to the cinema", "on the edge of my seat"] },
+      { t: "personal", src: "Official 093", q: "Do you prefer to watch movies on weekdays after work or school, or during the weekends? Why?", same: "s093-1",
+        f: ["What's your perfect movie night?", "Do you watch films alone?"], lx: ["unwind", "lose track of time", "movie night"] },
+      { t: "opinion", src: "Official 093", q: "Will movie theaters continue to exist in the future, now that many people watch movies at home?", same: "s093-2",
+        f: ["What would make you go to the cinema more?", "Is a cinema ticket worth the price?"], lx: ["go to the cinema", "streaming platform", "experience"] },
+      { t: "compare", src: "Official 100 · Hobbies", q: "Is it better to spend free time indoors, like in a movie theater, or outdoors, like in a park? Why?",
+        model: "[A] I think it's usually better to spend free time **outdoors**. [R] Most of us spend all day inside — at school, at work or at home — so fresh air and nature help us relax and feel healthier. But indoor activities are good in bad weather. [E] For example, on sunny weekends, my friends and I go for picnics in the park or go hiking, and I always feel full of energy afterwards. But in winter, when it's cold and dark, a movie or a board game night at home is a great way to spend time together. [C] So outdoors is my first choice, but it depends on the weather.", model5: "[A] Generally speaking, I'd say **outdoors** is better, though it depends heavily on the season. [R] Since most of us spend our working or studying hours indoors, time outside offers **fresh air**, movement and a change of scenery that recharges us in a way indoor activities rarely do. Nevertheless, indoor options have their place. [E] On sunny weekends, for instance, my friends and I head to the park for picnics or out of town for a hike, and I always come back with more energy than I left with. In midwinter, however, when it's dark by four, nothing beats **a cozy night in** with a film or a board game. [C] So I'd choose the outdoors whenever the weather allows, and the cinema when it doesn't.",
+        f: ["Have you been to an outdoor cinema?", "What's best on a rainy Sunday?"], lx: ["go to the cinema", "fresh air", "unwind"] },
+      { t: "compare", q: "Is the book usually better than the film adaptation? Can you give an example?",
+        model: "[A] I think the book is usually better, but there are some exceptions. [R] In a book, we can know what the characters think and feel, and there's time for details. A film has only two hours, so many important parts are cut. But sometimes a film adds great music and visuals that make the story stronger. [E] For example, I loved a fantasy novel about a girl who travels between worlds, but the film adaptation cut my favorite character and changed the ending, so I was disappointed. On the other hand, I think the film of a famous sci-fi novel I read was better — the book was slow, but the film was beautiful and exciting. [C] So usually the book wins, but not always.",
+        model5: "[A] More often than not, yes, though there are notable exceptions. [R] A novel can take us inside characters' minds and has room for nuance, whereas a two-hour film must cut and condense, sometimes losing what made the story special. On the other hand, music, cinematography and great acting can occasionally elevate a story beyond the page. [E] I adored a fantasy novel about a girl who travels between worlds, for instance, yet the film **adaptation** dropped my favorite character and rewrote the ending, which left me bitterly disappointed. Conversely, I found a classic sci-fi novel rather slow, but its film version was visually stunning and gripping from start to finish. [C] So the book usually wins, but a brilliant director can occasionally prove the exception.",
+        f: ["Do you read the book or watch the film first?", "Which adaptation surprised you?"], lx: ["adaptation", "be based on", "spoil"] },
+      { t: "personal", q: "Do you watch films and series in English? Does it help your language skills?",
+        model: "[A] Yes, I watch most series in English, and it really helps my language skills. [R] I hear how people speak naturally — the speed, the slang and the pronunciation — which is very different from textbooks. And because I enjoy the story, I don't feel like I'm studying. [E] For example, I started with English subtitles, which was difficult at first, but after a few months, I understood much more. Now I watch some comedies without subtitles. I also write down useful phrases in my notes app — like \"I'm on it\" or \"fair enough\" — and later I use them when I speak. [C] So watching in English is the most enjoyable way to learn.",
+        model5: "[A] Yes, almost exclusively, and it's done more for my English than any textbook. [R] Series expose me to natural speech — its speed, slang and connected pronunciation — and because I'm absorbed in the story, it never feels like studying. [E] I started, for instance, by watching with English **subtitles**, which was exhausting at first, but within a few months my comprehension improved dramatically, and I now watch some comedies without any subtitles. I also jot down useful phrases in my notes app, things like \"I'm on it\" or \"fair enough,\" and deliberately use them in conversation later. [C] So watching in English is easily the most enjoyable way I've found to improve.",
+        f: ["Which series is best for learners?", "Subtitles in English or your language?"], lx: ["watch with subtitles", "be hooked on", "pick up"] }
+    ]},
+    { icon: "laptop", title: "Сериалы и стриминг", en: "Series & streaming", questions: [
+      { t: "personal", src: "Платформа · TV & Streaming", q: "How much time do you spend watching TV or streaming in a typical week? Do you watch a bit each day, or in longer sessions?", same: "stv-0",
+        f: ["Do you watch while eating?", "Do you watch alone or with others?"], lx: ["episode", "binge-watch", "movie night"] },
+      { t: "personal", src: "Платформа · TV & Streaming", q: "What kinds of shows or films do you enjoy the most, and what draws you to those genres or stories?", same: "stv-1",
+        f: ["What series would you recommend to me?", "Which genre do you never watch?"], lx: ["genre", "gripping", "thought-provoking"] },
+      { t: "opinion", src: "Платформа · TV & Streaming", q: "Do you find it convenient to have so many streaming options, or does it feel overwhelming? How do you pick something to watch?", same: "stv-2",
+        f: ["How many subscriptions are too many?", "Do you trust recommendation algorithms?"], lx: ["streaming platform", "recommend", "reviews"] },
+      { t: "opinion", src: "Платформа · TV & Streaming", q: "Are concerns about binge-watching — sleep problems, lower productivity, screen fatigue — valid? How do you manage your screen time?", same: "stv-3",
+        f: ["What's your binge-watching record?", "Should platforms turn off autoplay?"], lx: ["binge-watch", "lose track of time", "screen time"] }
+    ]},
+    { icon: "bulb", title: "Сила историй", en: "The power of stories", questions: [
+      { t: "opinion", src: "Official 093", q: "Can movies be a powerful tool for educating people and raising awareness about important issues? Or are there more effective ways?", same: "s093-3",
+        f: ["Which film made you change something?", "Can films spread wrong ideas?"], lx: ["raise awareness", "thought-provoking", "based on a true story"] },
+      { t: "experience", src: "Art & Music · Speaking Club", q: "Has a song, painting or film ever changed the way you see something?",
+        model: "[A] Yes, a photography exhibition about refugees changed the way I think about migration. [R] Before, I only heard numbers and arguments on the news. The photos showed real faces and real stories, and that made it personal for me. [E] For example, one photo showed a girl my age doing homework in a tent. Next to it, there was a short text about her dream to become a doctor. I stood there for a long time, and I realized that she was just like me. After that exhibition, I started volunteering with a refugee organization. [C] So art can change opinions better than any article.", model5: "[A] Yes — a photography exhibition about refugees transformed my perspective on migration. [R] Until then, I'd encountered the subject mainly through statistics and political arguments on the news. The photographs, by contrast, showed individual faces and stories, which made the issue suddenly and deeply personal. [E] One image, for instance, showed a girl roughly my age doing her homework by lamplight in a tent, alongside a short caption about her dream of becoming a doctor. I stood in front of it for a long time, struck by how similar her hopes were to mine. Shortly afterwards, I started volunteering with a local refugee support organization. [C] So that exhibition **left a lasting impression** in a way no article ever had.",
+        f: ["What film do you think about years later?", "Can a story change your career plans?"], lx: ["leave a lasting impression", "make me think", "move me to tears"] },
+      { t: "opinion", q: "Should films based on true stories stick strictly to the facts?",
+        model: "[A] I think they should stay close to the main facts, but small changes are acceptable. [R] Films need drama and a clear story, so directors sometimes combine characters or change small details. But if they change important facts, people may believe something false, because many viewers never check. [E] For example, I watched a film about a famous scientist, and later I found out that the main conflict in the film never happened. I felt a bit cheated. On the other hand, a film about a historical sea rescue changed only small details, and it made me read more about the real event. [C] So creative freedom is fine, but the main facts should be true.",
+        model5: "[A] They should respect the essential facts, although some dramatic license is reasonable. [R] Films need tension and a clear narrative arc, so merging minor characters or compressing timelines is understandable. Altering central facts, however, is problematic, since many viewers treat the film as the definitive account and never check. [E] I watched a biopic about a famous scientist, for instance, only to discover later that its central conflict had been entirely invented, which left me feeling somewhat misled. By contrast, a film about a historic sea rescue changed only minor details and inspired me to read extensively about the real event. [C] So creativity is welcome, but a film that claims to be **based on a true story** owes its audience the truth about what actually happened.",
+        f: ["Should films show a warning about changes?", "Which historical film did you love?"], lx: ["be based on a true story", "narrative", "accurate"] },
+      { t: "opinion", q: "Do you think violent films or video games can influence how young people behave?",
+        model: "[A] I think they can have some influence, but they're not the main cause of violent behavior. [R] Family, friends and personal problems are much more important. But very young children can copy what they see, so age limits are important. [E] For example, my little cousin is eight, and after watching a fighting film, he started kicking everyone for a few days. That's why his parents check what he watches. But my friends and I played violent video games as teenagers, and none of us became aggressive — we just had fun and then went to football practice. [C] So parents should control what young children watch, but we shouldn't blame films for everything.",
+        model5: "[A] They may have some influence, particularly on young children, but I don't believe they're a major cause of violence. [R] Family environment, peer groups and personal difficulties are far more decisive factors. Still, young children tend to imitate what they see, so age ratings and parental guidance are important. [E] My eight-year-old cousin, for instance, spent several days kicking everyone after watching an action film, which is precisely why his parents now check what he watches. My friends and I, on the other hand, played violent video games as teenagers without becoming remotely aggressive; we'd play for an hour and then head off to football practice. [C] So parents should supervise young children, but blaming films for violence oversimplifies a complex problem.",
+        f: ["Should age ratings be stricter?", "Did your parents limit what you watched?"], lx: ["influence", "age rating", "that said"] }
+    ]},
+    { icon: "sparkles", title: "Представь, что…", en: "What if…?", questions: [
+      { t: "hypo", q: "If you could live inside the world of a book or film for one week, which would you choose and why?",
+        model: "[A] I would choose the world of the sci-fi series I'm watching now, where people live on a giant spaceship. [R] I've always dreamed of going to space, and on the ship I could see Earth and the stars from the window every day. It would also be fascinating to see how people organize life in such a small world. [E] For example, I'd visit the greenhouse where they grow food, eat in the big dining hall and talk to the captain about how they make difficult decisions. But I'd make sure to leave before the dramatic final episode — it's quite dangerous! [C] So it would be an amazing adventure, but only for a week.",
+        model5: "[A] I'd pick the world of the sci-fi series I'm currently watching, where a community lives aboard an enormous spaceship. [R] I've dreamed of space since childhood, and waking up to a view of distant stars every morning would be unforgettable; I'd also be fascinated to see how a society organizes itself in such a confined world. [E] I'd tour the vast greenhouse where they grow their food, for instance, share meals in the communal hall and quiz the captain about the agonizing decisions she faces. I'd make sure, however, to leave before the final episode, which is, to put it mildly, rather hazardous. [C] So it would be the adventure of a lifetime, provided it lasted exactly a week.",
+        f: ["Which world would you NEVER visit?", "Which character would you want to meet?"], lx: ["escapism", "immerse yourself in", "set in"] },
+      { t: "hypo", q: "If you wrote a book or made a film, what would it be about?",
+        model: "[A] I would write a novel about a young musician who travels around Europe with only his guitar. [R] I love music and travel, so I could use my own experiences, and I think a story about finding yourself and meeting people from different cultures would be interesting for many readers. [E] For example, in each chapter, he would arrive in a new city — Lisbon, Barcelona, Berlin — play in the streets and meet someone who changes his life a little. At the end, he would return home and understand what he really wants. [C] So it would be a story about music, travel and growing up.",
+        model5: "[A] I'd write a novel about a young musician who travels across Europe with nothing but his guitar. [R] It would let me draw on two of my great passions, music and travel, and I think a story about self-discovery through encounters with different cultures would resonate with many readers. [E] Each chapter, for instance, would take him to a new city — Lisbon, Barcelona, Berlin — where he'd busk in the streets and meet someone who subtly changes his outlook. In the final chapter, he'd return home and finally understand what he truly wants from life. [C] So it would be a coming-of-age story told through music and the open road.",
+        f: ["Who would play the main character?", "Would it have a happy ending?"], lx: ["character", "plot", "set in"] },
+      { t: "hypo", q: "If your life were a film, what genre would it be and why?",
+        model: "[A] If my life were a film, it would be a comedy-drama. [R] Most of my life is funny and a bit chaotic, but there are also serious moments that make me grow up. I think that's true for most students. [E] For example, there would be funny scenes, like me spilling coffee on a customer at my barista job on my first day, or getting lost in the mountains with my hiking club. But there would also be emotional scenes, like running a half marathon with a bad knee, or saying goodbye to my grandfather. [C] So it would be a film that makes people laugh and cry at the same time.",
+        model5: "[A] It would definitely be a comedy-drama. [R] Most of my life is fairly chaotic and often quite funny, but it's punctuated by serious moments that have shaped who I am, which I suspect is true for most people my age. [E] There'd be comic scenes, for instance, like spilling an entire latte over a customer on my first day as a barista, or my hiking club getting hopelessly lost in the mountains. But there'd also be emotional ones, such as limping across the finish line of a half marathon with an injured knee, or saying goodbye to my grandfather. [C] So it would be the kind of film that has you laughing one minute and reaching for tissues the next.",
+        f: ["What would the title be?", "Who would play you?"], lx: ["genre", "a tearjerker", "plot"] }
+    ]}
+  ],
+
+  checklist: [
+    "Ответил(а) на вопрос прямо в первом предложении",
+    "Не пересказывал(а) сюжет — сказал(а), что история мне дала",
+    "Вставил(а) одну идиому — естественно, а не «для галочки»",
+    "Назвал(а) конкретику: жанр, где и когда читаю/смотрю, пример",
+    "Без ошибок: based ON, set IN, hooked ON, relate TO",
+    "Уложился(ась) в 45 секунд без длинных пауз"
+  ],
+
+  targetLexis: ["novel", "genre", "plot", "character", "read for pleasure", "get into a book", "a page-turner", "e-book / audiobook", "attention span", "go to the cinema", "be based on a true story", "set in", "adaptation", "binge-watch", "be hooked on", "watch with subtitles", "gripping", "thought-provoking", "relate to", "empathy", "broaden your horizons", "raise awareness", "that said"]
+};
+
+/* =====================================================================
+   ИЛЛЮСТРАЦИИ (SVG)
+   ===================================================================== */
+const HERO_ART = `
+<svg viewBox="0 0 320 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Открытая книга, кинохлопушка, попкорн и плёнка">
+  <ellipse cx="165" cy="232" rx="128" ry="10" fill="rgba(0,0,0,.22)"/>
+  <path d="M40 120 q60 -24 116 0 v96 q-56 -24 -116 0z" fill="#fff"/>
+  <path d="M272 120 q-60 -24 -116 0 v96 q56 -24 116 0z" fill="#f1f5f9"/>
+  <path d="M56 136 q40 -14 84 0 M56 152 q40 -14 84 0 M56 168 q40 -14 84 0 M56 184 q30 -10 60 0 M172 136 q40 -14 84 0 M172 152 q40 -14 84 0 M172 168 q40 -14 84 0" stroke="#c4b5fd" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M156 120 v96" stroke="#cbd5e1" stroke-width="3"/>
+  <g transform="translate(60 40) rotate(-8)">
+    <rect x="0" y="22" width="96" height="56" rx="4" fill="#1e293b"/>
+    <g class="tl-coin" style="transform-origin:0 22px"><rect x="0" y="0" width="96" height="18" rx="3" fill="#334155"/>
+    <path d="M10 0 l-8 18 M30 0 l-8 18 M50 0 l-8 18 M70 0 l-8 18 M90 0 l-8 18" stroke="#fff" stroke-width="6"/></g>
+    <path d="M12 40 h40 M12 54 h60" stroke="#94a3b8" stroke-width="4" stroke-linecap="round"/>
+  </g>
+  <g transform="translate(206 44)">
+    <path d="M0 20 h60 l-8 70 h-44z" fill="#fff"/><path d="M8 20 l6 70 M22 20 l2 70 M38 20 l-2 70 M52 20 l-6 70" stroke="#e11d48" stroke-width="6"/>
+    <circle cx="10" cy="14" r="10" fill="#fef3c7"/><circle cx="26" cy="8" r="11" fill="#fff7ed"/><circle cx="42" cy="12" r="10" fill="#fef3c7"/><circle cx="54" cy="16" r="8" fill="#fff7ed"/>
+  </g>
+  <path d="M286 150 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3 z" fill="#a5f3fc"/>
+  <path d="M24 92 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3 z" fill="#fbcfe8"/>
+</svg>`;
+
+/* Мини-иллюстрации к идиомам (160×96). Классы a-* анимируются при наведении. */
+const BOOK = (x, y, c) => `<path d="M${x} ${y} q20 -8 38 0 v34 q-18 -8 -38 0z M${x + 38} ${y} q18 -8 38 0 v34 q-20 -8 -38 0z" fill="#fff" stroke="${c}" stroke-width="2.5"/>`;
+const IDIOM_ART = {
+  page: `${BOOK(42, 40, "#7c3aed")}
+         <g class="a-r"><path d="M80 40 q14 -14 30 -20 v34 q-16 6 -30 20z" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/></g>
+         <path d="M120 16 l6 -6 M128 26 l8 -2 M126 36 l7 3" stroke="#f472b6" stroke-width="3" stroke-linecap="round"/>`,
+  worm: `<rect x="30" y="20" width="16" height="64" rx="2" fill="#8b5cf6"/><rect x="48" y="28" width="14" height="56" rx="2" fill="#ec4899"/><rect x="64" y="16" width="18" height="68" rx="2" fill="#0ea5e9"/><rect x="84" y="26" width="14" height="58" rx="2" fill="#f97316"/>
+         <path d="M20 86 h100" stroke="#94a3b8" stroke-width="3"/>
+         <g class="a-up"><path d="M104 64 q8 -10 16 0 t16 0" stroke="#fb7185" stroke-width="9" fill="none" stroke-linecap="round"/><circle cx="138" cy="62" r="6" fill="#fb7185"/><circle cx="140" cy="60" r="1.8" fill="#0f172a"/>
+         <circle cx="140" cy="60" r="5" fill="none" stroke="#0f172a" stroke-width="1.4"/></g>`,
+  curl: `<path d="M24 80 q0 -30 30 -30 h52 q30 0 30 30z" fill="#c4b5fd"/>
+         <circle cx="58" cy="44" r="12" fill="#fdba74"/><path d="M50 60 q22 -6 40 4 v16 h-44z" fill="#7c3aed"/>
+         <g class="a-tag" style="transform-origin:96px 60px"><path d="M84 52 q10 -4 18 0 v16 q-8 -4 -18 0z M102 52 q8 -4 18 0 v16 q-10 -4 -18 0z" fill="#fff" stroke="#ec4899" stroke-width="2"/></g>
+         <path d="M120 22 q10 -6 6 -14 M132 28 q12 -6 8 -16" stroke="#fda4af" stroke-width="3" fill="none" stroke-linecap="round"/>`,
+  cover: `<rect x="22" y="16" width="52" height="68" rx="3" fill="#94a3b8"/><path d="M30 30 h36 M30 40 h24" stroke="#cbd5e1" stroke-width="4" stroke-linecap="round"/>
+         <g class="a-r"><rect x="86" y="16" width="52" height="68" rx="3" fill="#fff" stroke="#e2e8f0" stroke-width="2"/>
+         <path d="M112 34 l4 9 l10 1 l-7 7 l2 10 l-9 -5 l-9 5 l2 -10 l-7 -7 l10 -1z" fill="#fbbf24"/><path d="M96 70 h32" stroke="#ec4899" stroke-width="4" stroke-linecap="round"/></g>`,
+  lines: `<rect x="20" y="14" width="120" height="70" rx="4" fill="#fff" stroke="#cbd5e1" stroke-width="2"/>
+         <path d="M32 30 h96 M32 50 h96 M32 70 h70" stroke="#94a3b8" stroke-width="4" stroke-linecap="round"/>
+         <g class="a-beam"><path d="M32 40 h96 M32 60 h80" stroke="#ec4899" stroke-width="3" stroke-dasharray="3 5" stroke-linecap="round"/></g>
+         <circle cx="128" cy="78" r="10" fill="none" stroke="#7c3aed" stroke-width="3"/><path d="M135 85 l10 8" stroke="#7c3aed" stroke-width="4" stroke-linecap="round"/>`,
+  seat: `<rect x="10" y="10" width="140" height="40" rx="4" fill="#1e293b"/><path d="M20 40 l30 -20 l20 14 l30 -18 l40 24" stroke="#38bdf8" stroke-width="3" fill="none"/>
+         <path d="M40 90 v-20 q0 -8 8 -8 h40 q8 0 8 8 v20" fill="#e11d48"/>
+         <g class="a-r"><circle cx="100" cy="56" r="8" fill="#fdba74"/><path d="M98 64 l-6 16 M98 66 l12 -8 M98 66 l-10 -6" stroke="#7c3aed" stroke-width="4" stroke-linecap="round"/></g>`,
+  tear: `<circle cx="80" cy="50" r="30" fill="#fdba74"/>
+         <path d="M66 42 q4 4 8 0 M86 42 q4 4 8 0" stroke="#0f172a" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M70 66 q10 -8 20 0" stroke="#0f172a" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+         <g class="a-drop"><path d="M68 50 c-3 5 -4 8 -4 10 a4 4 0 0 0 8 0 c0 -2 -1 -5 -4 -10z M92 50 c-3 5 -4 8 -4 10 a4 4 0 0 0 8 0 c0 -2 -1 -5 -4 -10z" fill="#38bdf8"/></g>
+         <rect x="118" y="56" width="26" height="24" rx="3" fill="#fff" stroke="#e2e8f0"/><path d="M126 56 q5 -10 10 0" fill="#fff" stroke="#e2e8f0"/>`,
+  couch: `<rect x="20" y="10" width="54" height="36" rx="3" fill="#1e293b"/><rect x="24" y="14" width="46" height="28" fill="#38bdf8" opacity=".7"/>
+         <path d="M70 60 h70 v20 h-70z" fill="#8b5cf6"/><rect x="66" y="52" width="8" height="30" rx="3" fill="#7c3aed"/><rect x="136" y="52" width="8" height="30" rx="3" fill="#7c3aed"/>
+         <g class="a-up"><ellipse cx="104" cy="54" rx="22" ry="14" fill="#d6a46c"/><circle cx="96" cy="50" r="2.5" fill="#0f172a"/><circle cx="108" cy="50" r="2.5" fill="#0f172a"/><path d="M98 58 q4 3 8 0" stroke="#0f172a" stroke-width="2" fill="none"/></g>`,
+  spoiler: `<rect x="34" y="18" width="92" height="62" rx="6" fill="#fff" stroke="#e2e8f0" stroke-width="2"/>
+         <path d="M46 34 h68 M46 48 h68 M46 62 h40" stroke="#cbd5e1" stroke-width="5" stroke-linecap="round"/>
+         <g class="a-no"><path d="M80 8 l18 32 h-36z" fill="#fbbf24"/><path d="M80 20 v10 M80 34 v1" stroke="#0f172a" stroke-width="3" stroke-linecap="round"/></g>
+         <path d="M46 48 h68" stroke="#0f172a" stroke-width="8" stroke-linecap="round"/>`
+};
+</script>
+<script src="topic-engine.js"></script>
+</body>
+</html>

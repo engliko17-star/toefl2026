@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Friends, Family & Gatherings — Speaking Topics — TOEFL Prep</title>
+
+<!-- Те же подключения, что на остальных страницах платформы -->
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="auth.js"></script>
+<script src="topics.js"></script>
+
+<link rel="stylesheet" href="topic-engine.css">
+</head>
+<body>
+<div class="tl-layout flex flex-col md:flex-row min-h-screen">
+  <div id="app-sidebar"></div>
+  <script src="nav.js"></script>
+
+  <main class="tl-main">
+    <div class="tl-wrap" id="lesson"></div>
+  </main>
+</div>
+
+<!-- Панель ответа -->
+<div class="tl-dock" id="dock" aria-live="polite">
+  <div class="tl-dock-top"><span id="dockLabel">Ответ</span><button class="tl-dock-close" id="dockClose" aria-label="Закрыть">✕</button></div>
+  <div class="tl-dock-q" id="dockQ"></div>
+  <div class="tl-dock-status">
+    <div class="tl-dock-state"><span class="tl-rec-dot" id="recDot"></span><span id="dockState">Готово</span></div>
+    <div class="tl-dock-time" id="dockTime">0:45</div>
+  </div>
+  <div class="tl-phase" id="dockPhase"></div>
+  <div class="tl-dock-bar" id="dockBar"></div>
+  <div class="tl-dock-ctrl">
+    <label><input type="checkbox" id="recToggle"> Записывать голос</label>
+    <div class="tl-row">
+      <button class="tl-dock-btn" id="dockShowQ">Показать текст</button>
+      <button class="tl-dock-btn" id="dockStop">Стоп</button>
+    </div>
+  </div>
+  <div class="tl-dock-msg" id="dockMsg"></div>
+  <div class="tl-dock-out" id="dockOut"></div>
+</div>
+
+<script>
+/* =====================================================================
+   КОНТЕНТ УРОКА: FRIENDS, FAMILY & GATHERINGS
+   Новая тема = копия файла: меняются LESSON, HERO_ART и IDIOM_ART.
+   Общий движок и стили — topic-engine.js и topic-engine.css.
+   **слово** — подсветка целевой лексики.
+   _слово_ в коллокациях — «ключевой кубик».
+   [A] [R] [E] [C] в модельных ответах — цветная структура:
+   A = прямой ответ, R = причина, E = пример, C = вывод.
+   ===================================================================== */
+const LESSON = {
+  slug: "friends",
+  titleEn: "Friends, Family & Gatherings",
+  titleRu: "Друзья, семья и встречи",
+  category: "Личное",
+  intro: "Друзья — много или мало, что делает дружбу крепкой, вечеринки и встречи, нетворкинг, семья и её ценности, дружба онлайн и сложные моменты: ссоры, деньги, расставания. Учим говорить о людях тепло и конкретно и проходим все вопросы по теме из базы.",
+  meta: [["≈ 60", "минут"], ["27", "слов · 2 уровня"], ["20", "коллокаций"], ["9", "идиом"], ["{Q}", "вопросов для обсуждения"]],
+
+  frames: {
+    warmup:    { icon: "flame",      time: "3 мин",  steps: ["Нажми динамик или прочитай вопрос", "Ответь вслух за 20 секунд", "Без подсказок — это «до урока»"] },
+    vocab:     { icon: "book",       time: "10 мин", steps: ["Посмотри на схему: круги близости", "Найди себя на шкале", "Слова: начни с Core, слушай и повторяй"] },
+    coll:      { icon: "link",       time: "8 мин",  steps: ["Учи сочетание целиком", "Цветной кубик — то, что чаще путают", "Расскажи о лучшем друге с 5 сочетаниями"] },
+    idioms:    { icon: "quote",      time: "6 мин",  steps: ["Посмотри картинку — запомни образ", "Плашка «Можно» — смело в ответы", "Выбери 2 идиомы на сегодня"] },
+    expr:      { icon: "megaphone",  time: "5 мин",  steps: ["Послушай интонацию", "По 1 фразе из каждой группы", "Запомни шкалу 45 секунд"] },
+    check:     { icon: "puzzle",     time: "10 мин", steps: ["4 мини-игры", "Цель — 100% в Matching и Gap-fill", "Карточки — пока не узнаёшь все"] },
+    repeat:    { icon: "headphones", time: "5 мин",  steps: ["Слушай, не читая", "Повтори слово в слово", "Включи запись и сравни"] },
+    interview: { icon: "mic",        time: "15 мин", steps: ["Выбери сет — начни с Official", "Пройди все вопросы подряд, без пауз", "Сравни с моделью: цвета = структура"] },
+    club:      { icon: "chat",       time: "30+ мин", steps: ["Возьми 1–2 блока на занятие", "Ответь, потом — на «Копнём глубже»", "Отметь «Обсудили» или крути рулетку"] },
+    self:      { icon: "checkCircle",time: "3 мин",  steps: ["Прослушай свои записи", "Отметь, что получилось", "Цель — 15+ отмеченных слов"] }
+  },
+
+  warmup: [
+    "How did you meet your best friend?",
+    "What did you do the last time you met friends?",
+    "Big parties or small get-togethers?",
+    "Who in your family are you closest to?"
+  ],
+
+  /* Круги близости: равные ветки, вместо процента — tag */
+  flow: {
+    icon: "users",
+    title: "Круги близости",
+    source: { kicker: "Вокруг нас…", title: "My people", ru: "мои люди", words: ["relationships", "a support network", "close-knit"] },
+    branches: [
+      { title: "Family", ru: "семья", sub: "where we come from", tag: "Корни", color: "#f97316", words: ["immediate family", "relatives", "values", "family ties"] },
+      { title: "Friends", ru: "друзья", sub: "the family we choose", tag: "Опора", color: "#ec4899", words: ["a close friend", "trust", "loyalty", "keep in touch"] },
+      { title: "Connections", ru: "знакомые и коллеги", sub: "wider circle", tag: "Нетворкинг", color: "#0ea5e9", words: ["acquaintances", "colleagues", "network", "socialize"] }
+    ],
+    notes: [
+      "Почти любой ответ этой темы — про <b>доверие и поддержку</b>: кто рядом, когда трудно, и как мы поддерживаем отношения",
+      "Готовая фраза: <i>For me, a real friend isn't someone you see every day, but someone who's there when it matters.</i>"
+    ]
+  },
+
+  scale: {
+    title: "Какой ты в компании? Перетащи кружок туда, где ты",
+    left: "LONE WOLF", right: "LIFE AND SOUL OF THE PARTY",
+    words: [
+      { w: "lone wolf", p: 4 }, { w: "a couple of close friends", p: 17 }, { w: "small get-togethers", p: 30 }, { w: "dinner with friends", p: 44 },
+      { w: "always up for plans", p: 58 }, { w: "host parties", p: 71 }, { w: "know everyone", p: 85 }, { w: "life and soul of the party", p: 97 }
+    ],
+    says: [
+      { max: 25,  t: "I'm a bit of a **lone wolf** — I have just **a couple of close friends**." },
+      { max: 50,  t: "I love **small get-togethers** and a quiet **dinner with friends**." },
+      { max: 75,  t: "I'm **always up for plans**, and I sometimes **host parties** in my dorm." },
+      { max: 101, t: "I **know everyone** — people say I'm **the life and soul of the party**." }
+    ]
+  },
+
+  vocab: [
+    { en: "close friend", pos: "n", ru: "близкий друг", ex: "I have three close friends from school.", level: "core" },
+    { en: "acquaintance", pos: "n", ru: "знакомый", ex: "He's more of an acquaintance than a friend.", level: "core" },
+    { en: "relatives", pos: "n", ru: "родственники", ex: "All our relatives come for New Year.", level: "core" },
+    { en: "immediate family", pos: "n", ru: "ближайшая семья (родители, братья, сёстры)", ex: "My immediate family is my parents and my sister.", level: "core" },
+    { en: "get-together", pos: "n", ru: "встреча, посиделки", ex: "We have a small get-together every Friday.", level: "core" },
+    { en: "gathering", pos: "n", ru: "собрание, встреча", ex: "I prefer small gatherings to big parties.", level: "core" },
+    { en: "host", pos: "v / n", ru: "принимать гостей; хозяин", ex: "We hosted a dinner for ten people.", level: "core" },
+    { en: "guest", pos: "n", ru: "гость", ex: "Each guest brought a dish.", level: "core" },
+    { en: "trust", pos: "n / v", ru: "доверие; доверять", ex: "Trust is the base of any friendship.", level: "core" },
+    { en: "loyal", pos: "adj", ru: "верный", ex: "She's the most loyal friend I have.", level: "core" },
+    { en: "support", pos: "n / v", ru: "поддержка; поддерживать", ex: "My friends supported me during exams.", level: "core" },
+    { en: "argue", pos: "v", ru: "спорить, ссориться", ex: "We sometimes argue about silly things.", level: "core" },
+    { en: "socialize", pos: "v", ru: "общаться, проводить время в компании", ex: "I socialize more on weekends.", level: "core" },
+    { en: "colleague", pos: "n", ru: "коллега", ex: "I get on well with my colleagues.", level: "core" },
+    { en: "values", pos: "n", ru: "ценности", ex: "Honesty is one of our family values.", level: "core" },
+
+    { en: "close-knit", pos: "adj", ru: "сплочённый", ex: "We're a close-knit family.", level: "adv" },
+    { en: "a support network", pos: "n", ru: "круг поддержки", ex: "Students need a strong support network.", level: "adv" },
+    { en: "mutual", pos: "adj", ru: "общий, взаимный", ex: "We met through a mutual friend.", level: "adv" },
+    { en: "companionship", pos: "n", ru: "общение, дружеское присутствие", ex: "Older people need companionship.", level: "adv" },
+    { en: "reciprocity", pos: "n", ru: "взаимность", ex: "Friendship is built on reciprocity.", level: "adv" },
+    { en: "rapport", pos: "n", ru: "взаимопонимание, контакт", ex: "We built a good rapport quickly.", level: "adv" },
+    { en: "estranged", pos: "adj", ru: "отдалившийся, в разрыве", ex: "He's estranged from his brother.", level: "adv" },
+    { en: "network", pos: "v / n", ru: "заводить полезные знакомства; сеть контактов", ex: "Conferences are great places to network.", level: "adv" },
+    { en: "a falling-out", pos: "n", ru: "ссора, размолвка", ex: "We had a falling-out over money.", level: "adv" },
+    { en: "make amends", pos: "phr", ru: "загладить вину", ex: "I called him the next day to make amends.", level: "adv" },
+    { en: "intergenerational", pos: "adj", ru: "между поколениями", ex: "Intergenerational friendships are valuable.", level: "adv" },
+    { en: "nuclear / extended family", pos: "n", ru: "нуклеарная / расширенная семья", ex: "In my country, the extended family is very important.", level: "adv" }
+  ],
+
+  collocations: [
+    { icon: "users", group: "Дружба", items: [
+      { en: "_make_ friends _with_", ru: "подружиться с (make, не find!)", ex: "I made friends with my roommate quickly." },
+      { en: "_get on (well) with_", ru: "ладить с", ex: "I get on well with everyone in my class." },
+      { en: "_keep in touch with_", ru: "поддерживать связь с", ex: "I keep in touch with school friends online." },
+      { en: "_lose touch with_", ru: "потерять связь с", ex: "I lost touch with most of my classmates." },
+      { en: "_have a lot in common_", ru: "иметь много общего", ex: "We have a lot in common." }
+    ]},
+    { icon: "gift", group: "Встречи", items: [
+      { en: "_throw_ a party", ru: "устроить вечеринку", ex: "We threw a party for her birthday." },
+      { en: "_meet up with_ friends", ru: "встретиться с друзьями", ex: "I meet up with friends every Friday." },
+      { en: "_catch up with_ someone", ru: "наверстать новости, пообщаться", ex: "It was great to catch up with old friends." },
+      { en: "_make_ small talk", ru: "вести светскую беседу", ex: "I'm not good at making small talk." },
+      { en: "_invite_ someone _over_", ru: "пригласить к себе", ex: "I invited a few friends over for dinner." }
+    ]},
+    { icon: "heart", group: "Семья", items: [
+      { en: "_spend quality time_ with", ru: "проводить время по-настоящему вместе", ex: "We try to spend quality time together." },
+      { en: "_be close to_", ru: "быть близким с", ex: "I'm very close to my grandmother." },
+      { en: "_take after_", ru: "быть похожим на (родителя)", ex: "I take after my dad." },
+      { en: "_grow up with_", ru: "вырасти с", ex: "I grew up with two dogs." },
+      { en: "_look up to_", ru: "равняться на, уважать", ex: "I've always looked up to my older sister." }
+    ]},
+    { icon: "scales", group: "Сложности", items: [
+      { en: "_fall out with_", ru: "поссориться с", ex: "I fell out with a friend over money." },
+      { en: "_make up_ (with)", ru: "помириться (с)", ex: "We made up the next day." },
+      { en: "_let_ someone _down_", ru: "подвести кого-то", ex: "I never want to let my friends down." },
+      { en: "_stand by_ someone", ru: "оставаться рядом, поддерживать", ex: "She stood by me when I was ill." },
+      { en: "_clear the air_", ru: "прояснить ситуацию, снять напряжение", ex: "We had a long talk to clear the air." }
+    ]}
+  ],
+
+  idioms: [
+    { art: "spark", lit: "буквально: «попасть в точку»", en: "hit it off", ru: "сразу найти общий язык", meaning: "быстро понравиться друг другу", ex: "We hit it off on the first day of university.", reg: "ok", note: "Лучший способ рассказать, как вы познакомились." },
+    { art: "fire", lit: "буквально: «как горящий дом»", en: "get on like a house on fire", ru: "отлично ладить", meaning: "очень хорошо и быстро подружиться", ex: "My mom and my best friend get on like a house on fire.", reg: "ok", note: "Живо и тепло, нравится экзаменаторам." },
+    { art: "thick", lit: "буквально: «через густое и тонкое»", en: "through thick and thin", ru: "в горе и в радости", meaning: "несмотря ни на какие трудности", ex: "She's stood by me through thick and thin.", reg: "ok", note: "Для вопроса «what makes a friendship last»." },
+    { art: "ice", lit: "буквально: «разбить лёд»", en: "break the ice", ru: "растопить лёд", meaning: "снять неловкость при знакомстве", ex: "A funny game helped break the ice at the party.", reg: "ok", note: "Для вопросов о вечеринках и нетворкинге." },
+    { art: "blood", lit: "буквально: «кровь гуще воды»", en: "blood is thicker than water", ru: "семья важнее всего", meaning: "родственные связи сильнее других", ex: "We argue, but blood is thicker than water.", reg: "ok", note: "Хорошо как контраргумент в споре о семье и друзьях." },
+    { art: "drift", lit: "буквально: «отплыть друг от друга»", en: "drift apart", ru: "отдалиться", meaning: "постепенно перестать быть близкими", ex: "After school, we slowly drifted apart.", reg: "ok", note: "Мягко и честно о потерянной дружбе." },
+    { art: "soul", lit: "буквально: «жизнь и душа вечеринки»", en: "the life and soul of the party", ru: "душа компании", meaning: "самый весёлый и общительный человек", ex: "My cousin is always the life and soul of the party.", reg: "ok", note: "Описать себя или друга." },
+    { art: "shoulder", lit: "буквально: «плечо, чтобы плакать»", en: "a shoulder to cry on", ru: "жилетка, плечо поддержки", meaning: "человек, который выслушает в трудный момент", ex: "My sister has always been a shoulder to cry on.", reg: "ok", note: "Тепло про поддержку." },
+    { art: "need", lit: "буквально: «друг в беде — настоящий друг»", en: "a friend in need is a friend indeed", ru: "друг познаётся в беде", meaning: "настоящий друг помогает в трудную минуту", ex: "When I was ill, he brought me food — a friend in need is a friend indeed.", reg: "careful", note: "Пословица-клише. Лучше один раз и к месту." }
+  ],
+
+  expressions: [
+    { icon: "play", fn: "Начать ответ", items: [
+      "I'd say I have a small but close group of friends.",
+      "I met my best friend at …",
+      "To be honest, I prefer smaller get-togethers."
+    ]},
+    { icon: "bulb", fn: "Почему это важно", items: [
+      "What I value most in a friend is honesty.",
+      "They're the people I can always count on.",
+      "It gives me a real sense of support."
+    ]},
+    { icon: "camera", fn: "Описать встречу", items: [
+      "We all brought something to eat, and …",
+      "We stayed up talking until two in the morning.",
+      "The best part was when …"
+    ]},
+    { icon: "scales", fn: "Баланс и контраст", items: [
+      "Online chats are convenient; that said, nothing replaces meeting in person.",
+      "While family is important, friends are the family we choose.",
+      "On the flip side, …"
+    ]},
+    { icon: "trending", fn: "Будущее", items: [
+      "I think families will live further apart, but stay connected online.",
+      "More and more people make friends through shared interests.",
+      "As we get older, friendships take more effort."
+    ]},
+    { icon: "flag", fn: "Завершить", items: [
+      "So for me, quality matters more than quantity.",
+      "In the end, the people around us shape who we are.",
+      "That's why I make time for my friends, however busy I am."
+    ]}
+  ],
+
+  answerSteps: [
+    { k: "A", s: 5,  i: "I prefer a small group of close friends." },
+    { k: "R", s: 12, i: "With them, I can be myself and talk about anything…" },
+    { k: "E", s: 22, i: "For example, last month, when I was stressed about exams…" },
+    { k: "C", s: 6,  i: "So for me, quality matters more than quantity." }
+  ],
+
+  matching: [
+    { a: "hit it off", b: "like each other immediately" },
+    { a: "through thick and thin", b: "in good times and bad" },
+    { a: "break the ice", b: "make people feel relaxed when they first meet" },
+    { a: "drift apart", b: "gradually become less close" },
+    { a: "a shoulder to cry on", b: "someone who listens when you're upset" },
+    { a: "the life and soul of the party", b: "the most fun person at a social event" }
+  ],
+
+  gapfill: [
+    { t: "I made friends ___ my roommate quickly.", a: ["with"] },
+    { t: "I get ___ well with everyone in my class.", a: ["on", "along"] },
+    { t: "I keep in ___ with school friends online.", a: ["touch"] },
+    { t: "I fell ___ with a friend over money.", a: ["out"] },
+    { t: "We made ___ the next day.", a: ["up"] },
+    { t: "I've always looked up ___ my older sister.", a: ["to"] },
+    { t: "I invited a few friends ___ for dinner.", a: ["over", "round"] },
+    { t: "It was great to catch ___ with old friends.", a: ["up"] }
+  ],
+
+  paraphrase: [
+    { plain: "We liked each other from the first day.", better: ["We **hit it off** on the first day.", "We **got on like a house on fire**."] },
+    { plain: "She helped me in good and bad times.", better: ["She's stood by me **through thick and thin**."] },
+    { plain: "We slowly stopped being friends.", better: ["We gradually **drifted apart**.", "We **lost touch**."] },
+    { plain: "A game helped people stop feeling awkward.", better: ["A game helped **break the ice**."] },
+    { plain: "We had an argument but then became friends again.", better: ["We **fell out**, but **made up** the next day."] },
+    { plain: "My sister listens when I'm sad.", better: ["My sister is always **a shoulder to cry on**."] },
+    { plain: "My family is very united.", better: ["We're a very **close-knit** family."] },
+    { plain: "We met because we both knew the same person.", better: ["We met through **a mutual friend**."] }
+  ],
+
+  repeat: {
+    scenario: "Вы помогаете в студенческом союзе. Организатор объясняет, как пройдёт вечер знакомства для первокурсников, — повторите каждое предложение точно так, как услышали.",
+    sentences: [
+      "Welcome to the student union.",
+      "The welcome party starts at seven.",
+      "Name tags are on the table by the door.",
+      "Please help new students find a group to join.",
+      "We'll start with a short game to help everyone break the ice.",
+      "Snacks and drinks will be served in the main hall until the music begins at eight.",
+      "If anyone feels uncomfortable or needs help, please send them to one of the organizers in blue shirts."
+    ]
+  },
+
+  /* ===== Реальные сеты Take an Interview по теме (из базы платформы) ===== */
+  sets: [
+    { id: "s068", badge: "official", title: "Friendship", src: "Official TOEFL · 068",
+      scenario: "You have volunteered for a research study about people's experiences with friendship. You will have a short online interview with a researcher. The researcher will ask you some questions.",
+      questions: [
+        { q: "First, do you have a large group of friends, or do you prefer to have a smaller group of friends?",
+          lx: ["close friend", "acquaintance", "have a lot in common"],
+          model: "[A] I prefer to have a small group of close friends. [R] I know a lot of people at university, but most of them are acquaintances. With a few close friends, I can be completely myself, and I know I can trust them. Also, it takes time to keep friendships strong, and I don't have time for many. [E] For example, my two closest friends at university are people I met in the hiking club. We see each other almost every week, and we can talk about anything — studies, family, problems. I also have a childhood best friend who lives in Canada now, and we still have video calls every week. [C] So for me, a few real friends are better than many acquaintances.",
+          model5: "[A] I much prefer a small, close circle. [R] I know plenty of people at university, but most are really **acquaintances**; with a handful of close friends, by contrast, I can be completely myself and trust them without hesitation. Genuine friendships also require time and energy, and I simply couldn't sustain dozens of them. [E] My two closest friends at university, for instance, are people I met through the hiking club, and we see each other almost weekly, talking openly about everything from exams to family problems. I also have a childhood best friend who moved to Canada two years ago, yet our weekly video calls keep us just as close. [C] So for me, a few deep friendships matter far more than a large social network." },
+        { q: "Describe a time when a friendship taught you something valuable or helped you see something from a new perspective.",
+          lx: ["see something from a new perspective", "support", "stand by"],
+          model: "[A] My friendship with my best friend from school taught me to be more patient and less judgmental. [R] She is very different from me — she's quiet and artistic, and I'm more active and sporty. At first, I didn't understand why she needed so much time alone. [E] For example, when her parents divorced, she didn't want to talk to anyone for weeks, and I felt hurt and thought she didn't trust me. But later she told me that she started painting during that time, and it helped her deal with her feelings. I understood that everyone deals with problems in their own way. [C] So that friendship taught me to accept people as they are.",
+          model5: "[A] My friendship with my best friend from school taught me patience and, above all, not to judge how others cope. [R] We're very different: she's quiet and artistic, whereas I'm active and sporty, and for a long time I struggled to understand her need for solitude. [E] When her parents divorced, for instance, she withdrew from everyone for several weeks, and I felt hurt, assuming she didn't trust me. Only later did she explain that she'd started painting during that period and that it was how she processed her emotions. That conversation made me realize that people deal with pain in completely different ways. [C] So that friendship taught me to accept people as they are, rather than as I expect them to be." },
+        { q: "In your opinion, what makes a friendship last a long time?",
+          lx: ["through thick and thin", "trust", "keep in touch with"],
+          model: "[A] I think trust, effort and accepting change make a friendship last a long time. [R] Friends need to be honest with each other and keep promises. They also need to make an effort to stay in touch, especially when life gets busy or they live far apart. And they should accept that people change over time. [E] For example, my best friend moved to Canada two years ago, and many people said we would drift apart. But we have a video call every Sunday, and last summer I saved money and visited her. Our lives are different now, but we're still close. [C] So friendship lasts when both people work on it.",
+          model5: "[A] In my view, it comes down to trust, consistent effort and a willingness to grow together. [R] Friends have to be honest and reliable, but they also need to make a conscious effort to stay in touch when life gets busy or they end up far apart. Crucially, they must accept that both people will change over time. [E] When my best friend moved to Canada two years ago, for instance, plenty of people predicted that we'd **drift apart**. Instead, we've kept a standing video call every Sunday, and last summer I saved up to visit her. Our lives look very different now, yet we're as close as ever. [C] So a friendship lasts when both people treat it as something worth investing in, **through thick and thin**." },
+        { q: "Some people believe that maintaining friendships is essential for emotional well-being and life satisfaction. Do you agree or disagree with this viewpoint? Why or why not?",
+          lx: ["a support network", "well-being", "a shoulder to cry on"],
+          model: "[A] I strongly agree. [R] Friends support us in difficult times, make good times better and help us see problems from a different side. Without friends, people often feel lonely, and loneliness is bad for both mental and physical health. [E] For example, during my first semester, I was very homesick and anxious. My new friends from the dorm invited me to dinners and runs, and slowly I started to feel at home. I don't know how I would have managed without them. [C] So friendships are one of the most important things for our well-being.", model5: "[A] I strongly agree; I'd say friendships are among the most important foundations of well-being. [R] Friends support us through difficult periods, amplify our happiness and help us see problems from new angles. Loneliness, by contrast, has been linked to serious mental and even physical health risks. [E] During my first semester, for instance, I was intensely homesick and anxious. It was the people on my dorm floor, inviting me to shared dinners and evening runs, who gradually made the new city feel like home. Honestly, I'm not sure how I'd have coped without them. [C] So investing time in friendships isn't a distraction from a successful life; it's a central part of one." }
+      ]
+    },
+    { id: "s083", badge: "official", title: "Social Gatherings", src: "Official TOEFL · 082 / 083",
+      scenario: "You have volunteered for a research study about people's experiences with social gatherings. You will have a short online interview with a researcher. The researcher will ask you some questions.",
+      questions: [
+        { q: "First, do you enjoy attending large social gatherings, or do you prefer smaller, more private gatherings? Why is that?",
+          lx: ["get-together", "small talk", "catch up with"],
+          model: "[A] I prefer smaller, more private gatherings. [R] At big parties, it's loud, and I spend most of the time making small talk with people I don't know. At small gatherings, I can have real conversations and actually catch up with my friends. [E] For example, last month I went to a big student party with about a hundred people. I talked to many people, but only for two minutes each, and I went home early. The next weekend, four friends came to my dorm for dinner, and we talked and laughed until two in the morning. [C] So for me, small gatherings are much more enjoyable.",
+          model5: "[A] I definitely prefer smaller, more intimate gatherings. [R] Large parties tend to be loud and crowded, so I end up making endless **small talk** with strangers, whereas small get-togethers allow for real conversation and a chance to properly **catch up with** friends. [E] Last month, for instance, I went to a student party with around a hundred people; I spoke to plenty of them, but rarely for more than two minutes, and I left early feeling oddly drained. The following weekend, by contrast, four friends came over to my dorm for dinner, and we talked and laughed until two in the morning. [C] So for me, the best gatherings are the ones where you can actually hear each other." },
+        { q: "Can you describe a memorable social gathering you attended recently? What made it special?",
+          lx: ["host", "invite someone over", "the life and soul of the party"],
+          model: "[A] A memorable gathering was an international dinner that my roommates and I hosted last month. [R] It was special because everyone brought a dish from their home country, so we learned a lot about each other's cultures, and new people became friends. [E] For example, there were about twelve guests from seven countries. A friend from Mexico made tacos, a girl from Japan brought homemade sushi, and I made my grandmother's honey cake. After dinner, I played guitar and everyone sang songs in their own languages. We stayed up until three in the morning. [C] So it was special because of the food, the music and the mix of cultures.",
+          model5: "[A] One that stands out is an international dinner my roommates and I hosted last month. [R] What made it special was that every guest brought a dish from their home country, so the evening became a genuine exchange of cultures, and several people who'd never met left as friends. [E] We had about twelve guests from seven countries, for instance: a friend from Mexico made tacos, a classmate from Japan brought homemade sushi, and I baked my grandmother's famous honey cake. After dinner, I got my guitar out, and everyone took turns singing songs in their own languages until well past three in the morning. [C] So it was the combination of food, music and cultural curiosity that made it unforgettable." },
+        { q: "How do you usually prepare for a social gathering? What do you focus on most?",
+          lx: ["host", "guest", "make people feel welcome"],
+          model: "[A] When I host a gathering, I focus most on making people feel comfortable. [R] Food and decorations are nice, but people remember how they felt. So I think about who is coming, what they like and how to help them talk to each other. [E] For example, before our dorm dinner, I asked everyone about allergies and food preferences, made a playlist and prepared a simple game to break the ice, because some guests didn't know each other. When I'm a guest, I usually bring something small, like dessert, and check who else is coming. [C] So my focus is always on the people, not on perfection.",
+          model5: "[A] When I'm hosting, my main focus is making people feel at ease. [R] Food and decorations matter, of course, but what guests really remember is how comfortable they felt, so I think carefully about who's coming, what they enjoy and how to get them talking to one another. [E] Before our dorm dinner, for instance, I checked everyone's allergies and dietary preferences, put together a playlist and prepared a quick game to **break the ice**, since several guests had never met. As a guest, meanwhile, I always bring something small, usually dessert, and find out in advance who else will be there. [C] So whether I'm hosting or attending, I focus on people rather than perfection." },
+        { q: "Some people believe that social gatherings are important opportunities for building and maintaining professional relationships. Do you agree or disagree with this idea? Why or why not?",
+          lx: ["network", "rapport", "colleague"],
+          model: "[A] Yes, I agree. [R] When people meet outside the office, they relax, talk about their lives and get to know each other better. Later, this trust helps them work together. Also, at parties and events you can meet people who can help your career. [E] For example, at a university career event, I talked to a woman from a marketing agency during the coffee break. We kept in touch, and two months later she told me about an internship there. That's how I got it. [C] So social events can be very useful for your career.", model5: "[A] I agree, and I'd go further: they're often where professional relationships really begin. [R] In a relaxed setting, people drop their formal roles and connect on a personal level, and that trust makes working together far easier later on. What's more, informal events give you access to people you'd never meet otherwise. [E] At a university career fair, for instance, I got chatting with a woman from a marketing agency during the coffee break. We stayed in touch, and two months later she mentioned an internship opening at her company — the one I eventually got. [C] So social gatherings can be surprisingly powerful for building a career, as long as you approach them genuinely." }
+      ]
+    },
+    { id: "sfr", badge: "platform", title: "Family Relationships", src: "Практика платформы",
+      scenario: "We're exploring people's views and experiences related to family life. I'd like to ask you a few questions.",
+      questions: [
+        { q: "First, how would you describe your family structure? For example, who do you live with, or who do you consider to be part of your immediate family?",
+          lx: ["immediate family", "extended family", "close-knit"],
+          model: "[A] My immediate family is my parents, my older sister, my younger sister and brother, and our dog, Max. [R] Right now, I live in a university dorm with roommates, but I go home often, and we're quite a close family. My grandmother is also a very important part of my life. [E] For example, my older sister is married and has a baby son, so now I'm an uncle, which is very exciting! My younger sister and brother are still at school. My grandmother lives in a village nearby, and the whole family meets at her house for Sunday lunch at least once a month. [C] So my family is not very big, but we're close.",
+          model5: "[A] My **immediate family** consists of my parents, my older sister, my younger sister and brother and, of course, our golden retriever, Max. [R] At the moment, I live in a university dorm with roommates, but I go home regularly, and we're a fairly **close-knit** family; my grandmother is also central to my life. [E] My older sister, for instance, is married and recently had a baby son, which has made me a very proud uncle, while my younger siblings are still in high school. My grandmother lives in a village nearby, and the whole family gathers at her house for Sunday lunch at least once a month. [C] So my family isn't large, but it's very close." },
+        { q: "What are some values or habits that are important in your family, such as how you spend time together or handle responsibilities?",
+          lx: ["values", "spend quality time with", "family ties"],
+          model: "[A] The most important values in my family are honesty, helping each other and spending time together. [R] My parents always said that we can make mistakes, but we must tell the truth. And everyone has responsibilities, because a family is a team. [E] For example, when we were children, each of us had jobs at home — I walked the dog and took out the trash, and my sister helped with cooking. We also had a rule: dinner together at seven with no phones. Even now, when I visit, we still have that dinner, and it's my favorite part of the day. [C] So for my family, honesty and time together are the most important things.",
+          model5: "[A] Honesty, mutual support and shared time are probably the core values in my family. [R] My parents always told us that mistakes were forgivable, but lying wasn't, and they treated the household as a team in which everyone had responsibilities. [E] As children, for instance, we each had our own chores: I walked the dog and took out the rubbish, while my sister helped with cooking. We also had a firm rule of dinner together at seven, with no phones at the table, and even now, whenever I'm home, that dinner remains my favorite part of the day. [C] So in my family, honesty and **quality time** matter far more than any material things." },
+        { q: "What do you think helps maintain strong and healthy family relationships? And on the other hand, what do you think causes tension or distance between family members?",
+          lx: ["clear the air", "fall out with", "spend quality time with"],
+          model: "[A] I think good communication and spending time together keep families strong, and things like money problems and not talking cause tension. [R] When family members talk openly, small problems don't become big ones. But when people are too busy or avoid difficult topics, they slowly become distant. [E] For example, a few years ago, my parents and my older sister argued about her decision to leave university. For months, they hardly spoke. Finally, my grandmother invited everyone for lunch, and they talked honestly to clear the air. Now they're close again. On the other hand, one of my uncles stopped talking to his brother because of money, and they still don't speak. [C] So honest talking is the key.",
+          model5: "[A] Open communication and regular time together are what keep families strong, whereas unspoken resentment, often linked to money, tends to drive them apart. [R] When people talk honestly, small disagreements are resolved before they grow, but when they avoid difficult conversations, distance builds quietly over time. [E] A few years ago, for instance, my parents and my older sister barely spoke for months after she decided to leave university. It was my grandmother who finally invited everyone to lunch, where they talked things through and **cleared the air**, and they're close again now. By contrast, one of my uncles fell out with his brother over an inheritance, and they remain **estranged** to this day. [C] So honest conversation is, in my view, the single most important factor." },
+        { q: "As society changes, family roles and expectations also evolve. Some people live far apart or communicate mostly online. Do you think the definition of \"family\" is changing in today's world? Why or why not—and do you see that change as positive, negative, or both?",
+          lx: ["nuclear / extended family", "keep in touch with", "the family we choose"],
+          model: "[A] Yes, I think the definition of family is changing, and I see it as mostly positive. [R] In the past, family meant parents, children and relatives living close together. Now, families are more different — people live in different countries, and close friends can feel like family. But it can be negative when family members feel lonely or far from each other. [E] For example, my aunt lives in Germany, and we see her only once a year, but we talk in our family group chat every day. Also, my friend from the refugee center says that the other volunteers are her family now, because her real family is far away. [C] So family is becoming more about love and support than about living together.",
+          model5: "[A] I believe it is, and largely for the better, although there are downsides. [R] Family once meant parents, children and relatives living close together, whereas today it's more fluid: relatives are scattered across countries, and close friends often play the role of family. The risk, however, is that distance can leave some people, particularly older relatives, feeling isolated. [E] My aunt, for instance, lives in Germany, and although we see her only once a year, she's part of our family group chat every single day. Meanwhile, a woman I know through the refugee center describes her fellow volunteers as her family, since her own relatives are thousands of kilometers away. [C] So family is increasingly defined by love and support rather than by blood or geography." }
+      ]
+    }
+  ],
+  /* ===== Speaking Club: тема вдоль и поперёк ===== */
+  club: [
+    { icon: "chat", title: "Мои друзья", en: "My friends", questions: [
+      { t: "personal", src: "Official 068", q: "Do you have a large group of friends, or do you prefer a smaller group? Why?", same: "s068-0",
+        f: ["How many close friends is enough?", "Are you the same with all your friends?"], lx: ["close friend", "acquaintance", "have a lot in common"] },
+      { t: "experience", q: "How did you meet your best friend?",
+        model: "[A] I met my best friend on my first day of primary school, when we were seven. [R] We were the only two children who didn't know anyone in the class, so the teacher put us at the same desk. We were very different, but we hit it off immediately. [E] For example, I remember she shared her lunch with me because I forgot mine at home, and the next day I brought her a chocolate bar to say thank you. After that, we did everything together — homework, summer camps, even our first concert. Now she lives in Canada, but we still talk every week. [C] So a forgotten lunch started a friendship that has lasted fifteen years.",
+        model5: "[A] We met on our very first day of primary school, at the age of seven. [R] We were the only two children who didn't know anyone, so the teacher sat us at the same desk, and despite being complete opposites, we **hit it off** almost immediately. [E] I'd forgotten my lunch at home, for instance, and she quietly shared hers with me; the next day, I brought her a chocolate bar as a thank-you, and from then on we were inseparable, sharing homework, summer camps and eventually our first concert. She lives in Canada now, but we still talk every single week. [C] So a forgotten lunch box turned into a friendship that's lasted fifteen years.",
+        f: ["What do you have in common?", "What's your best memory together?"], lx: ["hit it off", "make friends with", "keep in touch with"] },
+      { t: "experience", src: "Hobbies · Speaking Club", q: "Have you ever made friends through a hobby or a club? Tell me about it.",
+        model: "[A] Yes, I made two of my best friends at university through a hiking club. [R] When I moved to a new city, I didn't know anyone, so I joined a club to meet people. A hobby makes it easy to start talking, because you already have something in common. [E] For example, on my first hike with the club, I walked next to a girl from my faculty, and we talked for three hours about mountains and music. Later, she introduced me to her friend, and now we go hiking and have dinner together almost every week. [C] So hobbies are one of the best ways to make new friends.", model5: "[A] Yes, two of my closest friends at university are people I met through a hiking club. [R] When I first moved to the city, I didn't know a soul, so I **joined a club** deliberately to meet people. Shared hobbies make it remarkably easy to strike up a conversation, since you already have something in common. [E] On my very first hike, for instance, I found myself walking beside a girl from my faculty, and we talked non-stop for three hours, mostly about mountains and music. She later introduced me to her best friend, and nowadays the three of us hike or have dinner together almost every week. [C] So, for me, hobbies have been the most natural way to **meet like-minded people** and turn them into real friends.",
+        f: ["Where is the best place to make friends?", "Is it easier online or offline?"], lx: ["make friends with", "have a lot in common", "hit it off"] },
+      { t: "opinion", q: "Is it harder to make new friends as you get older? Why?",
+        model: "[A] Yes, I think it gets harder to make friends as we get older. [R] At school and university, we meet many people our age every day and have lots of free time. Later, people are busy with work and family, and they're also more careful about who they trust. [E] For example, my parents say that almost all their close friends are from school or university. My older sister moved to a new city after she had her baby, and she told me it took her over a year to find even one friend — finally, she met someone at a baby swimming class. [C] So adults can make friends, but they need to make more effort.",
+        model5: "[A] I'd say it does, mainly because the opportunities shrink. [R] At school and university, we're surrounded daily by people our own age with plenty of free time, whereas adults are absorbed by work and family and tend to be more cautious about letting new people in. [E] My parents, for instance, say that nearly all of their close friends date back to school or university. My older sister, meanwhile, moved to a new city after having her baby, and it took her over a year to make a single friend, whom she eventually met at a baby swimming class. [C] So adults can absolutely make new friends, but it requires deliberate effort rather than happening naturally.",
+        f: ["Where can adults meet new people?", "Have you made a friend much older than you?"], lx: ["make friends with", "socialize", "intergenerational"] }
+    ]},
+    { icon: "heart", title: "Настоящая дружба", en: "Real friendship", questions: [
+      { t: "experience", src: "Official 068", q: "Describe a time when a friendship taught you something valuable or helped you see something from a new perspective.", same: "s068-1",
+        f: ["Has a friend ever changed your mind?", "What have you taught your friends?"], lx: ["see something from a new perspective", "support", "stand by"] },
+      { t: "opinion", src: "Official 068", q: "In your opinion, what makes a friendship last a long time?", same: "s068-2",
+        f: ["Have you ever drifted apart from a friend?", "Can a friendship survive distance?"], lx: ["through thick and thin", "trust", "keep in touch with"] },
+      { t: "opinion", src: "Official 068", q: "Is maintaining friendships essential for emotional well-being and life satisfaction?", same: "s068-3",
+        f: ["Who do you call when you're upset?", "Can you be happy without close friends?"], lx: ["a support network", "well-being", "a shoulder to cry on"] },
+      { t: "opinion", src: "Official 100 · Hobbies", q: "Many people have the same hobbies as their friends. Is it necessary for good friends to share hobbies?",
+        model: "[A] No, I don't think good friends need to share hobbies. [R] Friendship is about trust, support and enjoying time together, not about doing the same activities. Different hobbies can even make friendship more interesting, because you learn new things from each other. [E] For example, my best friend loves painting and theater, and I like sports and music. We don't share many hobbies, but we talk for hours, and she sometimes takes me to the theater while I take her hiking. On the other hand, I **share a passion for** board games with my roommate, and it's fun too. [C] So shared hobbies help, but they're not necessary.", model5: "[A] I don't think it's necessary, although shared hobbies can certainly help a friendship begin. [R] Deep friendships rest on trust, support and genuinely enjoying each other's company rather than on identical interests. In fact, different hobbies can enrich a friendship, since each person introduces the other to something new. [E] My best friend, for instance, is passionate about painting and theater, whereas I'm into sport and music. We rarely share activities, yet we can talk for hours, and we regularly drag each other into our worlds — she takes me to plays, and I take her hiking. My roommate and I, meanwhile, **share a passion for** board games, which is great fun but isn't what makes us close. [C] So shared hobbies are a bonus, not a requirement.",
+        f: ["What do you and your best friend have in common?", "Do opposites attract?"], lx: ["have a lot in common", "share a passion for", "get on well with"] },
+      { t: "opinion", q: "Would you tell a close friend an uncomfortable truth, even if it might hurt them?",
+        model: "[A] Yes, I would, but I'd try to say it in a kind and private way. [R] Real friends should be honest, because if I don't tell the truth, someone else may tell them in a worse way, or they may make a big mistake. But how and when we say it is very important. [E] For example, last year a friend wanted to drop out of university to become an influencer, and he had no real plan. Everyone else said \"Great idea!\" but I told him privately that I was worried and asked about his plan. He was angry for a few days, but later he thanked me and made a better plan. [C] So honesty is part of friendship, if it comes with kindness.",
+        model5: "[A] Yes, although I'd choose my words, timing and setting very carefully. [R] Honesty is fundamental to real friendship; if I stay silent, they may make a serious mistake or hear the truth from someone far less sympathetic. Still, how something is said matters as much as what is said. [E] Last year, for instance, a friend announced he was dropping out of university to become an influencer, without any real plan. While everyone else cheered him on, I spoke to him privately, expressed my concerns and asked about his plan. He was annoyed with me for a few days, but he later thanked me and came up with a far more realistic strategy. [C] So I see honest feedback as an act of friendship, provided it's delivered with genuine care.",
+        f: ["When is it better to stay silent?", "Has a friend told you a hard truth?"], lx: ["trust", "let someone down", "clear the air"] }
+    ]},
+    { icon: "gift", title: "Встречи и вечеринки", en: "Gatherings & parties", questions: [
+      { t: "compare", src: "Official 082 / 083", q: "Do you enjoy large social gatherings, or do you prefer smaller, more private ones? Why?", same: "s083-0",
+        f: ["What's the biggest party you've been to?", "Are you good at small talk?"], lx: ["get-together", "small talk", "catch up with"] },
+      { t: "experience", src: "Official 082 / 083", q: "Describe a memorable social gathering you attended recently. What made it special?", same: "s083-1",
+        f: ["Who was the life and soul of the party?", "Would you do it again?"], lx: ["host", "invite someone over", "the life and soul of the party"] },
+      { t: "personal", src: "Official 082 / 083", q: "How do you usually prepare for a social gathering? What do you focus on most?", same: "s083-2",
+        f: ["What's your go-to dish for a party?", "Do you prefer hosting or being a guest?"], lx: ["host", "guest", "make people feel welcome"] },
+      { t: "hypo", src: "Mock Test", q: "Imagine you are organizing a birthday party for a friend. What would you need to do to get ready? Please explain.",
+        model: "[A] First, I'd find out what kind of party my friend would enjoy, and then I'd plan the place, guests and food. [R] A good party is about the person, so I'd ask their close friends for ideas. Then I'd organize everything early, so I'm not stressed on the day. [E] For example, for my best friend's birthday last year, I secretly made a list of her favorite people, booked a table at a cozy Italian restaurant and asked everyone to write a short message, which I put in a small book. On the day, I picked up the cake and decorations two hours before. [C] So planning early and thinking about the person are the keys.",
+        model5: "[A] I'd start by working out what kind of celebration my friend would genuinely enjoy, then sort out the venue, guest list and food well in advance. [R] A good party should reflect the person, so I'd consult their closest friends for ideas, and early planning would spare me any last-minute panic. [E] For my best friend's birthday last year, for instance, I secretly compiled a list of her favorite people, booked a table at a cozy Italian restaurant and asked each guest to write a short message, which I bound into a little book as her present. On the day itself, I collected the cake and decorations a couple of hours beforehand. [C] So the secret is to plan early and keep the focus firmly on the birthday person.",
+        f: ["What's the best surprise you've organized?", "What can go wrong at a surprise party?"], lx: ["throw a party", "guest", "invite someone over"] },
+      { t: "compare", src: "Holidays · Speaking Club", q: "Do you prefer big birthday parties or quiet celebrations? Why?",
+        model: "[A] I prefer quiet celebrations with a few close friends. [R] At big parties, I can't really talk to anyone, and I feel I have to entertain everyone. With a small group, I can relax and have real conversations. [E] For example, for my last birthday, I invited five close friends to a small restaurant, and we talked and laughed for hours. Two years ago, my friends **threw** me a big surprise **party** with forty people — it was fun, but I spent the whole evening saying hello and didn't really talk to anyone. [C] So for me, smaller is better.", model5: "[A] I much prefer low-key celebrations with a handful of close friends. [R] At big parties, I end up acting as host, flitting between conversations without really having any, whereas a small group allows for proper conversation and genuine relaxation. [E] For my last birthday, for instance, I invited five close friends to a cozy little restaurant, and we talked and laughed until they practically closed around us. Two years ago, by contrast, my friends **threw** me a surprise **party** for forty people; it was a lovely gesture and great fun, yet I spent the entire evening greeting people and barely spoke to anyone for more than five minutes. [C] So, for me, the best celebrations are small and personal.",
+        f: ["How will you celebrate your next birthday?", "Do you like being the center of attention?"], lx: ["throw a party", "celebrate", "low-key"] }
+    ]},
+    { icon: "briefcase", title: "Друзья и работа", en: "Friends & work", questions: [
+      { t: "opinion", src: "Official 082 / 083", q: "Are social gatherings important opportunities for building and maintaining professional relationships?", same: "s083-3",
+        f: ["Are you good at networking?", "Should you go to work parties?"], lx: ["network", "rapport", "colleague"] },
+      { t: "opinion", src: "Mock Test · Workplace", q: "Some people believe that being friends with your coworkers helps you do your job better. Do you agree or disagree? Why?",
+        model: "[A] I mostly agree. [R] When you're friends with your **coworkers**, you trust each other, you ask for help more easily, and work is more fun. Also, it's easier to **work as part of a team** when you like the people. [E] For example, at the café, my best friend was also my coworker. On busy mornings, we helped each other without words, and customers said we were the fastest team. But sometimes we chatted too much, so we had to be careful. [C] So friendship at work helps, as long as you stay **professional**.", model5: "[A] I largely agree, with one important condition. [R] Being friends with your **coworkers** builds trust, so people ask for help without hesitation and communicate more openly. Work also becomes far more enjoyable, which, in turn, boosts motivation. [E] At the café, for instance, my closest friend was also my coworker, and on hectic mornings we coordinated almost without speaking — our manager even called us her fastest team. **That said**, we occasionally got distracted chatting, and we had to remind each other to stay focused. [C] So workplace friendships definitely help, provided people remain **professional** and keep personal matters from interfering with the job.",
+        f: ["Have you made friends at work?", "Can a boss be a friend?"], lx: ["colleague", "get on well with", "rapport"] },
+      { t: "opinion", q: "Is it a good idea to start a business with a close friend?",
+        model: "[A] I think it can work, but it's risky, so friends need clear rules from the start. [R] Friends trust each other and enjoy working together, which is a big advantage. But money and stress can damage even a strong friendship, especially if one person works harder than the other. [E] For example, two of my parents' friends opened a café together. At first, everything was great, but after two years, they argued about money, and now they don't speak. On the other hand, my cousin started a small app company with his best friend, and they wrote a contract about money and roles from day one. They're still partners and friends. [C] So it's possible, but only with clear agreements.",
+        model5: "[A] It can work brilliantly, but only if the friendship is protected by clear agreements from the start. [R] Mutual trust and shared enthusiasm are real advantages; however, money, stress and unequal workloads can poison even a strong friendship. [E] Two of my parents' friends, for instance, opened a café together, and although the first year went wonderfully, disputes over money eventually led to a bitter **falling-out**, and they no longer speak. My cousin, by contrast, launched a small app company with his best friend, and they drew up a written agreement on roles and finances on day one; they're still both partners and close friends. [C] So I'd only do it with someone whose friendship could survive an honest contract.",
+        f: ["Would you work with your best friend?", "Should friends lend each other money for a business?"], lx: ["a falling-out", "trust", "let someone down"] }
+    ]},
+    { icon: "users", title: "Семья", en: "Family", questions: [
+      { t: "personal", src: "Платформа · Family Relationships", q: "How would you describe your family structure? Who do you consider part of your immediate family?", same: "sfr-0",
+        f: ["Do you have a big extended family?", "Are pets part of the family?"], lx: ["immediate family", "extended family", "close-knit"] },
+      { t: "personal", src: "Платформа · Family Relationships", q: "What values or habits are important in your family?", same: "sfr-1",
+        f: ["Which family value will you keep?", "What would you do differently as a parent?"], lx: ["values", "spend quality time with", "family ties"] },
+      { t: "opinion", src: "Платформа · Family Relationships", q: "What helps maintain strong family relationships, and what causes tension or distance between family members?", same: "sfr-2",
+        f: ["What do families argue about most?", "Who keeps the peace in your family?"], lx: ["clear the air", "fall out with", "spend quality time with"] },
+      { t: "opinion", src: "Платформа · Family Relationships", q: "Is the definition of \"family\" changing in today's world? Is that change positive, negative, or both?", same: "sfr-3",
+        f: ["Can friends be family?", "Will families be smaller in the future?"], lx: ["nuclear / extended family", "keep in touch with", "the family we choose"] },
+      { t: "personal", q: "Who in your family are you closest to, and why?",
+        model: "[A] I'm closest to my older sister. [R] She's only four years older, so she understands my problems, but she also has more life experience and gives good advice. She has always supported me, and I've always looked up to her. [E] For example, when I was stressed during my first year at university and didn't know if I chose the right major, I called her almost every night. She listened, told me about her own first year and helped me make a plan. Now that she has a baby, I try to support her too — I babysit when I visit. [C] So she's my sister, my friend and my role model at the same time.",
+        model5: "[A] I'm closest to my older sister. [R] With only four years between us, she understands my world, yet she has enough experience to give genuinely useful advice; she's always supported me, and I've always **looked up to** her. [E] During my stressful first year at university, for instance, when I was doubting whether I'd chosen the right major, I called her almost every night. She listened patiently, shared stories about her own first year and helped me make a plan. Now that she has a baby, I try to return the favor by babysitting whenever I'm home. [C] So she's my sister, my closest confidante and my role model all at once.",
+        f: ["Who in your family are you most similar to?", "Who do you take after?"], lx: ["be close to", "look up to", "a shoulder to cry on"] },
+      { t: "opinion", src: "Food & Nutrition · Speaking Club", q: "Are family dinners still important today?",
+        model: "[A] Yes, I think family dinners are still very important, maybe even more than before. [R] Today, everyone is busy and spends a lot of time on their phones, so dinner is often the only time a family can talk. It helps parents and children stay close. [E] For example, when I was in school, my parents had a rule: dinner at seven, no phones at the table. As a teenager, I hated it, but now I understand that those dinners were where we talked about problems and plans. I miss them now that I live alone. [C] So family dinners keep families connected.", model5: "[A] I'd argue they're more important than ever. [R] With everyone's schedules so packed and so much attention absorbed by screens, dinner is often the only moment a family genuinely spends together, which makes it crucial for keeping relationships close. [E] When I was at school, for instance, my parents had a strict rule: dinner at seven and no phones at the table. As a teenager I resented it deeply, yet in hindsight, those meals were where we discussed problems, celebrated small successes and simply caught up. Now that I live on my own, they're one of the things I miss most. [C] So family dinners may seem old-fashioned, but they're one of the simplest ways to keep a family connected.",
+        f: ["How often does your family eat together?", "Phones at the table — yes or no?"], lx: ["spend quality time with", "values", "family ties"] },
+      { t: "opinion", src: "Budget & Money · Speaking Club", q: "Should students live with their parents during university to save money?",
+        model: "[A] I think it's a smart choice if the university is close, but it has a **trade-off**. [R] Living at home saves a huge amount of money on **rent** and food, which means less debt and less stress. On the other hand, students miss out on learning to be independent. [E] My best friend lived with her parents for four years and graduated with no debt at all, but she says she had to learn how to cook and pay bills from zero when she finally moved out. [C] So financially it's great, but students should still find ways to become **financially independent**.", model5: "[A] I think it's a sensible choice if the university is nearby, although it does come with a **trade-off**. [R] Living at home saves an enormous amount on **rent** and food, which means less debt and considerably less stress. On the other hand, students miss out on the chance to learn how to live independently. [E] My best friend lived with her parents throughout her degree and graduated debt-free, but she admits she had to learn how to cook and pay bills from scratch once she finally moved out. [C] Financially, it's a great decision, but students should still find ways to become **financially independent** along the way.",
+        f: ["At what age should people move out?", "What did you learn living alone?"], lx: ["independent", "immediate family", "responsibilities"] }
+    ]},
+    { icon: "phone", title: "Дружба онлайн", en: "Friendship online", questions: [
+      { t: "opinion", src: "Technology · Digital Communication", q: "Does online communication strengthen or weaken personal connections? Why?",
+        model: "[A] I think online communication strengthens relationships over distance, but it can't fully replace face-to-face conversations. [R] Without messaging apps, I would probably lose contact with many friends. But text messages are often short, and it's hard to share real feelings or support someone through a screen. [E] For example, my best friend moved to Canada two years ago, and we still talk every week thanks to video calls. But when she visited last summer, one long walk together felt more meaningful than months of messages. [C] So digital communication keeps relationships alive, but real meetings make them deep.", model5: "[A] I'd say it strengthens relationships across distance, but it can't fully replace the depth of meeting in person. [R] Without digital tools, many friendships would simply fade when people move away. Text-based communication, however, tends to be brief and fragmented, and comforting someone or sharing something difficult through a screen rarely feels quite the same. [E] My best friend, for instance, moved to Canada two years ago, and thanks to weekly video calls, we're still close. Yet when she visited last summer, a single long walk together felt more meaningful than months of messages. [C] So digital communication is what keeps relationships alive, while **face-to-face interaction** is what keeps them deep.",
+        f: ["Voice messages: love them or hate them?", "Who do you message most?"], lx: ["keep in touch with", "face-to-face", "group chat"] },
+      { t: "opinion", src: "Mock Test", q: "Some people believe that online communication has made meeting in person less important. Do you agree or disagree? Why?",
+        model: "[A] I disagree — I think meeting in person is still very important, maybe even more important now. [R] Online communication is great for quick messages and for people who live far away, but we can't hug, see real emotions or share an experience through a screen. People feel this, so they value real meetings more. [E] For example, I talk to my best friend in Canada every week by video, but when I visited her last summer, we did more in one week than in a year of calls — we cooked, hiked and talked all night. Also, during the pandemic, everyone was online, and most people felt lonely. [C] So online communication helps, but it can't replace meeting in person.",
+        model5: "[A] I'd disagree; if anything, in-person contact has become more precious. [R] Online communication is ideal for quick updates and long-distance relationships, but a screen can't convey a hug, subtle emotions or the experience of doing something together, and most people instinctively sense that difference. [E] I video call my best friend in Canada every week, for instance, yet the single week I spent visiting her last summer brought us closer than a year of calls, as we cooked, hiked and talked until dawn. The pandemic also showed this clearly: we were more connected online than ever, yet loneliness soared. [C] So online tools complement face-to-face contact, but they can't replace it.",
+        f: ["When did you last meet a friend in person?", "Can a video call replace a visit?"], lx: ["face-to-face", "keep in touch with", "companionship"] },
+      { t: "experience", src: "Technology · Digital Communication", q: "Have you ever had a misunderstanding or conflict because of something written in a text, post or email? How did you handle it?",
+        model: "[A] Yes, I had a misunderstanding with a close friend because of a text message. [R] In writing, you can't hear the tone of voice or see the face, so jokes can look rude. [E] For example, my friend sent me a photo of her new haircut, and I replied \"Wow, brave choice\". I meant it as a compliment, but she **misread the tone** and thought I was laughing at her. She didn't reply for two days. Finally, I called her and explained what I meant, and we laughed about it. [C] Now, for important things, I call instead of texting.", model5: "[A] Yes, a seemingly innocent text once caused a real rift with a close friend. [R] In writing, there's no tone of voice or facial expression to soften a message, so a playful comment can easily come across as sarcastic. [E] When she sent me a photo of her dramatic new haircut, for instance, I replied, \"Wow, brave choice,\" intending it as admiration. She, however, **misread the tone** entirely, assumed I was mocking her and went silent for two days. Eventually, I realized something was wrong and called her; within five minutes we'd **cleared things up** and were laughing about it. [C] Since then, whenever a topic is even slightly sensitive, I pick up the phone rather than type, because humor so easily **gets lost in translation**.",
+        f: ["Do emojis help or confuse?", "Do you call or text when there's a problem?"], lx: ["clear the air", "misunderstanding", "make up"] },
+      { t: "opinion", src: "Health · Speaking Club", q: "Many young people feel lonely even though they're constantly connected online. Why do you think that is?",
+        model: "[A] I think online contact can't fully replace meeting people in real life. [R] On social media, we have many \"friends\", but the conversations are short and not very deep. We see other people having fun and feel left out. Real connection needs time together, eye contact and honest talks. [E] For example, I have over five hundred followers, but when I was sad last winter, there were only two people I could really call. And a long dinner with one friend made me feel much better than a hundred likes. [C] So we're connected, but not always close.", model5: "[A] I think online contact simply can't replace the depth of real-life connection. [R] Social media gives us hundreds of \"friends\", but most interactions are brief and superficial, and constantly seeing others' highlights can make us feel left out. Genuine connection, by contrast, requires time, presence and honest conversation. [E] I have over five hundred followers, for instance, yet during a low period last winter, there were only two people I felt I could actually call. And a single long dinner with a close friend did more for my mood than any number of likes ever could. [C] So young people are more connected than ever, but not necessarily closer — and that gap is where loneliness grows.",
+        f: ["Have you ever felt lonely in a crowd?", "What helps against loneliness?"], lx: ["companionship", "a support network", "face-to-face"] },
+      { t: "opinion", q: "Can you have a real friendship with someone you've only met online?",
+        model: "[A] Yes, I think you can have a real friendship online, although meeting in person makes it stronger. [R] Friendship is about trust, support and shared interests, and these can grow through messages and calls. Many people even find it easier to open up online. [E] For example, my roommate has played a strategy game every evening with the same friends from three countries for four years. When his grandfather died, they were the first people he told, and they supported him a lot. Last year, he finally met two of them in person, and he said it felt like meeting old friends. [C] So online friendships can be very real.",
+        model5: "[A] I believe you can, though meeting in person usually deepens it. [R] Friendship rests on trust, support and shared interests, and all of these can develop through messages and calls; some people even find it easier to open up behind a screen. [E] My roommate, for instance, has spent four years playing a strategy game every evening with the same friends from three different countries. When his grandfather passed away, they were the first people he confided in, and their support was genuinely touching. Last year, he finally met two of them in person, and he described it as being reunited with old friends rather than meeting strangers. [C] So online friendships can be every bit as real as offline ones.",
+        f: ["Would you travel to meet an online friend?", "What are the risks?"], lx: ["trust", "support", "hit it off"] }
+    ]},
+    { icon: "scales", title: "Сложные моменты", en: "Tricky situations", questions: [
+      { t: "opinion", src: "Budget & Money · Speaking Club", q: "Is it ever a good idea to lend money to friends? What if they don't pay you back?",
+        model: "[A] I think it's okay to **lend** money to friends, but only an amount you're ready to lose. [R] Money can easily damage a friendship if someone doesn't **pay you back**, so it's important to be careful. [E] I once lent a friend a hundred dollars, and it took her six months to return it. I didn't want to ask again and again, so it became awkward between us. Now my rule is: I only lend what I could give as a gift. [C] That way, if they pay me back, great — and if not, the friendship is still safe.", model5: "[A] I think it's fine to **lend** money to friends, but only an amount you're prepared to lose. [R] Money has a way of damaging friendships, particularly when someone doesn't **pay you back**, so it's wise to be cautious. [E] I once lent a friend a hundred dollars, and it took her six months to return it. Since I didn't want to keep reminding her, things became rather awkward between us for a while. Nowadays, my rule is that I only lend what I could comfortably give as a gift. [C] That way, if they repay me, that's great — and if they don't, the friendship remains intact.",
+        f: ["Have you ever lent money to a friend?", "Is it different with family?"], lx: ["fall out with", "trust", "let someone down"] },
+      { t: "experience", q: "How do you usually handle an argument with a close friend?",
+        model: "[A] I try to calm down first and then talk about the problem face-to-face. [R] When I'm angry, I say things I don't mean, so I need some time. But I don't wait too long, because problems become bigger when we don't talk. And I never try to solve arguments by text. [E] For example, last spring, my friend from the hiking club forgot to book the hostel for our trip, and we had a big argument. I went for a run to calm down, and the next day I invited him for coffee. We both apologized — I was too angry, and he was too careless — and we made up. [C] So time to calm down, then an honest conversation — that's my method.",
+        model5: "[A] I give myself time to cool off, then talk it through face-to-face. [R] In the heat of the moment, I'm prone to saying things I don't mean, but I also avoid waiting too long, since unresolved issues tend to grow, and I never attempt to settle arguments over text. [E] Last spring, for instance, a friend from the hiking club forgot to book the hostel for our trip, and we had a heated argument. I went for a run to clear my head, and the next day I invited him for coffee, where we both apologized — me for overreacting and him for his carelessness — and **made up** within ten minutes. [C] So my approach is simple: cool down first, then **clear the air** in person.",
+        f: ["What do you and your friends argue about?", "Who usually apologizes first?"], lx: ["make up", "clear the air", "make amends"] },
+      { t: "opinion", q: "Is it ever right to end a friendship? How should you do it?",
+        model: "[A] Yes, I think sometimes it's right to end a friendship, if it makes you unhappy. [R] Some friendships become one-sided or toxic — for example, when a friend always criticizes you, lies or only calls when they need something. But I think we should end it honestly, not just disappear. [E] For example, in high school, I had a friend who always made fun of me in front of others and borrowed money without paying it back. For a long time, I didn't say anything. Finally, I told her calmly that I didn't feel respected and needed some distance. It was hard, but I felt much better afterwards. [C] So it's okay to end a friendship, but kindly and honestly.",
+        model5: "[A] Sometimes, yes, particularly when a friendship has become consistently harmful. [R] Some friendships turn one-sided or even toxic, as when a friend constantly belittles you, lies or only gets in touch when they need something. Even then, though, I think we owe the other person honesty rather than simply vanishing. [E] In high school, for instance, I had a friend who regularly mocked me in front of others and borrowed money she never returned. I stayed silent for far too long, but eventually I told her calmly that I didn't feel respected and needed some distance. It was an uncomfortable conversation, yet I felt an enormous sense of relief afterwards. [C] So ending a friendship can be the right choice, provided it's done honestly and with dignity.",
+        f: ["Is ghosting ever OK?", "Have you drifted apart from someone naturally?"], lx: ["drift apart", "a falling-out", "let someone down"] }
+    ]},
+    { icon: "sparkles", title: "Представь, что…", en: "What if…?", questions: [
+      { t: "hypo", q: "If your best friend moved to another country, how would you keep your friendship strong?",
+        model: "[A] Actually, this already happened — my best friend moved to Canada two years ago, and we've kept our friendship strong with regular calls and visits. [R] Distance makes it easy to drift apart, so we decided to make a routine and not just wait for a free moment. [E] For example, we have a video call every Sunday evening, and we watch the same series so we have something to talk about. We also send each other small surprises, like postcards or snacks from our countries. Last summer, I saved money and visited her for a week. Next year, she's coming to visit me. [C] So routine and visits are the secret to a long-distance friendship.",
+        model5: "[A] I don't have to imagine it: my best friend moved to Canada two years ago, and we've stayed close through routine and visits. [R] Distance makes it all too easy to **drift apart**, so we deliberately built habits instead of waiting for spontaneous moments that never come. [E] We have a fixed video call every Sunday evening, for instance, and watch the same series so we always have something to discuss. We also post each other small surprises, like postcards or snacks, and last summer I saved up to visit her for a week; she's coming to see me next year. [C] So a long-distance friendship survives on routine, small gestures and the occasional plane ticket.",
+        f: ["Which country would you move to?", "Would you move for a friend?"], lx: ["keep in touch with", "drift apart", "through thick and thin"] },
+      { t: "hypo", q: "If you organized a reunion of your school class ten years from now, what would it be like?",
+        model: "[A] I'd organize a relaxed weekend reunion at a big house in the countryside. [R] In one evening at a restaurant, you can only say hello, but in a weekend, people have time to really catch up and remember old times. [E] For example, on Saturday, we'd have a barbecue and a slideshow of old school photos and videos. I'd ask everyone to bring one funny memory to share. We'd also invite our favorite teacher. On Sunday, we could go for a walk or play football like we did at school. Families and kids would be welcome too. [C] So it would be a long, relaxed reunion where everyone has time to talk.",
+        model5: "[A] I'd organize a relaxed weekend-long reunion at a large country house. [R] A single evening at a restaurant only allows for quick hellos, whereas a whole weekend gives people time to properly catch up and reminisce. [E] On the Saturday, for instance, we'd have a barbecue followed by a slideshow of embarrassing school photos and videos, and I'd ask everyone to bring one funny memory to share. I'd also invite our favorite teacher. On the Sunday, we could go for a long walk or replay our legendary school football matches, with families and children warmly welcome. [C] So it would be an unhurried reunion designed for genuine conversation rather than small talk.",
+        f: ["Who would you most like to see again?", "Would you be nervous?"], lx: ["catch up with", "lose touch with", "break the ice"] },
+      { t: "hypo", q: "If you could spend one perfect day anywhere with your closest friends, where would you go and what would you do?",
+        model: "[A] I'd spend a day in the mountains in Portugal with my closest friends. [R] I visited Portugal last summer and loved it, and my friends and I all love hiking, good food and music. It would be perfect to do all three in one day. [E] For example, we'd start with a sunrise hike to a viewpoint above the ocean, then have a long lunch with grilled fish in a small village. In the afternoon, we'd swim in a river, and in the evening, we'd sit around a fire, and I'd play the guitar while everyone sang. My best friend from Canada would fly in to join us. [C] So it would be a day full of nature, food, music and the people I love.",
+        model5: "[A] I'd take my closest friends to the mountains of northern Portugal for a day. [R] I fell in love with Portugal last summer, and since we all share a passion for hiking, good food and music, it would be the ideal setting for all three. [E] We'd begin, for instance, with a sunrise hike to a viewpoint overlooking the Atlantic, followed by a long lunch of grilled fish in a tiny village. In the afternoon, we'd swim in a river, and in the evening we'd gather around a campfire while I played guitar and everyone sang, ideally with my best friend flown in from Canada to complete the group. [C] So it would be a day of nature, food and music, shared with the people who matter most.",
+        f: ["Who would you invite?", "What would you eat?"], lx: ["spend quality time with", "catch up with", "get on like a house on fire"] }
+    ]}
+  ],
+
+  checklist: [
+    "Ответил(а) на вопрос прямо в первом предложении",
+    "Рассказал(а) о конкретном человеке или встрече, а не «в общем»",
+    "Вставил(а) одну идиому — естественно, а не «для галочки»",
+    "Показал(а), что человек для меня значит: trust, support, values",
+    "Без ошибок: make friends WITH, get ON with, look up TO, fall OUT with",
+    "Уложился(ась) в 45 секунд без длинных пауз"
+  ],
+
+  targetLexis: ["close friend", "acquaintance", "make friends with", "get on well with", "keep in touch with", "lose touch with", "have a lot in common", "hit it off", "catch up with", "throw a party", "host", "small talk", "immediate family", "close-knit", "values", "look up to", "fall out with", "make up", "clear the air", "a support network", "trust", "network", "that said"]
+};
+
+/* =====================================================================
+   ИЛЛЮСТРАЦИИ (SVG)
+   ===================================================================== */
+const PERSON = (x, y, c, h) => `<circle cx="${x}" cy="${y}" r="13" fill="${h || "#fdba74"}"/><path d="M${x - 20} ${y + 56} c0 -30 8 -40 20 -40 s20 10 20 40z" fill="${c}"/>`;
+const HERO_ART = `
+<svg viewBox="0 0 320 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Друзья за столом, кружки и сердце">
+  <ellipse cx="165" cy="232" rx="128" ry="10" fill="rgba(0,0,0,.22)"/>
+  ${PERSON(70, 112, "#8b5cf6")}${PERSON(130, 98, "#ec4899", "#d6a46c")}${PERSON(190, 98, "#0ea5e9")}${PERSON(250, 112, "#f97316", "#a16207")}
+  <rect x="34" y="166" width="252" height="16" rx="6" fill="#fff"/><path d="M60 182 v44 M260 182 v44" stroke="#fff" stroke-width="8" stroke-linecap="round"/>
+  <rect x="96" y="146" width="18" height="20" rx="3" fill="#fde68a"/><rect x="146" y="146" width="18" height="20" rx="3" fill="#fbcfe8"/><rect x="200" y="146" width="18" height="20" rx="3" fill="#bae6fd"/>
+  <g class="tl-coin"><path d="M160 58 c-10 -10 -24 -14 -24 -28 c0 -10 12 -14 20 -8 l4 4 l4 -4 c8 -6 20 -2 20 8 c0 14 -14 18 -24 28z" fill="#fff"/></g>
+  <path d="M40 60 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3 z" fill="#a5f3fc"/>
+  <path d="M282 56 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3 z" fill="#fbcfe8"/>
+</svg>`;
+
+/* Мини-иллюстрации к идиомам (160×96). Классы a-* анимируются при наведении. */
+const HEAD = (x, y, c) => `<circle cx="${x}" cy="${y}" r="11" fill="${c || "#fdba74"}"/>`;
+const IDIOM_ART = {
+  spark: `${HEAD(44, 40)}<path d="M28 88 c0 -24 6 -32 16 -32 s16 8 16 32z" fill="#8b5cf6"/>
+         ${HEAD(116, 40, "#d6a46c")}<path d="M100 88 c0 -24 6 -32 16 -32 s16 8 16 32z" fill="#ec4899"/>
+         <g class="a-beam"><path d="M80 22 l4 10 l10 2 l-8 6 l2 10 l-8 -6 l-8 6 l2 -10 l-8 -6 l10 -2z" fill="#fbbf24"/></g>
+         <path d="M62 44 l10 -2 M98 44 l-10 -2" stroke="#fbbf24" stroke-width="3" stroke-linecap="round"/>`,
+  fire: `<path d="M40 88 v-36 l40 -30 l40 30 v36z" fill="#e0e7ff"/><rect x="72" y="62" width="16" height="26" fill="#8b5cf6"/><rect x="52" y="56" width="12" height="12" fill="#fde68a"/><rect x="96" y="56" width="12" height="12" fill="#fde68a"/>
+         <g class="a-flame"><path d="M80 18 c-8 -8 -2 -18 4 -16 c-2 6 6 6 4 14z M60 30 c-6 -6 -2 -14 3 -12 c-2 4 4 5 3 10z M100 30 c-6 -6 -2 -14 3 -12 c-2 4 4 5 3 10z" fill="#f97316"/></g>
+         <path d="M18 88 h124" stroke="#94a3b8" stroke-width="3"/>`,
+  thick: `<path d="M10 70 q30 -30 60 0 t70 0" stroke="#7c3aed" stroke-width="16" fill="none" stroke-linecap="round"/>
+         <path d="M10 70 q30 -30 60 0 t70 0" stroke="#ede9fe" stroke-width="3" fill="none" stroke-dasharray="2 8"/>
+         <g class="a-r">${HEAD(52, 30)}${HEAD(70, 28, "#d6a46c")}<path d="M44 46 h34" stroke="#ec4899" stroke-width="10" stroke-linecap="round"/></g>`,
+  ice: `<rect x="34" y="30" width="92" height="50" rx="6" fill="#bae6fd" stroke="#7dd3fc" stroke-width="3"/>
+         <g class="a-crack"><path d="M80 30 l-6 16 l10 8 l-8 14 l4 12" stroke="#0369a1" stroke-width="3" fill="none" stroke-linejoin="round"/></g>
+         <path d="M124 14 l-14 22" stroke="#94a3b8" stroke-width="5" stroke-linecap="round"/><rect x="118" y="6" width="18" height="10" rx="2" fill="#64748b" transform="rotate(30 127 11)"/>
+         ${HEAD(20, 60, "#fdba74")}${HEAD(144, 60, "#d6a46c")}`,
+  blood: `<path d="M50 20 c-10 16 -16 26 -16 34 a16 16 0 0 0 32 0 c0 -8 -6 -18 -16 -34z" fill="#e11d48"/>
+         <path d="M110 30 c-8 12 -12 20 -12 26 a12 12 0 0 0 24 0 c0 -6 -4 -14 -12 -26z" fill="#bae6fd" opacity=".8"/>
+         <g class="a-up"><text x="80" y="62" text-anchor="middle" font-family="system-ui" font-size="20" font-weight="800" fill="#7c3aed">&gt;</text></g>
+         <path d="M20 86 h120" stroke="#e2e8f0" stroke-width="3"/>`,
+  drift: `<path d="M0 66 q20 -8 40 0 t40 0 t40 0 t40 0 v30 h-160z" fill="#38bdf8"/>
+         <g class="a-l"><path d="M24 58 h32 l-6 10 h-20z" fill="#f97316"/><path d="M40 58 v-22 l12 16 h-12z" fill="#fff"/></g>
+         <g class="a-r"><path d="M104 58 h32 l-6 10 h-20z" fill="#8b5cf6"/><path d="M120 58 v-22 l12 16 h-12z" fill="#fff"/></g>
+         <path d="M66 40 h8 M86 40 h8" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-dasharray="2 4"/>`,
+  soul: `<g class="a-up">${HEAD(80, 30)}<path d="M60 88 c0 -30 8 -42 20 -42 s20 12 20 42z" fill="#ec4899"/><path d="M62 54 l-16 -18 M98 54 l16 -18" stroke="#ec4899" stroke-width="7" stroke-linecap="round"/></g>
+         <path d="M28 20 l4 8 l8 2 l-8 2 l-4 8 l-4 -8 l-8 -2 l8 -2z M132 16 l4 8 l8 2 l-8 2 l-4 8 l-4 -8 l-8 -2 l8 -2z" fill="#fbbf24"/>
+         <circle cx="30" cy="70" r="5" fill="#38bdf8"/><circle cx="132" cy="66" r="5" fill="#8b5cf6"/><circle cx="20" cy="50" r="3" fill="#f97316"/>`,
+  shoulder: `${HEAD(64, 34)}<path d="M40 90 c0 -30 10 -40 24 -40 s24 10 24 40z" fill="#0ea5e9"/>
+         ${HEAD(98, 40, "#d6a46c")}<path d="M80 90 c0 -26 8 -36 18 -36 s18 10 18 36z" fill="#8b5cf6"/>
+         <g class="a-drop"><path d="M106 44 c-2 4 -3 6 -3 7 a3 3 0 0 0 6 0 c0 -1 -1 -3 -3 -7z" fill="#38bdf8"/></g>
+         <path d="M74 62 q12 -6 22 0" stroke="#fdba74" stroke-width="7" fill="none" stroke-linecap="round"/>`,
+  need: `<path d="M10 82 h50 v14 h-50z" fill="#94a3b8"/><path d="M100 82 h50 v14 h-50z" fill="#94a3b8"/>
+         <path d="M60 86 q20 20 40 0" stroke="#38bdf8" stroke-width="3" fill="none"/>
+         ${HEAD(40, 50)}<path d="M30 82 l10 -20 l10 20z" fill="#f97316"/>
+         <g class="a-r"><path d="M56 60 h50" stroke="#7c3aed" stroke-width="5" stroke-linecap="round"/></g>
+         ${HEAD(122, 50, "#d6a46c")}<path d="M112 82 l10 -20 l10 20z" fill="#ec4899"/>`
+};
+</script>
+<script src="topic-engine.js"></script>
+</body>
+</html>

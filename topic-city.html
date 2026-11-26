@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>City & Transport — Speaking Topics — TOEFL Prep</title>
+
+<!-- Те же подключения, что на остальных страницах платформы -->
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="auth.js"></script>
+<script src="topics.js"></script>
+
+<link rel="stylesheet" href="topic-engine.css">
+</head>
+<body>
+<div class="tl-layout flex flex-col md:flex-row min-h-screen">
+  <div id="app-sidebar"></div>
+  <script src="nav.js"></script>
+
+  <main class="tl-main">
+    <div class="tl-wrap" id="lesson"></div>
+  </main>
+</div>
+
+<!-- Панель ответа -->
+<div class="tl-dock" id="dock" aria-live="polite">
+  <div class="tl-dock-top"><span id="dockLabel">Ответ</span><button class="tl-dock-close" id="dockClose" aria-label="Закрыть">✕</button></div>
+  <div class="tl-dock-q" id="dockQ"></div>
+  <div class="tl-dock-status">
+    <div class="tl-dock-state"><span class="tl-rec-dot" id="recDot"></span><span id="dockState">Готово</span></div>
+    <div class="tl-dock-time" id="dockTime">0:45</div>
+  </div>
+  <div class="tl-phase" id="dockPhase"></div>
+  <div class="tl-dock-bar" id="dockBar"></div>
+  <div class="tl-dock-ctrl">
+    <label><input type="checkbox" id="recToggle"> Записывать голос</label>
+    <div class="tl-row">
+      <button class="tl-dock-btn" id="dockShowQ">Показать текст</button>
+      <button class="tl-dock-btn" id="dockStop">Стоп</button>
+    </div>
+  </div>
+  <div class="tl-dock-msg" id="dockMsg"></div>
+  <div class="tl-dock-out" id="dockOut"></div>
+</div>
+
+<script>
+/* =====================================================================
+   КОНТЕНТ УРОКА: CITY & TRANSPORT
+   Новая тема = копия файла: меняются LESSON, HERO_ART и IDIOM_ART.
+   Общий движок и стили — topic-engine.js и topic-engine.css.
+   **слово** — подсветка целевой лексики.
+   _слово_ в коллокациях — «ключевой кубик».
+   [A] [R] [E] [C] в модельных ответах — цветная структура:
+   A = прямой ответ, R = причина, E = пример, C = вывод.
+   ===================================================================== */
+const LESSON = {
+  slug: "city",
+  titleEn: "City & Transport",
+  titleRu: "Город и транспорт",
+  category: "Общество",
+  intro: "Жизнь в городе и за городом, дорога на учёбу и работу, общественный транспорт, велосипеды и машины, жильё и личное пространство, безопасность на улицах и город будущего. Учим описывать свой город и спорить о городской политике спокойно и конкретно и проходим все вопросы по теме из базы.",
+  meta: [["≈ 60", "минут"], ["27", "слов · 2 уровня"], ["20", "коллокаций"], ["9", "идиом"], ["{Q}", "вопрос для обсуждения"]],
+
+  frames: {
+    warmup:    { icon: "flame",      time: "3 мин",  steps: ["Нажми динамик или прочитай вопрос", "Ответь вслух за 20 секунд", "Без подсказок — это «до урока»"] },
+    vocab:     { icon: "book",       time: "10 мин", steps: ["Посмотри на схему: из чего состоит город", "Найди себя на шкале", "Слова: начни с Core, слушай и повторяй"] },
+    coll:      { icon: "link",       time: "8 мин",  steps: ["Учи сочетание целиком", "Цветной кубик — то, что чаще путают", "Опиши свою дорогу на учёбу с 5 сочетаниями"] },
+    idioms:    { icon: "quote",      time: "6 мин",  steps: ["Посмотри картинку — запомни образ", "Плашка «Можно» — смело в ответы", "Выбери 2 идиомы на сегодня"] },
+    expr:      { icon: "megaphone",  time: "5 мин",  steps: ["Послушай интонацию", "По 1 фразе из каждой группы", "Запомни шкалу 45 секунд"] },
+    check:     { icon: "puzzle",     time: "10 мин", steps: ["4 мини-игры", "Цель — 100% в Matching и Gap-fill", "Карточки — пока не узнаёшь все"] },
+    repeat:    { icon: "headphones", time: "5 мин",  steps: ["Слушай, не читая", "Повтори слово в слово", "Включи запись и сравни"] },
+    interview: { icon: "mic",        time: "15 мин", steps: ["Выбери сет — начни с Official", "Пройди все вопросы подряд, без пауз", "Сравни с моделью: цвета = структура"] },
+    club:      { icon: "chat",       time: "30+ мин", steps: ["Возьми 1–2 блока на занятие", "Ответь, потом — на «Копнём глубже»", "Отметь «Обсудили» или крути рулетку"] },
+    self:      { icon: "checkCircle",time: "3 мин",  steps: ["Прослушай свои записи", "Отметь, что получилось", "Цель — 15+ отмеченных слов"] }
+  },
+
+  warmup: [
+    "How did you get here today?",
+    "What's the best thing about your city?",
+    "How long is your commute?",
+    "Big city or small town — where would you rather live?"
+  ],
+
+  /* Из чего состоит город: равные ветки, вместо процента — tag */
+  flow: {
+    icon: "building",
+    title: "Из чего состоит город",
+    source: { kicker: "Хороший город — это…", title: "Livable city", ru: "город, где удобно жить", words: ["quality of life", "urban planning", "infrastructure"] },
+    branches: [
+      { title: "Live", ru: "жить", sub: "home & neighborhood", tag: "Жильё", color: "#f97316", words: ["affordable housing", "neighborhood", "living space", "rent"] },
+      { title: "Move", ru: "передвигаться", sub: "getting from A to B", tag: "Транспорт", color: "#0ea5e9", words: ["public transport", "commute", "bike lanes", "traffic"] },
+      { title: "Feel", ru: "чувствовать", sub: "safe & happy", tag: "Атмосфера", color: "#8b5cf6", words: ["green spaces", "safety", "street lighting", "community"] }
+    ],
+    notes: [
+      "Почти любой ответ этой темы — про <b>компромисс</b>: удобство против цены, машины против пешеходов, жильё против парков",
+      "Готовая фраза: <i>A good city isn't the biggest or the richest — it's the one where getting around is easy and people feel safe.</i>"
+    ]
+  },
+
+  scale: {
+    title: "Ты городской человек? Перетащи кружок туда, где ты",
+    left: "COUNTRYSIDE SOUL", right: "CITY LOVER",
+    words: [
+      { w: "countryside soul", p: 4 }, { w: "small-town life", p: 17 }, { w: "quiet suburb", p: 30 }, { w: "city for work only", p: 44 },
+      { w: "love the buzz", p: 58 }, { w: "public transport fan", p: 71 }, { w: "right in the center", p: 85 }, { w: "city lover", p: 97 }
+    ],
+    says: [
+      { max: 25,  t: "I'm a **countryside soul** — cities drain my energy." },
+      { max: 50,  t: "I'd choose a **quiet suburb** and use the **city for work only**." },
+      { max: 75,  t: "I **love the buzz** of the city, and I'm a real **public transport fan**." },
+      { max: 101, t: "I'm a true **city lover** — I want to live **right in the center**." }
+    ]
+  },
+
+  vocab: [
+    { en: "commute", pos: "n / v", ru: "дорога на работу/учёбу; ездить", ex: "My commute takes twenty minutes.", level: "core" },
+    { en: "public transport", pos: "n", ru: "общественный транспорт", ex: "I use public transport every day.", level: "core" },
+    { en: "traffic jam", pos: "n", ru: "пробка", ex: "We were stuck in a traffic jam for an hour.", level: "core" },
+    { en: "rush hour", pos: "n", ru: "час пик", ex: "The metro is packed during rush hour.", level: "core" },
+    { en: "neighborhood", pos: "n", ru: "район", ex: "My neighborhood is quiet and green.", level: "core" },
+    { en: "suburbs", pos: "n", ru: "пригород", ex: "Many families move to the suburbs.", level: "core" },
+    { en: "downtown / city center", pos: "n", ru: "центр города", ex: "My office is downtown.", level: "core" },
+    { en: "rent", pos: "n / v", ru: "аренда; снимать", ex: "Rent in the city center is very high.", level: "core" },
+    { en: "crowded", pos: "adj", ru: "переполненный", ex: "The buses are always crowded.", level: "core" },
+    { en: "pedestrian", pos: "n / adj", ru: "пешеход; пешеходный", ex: "The old town is pedestrian-only.", level: "core" },
+    { en: "bike lane", pos: "n", ru: "велодорожка", ex: "The city built new bike lanes.", level: "core" },
+    { en: "fare", pos: "n", ru: "стоимость проезда", ex: "Bus fares went up again.", level: "core" },
+    { en: "reliable", pos: "adj", ru: "надёжный", ex: "The metro is fast and reliable.", level: "core" },
+    { en: "safe / safety", pos: "adj / n", ru: "безопасный / безопасность", ex: "I feel safe walking at night here.", level: "core" },
+    { en: "noise", pos: "n", ru: "шум", ex: "The traffic noise keeps me awake.", level: "core" },
+
+    { en: "urban", pos: "adj", ru: "городской", ex: "Urban life can be stressful.", level: "adv" },
+    { en: "infrastructure", pos: "n", ru: "инфраструктура", ex: "The city invested in transport infrastructure.", level: "adv" },
+    { en: "congestion", pos: "n", ru: "заторы, перегруженность", ex: "Traffic congestion costs cities billions.", level: "adv" },
+    { en: "affordable housing", pos: "n", ru: "доступное жильё", ex: "Young people need affordable housing.", level: "adv" },
+    { en: "walkable", pos: "adj", ru: "удобный для пешеходов", ex: "I want to live in a walkable neighborhood.", level: "adv" },
+    { en: "car-dependent", pos: "adj", ru: "зависимый от машин", ex: "Many suburbs are completely car-dependent.", level: "adv" },
+    { en: "gentrification", pos: "n", ru: "джентрификация (рост цен и смена жителей района)", ex: "Gentrification pushed local families out.", level: "adv" },
+    { en: "vibrant", pos: "adj", ru: "яркий, живой", ex: "The city has a vibrant nightlife.", level: "adv" },
+    { en: "overwhelming", pos: "adj", ru: "подавляющий, утомительный", ex: "Big cities can feel overwhelming.", level: "adv" },
+    { en: "accessible", pos: "adj", ru: "доступный (в т.ч. для людей с инвалидностью)", ex: "Stations should be accessible for wheelchairs.", level: "adv" },
+    { en: "surveillance", pos: "n", ru: "видеонаблюдение, слежка", ex: "Surveillance cameras make some people feel safer.", level: "adv" },
+    { en: "sprawl", pos: "n", ru: "разрастание (города)", ex: "Urban sprawl increases commuting times.", level: "adv" }
+  ],
+
+  collocations: [
+    { icon: "bus", group: "Транспорт", items: [
+      { en: "_take_ the bus / metro", ru: "ехать на автобусе / метро", ex: "I take the metro to work." },
+      { en: "_catch / miss_ the bus", ru: "успеть на / опоздать на автобус", ex: "I missed the bus and had to walk." },
+      { en: "_get stuck in_ traffic", ru: "застрять в пробке", ex: "We got stuck in traffic for an hour." },
+      { en: "_go by_ bike / car", ru: "ехать на велосипеде / машине (by, без the)", ex: "I usually go by bike." },
+      { en: "_get around_ the city", ru: "передвигаться по городу", ex: "It's easy to get around the city by tram." }
+    ]},
+    { icon: "home", group: "Жильё", items: [
+      { en: "_move to_ a new city", ru: "переехать в новый город", ex: "I moved to the capital to study." },
+      { en: "_share_ a flat / room", ru: "делить квартиру / комнату", ex: "I share a room with a roommate." },
+      { en: "_afford_ the rent", ru: "позволить себе аренду", ex: "Students can't afford the rent downtown." },
+      { en: "_live within walking distance of_", ru: "жить в пешей доступности от", ex: "I live within walking distance of campus." },
+      { en: "_settle down_ (in)", ru: "осесть, обосноваться", ex: "I'd like to settle down in a smaller town." }
+    ]},
+    { icon: "building", group: "Город", items: [
+      { en: "_invest in_ public transport", ru: "вкладываться в транспорт", ex: "Cities should invest in public transport." },
+      { en: "_reduce_ traffic congestion", ru: "уменьшать пробки", ex: "Bike lanes help reduce congestion." },
+      { en: "_improve_ quality of life", ru: "улучшать качество жизни", ex: "Parks improve quality of life." },
+      { en: "_build_ bike lanes", ru: "строить велодорожки", ex: "The city built fifty kilometers of bike lanes." },
+      { en: "_ban_ cars from the center", ru: "запретить машины в центре", ex: "Some cities have banned cars from the center." }
+    ]},
+    { icon: "shield", group: "Безопасность", items: [
+      { en: "_feel safe_ walking alone", ru: "чувствовать себя в безопасности", ex: "I feel safe walking alone here." },
+      { en: "_avoid_ certain areas", ru: "избегать некоторых районов", ex: "I avoid certain areas at night." },
+      { en: "well-_lit_ streets", ru: "хорошо освещённые улицы", ex: "Well-lit streets make people feel safer." },
+      { en: "_keep an eye on_", ru: "присматривать за", ex: "Keep an eye on your bag on the metro." },
+      { en: "_report_ a crime", ru: "сообщить о преступлении", ex: "You can report a crime through an app." }
+    ]}
+  ],
+
+  idioms: [
+    { art: "bustle", lit: "буквально: «суета и толкотня»", en: "the hustle and bustle", ru: "городская суета", meaning: "шум и активность большого города", ex: "I love the hustle and bustle of the city center.", reg: "ok", note: "Лучшая фраза для вопроса «how do cities make you feel»." },
+    { art: "jungle", lit: "буквально: «бетонные джунгли»", en: "a concrete jungle", ru: "бетонные джунгли", meaning: "город без зелени, только здания", ex: "Without parks, the city would be a concrete jungle.", reg: "ok", note: "Удобно в споре «parks vs housing»." },
+    { art: "nowhere", lit: "буквально: «посреди нигде»", en: "in the middle of nowhere", ru: "у чёрта на куличках", meaning: "очень далеко от городов и людей", ex: "My grandmother lives in the middle of nowhere.", reg: "ok", note: "Живо про деревню и отсутствие транспорта." },
+    { art: "stone", lit: "буквально: «бросок камня»", en: "a stone's throw from", ru: "в двух шагах от", meaning: "очень близко", ex: "My dorm is a stone's throw from campus.", reg: "ok", note: "Для вопроса «is it important to live close to work»." },
+    { art: "bumper", lit: "буквально: «бампер к бамперу»", en: "bumper to bumper", ru: "машина к машине (плотная пробка)", meaning: "очень плотный трафик", ex: "At rush hour, the traffic is bumper to bumper.", reg: "ok", note: "Ярче, чем просто «traffic jam»." },
+    { art: "ab", lit: "буквально: «из А в Б»", en: "get from A to B", ru: "добраться из одного места в другое", meaning: "просто доехать куда нужно", ex: "For me, a car is just a way to get from A to B.", reg: "ok", note: "Естественно в вопросах про транспорт." },
+    { art: "ghost", lit: "буквально: «город-призрак»", en: "a ghost town", ru: "вымерший город", meaning: "пустое место, где нет людей", ex: "On Sundays, the business district is a ghost town.", reg: "ok", note: "Для вопроса о том, что будет без офисов и поездок." },
+    { art: "wits", lit: "буквально: «держать ум при себе»", en: "keep your wits about you", ru: "быть начеку", meaning: "оставаться внимательным и осторожным", ex: "At night, I keep my wits about me on the metro.", reg: "ok", note: "Для блока о безопасности." },
+    { art: "night", lit: "буквально: «город, который никогда не спит»", en: "the city that never sleeps", ru: "город, который никогда не спит", meaning: "город, где жизнь кипит круглосуточно", ex: "It's a city that never sleeps — cafés are open all night.", reg: "careful", note: "Клише из путеводителей. Лучше с юмором и один раз." }
+  ],
+
+  expressions: [
+    { icon: "play", fn: "Начать ответ", items: [
+      "I usually get around by …",
+      "My commute takes about … minutes.",
+      "Honestly, I have mixed feelings about city life."
+    ]},
+    { icon: "bulb", fn: "Объяснить причину", items: [
+      "It's mainly a question of time and money.",
+      "The biggest advantage is that …",
+      "What bothers me most is the noise and traffic."
+    ]},
+    { icon: "camera", fn: "Описать место", items: [
+      "My neighborhood is quiet, green and close to everything.",
+      "There's a metro station right next to my dorm.",
+      "At rush hour, the buses are packed."
+    ]},
+    { icon: "scales", fn: "Баланс и контраст", items: [
+      "Cars are convenient; that said, they're terrible for the city.",
+      "While rent downtown is high, you save on transport.",
+      "On the flip side, …"
+    ]},
+    { icon: "trending", fn: "Будущее", items: [
+      "I think future cities will be built around people, not cars.",
+      "More and more cities are investing in bike lanes.",
+      "Remote work is likely to change how cities look."
+    ]},
+    { icon: "flag", fn: "Завершить", items: [
+      "So for me, a good city is one where you don't need a car.",
+      "In the end, it's all about quality of life.",
+      "That's why I'd choose to live closer, even if it costs more."
+    ]}
+  ],
+
+  answerSteps: [
+    { k: "A", s: 5,  i: "I usually get around by bike and metro." },
+    { k: "R", s: 12, i: "It's cheaper than a car, and I never get stuck in traffic…" },
+    { k: "E", s: 22, i: "For example, my ride to campus takes fifteen minutes…" },
+    { k: "C", s: 6,  i: "So in my city, a car would only slow me down." }
+  ],
+
+  matching: [
+    { a: "the hustle and bustle", b: "the busy noise and activity of a city" },
+    { a: "a concrete jungle", b: "a city full of buildings with no nature" },
+    { a: "in the middle of nowhere", b: "far from any town" },
+    { a: "a stone's throw from", b: "very close to" },
+    { a: "bumper to bumper", b: "with traffic moving very slowly" },
+    { a: "keep your wits about you", b: "stay alert and careful" }
+  ],
+
+  gapfill: [
+    { t: "I usually go ___ bike.", a: ["by"] },
+    { t: "We got stuck ___ traffic for an hour.", a: ["in"] },
+    { t: "It's easy to get ___ the city by tram.", a: ["around"] },
+    { t: "I live within walking ___ of campus.", a: ["distance"] },
+    { t: "Students can't ___ the rent downtown.", a: ["afford"] },
+    { t: "Cities should invest ___ public transport.", a: ["in"] },
+    { t: "I missed the bus and had to ___.", a: ["walk"] },
+    { t: "Keep an eye ___ your bag on the metro.", a: ["on"] }
+  ],
+
+  paraphrase: [
+    { plain: "My dorm is very close to the university.", better: ["My dorm is **a stone's throw from** campus.", "I live **within walking distance of** campus."] },
+    { plain: "There are many cars and they hardly move.", better: ["The traffic is **bumper to bumper**.", "We **got stuck in traffic**."] },
+    { plain: "I like the busy life in the center.", better: ["I love **the hustle and bustle** of the center."] },
+    { plain: "My grandparents live very far from any town.", better: ["They live **in the middle of nowhere**."] },
+    { plain: "Without parks, the city is only buildings.", better: ["Without parks, the city would be **a concrete jungle**."] },
+    { plain: "At night, I am careful on the metro.", better: ["At night, I **keep my wits about me**."] },
+    { plain: "The bus is not good — it is often late.", better: ["The bus isn't very **reliable**."] },
+    { plain: "There are too many cars in the city.", better: ["The city suffers from **traffic congestion**."] }
+  ],
+
+  repeat: {
+    scenario: "Вы работаете в справочной городского транспорта на вокзале. Старший сотрудник объясняет, как помогать пассажирам, — повторите каждое предложение точно так, как услышали.",
+    sentences: [
+      "Welcome to the central station.",
+      "Tickets can be bought at the machines.",
+      "Buses to the airport leave every twenty minutes.",
+      "Students get a discount with a valid ID card.",
+      "During rush hour, trains to the city center are often very crowded.",
+      "If passengers lose something on a train, they should fill out a form at the information desk.",
+      "Please remind visitors that the metro closes at midnight, but night buses run every thirty minutes until five in the morning."
+    ]
+  },
+
+  /* ===== Реальные сеты Take an Interview по теме (из базы платформы) ===== */
+  sets: [
+    { id: "scl", badge: "platform", title: "City Life", src: "Практика платформы",
+      scenario: "I'm conducting a study about people's experiences and perceptions of living in a city. I'd like to ask you some questions.",
+      questions: [
+        { q: "Do you currently live in a big city, a small town, or a village? And what is it like there?",
+          lx: ["vibrant", "neighborhood", "the hustle and bustle"],
+          model: "[A] I currently live in a big city — the capital, where I study — but I grew up in a small town about two hours away. [R] The city is exciting and full of opportunities, but it's also noisy, crowded and expensive. My hometown is the opposite: quiet, green and friendly, but there's not much to do. [E] For example, in the city, I can go to a concert, a museum and a café with friends from five countries all in one evening, and I never need a car. But rents are very high, and the metro is packed at rush hour. When I go home, everyone knows each other, and my grandmother's village is ten minutes away. [C] So I enjoy city life, but I appreciate my hometown more now.",
+          model5: "[A] I live in a big city, the capital, where I study, although I grew up in a small town a couple of hours away. [R] The city is vibrant and full of opportunities, yet noisy, crowded and expensive, whereas my hometown is the mirror image: peaceful, green and friendly, but rather short on things to do. [E] In the city, for instance, I can catch a concert, visit a museum and meet friends from five different countries in a single evening without ever needing a car; on the other hand, rents are sky-high, and the metro is packed at rush hour. Back home, everyone knows everyone, and my grandmother's village is just ten minutes away. [C] So I love city life, but living away has made me appreciate my hometown far more." },
+        { q: "Cities affect people in different ways. Some people find cities dynamic and exciting. Others find that cities are overwhelming and drain them of energy. What kind of reactions do you have to cities? Why do you think you react in this way?",
+          lx: ["the hustle and bustle", "overwhelming", "vibrant"],
+          model: "[A] I have mixed feelings — I find cities exciting, but after a while they drain my energy. [R] I love the opportunities, the culture and the people, but the noise and crowds make me tired. I think it's because I grew up in a small town, close to nature. [E] For example, during the week I enjoy the hustle and bustle — concerts, cafés, meeting friends from different countries. But after a few weeks, I really need to escape, so I go hiking in the mountains with my club or visit my grandmother's village. After one weekend in nature, I'm ready for the city again. [C] So I love cities, but in small doses.", model5: "[A] My reaction is genuinely mixed: cities energize me, but only up to a point. [R] I thrive on their opportunities, culture and diversity, yet the constant noise and crowds eventually wear me down, probably because I grew up in a small town surrounded by nature. [E] During the week, for instance, I relish **the hustle and bustle** — concerts, cafés and friends from all over the world. After a few weeks, though, I feel an almost physical need to escape, so I head to the mountains with my hiking club or visit my grandmother's village. A single weekend away is usually enough to recharge me for the city again. [C] So I love cities, but in carefully measured doses." },
+        { q: "Some people believe that those who live in cities lead more interesting lives, with more access to professional opportunities and interesting leisure activities. Do you agree that people who live in cities lead more interesting lives? Why or why not?",
+          lx: ["opportunities", "vibrant", "quality of life"],
+          model: "[A] I partly agree. [R] It's true that big cities have more companies, jobs and events, so it's easier to build a career there. But remote work is changing this, and an interesting life doesn't depend only on your job. [E] For example, my cousin moved from a small town to the capital and got a much better job. But my friend works remotely for a company in another country while living in a village near the sea, and she says her life is more interesting than ever. [C] So cities give more opportunities, but technology is making the difference smaller.", model5: "[A] I partly agree, although I think the gap is narrowing. [R] Big cities undoubtedly concentrate companies, jobs and networking events, which makes building a career there considerably easier. However, remote work is reshaping that picture, and an interesting life depends on far more than your job. [E] My cousin, for example, moved from a small town to the capital and landed a far better job almost immediately. A friend of mine, by contrast, works remotely for a foreign company from a village by the sea and says her life has never been more fulfilling. [C] So cities still offer more opportunities, but technology is steadily making where you live less important for your career." }
+      ]
+    },
+    { id: "s062", badge: "official", title: "Public Transportation", src: "Official TOEFL · 062",
+      scenario: "As part of a university project, you have agreed to take part in a short research interview about public transportation. A graduate student conducting the research will ask you some questions online.",
+      questions: [
+        { q: "First, how often do you use public transportation, like buses or trains? Give details to explain your answer.",
+          lx: ["take the metro", "public transport", "get around"],
+          model: "[A] I use public transportation about three or four times a week. [R] For short trips, like going to campus, I usually ride my bike because it's faster and free. But for longer distances, the metro is the best option. [E] For example, I work part-time as a barista in a café downtown, and three times a week I take the metro there — it takes about twenty-five minutes. Also, once a month I take the train to my hometown to visit my family, which is about two hours away. I almost never use buses, because they often get stuck in traffic. [C] So I use public transport regularly, but mostly for longer trips.",
+          model5: "[A] Roughly three or four times a week, mainly for longer journeys. [R] For short trips, such as getting to campus, I cycle, since it's faster and costs nothing, whereas for anything further, the metro is by far the most practical option. [E] I work part-time as a barista downtown, for instance, and three times a week I **take the metro** there, which takes about twenty-five minutes. Once a month, I also catch the train back to my hometown, a two-hour ride, to see my family. Buses, on the other hand, I rarely use, because they're so often stuck in traffic. [C] So public transport is part of my weekly routine, though mainly for distances my bike can't handle." },
+        { q: "Can you describe any benefits or disadvantages you might experience from using public transportation?",
+          lx: ["reliable", "crowded", "rush hour"],
+          model: "[A] The main benefits are that public transport is cheap and lets me use my time well, but it can be crowded and sometimes unreliable. [R] With a student pass, I pay very little each month, and on the metro I can read or listen to podcasts instead of driving. But at rush hour, it's very crowded, and there are sometimes delays. [E] For example, I review my notes on the train before exams, so it's like extra study time. On the other hand, last month the metro stopped for forty minutes because of a technical problem, and I was late for my shift at the café. [C] So the benefits are bigger, but it's not perfect.",
+          model5: "[A] The benefits — low cost and usable travel time — outweigh the drawbacks, which are mainly overcrowding and occasional unreliability. [R] My student pass costs very little each month, and instead of concentrating on driving, I can read, listen to podcasts or review my notes. During rush hour, however, carriages are packed, and delays do happen. [E] Before exams, for instance, I use the train journey home as extra revision time. On the downside, last month the metro broke down for forty minutes, and I arrived embarrassingly late for my shift at the café. [C] So public transport isn't flawless, but for a student, its advantages clearly outweigh its frustrations." },
+        { q: "Would you consider moving in order to have better access to public transportation? Why or why not?",
+          lx: ["within walking distance of", "commute", "car-dependent"],
+          model: "[A] Yes, I would definitely consider it. [R] I don't have a car, and I don't want one, so good public transport is very important for my daily life. Living close to a metro or train station saves a lot of time and money. [E] For example, in my first year, I lived in a dorm where the nearest bus stop was a fifteen-minute walk away, and buses came only every half hour. I wasted almost two hours a day traveling. When I moved to my current dorm near a metro station, I suddenly had time to exercise and work part-time. [C] So when I choose my next apartment, transport access will be one of my top priorities.",
+          model5: "[A] Absolutely; in fact, I already have. [R] I don't own a car and have no wish to, so access to good public transport fundamentally shapes my daily life, saving both time and money. [E] In my first year, for instance, I lived in a dorm where the nearest bus stop was a fifteen-minute walk away, with buses only every half hour, so I lost nearly two hours a day to travel. When I moved to my current dorm, just a few minutes from a metro station, I suddenly had time to run regularly and take on a part-time job. [C] So when I choose my first apartment after graduation, transport links will be near the top of my list." },
+        { q: "Some people believe that cities should invest more in public transportation to reduce traffic congestion, commuting time and pollution. Do you agree or disagree with this idea? Why?",
+          lx: ["invest in", "congestion", "reduce traffic"],
+          model: "[A] I strongly agree that cities should invest more in public transportation. [R] When public transport is fast, cheap and reliable, many people leave their cars at home. This means less traffic, shorter commutes and cleaner air for everyone. [E] For example, five years ago my city opened a new metro line to a big residential area. Before, people drove to the center and spent an hour in traffic jams. Now the trip takes twenty minutes by metro, and traffic on the main road has gone down a lot. In my hometown, by contrast, buses are rare, so almost everyone drives. [C] So investing in public transport helps the whole city.",
+          model5: "[A] I agree wholeheartedly. [R] When public transport is fast, affordable and reliable, people voluntarily leave their cars at home, which simultaneously reduces congestion, shortens commutes and improves air quality, benefiting even those who continue to drive. [E] Five years ago, for instance, my city opened a new metro line to a large residential district. Previously, residents spent up to an hour stuck in traffic on their way downtown, whereas the same journey now takes twenty minutes, and traffic on the main road has fallen noticeably. In my hometown, by contrast, buses are so infrequent that virtually everyone drives. [C] So investment in public transport is one of the most effective improvements a city can make." }
+      ]
+    },
+    { id: "s111", badge: "official", title: "Commuting Habits", src: "Official TOEFL · 111",
+      scenario: "You have volunteered for a research study about commuting habits. You will have a short online interview with a researcher. The researcher will ask you some questions.",
+      questions: [
+        { q: "First, is it important to live close to your school or work? Why?",
+          lx: ["a stone's throw from", "commute", "within walking distance of"],
+          model: "[A] Yes, I think it's very important to live close to school or work. [R] A long commute wastes time and energy every day. When you live close, you have more time for sleep, exercise and friends, and you feel less stressed. [E] For example, my dorm is a stone's throw from campus — just ten minutes by bike. So I can sleep longer, go for a run before class and even come back home for lunch. My cousin, on the other hand, lives an hour and a half from her office, and she says she has no energy for anything in the evening. [C] So living close gives you back hours of your life.",
+          model5: "[A] I'd say it's one of the most important factors in quality of life. [R] A long commute drains both time and energy daily, whereas living nearby frees up hours for sleep, exercise and friends, and generally makes life far less stressful. [E] My dorm, for instance, is **a stone's throw from** campus, just ten minutes by bike, so I can sleep a little longer, fit in a run before lectures and even pop home for lunch. My cousin, by contrast, commutes an hour and a half each way to her office and says she has no energy left for anything by the evening. [C] So living close to where you study or work effectively gives you back hours of your life every week." },
+        { q: "Imagine that you could choose to commute by car, which is faster but more expensive, or by public transportation, which is slower but less expensive. Which would you choose and why?",
+          lx: ["take the metro", "afford", "traffic jam"],
+          model: "[A] I'd choose public transportation. [R] As a student on a **tight budget**, I can't justify paying for gas, insurance and parking, and public transport is much more **cost-effective**. It's also better for the environment. [E] I take the bus to campus every day, and the ride is about forty minutes. Instead of wasting that time, I read, listen to podcasts or review my notes before class. It's almost like extra study time. [C] So the **trade-off** is worth it: I lose a little time but save a lot of money and stress.", model5: "[A] I'd choose public transportation without hesitation. [R] On a **tight budget**, I simply can't justify paying for fuel, insurance and parking, which makes public transport far more **cost-effective** — not to mention better for the environment. [E] I take the bus to campus every day, and the journey takes about forty minutes. Rather than seeing that as wasted time, I use it to read, listen to podcasts or review my notes before class, so it's effectively extra study time. [C] For me, the **trade-off** is clearly worth it: I lose a little time but save a considerable amount of money and stress." },
+        { q: "Some people believe that commuting can be stressful and tiring. What do you think are one or two different ways to make commuting more enjoyable? Give reasons for your answer.",
+          lx: ["commute", "go by bike", "make the most of"],
+          model: "[A] I think two good ways are to use the time for something you enjoy and to choose active transport when possible. [R] When the commute feels useful or fun, it's not stressful. And cycling or walking gives you exercise and fresh air, so you arrive with more energy. [E] For example, on the metro, I always listen to podcasts or audiobooks — last month I finished a whole history book during my commutes. And on sunny days, I cycle to work instead of taking the metro. It takes ten minutes longer, but I arrive in a much better mood. [C] So turning commuting time into \"my time\" makes it much more enjoyable.",
+          model5: "[A] Two approaches work well for me: using the time for something enjoyable and, whenever possible, choosing active transport. [R] A commute that feels purposeful stops being dead time, and cycling or walking adds exercise and fresh air, so you arrive energized rather than drained. [E] On the metro, for instance, I always have a podcast or audiobook playing, and last month I got through an entire history book purely during my commutes. On sunny days, meanwhile, I cycle to the café instead; it takes ten minutes longer, but I arrive in a far better mood. [C] So the trick is to turn commuting time into personal time rather than simply enduring it." },
+        { q: "Considering advances in technology, some people believe that commuting might disappear entirely. How do you think a severe decline in commuting might affect businesses in positive ways and negative ways? Please give one example of each.",
+          lx: ["remote work", "a ghost town", "office space"],
+          model: "[A] A decline in commuting would help some businesses and hurt others. [R] On the positive side, companies could save money on big offices. On the negative side, businesses near offices, like cafés and lunch places, would lose customers. [E] For example, my friend's company closed half of its office after the pandemic and saved a lot of money on rent. But a sandwich shop next to that building closed because there were no office workers anymore. [C] So the economy would change, with winners and losers.", model5: "[A] A sharp decline in commuting would create clear winners and losers among businesses. [R] On the positive side, companies could cut their costs dramatically by renting smaller offices. On the negative side, businesses that depend on commuters — cafés, lunch spots and dry cleaners near office districts — would lose much of their customer base. [E] A friend's company, for instance, gave up half its office space after the pandemic and saved a fortune on rent. Meanwhile, the sandwich shop on the ground floor of that very building closed within a year, simply because the office workers no longer came. [C] So the economy wouldn't shrink so much as shift, with spending moving from city centers to residential neighborhoods." }
+      ]
+    },
+    { id: "s112", badge: "official", title: "Urban Life", src: "Official TOEFL · 112",
+      scenario: "You have agreed to take part in a research study about urban life. You will have a short online interview with a researcher. The researcher will ask you some questions.",
+      questions: [
+        { q: "Think back to the last time you visited a city in your country, a city that you didn't live in. Why did you travel to that city? What did you like about that city?",
+          lx: ["vibrant", "the old town", "get around"],
+          model: "[A] The last city I visited was a historic port city in the south of my country, where I went with friends for a weekend last spring. [R] We wanted to see a concert of our favorite indie band, and we also wanted a break before exams. I liked the city because it was relaxed, beautiful and full of life. [E] For example, the old town had narrow streets, colorful houses and small cafés, and you could walk everywhere. In the evening, people sat outside by the sea, and there was live music on almost every corner. The food was amazing too — fresh fish every day. [C] So I liked its atmosphere, which was very different from my busy city.",
+          model5: "[A] The last one was a historic port city in the south, where I spent a weekend with friends last spring. [R] The main reason was a concert by our favorite indie band, but we also needed a break before exams, and the city turned out to be the perfect escape: relaxed, beautiful and remarkably **vibrant**. [E] The old town, for instance, was a maze of narrow streets, colorful houses and tiny cafés, all easily explored on foot. In the evenings, locals gathered along the seafront, with live music seemingly on every corner, and the fresh seafood was outstanding. [C] So what I loved most was its unhurried, lively atmosphere, a refreshing contrast to the pace of my own city." },
+        { q: "Cities affect people in different ways. Some people find cities dynamic and exciting. Others find that cities are overwhelming and drain them of energy. What kind of reaction do you have to cities? Why do you think you react in this way?",
+          lx: ["the hustle and bustle", "overwhelming", "vibrant"],
+          model: "[A] I have mixed feelings — I find cities exciting, but after a while they drain my energy. [R] I love the opportunities, the culture and the people, but the noise and crowds make me tired. I think it's because I grew up in a small town, close to nature. [E] For example, during the week I enjoy the hustle and bustle — concerts, cafés, meeting friends from different countries. But after a few weeks, I really need to escape, so I go hiking in the mountains with my club or visit my grandmother's village. After one weekend in nature, I'm ready for the city again. [C] So I love cities, but in small doses.",
+          model5: "[A] My reaction is genuinely mixed: cities energize me, but only up to a point. [R] I thrive on their opportunities, culture and diversity, yet the constant noise and crowds eventually wear me down, probably because I grew up in a small town surrounded by nature. [E] During the week, for instance, I relish **the hustle and bustle** — concerts, cafés and friends from all over the world. After a few weeks, though, I feel an almost physical need to escape, so I head to the mountains with my hiking club or visit my grandmother's village. A single weekend away is usually enough to recharge me for the city again. [C] So I love cities, but in carefully measured doses." },
+        { q: "Some people believe that those who live in cities lead more interesting lives. They would argue, for example, that people who live in cities have more access to professional opportunities and interesting leisure activities. Do you agree that people who live in cities lead more interesting lives? Why or why not?",
+          lx: ["opportunities", "vibrant", "quality of life"],
+          model: "[A] I partly agree. [R] It's true that big cities have more companies, jobs and events, so it's easier to build a career there. But remote work is changing this, and an interesting life doesn't depend only on your job. [E] For example, my cousin moved from a small town to the capital and got a much better job. But my friend works remotely for a company in another country while living in a village near the sea, and she says her life is more interesting than ever. [C] So cities give more opportunities, but technology is making the difference smaller.", model5: "[A] I partly agree, although I think the gap is narrowing. [R] Big cities undoubtedly concentrate companies, jobs and networking events, which makes building a career there considerably easier. However, remote work is reshaping that picture, and an interesting life depends on far more than your job. [E] My cousin, for example, moved from a small town to the capital and landed a far better job almost immediately. A friend of mine, by contrast, works remotely for a foreign company from a village by the sea and says her life has never been more fulfilling. [C] So cities still offer more opportunities, but technology is steadily making where you live less important for your career." },
+        { q: "Researchers are interested in whether green spaces, such as parks, make people who live in cities happier. Do you think that city governments should create more parks in urban areas to promote a general sense of happiness and life satisfaction? Why or why not?",
+          lx: ["green space", "a concrete jungle", "quality of life"],
+          model: "[A] Yes, I think city governments should create more parks. [R] Cities are noisy, crowded and stressful, and parks give people a place to relax, exercise and meet each other for free. Studies show that people who live near green spaces are happier. [E] For example, when I moved to my current dorm next to a big park, I started walking there every evening. I feel much calmer than when I lived near a busy road. On weekends, the park is full of families and friends having picnics. [C] So parks are a cheap way to make cities happier.", model5: "[A] I'm firmly in favor. [R] Urban life is noisy, crowded and often stressful, and parks offer a free, accessible refuge where anyone can unwind, exercise or socialize. There's also growing evidence that living near green space is linked to greater life satisfaction. [E] When I moved into my current dorm beside a large park, for instance, evening walks there quickly became part of my routine, and I feel noticeably calmer than when I lived beside a busy main road. At weekends, the park fills with families and groups of friends picnicking, which gives the whole area a sense of community. [C] So parks are one of the most cost-effective investments a city can make in its residents' happiness." }
+      ]
+    },
+    { id: "sct", badge: "platform", title: "City Design & Getting Around", src: "Практика платформы",
+      scenario: "I'm conducting a study on how cities are designed and how people move around in them. I'd like to ask you some questions.",
+      questions: [
+        { q: "To begin, how do you usually get around your city—do you walk, drive, bike, or use public transport?",
+          lx: ["go by bike", "take the metro", "get around"],
+          model: "[A] I usually get around my city by bike, and I use the metro for longer trips. [R] Cycling is free, healthy and often faster than the bus, because I don't get stuck in traffic. But some places are too far, and in winter it's too cold and icy. [E] For example, every day I cycle ten minutes to campus and to the park where I run. When I go to my part-time job downtown, I take the metro because it's twenty-five minutes and much faster than cycling. On weekends, I often just walk around the city center with friends. I don't have a car, and I don't need one. [C] So bike and metro are all I need.",
+          model5: "[A] Mostly by bike, with the metro covering longer distances. [R] Cycling is free, healthy and frequently faster than the bus, since I never get caught in traffic; some journeys, however, are simply too long, and in winter the roads can be icy. [E] Every day, for instance, I cycle ten minutes to campus and to the park where I run. For my shifts at the café downtown, I take the metro, which is quicker than cycling. At weekends, my friends and I often just wander around the center on foot. I don't own a car, and frankly I've never felt the need for one. [C] So between my bike and the metro, I can **get around** the city easily." },
+        { q: "Some people want cities to be more walkable or bike-friendly, while others prefer convenience for cars. What's your opinion, and why?",
+          lx: ["walkable", "bike lane", "car-dependent"],
+          model: "[A] I think cities should be more walkable and bike-friendly. [R] Cars take a lot of space, make noise and pollute the air. When streets are designed for people, cities become healthier, safer and more pleasant. But we still need some space for cars, for example for older people and deliveries. [E] For example, a few years ago, my city closed one central street to cars and made it pedestrian-only. At first, shop owners were worried, but now it's full of cafés, street musicians and families, and the shops make more money than before. [C] So I believe cities should be designed for people first, and cars second.",
+          model5: "[A] I'm firmly on the side of walkable, bike-friendly cities. [R] Cars occupy enormous amounts of space, generate noise and pollute the air, whereas streets designed for people tend to be healthier, safer and far more pleasant. That said, cities must still accommodate those who genuinely need a car, such as elderly or disabled residents, and delivery services. [E] A few years ago, for instance, my city made one central street **pedestrian**-only. Shopkeepers initially protested, fearing a loss of customers, yet today it's lined with cafés, buskers and families, and businesses there report higher sales than before. [C] So I'd design cities around people first, with cars accommodated rather than prioritized." },
+        { q: "Public transportation can help reduce traffic and pollution, but not everyone uses it. What do you think would make people more likely to use buses or trains?",
+          lx: ["reliable", "fare", "frequent"],
+          model: "[A] I think people would use buses and trains more if they were cheaper, more frequent and more comfortable. [R] Many people drive because public transport is slow, crowded or unreliable. If it was easier and faster than a car, they would change their habits. [E] For example, in my hometown, buses come only every forty minutes, so everyone drives. In my university city, the metro comes every three minutes, and students travel for a small monthly fee, so almost nobody I know has a car. Clear apps with real-time information also help a lot — I always know when my train is coming. [C] So if public transport is the easiest option, people will choose it.",
+          model5: "[A] Above all, making it cheaper, more frequent and more comfortable than driving. [R] Most people drive not out of love for their cars but because public transport is slow, crowded or unreliable; once it becomes the more convenient option, behavior shifts naturally. [E] In my hometown, for instance, buses run only every forty minutes, so virtually everyone drives, whereas in my university city, trains arrive every three minutes and students pay a modest monthly fare, so hardly anyone I know owns a car. Real-time apps also make a surprising difference, since knowing exactly when the next train arrives removes much of the uncertainty. [C] So people will choose public transport when it's genuinely the easiest choice." },
+        { q: "Do you think future cities should prioritize green space, affordable housing, or better transportation? Why?",
+          lx: ["affordable housing", "green space", "infrastructure"],
+          model: "[A] I think **affordable housing** should be the top priority. [R] If people can't afford to live in a city, nothing else really matters — teachers, nurses and young people get pushed out, and the city loses its diversity. [E] In my hometown, rent has almost doubled in five years, and many of my friends had to move to the suburbs and commute two hours a day. **That said**, good transportation and green spaces make a city livable too. [C] So housing first, but **in the long run** all three need to work together.", model5: "[A] In my opinion, **affordable housing** should be the top priority. [R] If people can't afford to live in a city, nothing else really matters: teachers, nurses and young people are gradually pushed out, and the city loses much of its diversity. [E] In my hometown, rents have nearly doubled in five years, and as a result, many of my friends have moved to the suburbs and now commute up to two hours a day. **That said**, good transport and green spaces are what make a city livable. [C] So housing should come first, but **in the long run**, all three need to be developed together." }
+      ]
+    },
+    { id: "stc", badge: "platform", title: "Transportation in Cities", src: "Практика платформы",
+      scenario: "I'm conducting a study on how people move around in urban environments and how city design influences our daily lives. I'd like to ask you a few questions about your experiences and opinions on this topic.",
+      questions: [
+        { q: "First, how do you usually travel within your city—do you tend to rely on a car, bicycle, public transportation, or do you prefer walking? And has that changed over time depending on where you live or work?",
+          lx: ["go by bike", "car-dependent", "get around"],
+          model: "[A] Now I mostly cycle and use the metro, but it was very different when I lived in my hometown. [R] My hometown is small and spread out, and buses are rare, so my parents drove me everywhere. When I moved to the city for university, I didn't need a car anymore, because everything is close and public transport is good. [E] For example, at school, my dad drove me to football practice three times a week. Now I cycle ten minutes to campus and take the metro to my job downtown. In my first year, I lived far from the metro and took slow buses, but after I moved closer, my life became much easier. [C] So where I live has completely changed how I travel.",
+          model5: "[A] These days, I mostly cycle and take the metro, but that's changed dramatically depending on where I've lived. [R] My hometown is small and spread out, with infrequent buses, so as a teenager I relied entirely on my parents' car; since moving to the city for university, I've had no need for one at all. [E] At school, for instance, my dad drove me to football practice three times a week. Now I cycle ten minutes to campus and take the metro to the café where I work. Even within the city, my habits shifted: in my first year, I lived far from the metro and depended on slow buses, until moving closer transformed my daily routine. [C] So the place I live has always determined how I travel." },
+        { q: "Some cities are specifically designed to support pedestrians and cyclists. In your view, what are some of the advantages of living in a place that is walkable or bikeable? And how do you think it affects the daily lives and health of the people who live there?",
+          lx: ["walkable", "bike lane", "quality of life"],
+          model: "[A] Living in a walkable or bikeable place has big advantages, especially for health. [R] When you can walk or cycle to school, work and shops, you exercise every day without thinking about it. There is also less traffic and pollution, and people meet each other on the street. [E] For example, when I lived in my hometown, I needed a car for everything, and I rarely walked. Now I live in a city with bike lanes, and I cycle about forty minutes a day. I've become fitter, and I don't even feel like it's exercise. [C] So walkable cities make healthy habits easy.", model5: "[A] The advantages are considerable, and health is perhaps the greatest of them. [R] When walking or cycling is the easiest way to reach work, school and shops, people build exercise into their day without even noticing. Beyond that, there's less traffic and pollution, and streets feel livelier, since neighbors actually encounter each other. [E] In my hometown, for instance, I needed a car for virtually everything and rarely walked anywhere. Now that I live in a city with an extensive network of bike lanes, I cycle about forty minutes a day, and I'm noticeably fitter without ever consciously \"working out\". [C] So walkable cities make the healthy choice the default choice." },
+        { q: "Many people depend on cars for convenience, especially when commuting long distances or managing a busy schedule. Do you think cities should actively reduce car usage—even if that means making travel less convenient for some individuals? Why or why not?",
+          lx: ["ban cars from the center", "congestion", "alternatives"],
+          model: "[A] Yes, I think cities should reduce car usage, but only if they offer good alternatives first. [R] Too many cars cause traffic jams, pollution and accidents, which affect everyone. But if cities just make driving harder without improving buses and trains, people who really need cars, like parents with small children, will suffer. [E] For example, my city introduced a fee for cars entering the center, but at the same time it added more buses and new bike lanes. At first, people complained, but now traffic is lower and the air is cleaner. My uncle, who complained the most, now takes the train and reads on the way. [C] So reducing cars is good, if people have other options.",
+          model5: "[A] I think they should, provided genuine alternatives are in place first. [R] Heavy car use imposes costs on everyone, from congestion and pollution to road accidents. Restricting driving without improving public transport, however, would unfairly penalize those who truly depend on cars, such as parents with young children or people with disabilities. [E] My city, for instance, introduced a charge for cars entering the center while simultaneously adding bus routes and bike lanes. There was plenty of grumbling at first, but traffic has since dropped noticeably and the air is cleaner; even my uncle, initially the loudest critic, now takes the train and enjoys reading on the way. [C] So reducing car use is worthwhile, as long as people are given real options rather than simply obstacles." },
+        { q: "Public transportation is often seen as a way to reduce traffic, pollution, and inequality in access to services. In your opinion, can better public transit systems make a meaningful difference in quality of life in urban areas? If so, how?",
+          lx: ["accessible", "quality of life", "infrastructure"],
+          model: "[A] Yes, I believe better public transport can make a big difference in quality of life. [R] It gives everyone, not just people with cars, access to jobs, schools, hospitals and culture. It also reduces traffic and pollution, so the whole city becomes healthier. [E] For example, when a new tram line opened in a poorer area of my city, many people there could suddenly reach jobs downtown in thirty minutes instead of ninety. A woman who works at my café told me that she can now spend evenings with her kids instead of sitting on buses. [C] So good public transport is not just about traffic — it changes people's lives.",
+          model5: "[A] Absolutely; I'd argue it's one of the most powerful tools for improving urban life. [R] Good public transport gives everyone, not only car owners, equal access to jobs, education, healthcare and culture, while reducing congestion and pollution for the city as a whole. [E] When a new tram line opened in one of my city's poorer districts, for instance, residents could suddenly reach downtown jobs in thirty minutes rather than ninety. A colleague at the café told me it means she now spends her evenings with her children instead of on buses. [C] So better transit isn't merely a matter of traffic statistics; it directly expands people's opportunities and gives them back precious time." }
+      ]
+    },
+    { id: "sps", badge: "platform", title: "Personal Safety in Public Spaces", src: "Практика платформы",
+      scenario: "We're exploring how safe people feel in different public environments and what factors influence that sense of safety. I'd like to ask you a few questions based on your own experiences.",
+      questions: [
+        { q: "When you're walking alone in your neighborhood, city, or other public places, how safe do you generally feel? Are there specific times of day or types of areas where you feel more or less comfortable?",
+          lx: ["feel safe walking alone", "well-lit streets", "avoid certain areas"],
+          model: "[A] In general, I feel quite safe walking alone in my city, but it depends on the time and place. [R] During the day and in busy areas, there are always people around, so I feel comfortable. But late at night, in empty or dark places, I feel more nervous. [E] For example, I often walk home from the café after my evening shift at around eleven. The main streets are well-lit and full of people, so I feel fine. But there's a small park near my dorm that's very dark at night, so I always walk around it instead of through it. I also avoid the area near the train station late at night. [C] So I feel safe, but I'm careful at night.",
+          model5: "[A] Generally quite safe, though it depends very much on the time and place. [R] In daylight and in busy areas, there are always people around, so I feel completely at ease, whereas deserted or poorly lit places at night make me noticeably more alert. [E] After evening shifts at the café, for instance, I often walk home around eleven, and the main streets are bright and busy, so I don't think twice. There's a small park near my dorm, however, that's pitch-dark at night, so I always go around it rather than through it, and I steer clear of the area around the train station late at night. [C] So I feel safe overall, but I **keep my wits about me** after dark." },
+        { q: "Some communities take extra steps to create safer public spaces by investing in street lighting, installing surveillance cameras, or organizing neighborhood patrols. What kinds of features or measures help you feel safer when you're out in public? Are there any changes you've noticed that made a visible difference?",
+          lx: ["well-lit streets", "surveillance", "public spaces"],
+          model: "[A] For me, good street lighting and having people around are the things that make me feel safest. [R] Dark streets feel dangerous even when they're not, and when there are open cafés and other people, I know someone could help me. Cameras help a little, but I don't think they stop crime. [E] For example, last year my city put bright new lights along the river path near my dorm. Before, almost nobody walked there at night, but now people jog and walk their dogs there in the evening, and it feels much safer. I also feel safer on the night bus since they started having a security guard on board. [C] So light and people make the biggest difference.",
+          model5: "[A] Good lighting and the presence of other people make by far the biggest difference for me. [R] Dark streets feel threatening even when they aren't, while open cafés and passers-by provide a reassuring sense that help is close. Surveillance cameras, by contrast, offer limited comfort, since they record crime rather than prevent it. [E] Last year, for instance, my city installed bright new lighting along the river path near my dorm. Previously, hardly anyone used it after dark, but now people jog and walk their dogs there in the evenings, and it feels transformed. I've also felt more relaxed on night buses since security staff started riding them. [C] So, in my experience, light and people do more for safety than any camera." },
+        { q: "There are places or situations that people tend to avoid because they don't feel secure, especially at night or in unfamiliar areas. Have you ever changed your route, plans, or activities due to safety concerns? If so, what made you feel uncomfortable, and how did you handle it?",
+          lx: ["avoid certain areas", "keep an eye on", "keep your wits about you"],
+          model: "[A] Yes, I've changed my route a few times because I felt unsafe. [R] Usually, it's when a street is empty and dark, or when someone is behaving strangely. I think it's better to lose ten minutes than to take a risk. [E] For example, last winter I was walking home late from a party, and a group of drunk men started shouting at me from across the street. I didn't answer; I just turned around, walked to a busy street with open shops and called a taxi. Since then, I always check my route on the map before going out at night and share my location with my roommate. [C] So I handle it by staying calm and choosing busy, bright places.",
+          model5: "[A] Yes, on a handful of occasions. [R] What usually unsettles me is a deserted, dark street or someone behaving erratically, and I've learned that losing ten minutes is always preferable to taking a risk. [E] Last winter, for instance, I was walking home late from a party when a group of drunk men started shouting at me from across the road. Rather than responding, I calmly turned back toward a busy street with open shops and ordered a taxi. Since then, I always check my route before heading out at night and share my live location with my roommate. [C] So my approach is to stay calm, avoid confrontation and head for light and people." },
+        { q: "With so many priorities competing for funding, do you believe improving public safety—like investing in safer streets, better emergency response, or crime prevention—should be a higher priority for local governments? Why or why not? And what kind of long-term impact do you think it could have on communities?",
+          lx: ["invest in", "public spaces", "quality of life"],
+          model: "[A] Yes, I think public safety should be one of the top priorities for local governments. [R] If people don't feel safe, they stay at home, businesses close early, and the city loses its life. Safety affects everything else — health, the economy and community. But I think prevention, like lighting and youth programs, is better than just more police. [E] For example, in my hometown, the council opened a free youth center with sports and music programs in a difficult area. In a few years, there was much less vandalism, and teenagers had somewhere to go. My younger brother plays basketball there. [C] So investing in safety, especially prevention, makes communities stronger in the long term.",
+          model5: "[A] I'd say it deserves to be among the top priorities, though with a strong emphasis on prevention. [R] When people feel unsafe, they stay home, businesses close early and public spaces empty out, which undermines health, the local economy and community life. Investing in lighting, well-designed public spaces and youth programs, however, often achieves more than simply hiring more police. [E] In my hometown, for instance, the council opened a free youth center offering sport and music in a struggling district, and within a few years vandalism had fallen sharply because teenagers finally had somewhere to go; my younger brother still plays basketball there. [C] So prioritizing safety, particularly through prevention, can strengthen communities for decades." }
+      ]
+    },
+    { id: "sls", badge: "platform", title: "Living Space", src: "Практика платформы",
+      scenario: "We're conducting a study on how people feel about their living environments and how those spaces influence their daily routines, comfort, and well-being. I'd like to ask you a few questions about where you live.",
+      questions: [
+        { q: "How would you describe your current living space? Do you live in an apartment, a house, a shared space with roommates or family, or something else? And how do you feel about the amount of space and privacy you have?",
+          lx: ["share a room", "privacy", "cramped"],
+          model: "[A] I live in a university dorm, where I share a room with one roommate and a kitchen with five other students. [R] It's small, and there isn't much privacy, but it's cheap and close to campus, so for a student it's a good option. [E] For example, our room has two beds, two desks and one big window. When I want to study or call my family, I sometimes go to the library or a quiet common room. We have a rule: no guests after eleven, so we can both sleep. The shared kitchen is often messy, but it's also where I've made many friends. [C] So it's not perfect, but I'm happy with it for now.",
+          model5: "[A] I live in a university dorm, sharing a room with one roommate and a kitchen with five other students. [R] It's undeniably cramped and offers little privacy, but it's affordable and right next to campus, which, for a student, outweighs most of the drawbacks. [E] Our room, for instance, has two beds, two desks and a single large window, so when I need to focus or have a private call with my family, I retreat to the library or a quiet common room. We've agreed on a no-guests-after-eleven rule so we both get enough sleep. The shared kitchen is often chaotic, yet it's also where I've made some of my closest friends. [C] So it's far from perfect, but it suits this stage of my life." },
+        { q: "When it comes to living spaces, some people care most about having a practical layout or good storage, while others value design, lighting, or comfort. What matters most to you in your living environment—and why?",
+          lx: ["natural light", "layout", "well-being"],
+          model: "[A] For me, natural light and a quiet place to work matter most. [R] When my room is bright, I feel more energetic and positive, especially in winter. And because I study a lot at home, I need a desk where I can focus without noise. [E] For example, when I chose my current dorm, I picked the room with the biggest window, even though it was a bit smaller. My desk is right next to the window, so I can see the trees in the park while I study. In my first dorm, the room was dark and faced a wall, and I felt tired and unmotivated all the time. [C] So light and quiet are more important to me than size or design.",
+          model5: "[A] Natural light and a quiet place to work matter most to me. [R] A bright room noticeably lifts my mood and energy, particularly during gray winters, and since I study a great deal at home, I need a space where I can genuinely concentrate. [E] When choosing my current dorm, for instance, I deliberately picked the room with the largest window, even though it was slightly smaller, and positioned my desk right beside it, overlooking the trees in the park. My first-year room, by contrast, was dark and faced a brick wall, and I felt constantly sluggish and unmotivated there. [C] So I'd happily sacrifice space or stylish design for light and quiet." },
+        { q: "A lot of people make changes to their rooms or homes to feel more motivated, peaceful, or productive. Have you ever reorganized, redecorated, or redesigned a space to improve how it feels or functions? If so, what changes did you make, and what difference did it make?",
+          lx: ["redecorate", "declutter", "cozy"],
+          model: "[A] Yes, last semester I reorganized my side of the dorm room, and it made a big difference. [R] Before, my desk was messy and full of things, and I couldn't concentrate. I also wanted the room to feel more like home. [E] For example, I moved my desk next to the window, threw away old papers and bought a small shelf, so now everything has its place. I also added some plants — a cactus, basil and a big plant my mom gave me — and soft warm lights instead of the bright ceiling lamp. Now I study better, and in the evening the room feels cozy and calm. [C] So small changes made my room a much nicer place to live and work.",
+          model5: "[A] Yes; last semester I completely reorganized my side of our dorm room, and the effect was remarkable. [R] My desk had become cluttered to the point where I couldn't concentrate, and I also wanted the room to feel less institutional and more like home. [E] I moved my desk beside the window, for instance, decluttered years of old papers and added a small shelf so everything finally had a place. I also brought in plants — a cactus, a pot of basil and a large leafy plant my mother gave me — and replaced the harsh ceiling light with warm lamps. Now I focus far more easily, and in the evenings the room feels genuinely calm and cozy. [C] So a few modest changes transformed both my productivity and my mood." },
+        { q: "In many urban areas, there's an ongoing debate about whether housing should prioritize affordability, spacious layouts, or architectural design. In your opinion, what should be the top priority when planning new homes or apartments in cities—and why?",
+          lx: ["affordable housing", "gentrification", "quality of life"],
+          model: "[A] I think affordability should be the top priority. [R] In many cities, young people, teachers and nurses can't afford to live near their work. If only rich people can live in the city, it becomes less diverse and the people who keep it running have to commute for hours. Of course, homes should also be well designed and have enough light. [E] For example, in my university city, rent has almost doubled in the last ten years. Many of my friends will have to move to the suburbs after graduation, even though they work in the center. My older sister and her husband spent two years looking for an apartment they could afford. [C] So cities should build affordable homes first, with good basic design.",
+          model5: "[A] Affordability should come first, in my view, though not at the expense of basic quality. [R] In many cities, young professionals, teachers and nurses can no longer afford to live near their workplaces, so they're pushed into long commutes, while the city itself becomes less diverse. New homes should still be well designed, with decent space and natural light, but a beautiful apartment nobody can afford helps no one. [E] Rents in my university city, for instance, have almost doubled over the past decade, and many friends expect to move to the suburbs after graduating despite working downtown. My older sister and her husband spent two years searching for an apartment within their budget. [C] So I'd prioritize **affordable housing**, built to a solid standard of design." }
+      ]
+    }
+  ],
+  /* ===== Speaking Club: тема вдоль и поперёк ===== */
+  club: [
+    { icon: "building", title: "Мой город", en: "My city", questions: [
+      { t: "experience", src: "Official 112", q: "Think of the last time you visited a city in your country that you didn't live in. Why did you go, and what did you like about it?", same: "s112-0",
+        f: ["Would you live there?", "What city in your country is underrated?"], lx: ["vibrant", "the old town", "get around"] },
+      { t: "personal", src: "Платформа · City Life", q: "Do you currently live in a big city, a small town or a village? What is it like there?", same: "scl-0",
+        f: ["What's the best thing about where you live?", "Would you move back to your hometown?"], lx: ["vibrant", "neighborhood", "the hustle and bustle"] },
+      { t: "personal", src: "Official 112", q: "Do you find cities dynamic and exciting, or overwhelming and draining? Why do you react this way?", same: "s112-1",
+        f: ["Where do you go to escape the city?", "What sound do you associate with your city?"], lx: ["the hustle and bustle", "overwhelming", "vibrant"] },
+      { t: "opinion", src: "Official 112", q: "Do people who live in cities lead more interesting lives? Why or why not?", same: "s112-2",
+        f: ["What does a small town offer that a city can't?", "Where will you live in ten years?"], lx: ["opportunities", "vibrant", "quality of life"] },
+      { t: "compare", src: "Health · Speaking Club", q: "Is life in the city or in the countryside better for people's health?",
+        model: "[A] I think the countryside is better for health, but the city has some important advantages. [R] In the countryside, there is cleaner air, less noise and more nature, so people feel less stressed. But in the city, there are better hospitals, gyms and healthier food options, and people often walk more. [E] For example, my grandparents live in a village. They're very active, work in the garden and look very healthy for their age. But when my grandfather needed heart surgery, they had to travel three hours to the city hospital. [C] So both places have pros and cons for health.", model5: "[A] In terms of day-to-day well-being, I'd say the countryside has the edge, although cities offer crucial advantages too. [R] Rural areas typically mean cleaner air, less noise and easy access to nature, all of which reduce stress. Cities, on the other hand, provide better hospitals, more fitness facilities and, often, more walking in daily life. [E] My grandparents, for instance, live in a small village, where they garden every day and are remarkably fit for their age. Yet when my grandfather needed heart surgery, they had to travel three hours to the nearest specialist hospital. [C] So the countryside may be better for staying healthy, but the city is better when you need treatment.",
+        f: ["Could you live in the middle of nowhere?", "What would you miss about the city?"], lx: ["in the middle of nowhere", "pollution", "fresh air"] },
+      { t: "hypo", q: "A friend from abroad is visiting your hometown for one day. What would you show them?",
+        model: "[A] I'd show my friend the old town in the morning, my grandmother's village at lunchtime and the river in the evening. [R] My hometown is small, so the best things are not famous sights but the atmosphere, the food and the nature around it. I'd want my friend to see how local people really live. [E] For example, we'd start with coffee and pastries in a tiny bakery in the main square, then walk through the old streets and visit the local market. For lunch, we'd go to my grandmother's house, where she'd cook her famous beetroot soup and honey cake. In the evening, we'd watch the sunset by the river. [C] So it would be a simple day, but a very real one.",
+        model5: "[A] I'd plan a simple but authentic day: the old town in the morning, my grandmother's village for lunch and the river at sunset. [R] My hometown has few famous sights, so its charm lies in its atmosphere, its food and the surrounding countryside, and I'd want my friend to experience how local people actually live. [E] We'd start, for instance, with coffee and pastries at a tiny bakery on the main square before wandering through the old streets and the market. Lunch would be at my grandmother's, where she'd inevitably serve her beetroot soup and legendary honey cake, and we'd end the day watching the sunset by the river. [C] So it wouldn't be a tourist's itinerary, but it would show my hometown as it really is.",
+        f: ["What's the best food in your hometown?", "What would you NOT show them?"], lx: ["the old town", "a stone's throw from", "local"] }
+    ]},
+    { icon: "home", title: "Дом и район", en: "Home & neighborhood", questions: [
+      { t: "personal", src: "Платформа · Living Space", q: "How would you describe your current living space? How do you feel about the space and privacy you have?", same: "sls-0",
+        f: ["What would your dream home look like?", "Could you live alone?"], lx: ["share a room", "privacy", "cramped"] },
+      { t: "personal", src: "Платформа · Living Space", q: "What matters most to you in your living environment — layout, storage, design, light or comfort? Why?", same: "sls-1",
+        f: ["Do you prefer modern or old buildings?", "What's one thing you'd change about your room?"], lx: ["natural light", "layout", "well-being"] },
+      { t: "experience", src: "Платформа · Living Space", q: "Have you ever reorganized or redecorated a space to feel more motivated or peaceful? What difference did it make?", same: "sls-2",
+        f: ["Are you tidy or messy?", "Do plants make a room better?"], lx: ["redecorate", "declutter", "cozy"] },
+      { t: "opinion", src: "Платформа · Living Space", q: "When planning new homes in cities, should the priority be affordability, space or architectural design? Why?", same: "sls-3",
+        f: ["Should cities limit rent prices?", "Is it better to rent or buy?"], lx: ["affordable housing", "gentrification", "quality of life"] },
+      { t: "opinion", src: "Official 111", q: "Is it important to live close to your school or work? Why?", same: "s111-0",
+        f: ["What's the longest commute you'd accept?", "Would you pay more rent to live closer?"], lx: ["a stone's throw from", "commute", "within walking distance of"] },
+      { t: "opinion", src: "Holidays · Speaking Club", q: "Do people today know their neighbors less than in the past? Why?",
+        model: "[A] Yes, I think people know their neighbors less today, especially in big cities. [R] People move often, work long hours and spend free time online or far from home. In the past, people lived in the same place for years and helped each other more. [E] For example, my grandparents know almost everyone in their village and always help each other with gardening and repairs. In my apartment building in the city, I know only two neighbors by name. But after our park cleanup last spring, I started talking to more people. [C] So we're more distant, but community events can change that.", model5: "[A] In most cities, I think they do, although it isn't irreversible. [R] People move far more often, work longer hours and spend much of their free time online or away from home, whereas in the past families stayed in one place for generations and relied on neighbors far more. [E] My grandparents, for instance, know virtually everyone in their village and routinely help one another with harvests and repairs. In my city apartment block, by contrast, I could name only two neighbors until last spring, when a park cleanup introduced me to a dozen more, and we now greet each other regularly. [C] So modern life does make us more anonymous, but shared activities can quickly rebuild that sense of **community**.",
+        f: ["What makes a good neighbor?", "Have you ever had a problem with a neighbor?"], lx: ["community", "neighborhood", "a sense of belonging"] }
+    ]},
+    { icon: "bus", title: "Дорога и транспорт", en: "Getting around", questions: [
+      { t: "personal", src: "Official 062", q: "How often do you use public transportation, like buses or trains?", same: "s062-0",
+        f: ["What do you do on the metro?", "Bus, tram or metro — which is best?"], lx: ["take the metro", "public transport", "get around"] },
+      { t: "personal", src: "Платформа · City Design", q: "How do you usually get around your city — walk, drive, bike or public transport?", same: "sct-0",
+        f: ["Do you feel safe cycling in your city?", "Is your city good for walking?"], lx: ["go by bike", "take the metro", "get around"] },
+      { t: "experience", src: "Платформа · Transportation in Cities", q: "How do you usually travel within your city, and has that changed depending on where you've lived?", same: "stc-0",
+        f: ["How did you get to school as a child?", "Will you buy a car one day?"], lx: ["go by bike", "car-dependent", "get around"] },
+      { t: "opinion", src: "Official 062", q: "What are the benefits and disadvantages of using public transportation?", same: "s062-1",
+        f: ["What's the worst journey you've had?", "Should public transport be free?"], lx: ["reliable", "crowded", "rush hour"] },
+      { t: "hypo", src: "Official 062", q: "Would you consider moving to have better access to public transportation? Why or why not?", same: "s062-2",
+        f: ["What else matters when choosing a home?", "Would you live far away for a bigger flat?"], lx: ["within walking distance of", "commute", "car-dependent"] },
+      { t: "compare", src: "Official 111", q: "Would you commute by car, which is faster but more expensive, or by public transport, which is slower but cheaper? Why?", same: "s111-1",
+        f: ["Does your family have a car?", "Is a car a status symbol in your country?"], lx: ["take the metro", "afford", "traffic jam"] },
+      { t: "opinion", src: "Official 111", q: "Commuting can be stressful and tiring. What are one or two ways to make it more enjoyable?", same: "s111-2",
+        f: ["What do you listen to on the way?", "Would you cycle in the rain?"], lx: ["commute", "go by bike", "make the most of"] },
+      { t: "opinion", q: "Is it still worth owning a car if you live in a big city?",
+        model: "[A] For most people in a big city, I don't think owning a car is worth it. [R] Cars are expensive — fuel, insurance, repairs and parking — and in a city you spend a lot of time in traffic jams. But for families with small children or people who live far from the metro, a car can still be necessary. [E] For example, my friend bought a car with her first salary, and now it costs her almost a third of her income. She still takes the metro to work, because parking downtown is too expensive! I just use car sharing twice a year for trips. [C] So in the city, a car is usually more of a cost than a help.",
+        model5: "[A] For most city dwellers, I'd say it isn't. [R] Between fuel, insurance, repairs and parking, a car is enormously expensive, and in a city with decent public transport, it often just means more time in traffic. That said, for families with young children or people living far from the metro, it can still be essential. [E] A friend of mine, for instance, bought a car with her first salary and now spends almost a third of her income on it, yet she still takes the metro to work because downtown parking is prohibitively expensive. I, by contrast, simply use car sharing a couple of times a year for weekend trips. [C] So in a big city, a car is usually more of a burden than a convenience.",
+        f: ["Would you use car sharing?", "Will young people stop buying cars?"], lx: ["afford", "get stuck in traffic", "get from A to B"] }
+    ]},
+    { icon: "leaf", title: "Город для людей", en: "A city for people", questions: [
+      { t: "opinion", src: "Платформа · City Design", q: "Should cities be more walkable and bike-friendly, or more convenient for cars? Why?", same: "sct-1",
+        f: ["What street in your city should be pedestrian-only?", "Are bike lanes safe enough?"], lx: ["walkable", "bike lane", "car-dependent"] },
+      { t: "opinion", src: "Платформа · Transportation in Cities", q: "What are the advantages of living in a walkable or bikeable place? How does it affect people's daily lives and health?", same: "stc-1",
+        f: ["How many steps do you walk a day?", "Would you live somewhere without a car?"], lx: ["walkable", "bike lane", "quality of life"] },
+      { t: "opinion", src: "Платформа · Transportation in Cities", q: "Should cities actively reduce car usage, even if travel becomes less convenient for some people? Why or why not?", same: "stc-2",
+        f: ["Should parking in the center be very expensive?", "Who would suffer most?"], lx: ["ban cars from the center", "congestion", "alternatives"] },
+      { t: "opinion", src: "Official 062", q: "Should cities invest more in public transportation to reduce traffic congestion, commuting time and pollution?", same: "s062-3",
+        f: ["What should your city build first?", "Who should pay for it?"], lx: ["invest in", "congestion", "reduce traffic"] },
+      { t: "opinion", src: "Платформа · City Design", q: "What would make people more likely to use buses or trains?", same: "sct-2",
+        f: ["Would free transport work?", "What annoys you most on public transport?"], lx: ["reliable", "fare", "frequent"] },
+      { t: "opinion", src: "Платформа · Transportation in Cities", q: "Can better public transit systems make a meaningful difference in quality of life in urban areas? How?", same: "stc-3",
+        f: ["Is public transport accessible for everyone?", "Which city has the best transport you know?"], lx: ["accessible", "quality of life", "infrastructure"] },
+      { t: "personal", src: "Sport · Speaking Club", q: "Do you walk or cycle instead of using a car or public transport? Why or why not?",
+        model: "[A] Yes, I usually cycle to university instead of taking the bus. [R] It's free, it's often faster than the bus in traffic, and I get exercise without spending extra time at the gym. [E] For example, my ride to campus takes fifteen minutes, while the bus takes twenty-five because of traffic jams. In the morning, cycling wakes me up better than coffee. In winter, when it's icy, I take the bus, but the rest of the year I'm always on my bike. [C] So cycling saves me money and time and keeps me fit.", model5: "[A] Most days, I cycle to campus rather than taking the bus. [R] It's free, frequently quicker than public transport during rush hour, and it lets me **stay active** without having to find extra time for the gym. [E] My ride to university, for instance, takes fifteen minutes, whereas the bus can take twenty-five when the traffic is bad. What's more, cycling in the morning wakes me up far more effectively than coffee. In midwinter, when the roads are icy, I do switch to the bus, but for the rest of the year I'm on my bike. [C] So cycling saves me money and time, while quietly keeping me fit.",
+        f: ["Have you ever had an accident on a bike?", "Would e-scooters help?"], lx: ["go by bike", "get from A to B", "fresh air"] }
+    ]},
+    { icon: "shield", title: "Безопасность", en: "Safety", questions: [
+      { t: "personal", src: "Платформа · Personal Safety", q: "How safe do you feel walking alone in your neighborhood or city? Are there times or areas where you feel less comfortable?", same: "sps-0",
+        f: ["Do you feel safer in your hometown or your city?", "Do you walk with headphones at night?"], lx: ["feel safe walking alone", "well-lit streets", "avoid certain areas"] },
+      { t: "opinion", src: "Платформа · Personal Safety", q: "What features or measures help you feel safer in public — lighting, cameras, patrols? Have you noticed changes that made a difference?", same: "sps-1",
+        f: ["Do cameras make you feel safe or watched?", "What would make your street safer?"], lx: ["well-lit streets", "surveillance", "public spaces"] },
+      { t: "experience", src: "Платформа · Personal Safety", q: "Have you ever changed your route or plans because of safety concerns? How did you handle it?", same: "sps-2",
+        f: ["What safety app do you use?", "Do you share your location with someone?"], lx: ["avoid certain areas", "keep an eye on", "keep your wits about you"] },
+      { t: "opinion", src: "Платформа · Personal Safety", q: "Should improving public safety be a higher priority for local governments? What long-term impact could it have?", same: "sps-3",
+        f: ["Is prevention better than more police?", "What makes a neighborhood feel safe?"], lx: ["invest in", "public spaces", "quality of life"] }
+    ]},
+    { icon: "rocket", title: "Город будущего", en: "The city of the future", questions: [
+      { t: "opinion", src: "Платформа · City Design", q: "Should future cities prioritize green space, affordable housing or better transportation? Why?", same: "sct-3",
+        f: ["What does your city need most?", "Can a city have all three?"], lx: ["affordable housing", "green space", "infrastructure"] },
+      { t: "opinion", src: "Official 054 / 117", q: "In big cities, is the need for more housing more or less important than the need for public parks?",
+        model: "[A] I think housing is a little more important, but cities shouldn't build on existing parks. [R] People need a place to live first — without affordable housing, young people and families can't stay in the city. But parks are not a luxury, so cities should find other space, like old factories or empty parking lots. [E] For example, in my city, rents are so high that many students share tiny rooms. At the same time, there's an old industrial area by the river that is empty. It could become apartments and a new park at the same time. [C] So we need both, and smart planning can give us both.", model5: "[A] Housing is arguably the more urgent need, but I don't think it should come at the expense of existing parks. [R] A home is a basic necessity, and without affordable housing, young people and families are simply priced out of cities. Green spaces, however, aren't a luxury either, so the solution lies in redeveloping underused land rather than sacrificing parks. [E] In my city, for instance, rents are so high that many students squeeze into tiny shared rooms, yet a vast abandoned industrial zone by the river has sat empty for years. It could easily accommodate both new apartments and a riverside park. [C] So I'd reject the either-or framing: with smart planning, cities can build homes without destroying the **green spaces** that make them livable.",
+        f: ["Would you live in a tower block?", "What empty land could your city use?"], lx: ["a concrete jungle", "affordable housing", "green space"] },
+      { t: "opinion", src: "Official 112", q: "Should city governments create more parks in urban areas to promote happiness and life satisfaction?", same: "s112-3",
+        f: ["What's your favorite green space?", "Do rooftop gardens count?"], lx: ["green space", "a concrete jungle", "quality of life"] },
+      { t: "opinion", src: "Official 111", q: "If commuting disappeared, how might that affect businesses, positively and negatively?", same: "s111-3",
+        f: ["Would you like to work from home forever?", "What happens to empty offices?"], lx: ["remote work", "a ghost town", "office space"] },
+      { t: "hypo", src: "Technology · Speaking Club", q: "Would you feel comfortable riding in a self-driving car? Why or why not?",
+        model: "[A] Honestly, I wouldn't feel completely comfortable yet, but maybe in a few years. [R] Self-driving cars could be safer than people, because they don't get tired or look at their phones. But the technology is new, and I'd worry about what happens in unusual situations, like snow or road works. [E] For example, I watched a video of a self-driving taxi in the USA, and it drove very smoothly. But I also read about cases when these cars got confused and stopped in the middle of the road. [C] So I'd try it, but I'd want to see more proof that it's safe.", model5: "[A] Not entirely, at least not yet, although I suspect that will change within a few years. [R] In principle, self-driving cars could be far safer than humans, since they never get tired, drunk or distracted by their phones. The technology is still relatively new, however, and I'd worry about how it copes with unpredictable situations, such as heavy snow or roadworks. [E] I've watched videos of driverless taxis in the United States navigating city traffic remarkably smoothly, for instance, yet I've also read about cases where they became confused and simply stopped in the middle of a busy road. [C] So I'd certainly try one out of curiosity, but I'd want considerably more evidence before trusting it completely.",
+        f: ["Who is responsible if it crashes?", "Will drivers lose their jobs?"], lx: ["get from A to B", "reliable", "safety"] },
+      { t: "opinion", q: "Do you think city centers will become car-free in the future?",
+        model: "[A] Yes, I think many city centers will become car-free, but not completely and not everywhere. [R] Cities want cleaner air, less noise and more space for people, and many young people don't want cars anymore. But deliveries, taxis and emergency vehicles will still need to enter. [E] For example, several European cities have already closed large parts of their centers to private cars, and those areas are now full of cafés, trees and cyclists. In my city, the old town has been car-free for three years, and nobody wants to go back. But in cities with poor public transport, it will take much longer. [C] So car-free centers are the future, but step by step.",
+        model5: "[A] Increasingly, yes, although probably not entirely, and not everywhere at the same pace. [R] Cities are under pressure to cut pollution and noise and to reclaim space for people, and many younger residents no longer see a car as essential. Deliveries, taxis and emergency vehicles, however, will always need some access. [E] Several European cities, for instance, have already closed large parts of their centers to private cars, and those areas have flourished with cafés, trees and cyclists. My own city's old town has been car-free for three years, and I can't imagine anyone campaigning to reverse it. Cities with weak public transport, by contrast, will need far longer. [C] So the car-free center is coming, but gradually and city by city.",
+        f: ["Would shops lose customers?", "What would you do with all the parking spaces?"], lx: ["ban cars from the center", "pedestrian", "congestion"] }
+    ]},
+    { icon: "sparkles", title: "Представь, что…", en: "What if…?", questions: [
+      { t: "hypo", src: "Nature · Speaking Club", q: "If you were the mayor of your city for one year, what green change would you make first?",
+        model: "[A] If I were mayor, I would first make public transport free for students and cheaper for everyone. [R] Traffic is the biggest source of pollution in my city, and many people drive because buses are expensive and slow. Cheaper transport would reduce cars on the roads quickly. [E] For example, I'd pay for it with a fee for cars entering the city center, like in London. I'd also add more bus lanes, so buses would be faster than cars at rush hour. Some cities, like Tallinn, already have free public transport, and traffic has gone down. [C] So my first step would be making it easy and cheap to leave the car at home.", model5: "[A] My first move would be making public transport free for students and significantly cheaper for everyone else. [R] Traffic is the single largest source of air pollution in my city, and many people drive simply because buses are slow and overpriced, so affordable transit could take thousands of cars off the road almost immediately. [E] I'd fund it, for instance, through a congestion charge on cars entering the city center, as London does, and I'd create dedicated bus lanes so public transport would actually beat cars at rush hour. Cities like Tallinn have already shown that free transit can reduce traffic. [C] So I'd start by making the greener choice the cheaper and faster one.",
+        f: ["What would you change second?", "Who would be against it?"], lx: ["invest in", "reduce traffic", "quality of life"] },
+      { t: "hypo", q: "If you could live in any city in the world for a year, which would you choose and why?",
+        model: "[A] I would choose Lisbon in Portugal. [R] I visited Portugal last summer and fell in love with it. Lisbon is a big city, but it feels relaxed, it's close to the ocean and the mountains, and it has a great music and food culture. I could also improve my Portuguese. [E] For example, I imagine living in a small apartment in an old neighborhood, taking the famous yellow tram to work, surfing on weekends and listening to traditional music in small bars in the evenings. I could also go hiking along the coast. And the weather is sunny almost all year! [C] So Lisbon would give me city life and nature at the same time.",
+        model5: "[A] I'd choose Lisbon. [R] I fell for Portugal last summer, and Lisbon struck me as the rare city that combines big-city energy with a relaxed pace, while the ocean and the hills are never far away; it would also be a chance to learn Portuguese properly. [E] I picture myself, for instance, renting a small flat in one of the old hillside neighborhoods, riding the vintage trams to work, surfing at weekends and spending evenings listening to traditional music in tiny bars. The coastal hiking trails would be within easy reach, and the sunshine almost year-round would be a welcome change from gray winters. [C] So Lisbon would give me the best of both worlds: a vibrant city and easy access to nature.",
+        f: ["Which city would you never live in?", "Big capital or smaller city?"], lx: ["vibrant", "the hustle and bustle", "get around"] },
+      { t: "hypo", q: "If you could design the perfect neighborhood, what would it have?",
+        model: "[A] My perfect neighborhood would have everything within a fifteen-minute walk, lots of green space and a strong community. [R] I don't want to spend hours traveling, and I need nature and people around me to feel happy. [E] For example, there would be a park with a running track, a small library, a market with local food, a café where neighbors meet and a metro station nearby. Streets would be for pedestrians and bikes, with trees and benches everywhere. There would also be a community garden where my grandmother could teach kids to grow vegetables! [C] So it would be green, walkable and friendly.",
+        model5: "[A] It would be a fifteen-minute neighborhood: everything essential within walking distance, plenty of greenery and a genuine sense of community. [R] I don't want to waste hours commuting, and I need both nature and people around me to feel content. [E] There'd be a park with a running track, for instance, a small library, a market selling local produce, a café where neighbors naturally bump into each other and a metro station just around the corner. Streets would belong to pedestrians and cyclists, lined with trees and benches, and there'd be a community garden where my grandmother could teach children to grow vegetables. [C] So it would be green, walkable and, above all, neighborly.",
+        f: ["What would you NOT allow?", "Would you pay more to live there?"], lx: ["walkable", "within walking distance of", "community"] }
+    ]}
+  ],
+
+  checklist: [
+    "Ответил(а) на вопрос прямо в первом предложении",
+    "Назвал(а) конкретику: время в пути, транспорт, район, цифру",
+    "Вставил(а) одну идиому — естественно, а не «для галочки»",
+    "В вопросах о политике города показал(а) компромисс и альтернативы",
+    "Без ошибок: go BY bike, get stuck IN traffic, invest IN, afford (без for)",
+    "Уложился(ась) в 45 секунд без длинных пауз"
+  ],
+
+  targetLexis: ["commute", "public transport", "rush hour", "get stuck in traffic", "take the metro", "go by bike", "get around", "neighborhood", "within walking distance of", "afford the rent", "affordable housing", "walkable", "car-dependent", "congestion", "invest in", "reliable", "infrastructure", "feel safe", "well-lit streets", "quality of life", "the hustle and bustle", "a stone's throw from", "that said"]
+};
+
+/* =====================================================================
+   ИЛЛЮСТРАЦИИ (SVG)
+   ===================================================================== */
+const HERO_ART = `
+<svg viewBox="0 0 320 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Город: дома, автобус, велосипед и дерево">
+  <ellipse cx="165" cy="232" rx="128" ry="10" fill="rgba(0,0,0,.22)"/>
+  <rect x="40" y="70" width="50" height="120" rx="3" fill="#c4b5fd"/><rect x="96" y="40" width="58" height="150" rx="3" fill="#fff"/><rect x="160" y="88" width="46" height="102" rx="3" fill="#e0f2fe"/><rect x="212" y="60" width="56" height="130" rx="3" fill="#fbcfe8"/>
+  <g fill="#7c3aed" opacity=".55"><rect x="50" y="84" width="10" height="10"/><rect x="70" y="84" width="10" height="10"/><rect x="50" y="110" width="10" height="10"/><rect x="70" y="110" width="10" height="10"/>
+  <rect x="108" y="56" width="12" height="12"/><rect x="130" y="56" width="12" height="12"/><rect x="108" y="84" width="12" height="12"/><rect x="130" y="84" width="12" height="12"/><rect x="108" y="112" width="12" height="12"/><rect x="130" y="112" width="12" height="12"/>
+  <rect x="222" y="76" width="12" height="12"/><rect x="246" y="76" width="12" height="12"/><rect x="222" y="104" width="12" height="12"/><rect x="246" y="104" width="12" height="12"/></g>
+  <path d="M20 192 h290" stroke="#fff" stroke-width="4"/>
+  <g class="tl-coin"><rect x="90" y="160" width="96" height="44" rx="10" fill="#f97316"/><rect x="100" y="168" width="20" height="16" rx="2" fill="#fff"/><rect x="126" y="168" width="20" height="16" rx="2" fill="#fff"/><rect x="152" y="168" width="24" height="16" rx="2" fill="#fff"/>
+  <circle cx="110" cy="206" r="8" fill="#1e293b"/><circle cx="166" cy="206" r="8" fill="#1e293b"/></g>
+  <g transform="translate(232 190)"><circle cx="0" cy="12" r="12" fill="none" stroke="#fff" stroke-width="4"/><circle cx="44" cy="12" r="12" fill="none" stroke="#fff" stroke-width="4"/><path d="M0 12 l14 -20 h18 l12 20 M14 -8 l10 20 l8 -20 M10 -14 h10" stroke="#fff" stroke-width="4" fill="none" stroke-linejoin="round"/></g>
+  <g transform="translate(36 160)"><rect x="-3" y="10" width="6" height="34" fill="#78350f"/><circle r="18" fill="#fb923c"/></g>
+  <path d="M284 30 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3 z" fill="#a5f3fc"/>
+  <path d="M24 46 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3 z" fill="#fbcfe8"/>
+</svg>`;
+
+/* Мини-иллюстрации к идиомам (160×96). Классы a-* анимируются при наведении. */
+const DOT = (x, y, c) => `<circle cx="${x}" cy="${y}" r="5" fill="${c}"/>`;
+const CAR = (x, y, c) => `<rect x="${x}" y="${y}" width="34" height="14" rx="4" fill="${c}"/><path d="M${x + 6} ${y} l6 -8 h12 l6 8z" fill="${c}"/><circle cx="${x + 8}" cy="${y + 15}" r="4" fill="#1e293b"/><circle cx="${x + 26}" cy="${y + 15}" r="4" fill="#1e293b"/>`;
+const IDIOM_ART = {
+  bustle: `<path d="M10 84 h140" stroke="#94a3b8" stroke-width="3"/>
+         <g class="a-r">${DOT(20, 60, "#f97316")}<path d="M20 66 v14" stroke="#f97316" stroke-width="4"/>${DOT(48, 56, "#8b5cf6")}<path d="M48 62 v18" stroke="#8b5cf6" stroke-width="4"/>${DOT(84, 58, "#0ea5e9")}<path d="M84 64 v16" stroke="#0ea5e9" stroke-width="4"/></g>
+         <g class="a-l">${DOT(66, 60, "#ec4899")}<path d="M66 66 v14" stroke="#ec4899" stroke-width="4"/>${DOT(110, 54, "#f59e0b")}<path d="M110 60 v20" stroke="#f59e0b" stroke-width="4"/>${DOT(136, 60, "#e11d48")}<path d="M136 66 v14" stroke="#e11d48" stroke-width="4"/></g>
+         <path d="M30 26 l6 -6 M60 18 v-8 M100 20 l6 -6 M130 24 l8 -4" stroke="#cbd5e1" stroke-width="3" stroke-linecap="round"/>`,
+  jungle: `<rect x="14" y="30" width="26" height="60" fill="#94a3b8"/><rect x="44" y="14" width="30" height="76" fill="#64748b"/><rect x="78" y="36" width="26" height="54" fill="#94a3b8"/><rect x="108" y="20" width="36" height="70" fill="#475569"/>
+         <g class="a-up"><path d="M58 14 c-6 -10 4 -14 6 -6 c2 -8 12 -4 6 6" fill="#fb923c"/><path d="M124 20 c-6 -10 4 -14 6 -6 c2 -8 12 -4 6 6" fill="#fb923c"/><path d="M28 30 c-4 -8 4 -10 4 -4 c2 -6 10 -2 4 4" fill="#fdba74"/></g>
+         <path d="M8 90 h144" stroke="#334155" stroke-width="3"/>`,
+  nowhere: `<path d="M0 74 q40 -14 80 0 t80 0 v22 h-160z" fill="#fde68a" opacity=".6"/>
+         <path d="M80 70 v-24" stroke="#94a3b8" stroke-width="3"/><path d="M80 46 h22 l4 5 l-4 5 h-22z" fill="#fff" stroke="#cbd5e1"/><text x="90" y="54" font-family="system-ui" font-size="8" font-weight="800" fill="#94a3b8" text-anchor="middle">???</text>
+         <g class="a-r"><circle cx="50" cy="56" r="6" fill="#fdba74"/><path d="M50 62 v10" stroke="#7c3aed" stroke-width="4"/></g>
+         <circle cx="134" cy="22" r="10" fill="#fbbf24"/>`,
+  stone: `<path d="M10 82 h140" stroke="#94a3b8" stroke-width="3"/>
+         <rect x="14" y="44" width="34" height="38" fill="#c4b5fd"/><path d="M10 46 l21 -18 l21 18z" fill="#7c3aed"/>
+         <rect x="112" y="34" width="38" height="48" fill="#bae6fd"/><path d="M108 36 h46 l-23 -14z" fill="#0ea5e9"/><text x="131" y="64" text-anchor="middle" font-family="system-ui" font-size="10" font-weight="800" fill="#0369a1">UNI</text>
+         <g class="a-r"><ellipse cx="66" cy="40" rx="6" ry="5" fill="#64748b"/></g><path d="M62 34 q24 -26 46 4" stroke="#94a3b8" stroke-width="2" fill="none" stroke-dasharray="3 4"/>`,
+  bumper: `<path d="M0 82 h160" stroke="#94a3b8" stroke-width="3"/>
+         <g class="a-belt">${CAR(4, 60, "#f97316")}${CAR(42, 60, "#8b5cf6")}${CAR(80, 60, "#0ea5e9")}${CAR(118, 60, "#ec4899")}</g>
+         <path d="M40 30 h10 M70 22 h10 M100 30 h10" stroke="#cbd5e1" stroke-width="4" stroke-linecap="round"/>`,
+  ab: `<circle cx="28" cy="48" r="16" fill="#8b5cf6"/><text x="28" y="54" text-anchor="middle" font-family="system-ui" font-size="16" font-weight="800" fill="#fff">A</text>
+         <circle cx="132" cy="48" r="16" fill="#ec4899"/><text x="132" y="54" text-anchor="middle" font-family="system-ui" font-size="16" font-weight="800" fill="#fff">B</text>
+         <path d="M46 48 h68" stroke="#cbd5e1" stroke-width="3" stroke-dasharray="4 5"/>
+         <g class="a-r"><circle cx="62" cy="70" r="7" fill="none" stroke="#0ea5e9" stroke-width="3"/><circle cx="84" cy="70" r="7" fill="none" stroke="#0ea5e9" stroke-width="3"/><path d="M62 70 l8 -10 h8 l6 10 M70 60 l4 10" stroke="#0ea5e9" stroke-width="3" fill="none"/></g>`,
+  ghost: `<rect x="12" y="30" width="30" height="56" fill="#cbd5e1"/><rect x="48" y="18" width="34" height="68" fill="#e2e8f0"/><rect x="88" y="34" width="28" height="52" fill="#cbd5e1"/><rect x="120" y="24" width="30" height="62" fill="#e2e8f0"/>
+         <g class="a-up"><path d="M66 70 c0 -16 20 -16 20 0 v14 l-4 -4 l-4 4 l-4 -4 l-4 4 l-4 -4z" fill="#fff" stroke="#94a3b8" stroke-width="2"/><circle cx="72" cy="68" r="1.8" fill="#334155"/><circle cx="80" cy="68" r="1.8" fill="#334155"/></g>
+         <path d="M6 86 h148" stroke="#94a3b8" stroke-width="3"/>`,
+  wits: `<rect x="0" y="0" width="160" height="96" rx="8" fill="#1e293b"/>
+         <path d="M120 10 v40" stroke="#94a3b8" stroke-width="3"/><path d="M110 50 h20 l-10 -10z" fill="#fde68a"/><path d="M104 54 l-16 36 h64 l-16 -36z" fill="#fde68a" opacity=".2"/>
+         <g class="a-beam"><circle cx="56" cy="44" r="10" fill="#fdba74"/><circle cx="52" cy="42" r="2" fill="#0f172a"/><circle cx="60" cy="42" r="2" fill="#0f172a"/><path d="M48 32 l-6 -6 M64 32 l6 -6" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round"/></g>
+         <path d="M46 56 h20 v30 h-20z" fill="#7c3aed"/>`,
+  night: `<rect x="0" y="0" width="160" height="96" rx="8" fill="#1e293b"/>
+         <circle cx="134" cy="20" r="10" fill="#fde68a"/><circle cx="138" cy="17" r="9" fill="#1e293b"/>
+         <rect x="14" y="40" width="26" height="56" fill="#334155"/><rect x="46" y="26" width="30" height="70" fill="#475569"/><rect x="82" y="44" width="24" height="52" fill="#334155"/><rect x="110" y="34" width="34" height="62" fill="#475569"/>
+         <g class="a-flame"><rect x="20" y="48" width="6" height="6" fill="#fde68a"/><rect x="52" y="34" width="6" height="6" fill="#fde68a"/><rect x="64" y="50" width="6" height="6" fill="#f472b6"/><rect x="88" y="54" width="6" height="6" fill="#fde68a"/><rect x="118" y="42" width="6" height="6" fill="#38bdf8"/><rect x="130" y="60" width="6" height="6" fill="#fde68a"/><rect x="28" y="66" width="6" height="6" fill="#f472b6"/></g>`
+};
+</script>
+<script src="topic-engine.js"></script>
+</body>
+</html>
