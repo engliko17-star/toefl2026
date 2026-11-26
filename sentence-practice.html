@@ -41,6 +41,13 @@
         .sp-slot.is-right .sp-chip { border-color: #86efac; background: #dcfce7; color: #14532d; }
         .sp-slot.is-wrong .sp-chip { border-color: #fca5a5; background: #fee2e2; color: #7f1d1d; }
         .sp-chip.is-extra { border-style: dashed; color: #94a3b8; }
+        /* Перетаскивание: палец на слове не листает страницу */
+        .sp-chip { touch-action: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+        .sp-chip.is-dragging { opacity: .3; }
+        .sp-ghost { position: fixed; left: 0; top: 0; z-index: 80; pointer-events: none; margin: 0; border-color: var(--w-ink) !important; background: #fff !important; color: var(--w-deep) !important; box-shadow: 0 10px 24px rgba(15, 23, 42, .18); }
+        .sp-slot.is-over { background: var(--w-chip); border-bottom-color: var(--w-ink); }
+        .sp-bank.is-over { border-color: var(--w-bar); background: var(--w-bg); }
+        body.sp-dragging, body.sp-dragging * { cursor: grabbing !important; user-select: none !important; }
         .sp-ex { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
         .sp-ex span { background: var(--w-chip); color: var(--w-deep); border-radius: 8px; padding: 3px 9px; font-weight: 700; font-size: 14px; }
         .sp-rule li { counter-increment: r; display: flex; gap: 12px; }
@@ -93,8 +100,8 @@
         start: ['Start', 'Начать'], resume: ['Continue', 'Продолжить'], restart: ['Start over', 'Начать заново'],
         mistakes: ['Practise mistakes', 'Повторить ошибки'],
         instr: ['Make an appropriate sentence.', 'Составьте подходящее предложение.'],
-        hint: ['Tap a word to put it in the sentence. Tap a gap to choose where it goes. Tap a placed word to take it back.',
-               'Нажмите на слово — оно встанет в предложение. Нажмите на пропуск, чтобы выбрать, куда его поставить. Нажмите на слово в предложении, чтобы вернуть его.'],
+        hint: ['Drag a word into a gap or just tap it. Tap a placed word to take it back.',
+               'Перетащите слово в пропуск или просто нажмите на него. Нажмите на слово в предложении, чтобы вернуть его.'],
         clear: ['Clear', 'Очистить'], check: ['Check', 'Проверить'], next: ['Next', 'Дальше'], finish: ['Finish', 'Завершить'],
         retry: ['Try again', 'Ещё раз'],
         right: ['Correct!', 'Верно!'], wrong: ['Not quite', 'Неверно'], answer: ['Correct sentence', 'Правильное предложение'],
@@ -264,7 +271,7 @@
                 </div>
                 ${c.checked && !bank ? '' : `<div class="mt-6">
                     ${c.checked ? '' : `<p class="text-[11px] text-center text-slate-400 mb-3">${esc(t('hint'))}</p>`}
-                    <div class="flex flex-wrap justify-center gap-2.5 bg-slate-50 border border-slate-200 rounded-2xl p-4 min-h-[72px]">${bank}</div>
+                    <div class="sp-bank flex flex-wrap justify-center gap-2.5 bg-slate-50 border border-slate-200 rounded-2xl p-4 min-h-[72px]" data-bank>${bank}</div>
                 </div>`}
                 <div id="spFeedback">${c.checked ? feedback(it, extraWord) : ''}</div>
                 <div class="mt-6 flex flex-wrap justify-end gap-2.5">
@@ -360,7 +367,88 @@
         icons(); window.scrollTo(0, 0);
     }
 
+    // ---------- Перетаскивание (мышь и палец) ----------
+    // Слово можно перетащить из списка в пропуск, из пропуска в другой пропуск
+    // (слова меняются местами) или обратно в список. Простое нажатие работает
+    // как раньше. На словах стоит touch-action: none — страница не листается.
+    let drag = null, skipClick = false;
+    function dropTargetAt(x, y) {
+        const el = document.elementFromPoint(x, y);
+        if (!el) return null;
+        const slot = el.closest('[data-slot]');
+        if (slot && root.contains(slot)) return { slot: Number(slot.dataset.slot), el: slot };
+        const bank = el.closest('[data-bank]');
+        if (bank && root.contains(bank)) return { bank: true, el: bank };
+        return null;
+    }
+    function moveGhost(x, y) {
+        drag.ghost.style.transform = `translate(${x - drag.dx}px, ${y - drag.dy}px)`;
+        const t = dropTargetAt(x, y);
+        const el = t ? t.el : null;
+        if (drag.over !== el) {
+            if (drag.over) drag.over.classList.remove('is-over');
+            if (el) el.classList.add('is-over');
+            drag.over = el;
+        }
+        drag.target = t;
+    }
+    function endDrag() {
+        if (!drag) return;
+        if (drag.ghost) drag.ghost.remove();
+        if (drag.over) drag.over.classList.remove('is-over');
+        document.body.classList.remove('sp-dragging');
+        drag = null;
+    }
+    root.addEventListener('pointerdown', e => {
+        if (e.button > 0 || !S || !S.cur || S.cur.checked) return;
+        const chip = e.target.closest('[data-chip],[data-back]');
+        if (!chip) return;
+        const r = chip.getBoundingClientRect();
+        drag = { chip, id: e.pointerId, x0: e.clientX, y0: e.clientY, dx: e.clientX - r.left, dy: e.clientY - r.top,
+                 from: chip.dataset.chip != null ? { bank: Number(chip.dataset.chip) } : { slot: Number(chip.dataset.back) },
+                 started: false, ghost: null, over: null, target: null };
+    });
+    window.addEventListener('pointermove', e => {
+        if (!drag || e.pointerId !== drag.id) return;
+        if (!drag.started) {
+            if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 6) return;
+            drag.started = true;
+            const g = drag.chip.cloneNode(true);
+            g.classList.add('sp-ghost'); g.removeAttribute('data-chip'); g.removeAttribute('data-back');
+            document.body.appendChild(g); drag.ghost = g;
+            drag.chip.classList.add('is-dragging');
+            document.body.classList.add('sp-dragging');
+        }
+        e.preventDefault();
+        moveGhost(e.clientX, e.clientY);
+    }, { passive: false });
+    window.addEventListener('pointerup', e => {
+        if (!drag || e.pointerId !== drag.id) return;
+        if (!drag.started) { drag = null; return; }   // это было нажатие — сработает click
+        const c = S && S.cur, from = drag.from, t = drag.target;
+        endDrag();
+        skipClick = true; setTimeout(() => { skipClick = false; }, 0);
+        if (!c || c.checked) return;
+        if (t && t.slot != null) {
+            if (from.bank != null) {
+                const chip = c.bank.find(b => b.k === from.bank);
+                if (chip) c.filled[t.slot] = chip;             // слово в пропуске, если было, вернётся в список
+            } else if (from.slot !== t.slot) {
+                const a = c.filled[from.slot], b = c.filled[t.slot];
+                if (b) c.filled[from.slot] = b; else delete c.filled[from.slot];
+                c.filled[t.slot] = a;                          // меняем местами
+            }
+        } else if (from.slot != null && t && t.bank) {
+            delete c.filled[from.slot];                        // вернули в список
+        }
+        c.target = c.slots.find(s => !c.filled[s]);
+        if (c.target === undefined) c.target = null;
+        renderItem();
+    });
+    window.addEventListener('pointercancel', () => { if (drag && drag.chip) drag.chip.classList.remove('is-dragging'); endDrag(); });
+
     // ---------- Действия ----------
+    root.addEventListener('click', e => { if (skipClick) { skipClick = false; e.stopPropagation(); e.preventDefault(); } }, true);
     root.addEventListener('click', e => {
         const chip = e.target.closest('[data-chip]');
         if (chip) { place(Number(chip.dataset.chip)); return; }
