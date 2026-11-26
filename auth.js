@@ -30,6 +30,18 @@ window.supabaseClient = window.supabaseClient || _supabase;
     } catch (e) { /* без перевода */ }
 })();
 
+// Окно «Что нового на платформе» (whats-new.js): новости из панели преподавателя.
+// Где окно всплывает, а где нет (задания, экзамены, вход) — решает сам файл.
+(function authLoadWhatsNew() {
+    try {
+        if (document.querySelector('script[src*="whats-new.js"]')) return;
+        const s = document.createElement('script');
+        s.src = 'whats-new.js';
+        s.async = true;
+        (document.head || document.documentElement).appendChild(s);
+    } catch (e) { /* без окна новостей */ }
+})();
+
 // Карта «страница -> секция». ЕСЛИ ДОБАВЛЯЕТЕ НОВУЮ СТРАНИЦУ С ЗАДАНИЯМИ —
 // впишите её сюда, иначе она будет открыта всем и ссылка на неё не заблокируется.
 const PAGE_SECTIONS = {
