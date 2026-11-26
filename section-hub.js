@@ -145,8 +145,8 @@
                     desc: L('Build a Sentence, Email and Academic Discussion in a row, with exam timers.', 'Build a Sentence, Email и Academic Discussion подряд, с таймерами как на экзамене.') },
             trainers: [
                 { id: 'sp', title: 'Sentence Preparation', icon: 'list-ordered', accent: 'violet', href: 'sentence-practice.html', unit: 'hub.levels',
-                  desc: L('Grammar and word order, step by step by level.', 'Грамматика и порядок слов в предложении — шаг за шагом по уровням.'),
-                  count: { table: 'trainer_sentence_levels', published: true } }
+                  desc: L('Build a Sentence step by step: 13 levels built on real test patterns.', 'Build a Sentence по шагам: 13 уровней по конструкциям из реальных заданий.'),
+                  count: { fixed: 13 } }
             ]
         },
         speaking: {
