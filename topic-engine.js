@@ -75,7 +75,11 @@ const IC_PATHS = {
   trophy: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/>',
   moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/>',
   battery: '<rect x="2" y="7" width="17" height="10" rx="2"/><path d="M22 11v2M6 10v4M10 10v4"/>',
-  utensils: '<path d="M4 2v7a3 3 0 0 0 6 0V2M7 2v20M17 2c-2 0-4 2-4 6s2 6 4 6v8"/>'
+  utensils: '<path d="M4 2v7a3 3 0 0 0 6 0V2M7 2v20M17 2c-2 0-4 2-4 6s2 6 4 6v8"/>',
+  paw: '<circle cx="5" cy="10" r="2"/><circle cx="9" cy="5" r="2"/><circle cx="15" cy="5" r="2"/><circle cx="19" cy="10" r="2"/><path d="M12 12c-3 0-6 4-6 7a2 2 0 0 0 3 2c1-.5 2-1 3-1s2 .5 3 1a2 2 0 0 0 3-2c0-3-3-7-6-7z"/>',
+  gamepad: '<rect x="2" y="7" width="20" height="11" rx="5"/><path d="M7 11v3M5.5 12.5h3M15 12h.01M18 13h.01"/>',
+  music: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+  palette: '<path d="M12 22a10 10 0 1 1 10-10c0 3-2 4-4 4h-2a2 2 0 0 0-1 4c.5.8 0 2-1 2z"/><circle cx="7.5" cy="10.5" r="1.3"/><circle cx="12" cy="7" r="1.3"/><circle cx="16.5" cy="10.5" r="1.3"/>'
 };
 const IC = (name, size) => `<svg class="tl-ic" ${size ? `style="width:${size}px;height:${size}px"` : ""} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${IC_PATHS[name] || ""}</svg>`;
 

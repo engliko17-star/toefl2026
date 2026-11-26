@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Art & Music — Speaking Topics — TOEFL Prep</title>
+
+<!-- Те же подключения, что на остальных страницах платформы -->
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="auth.js"></script>
+<script src="topics.js"></script>
+
+<link rel="stylesheet" href="topic-engine.css">
+</head>
+<body>
+<div class="tl-layout flex flex-col md:flex-row min-h-screen">
+  <div id="app-sidebar"></div>
+  <script src="nav.js"></script>
+
+  <main class="tl-main">
+    <div class="tl-wrap" id="lesson"></div>
+  </main>
+</div>
+
+<!-- Панель ответа -->
+<div class="tl-dock" id="dock" aria-live="polite">
+  <div class="tl-dock-top"><span id="dockLabel">Ответ</span><button class="tl-dock-close" id="dockClose" aria-label="Закрыть">✕</button></div>
+  <div class="tl-dock-q" id="dockQ"></div>
+  <div class="tl-dock-status">
+    <div class="tl-dock-state"><span class="tl-rec-dot" id="recDot"></span><span id="dockState">Готово</span></div>
+    <div class="tl-dock-time" id="dockTime">0:45</div>
+  </div>
+  <div class="tl-phase" id="dockPhase"></div>
+  <div class="tl-dock-bar" id="dockBar"></div>
+  <div class="tl-dock-ctrl">
+    <label><input type="checkbox" id="recToggle"> Записывать голос</label>
+    <div class="tl-row">
+      <button class="tl-dock-btn" id="dockShowQ">Показать текст</button>
+      <button class="tl-dock-btn" id="dockStop">Стоп</button>
+    </div>
+  </div>
+  <div class="tl-dock-msg" id="dockMsg"></div>
+  <div class="tl-dock-out" id="dockOut"></div>
+</div>
+
+<script>
+/* =====================================================================
+   КОНТЕНТ УРОКА: ART & MUSIC
+   Новая тема = копия файла: меняются LESSON, HERO_ART и IDIOM_ART.
+   Общий движок и стили — topic-engine.js и topic-engine.css.
+   **слово** — подсветка целевой лексики.
+   _слово_ в коллокациях — «ключевой кубик».
+   [A] [R] [E] [C] в модельных ответах — цветная структура:
+   A = прямой ответ, R = причина, E = пример, C = вывод.
+   ===================================================================== */
+const LESSON = {
+  slug: "arts",
+  titleEn: "Art & Music",
+  titleRu: "Искусство и музыка",
+  category: "Культура и досуг",
+  intro: "Какую музыку ты слушаешь и почему, концерты и стриминг, песни и воспоминания, творчество — создавать или наслаждаться, делиться или оставить себе, искусство в школе, музеи и современное искусство. Учим говорить об искусстве без «it's beautiful» — с эмоциями и деталями — и проходим все вопросы по теме из базы.",
+  meta: [["≈ 60", "минут"], ["27", "слов · 2 уровня"], ["20", "коллокаций"], ["9", "идиом"], ["{Q}", "вопроса для обсуждения"]],
+
+  frames: {
+    warmup:    { icon: "flame",      time: "3 мин",  steps: ["Нажми динамик или прочитай вопрос", "Ответь вслух за 20 секунд", "Без подсказок — это «до урока»"] },
+    vocab:     { icon: "book",       time: "10 мин", steps: ["Посмотри на схему: создаю, слушаю, делюсь", "Найди себя на шкале", "Слова: начни с Core, слушай и повторяй"] },
+    coll:      { icon: "link",       time: "8 мин",  steps: ["Учи сочетание целиком", "Цветной кубик — то, что чаще путают", "Опиши любимую песню с 5 сочетаниями"] },
+    idioms:    { icon: "quote",      time: "6 мин",  steps: ["Посмотри картинку — запомни образ", "Плашка «Можно» — смело в ответы", "Выбери 2 идиомы на сегодня"] },
+    expr:      { icon: "megaphone",  time: "5 мин",  steps: ["Послушай интонацию", "По 1 фразе из каждой группы", "Запомни шкалу 45 секунд"] },
+    check:     { icon: "puzzle",     time: "10 мин", steps: ["4 мини-игры", "Цель — 100% в Matching и Gap-fill", "Карточки — пока не узнаёшь все"] },
+    repeat:    { icon: "headphones", time: "5 мин",  steps: ["Слушай, не читая", "Повтори слово в слово", "Включи запись и сравни"] },
+    interview: { icon: "mic",        time: "15 мин", steps: ["Выбери сет — начни с Official", "Пройди все вопросы подряд, без пауз", "Сравни с моделью: цвета = структура"] },
+    club:      { icon: "chat",       time: "30+ мин", steps: ["Возьми 1–2 блока на занятие", "Ответь, потом — на «Копнём глубже»", "Отметь «Обсудили» или крути рулетку"] },
+    self:      { icon: "checkCircle",time: "3 мин",  steps: ["Прослушай свои записи", "Отметь, что получилось", "Цель — 15+ отмеченных слов"] }
+  },
+
+  warmup: [
+    "What song have you listened to most this week?",
+    "Do you play any musical instrument?",
+    "When did you last visit a museum or a gallery?",
+    "Would you call yourself a creative person?"
+  ],
+
+  /* Как мы встречаемся с искусством: равные ветки, вместо процента — tag */
+  flow: {
+    icon: "music",
+    title: "Три способа жить с искусством",
+    source: { kicker: "Искусство в моей жизни…", title: "Art & music", ru: "искусство и музыка", words: ["a work of art", "be moved by", "a masterpiece"] },
+    branches: [
+      { title: "Create", ru: "создавать", sub: "make something yourself", tag: "Создаю", color: "#f97316", words: ["play an instrument", "paint", "write songs", "express yourself"] },
+      { title: "Experience", ru: "воспринимать", sub: "listen, watch, feel", tag: "Слушаю", color: "#8b5cf6", words: ["a live concert", "an exhibition", "a playlist", "appreciate"] },
+      { title: "Share", ru: "делиться", sub: "show it to the world", tag: "Делюсь", color: "#ec4899", words: ["perform", "post online", "get feedback", "an audience"] }
+    ],
+    notes: [
+      "Почти любой вопрос этой темы — про одну из веток. Сильный ответ говорит не «I like it», а <b>что именно</b> ты чувствуешь или делаешь",
+      "Готовая фраза: <i>I'm more of a listener than a creator — but music still shapes almost every part of my day.</i>"
+    ]
+  },
+
+  scale: {
+    title: "Насколько ты человек искусства? Перетащи кружок",
+    left: "NOT MY THING", right: "CAN'T LIVE WITHOUT IT",
+    words: [
+      { w: "tone-deaf", p: 4 }, { w: "background music", p: 17 }, { w: "the odd museum", p: 30 }, { w: "casual fan", p: 44 },
+      { w: "concert-goer", p: 58 }, { w: "art lover", p: 71 }, { w: "creative soul", p: 85 }, { w: "can't live without it", p: 97 }
+    ],
+    says: [
+      { max: 25,  t: "Honestly, I'm a bit **tone-deaf** — for me, music is just **background music**." },
+      { max: 50,  t: "I'm a **casual fan** — I visit **the odd museum** and have a few favorite bands." },
+      { max: 75,  t: "I'm a real **concert-goer** and **art lover** — I go to shows almost every month." },
+      { max: 101, t: "I'm a **creative soul** — music and art are something I **can't live without**." }
+    ]
+  },
+
+  vocab: [
+    { en: "genre", pos: "n", ru: "жанр", ex: "Indie rock is my favorite genre.", level: "core" },
+    { en: "lyrics", pos: "n", ru: "слова (песни)", ex: "I love songs with meaningful lyrics.", level: "core" },
+    { en: "melody", pos: "n", ru: "мелодия", ex: "The melody is simple but beautiful.", level: "core" },
+    { en: "instrument", pos: "n", ru: "музыкальный инструмент", ex: "Every child should try to learn an instrument.", level: "core" },
+    { en: "band", pos: "n", ru: "группа (музыкальная)", ex: "My favorite band is touring next summer.", level: "core" },
+    { en: "live music", pos: "n", ru: "живая музыка", ex: "Nothing beats live music.", level: "core" },
+    { en: "playlist", pos: "n", ru: "плейлист", ex: "I have a special playlist for running.", level: "core" },
+    { en: "painting", pos: "n", ru: "картина; живопись", ex: "This painting is over three hundred years old.", level: "core" },
+    { en: "exhibition", pos: "n", ru: "выставка", ex: "We went to a photography exhibition last week.", level: "core" },
+    { en: "gallery", pos: "n", ru: "галерея", ex: "The city gallery is free on Sundays.", level: "core" },
+    { en: "artist", pos: "n", ru: "художник; артист", ex: "Local artists sell their work at the market.", level: "core" },
+    { en: "creative", pos: "adj", ru: "творческий, креативный", ex: "I don't think I'm very creative.", level: "core" },
+    { en: "talented", pos: "adj", ru: "талантливый", ex: "My sister is a talented singer.", level: "core" },
+    { en: "performance", pos: "n", ru: "выступление", ex: "Her performance gave me goosebumps.", level: "core" },
+    { en: "audience", pos: "n", ru: "публика, зрители", ex: "The audience sang along to every song.", level: "core" },
+
+    { en: "catchy", pos: "adj", ru: "цепляющий, прилипчивый", ex: "The chorus is so catchy that I can't stop humming it.", level: "adv" },
+    { en: "moving", pos: "adj", ru: "трогательный", ex: "It was such a moving performance that people cried.", level: "adv" },
+    { en: "evoke", pos: "v", ru: "вызывать (чувства, воспоминания)", ex: "This song evokes memories of my childhood.", level: "adv" },
+    { en: "self-expression", pos: "n", ru: "самовыражение", ex: "Art is a powerful form of self-expression.", level: "adv" },
+    { en: "masterpiece", pos: "n", ru: "шедевр", ex: "Many people consider this album a masterpiece.", level: "adv" },
+    { en: "abstract", pos: "adj", ru: "абстрактный", ex: "I don't always understand abstract art.", level: "adv" },
+    { en: "appreciate", pos: "v", ru: "ценить, понимать (искусство)", ex: "I've learned to appreciate classical music.", level: "adv" },
+    { en: "mainstream", pos: "adj / n", ru: "массовый, популярный", ex: "I prefer smaller bands to mainstream pop.", level: "adv" },
+    { en: "niche", pos: "adj / n", ru: "нишевый, для узкого круга", ex: "Streaming helps niche artists find fans.", level: "adv" },
+    { en: "nostalgic", pos: "adj", ru: "ностальгический", ex: "Old songs make me feel nostalgic.", level: "adv" },
+    { en: "streaming platform", pos: "n", ru: "стриминговая платформа", ex: "Streaming platforms have changed the music industry.", level: "adv" },
+    { en: "convey", pos: "v", ru: "передавать (чувство, идею)", ex: "Music can convey emotions that words can't.", level: "adv" }
+  ],
+
+  collocations: [
+    { icon: "music", group: "Музыка", items: [
+      { en: "_listen to_ music", ru: "слушать музыку (listen TO!)", ex: "I listen to music on my way to class." },
+      { en: "_play the_ piano", ru: "играть на пианино (с the!)", ex: "My brother plays the piano beautifully." },
+      { en: "_go to_ a concert", ru: "пойти на концерт", ex: "I've never been to a big concert." },
+      { en: "_make_ a playlist", ru: "составить плейлист", ex: "I made a playlist for our road trip." },
+      { en: "a song _gets stuck_ in your head", ru: "песня прилипла", ex: "That chorus got stuck in my head for days." }
+    ]},
+    { icon: "bulb", group: "Творчество", items: [
+      { en: "_express_ yourself", ru: "выражать себя", ex: "Painting helps me express myself." },
+      { en: "_draw_ inspiration from", ru: "черпать вдохновение в", ex: "Many artists draw inspiration from nature." },
+      { en: "_have_ a talent for", ru: "иметь талант к (for!)", ex: "She has a real talent for drawing." },
+      { en: "_put_ feelings into words", ru: "выразить чувства словами", ex: "Music says what I can't put into words." },
+      { en: "_perform_ in front of an audience", ru: "выступать перед публикой", ex: "I get nervous when I perform in front of an audience." }
+    ]},
+    { icon: "landmark", group: "Искусство вокруг", items: [
+      { en: "_visit_ a museum", ru: "посетить музей", ex: "I visit a museum in every city I travel to." },
+      { en: "_go to_ an exhibition", ru: "сходить на выставку", ex: "We went to an exhibition of modern art." },
+      { en: "_admire_ a painting", ru: "любоваться картиной", ex: "I stood there admiring the painting for ten minutes." },
+      { en: "_appreciate_ art", ru: "ценить искусство", ex: "You don't need to be an expert to appreciate art." },
+      { en: "_support_ local artists", ru: "поддерживать местных художников", ex: "I buy prints to support local artists." }
+    ]},
+    { icon: "heart", group: "Впечатления", items: [
+      { en: "_bring back_ memories", ru: "навевать воспоминания", ex: "This song brings back memories of summer camp." },
+      { en: "_give_ sb goosebumps", ru: "вызвать мурашки", ex: "Her voice gives me goosebumps." },
+      { en: "_move_ sb to tears", ru: "растрогать до слёз", ex: "The final scene moved me to tears." },
+      { en: "_leave_ a lasting impression", ru: "оставить сильное впечатление", ex: "That exhibition left a lasting impression on me." },
+      { en: "_speak to_ sb", ru: "откликаться, «цеплять»", ex: "Abstract art doesn't really speak to me." }
+    ]}
+  ],
+
+  idioms: [
+    { art: "ears", lit: "буквально: «музыка для моих ушей»", en: "music to my ears", ru: "бальзам на душу", meaning: "очень приятная новость", ex: "When the teacher canceled the test, it was music to my ears.", reg: "ok", note: "Красиво и в тему — но про новости, не про музыку." },
+    { art: "chord", lit: "буквально: «задеть аккорд»", en: "strike a chord (with sb)", ru: "задеть за живое, найти отклик", meaning: "вызвать сильное чувство или узнавание", ex: "The lyrics really struck a chord with me.", reg: "ok", note: "Лучшая идиома для вопросов о песнях и эмоциях." },
+    { art: "show", lit: "буквально: «украсть шоу»", en: "steal the show", ru: "затмить всех, стать звездой вечера", meaning: "привлечь больше всего внимания и восхищения", ex: "The young drummer stole the show.", reg: "ok", note: "Для рассказа о концерте или выступлении." },
+    { art: "bell", lit: "буквально: «звонить в колокольчик»", en: "ring a bell", ru: "что-то напоминать", meaning: "казаться знакомым", ex: "The name of the band rings a bell, but I can't remember their songs.", reg: "ok", note: "Удобно, когда не знаешь точного ответа." },
+    { art: "trumpet", lit: "буквально: «дуть в свою трубу»", en: "blow your own trumpet", ru: "хвастаться", meaning: "хвалить себя и свои достижения", ex: "I don't like to blow my own trumpet, so I rarely post my drawings.", reg: "ok", note: "Для вопроса «share your work publicly or keep it private»." },
+    { art: "beholder", lit: "буквально: «красота — в глазах смотрящего»", en: "beauty is in the eye of the beholder", ru: "на вкус и цвет товарищей нет", meaning: "красоту каждый понимает по-своему", ex: "Some people hate modern art, but beauty is in the eye of the beholder.", reg: "ok", note: "Идеально для споров о современном искусстве." },
+    { art: "progress", lit: "буквально: «работа в процессе»", en: "a work in progress", ru: "ещё в процессе", meaning: "что-то незаконченное, что продолжает развиваться", ex: "My guitar playing is still a work in progress.", reg: "ok", note: "Скромно и естественно про свои навыки." },
+    { art: "blank", lit: "буквально: «вытянуть пустой билет»", en: "draw a blank", ru: "ничего не приходит в голову", meaning: "не суметь вспомнить или придумать", ex: "When I tried to write my own song, I completely drew a blank.", reg: "ok", note: "Для вопросов о творческом кризисе." },
+    { art: "picture", lit: "буквально: «картина стоит тысячи слов»", en: "a picture is worth a thousand words", ru: "лучше один раз увидеть", meaning: "изображение передаёт больше, чем текст", ex: "For me, a picture really is worth a thousand words.", reg: "careful", note: "Очень заезженная фраза. Только если правда в тему." }
+  ],
+
+  expressions: [
+    { icon: "play", fn: "Начать ответ", items: [
+      "I'm more of a listener than a creator.",
+      "Music plays a huge role in my daily life.",
+      "To be honest, I'm not very artistic, but …"
+    ]},
+    { icon: "bulb", fn: "Причина", items: [
+      "What I love about it is the way it makes me feel.",
+      "It helps me express things I can't put into words.",
+      "It brings back so many memories."
+    ]},
+    { icon: "camera", fn: "Описать впечатление", items: [
+      "It gave me goosebumps.",
+      "The atmosphere was electric.",
+      "I couldn't take my eyes off it."
+    ]},
+    { icon: "scales", fn: "Баланс и контраст", items: [
+      "Streaming is convenient; that said, artists earn very little from it.",
+      "While some people love modern art, it just doesn't speak to me.",
+      "Beauty is in the eye of the beholder."
+    ]},
+    { icon: "trending", fn: "Будущее", items: [
+      "I suspect schools will cut arts subjects because of budgets.",
+      "AI will change how music is made, but not why we love it.",
+      "Live music will always have a special place."
+    ]},
+    { icon: "flag", fn: "Завершить", items: [
+      "So for me, music isn't a luxury — it's part of who I am.",
+      "In the end, art is about connection.",
+      "That's why I'd never give it up."
+    ]}
+  ],
+
+  answerSteps: [
+    { k: "A", s: 5,  i: "I listen to music every single day." },
+    { k: "R", s: 12, i: "What I love about it is how it changes my mood…" },
+    { k: "E", s: 22, i: "Before exams, for example…" },
+    { k: "C", s: 6,  i: "So for me, music is a daily companion." }
+  ],
+
+  matching: [
+    { a: "strike a chord", b: "cause a strong emotional reaction" },
+    { a: "steal the show", b: "get the most attention and praise" },
+    { a: "ring a bell", b: "seem familiar" },
+    { a: "blow your own trumpet", b: "praise yourself" },
+    { a: "a work in progress", b: "something not yet finished" },
+    { a: "draw a blank", b: "be unable to think of anything" }
+  ],
+
+  gapfill: [
+    { t: "I listen ___ music on my way to class.", a: ["to"] },
+    { t: "My brother plays ___ piano beautifully.", a: ["the"] },
+    { t: "She has a real talent ___ drawing.", a: ["for"] },
+    { t: "This song brings ___ memories of summer camp.", a: ["back"] },
+    { t: "Her voice gives me ___.", a: ["goosebumps"] },
+    { t: "Many artists draw ___ from nature.", a: ["inspiration"] },
+    { t: "Painting helps me ___ myself.", a: ["express"] },
+    { t: "Abstract art doesn't really speak ___ me.", a: ["to"] }
+  ],
+
+  paraphrase: [
+    { plain: "The song made me feel strong emotions.", better: ["The lyrics really **struck a chord** with me.", "It **gave me goosebumps**."] },
+    { plain: "The song reminds me of my childhood.", better: ["This song **brings back memories** of my childhood.", "It **evokes** my childhood."] },
+    { plain: "I cried because the music was so beautiful.", better: ["The music **moved me to tears**."] },
+    { plain: "I don't understand modern art and don't like it.", better: ["Modern art doesn't really **speak to me**."] },
+    { plain: "The singer was the best part of the evening.", better: ["The singer **stole the show**."] },
+    { plain: "I'm still learning; I'm not good yet.", better: ["My playing is still **a work in progress**."] },
+    { plain: "This song is very easy to remember.", better: ["The chorus is incredibly **catchy** — it **got stuck in my head**."] },
+    { plain: "Music shows feelings that words can't.", better: ["Music **conveys** emotions that are hard to **put into words**."] }
+  ],
+
+  repeat: {
+    scenario: "Вы волонтёр в университетском художественном музее. Куратор объясняет правила для экскурсоводов, — повторите каждое предложение точно так, как услышали.",
+    sentences: [
+      "Welcome to the university art museum.",
+      "Tours start every hour on the hour.",
+      "Please remind visitors not to touch the paintings.",
+      "Photos are allowed, but only without flash.",
+      "The new exhibition of student work is on the second floor.",
+      "On Friday evenings, the museum stays open late for a live music performance in the main hall.",
+      "If visitors ask about an artist you don't know, direct them to the information desk near the entrance."
+    ]
+  },
+
+  /* ===== Реальные сеты Take an Interview по теме (из базы платформы) ===== */
+  sets: [
+    { id: "s096", badge: "official", title: "Music Preferences", src: "Official TOEFL · 096",
+      scenario: "You received an email from your university inviting you to join a research study about music preferences. You have scheduled a short online interview with a researcher.",
+      questions: [
+        { q: "First, how often do you listen to music? Do you listen daily, weekly, or less often?",
+          lx: ["listen to music", "playlist", "background music"],
+          model: "[A] I **listen to music** every day, probably three or four hours in total. [R] Music makes boring activities more fun and helps me concentrate or relax, depending on what I'm doing. [E] For example, I listen to energetic music when I run in the morning, calm instrumental music when I study, and my favorite bands on the bus. In the evening, I often play the guitar too. The only time I don't listen to music is when I'm sleeping or in class! [C] So music is with me almost all day.",
+          model5: "[A] Every single day — probably three or four hours in total, spread across the day. [R] Music transforms otherwise dull routines, and depending on what I choose, it either sharpens my focus or helps me unwind. [E] My mornings, for instance, start with an upbeat **playlist** for running; while studying, I switch to calm instrumental tracks that don't distract me; and on the bus, it's whatever band I'm currently obsessed with. Most evenings, I also play the guitar myself. Honestly, the only times I'm not listening to something are during lectures and while I'm asleep. [C] So music isn't an occasional pleasure for me; it's the soundtrack to my entire day." },
+        { q: "What genres or types of music do you usually enjoy listening to? For example, do you prefer classical, rock or jazz music? Give details to explain your answer.",
+          lx: ["genre", "lyrics", "catchy"],
+          model: "[A] I mostly listen to indie rock, but I also enjoy film soundtracks and some jazz. [R] I like indie rock because the **lyrics** are often meaningful and the bands are less commercial. Film soundtracks are perfect for studying because they have no words. [E] For example, my favorite band writes songs about growing up and friendship, and I learned many of their songs on the guitar. When I write essays, I listen to soundtracks from fantasy movies — they make even boring topics feel epic! And on Sunday mornings, my dad and I listen to old jazz records. [C] So my taste depends on my mood and activity.",
+          model5: "[A] My go-to **genre** is indie rock, though I also love film soundtracks and, thanks to my father, a bit of jazz. [R] What draws me to indie rock is its honest, often poetic **lyrics** and the fact that the bands feel less manufactured than mainstream pop. Soundtracks, meanwhile, are ideal for studying, since there are no words to distract me. [E] My favorite band, for instance, writes about growing up and friendship, and I've learned half their songs on the guitar. When I'm writing essays, epic fantasy soundtracks make even the dullest topic feel dramatic. And on Sunday mornings at home, my dad and I still listen to his old jazz records. [C] So my taste is fairly eclectic, shaped by both my mood and the people around me." },
+        { q: "Can you tell me about a concert or live music event you would like to attend? Why would you make that particular choice?",
+          lx: ["live music", "atmosphere", "a once-in-a-lifetime"],
+          model: "[A] I would love to go to a big summer music festival in Europe, like Glastonbury in England. [R] I've only been to small concerts in my city, so I want to experience a huge festival with many bands, thousands of people and an amazing atmosphere. [E] For example, I've watched videos of Glastonbury, where people camp for five days, dance in the rain and see their favorite artists on different stages. My favorite band played there last year. I'd go with my best friends, and we'd stay until the very last song. [C] So it would be a dream experience for me.",
+          model5: "[A] My dream is to attend Glastonbury, the legendary music festival in England. [R] So far, I've only been to small gigs in my city, so I'd love to experience something on a completely different scale: dozens of stages, tens of thousands of people and an **atmosphere** that people describe as unforgettable. [E] I've watched countless clips, for instance, of crowds camping for five days, dancing in the mud and singing every word with their favorite artists. My favorite band actually played there last year, which only made me more determined. Ideally, I'd go with my closest friends and stay right until the final song on the last night. [C] So it would be **a once-in-a-lifetime** experience, and one I'm already saving for." },
+        { q: "Some people believe that music can have a powerful effect on our emotions and moods. Do you agree or disagree with this viewpoint? Why?",
+          lx: ["mood", "boost your mood", "unwind"],
+          model: "[A] I completely agree. [R] Music can change my mood in just a few seconds. Fast music gives me energy, and slow music helps me relax or feel my emotions. [E] For example, I always listen to an energetic playlist when I run, and it helps me run faster. When I'm sad, I listen to calm songs, and it somehow makes me feel better and less alone. Also, one song from my childhood always makes me smile because it reminds me of family trips. [C] So music is a very powerful tool for our emotions.", model5: "[A] I wholeheartedly agree; music affects my mood more quickly than almost anything else. [R] An upbeat track can energize me within seconds, while slower music either calms me down or helps me process what I'm feeling. Music is also strongly tied to memory, so a single song can transport you back years. [E] When I run, for instance, an energetic playlist noticeably improves my pace, whereas on difficult days, quiet songs make me feel understood and less alone. There's also one particular song from my childhood that instantly reminds me of family road trips and never fails to make me smile. [C] So music isn't just entertainment; it's one of our most accessible tools for managing emotions." }
+      ]},
+    { id: "s116", badge: "official", title: "Experiences with Music", src: "Official TOEFL · 116",
+      scenario: "You have agreed to participate in a research study about people's experiences with music. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "First, how important is music in your life? Why?",
+          lx: ["express yourself", "unwind", "bring back memories"],
+          model: "[A] Music is extremely important in my life. [R] It helps me relax, gives me energy and helps me **express** feelings that I can't say in words. It's also connected to many of my best memories. [E] For example, after a stressful day, I play the guitar for half an hour, and I feel calm again. Before exams, I listen to my favorite band to feel confident. And when I hear certain songs from summer camp, I immediately remember my old friends. [C] So I can't imagine my life without music.",
+          model5: "[A] It's genuinely one of the most important things in my life. [R] Music regulates my mood, gives me energy when I'm flagging and offers a way to **express** feelings I struggle to put into words; on top of that, it's woven into many of my most cherished memories. [E] After a stressful day, for instance, half an hour with my guitar is the most reliable way I know to **unwind**. Before exams, my favorite band's songs act almost like a pep talk. And whenever I hear a particular song from a summer camp years ago, it instantly **brings back memories** of friends I rarely see now. [C] So, quite simply, I can't imagine my life without music." },
+        { q: "Now, if you had to choose, would you rather create music yourself or listen to music created by others? Why?",
+          lx: ["create", "a work in progress", "appreciate"],
+          model: "[A] If I had to choose, I'd rather listen to music created by others. [R] I play the guitar, and I love it, but I'm not very talented, and I can't write songs. Professional musicians create music that moves me much more than my own playing. [E] For example, I once tried to write my own song, but after two hours, I had only one line of lyrics — I completely **drew a blank**. But when I listen to my favorite album, I discover something new every time. Still, playing gives me a special feeling of achievement. [C] So I'd choose listening, but I'd keep playing for fun.",
+          model5: "[A] Forced to choose, I'd pick listening, although it would be a painful decision. [R] I love playing the guitar, but I'm realistic about my limits: I play other people's songs reasonably well, yet I have no real gift for composing. Music created by talented artists simply moves me far more deeply than anything I could produce. [E] When I once tried writing a song of my own, for instance, I **drew a** complete **blank** and abandoned it after two hours with a single line of lyrics. My favorite album, by contrast, still reveals new details after a hundred listens. [C] So listening would win, though I'd secretly keep playing, because my own music, however much **a work in progress**, brings a different kind of satisfaction." },
+        { q: "Do you think music should be a required part of children's education? Why or why not?",
+          lx: ["instrument", "self-expression", "well-rounded"],
+          model: "[A] Yes, I think music should be a required part of children's education. [R] Music develops creativity, memory and teamwork, and it can help children who are not good at academic subjects to feel successful. Also, many families can't pay for private lessons. [E] For example, at my primary school, every child learned to play the recorder and sang in the school choir. It was the first time I felt the joy of making music with others, and it's probably why I started the guitar later. My cousin's school stopped music classes, and he says he never had a chance to try. [C] So music lessons give every child an equal chance.",
+          model5: "[A] I'm convinced it should be. [R] Music develops creativity, memory and cooperation, and it allows children who struggle academically to discover something they excel at. Crucially, school may be the only place where children from lower-income families ever get to try an **instrument**. [E] At my primary school, for instance, every pupil learned the recorder and sang in the choir, and it was there that I first experienced the joy of making music with others — quite possibly why I picked up the guitar years later. My cousin's school, by contrast, scrapped music classes to save money, and he says he never had the chance to find out whether he had any musical talent. [C] So compulsory music lessons are, above all, a matter of giving every child the same opportunity." },
+        { q: "Some people believe that live music has a stronger impact than recorded music. Do you agree or disagree with that? Why or why not?",
+          lx: ["live music", "atmosphere", "give sb goosebumps"],
+          model: "[A] I agree that live music has a stronger impact. [R] At a concert, you're part of the moment — you hear the music loudly, see the musicians and share the experience with hundreds of people. Recorded music is perfect, but it can't give you that energy. [E] For example, I've listened to my favorite band's songs hundreds of times at home. But when I saw them live in a small club last year and everyone sang the chorus together, it **gave me goosebumps**. I still remember that feeling. [C] So recorded music is great every day, but live music is unforgettable.",
+          model5: "[A] I agree; live music has an intensity that recordings can't replicate. [R] At a concert, you're not just hearing music, you're part of a shared moment: the volume, the visible effort of the musicians and the collective energy of the crowd create an **atmosphere** no pair of headphones can match. Recorded music, admittedly, is technically perfect and endlessly accessible. [E] I'd listened to my favorite band's songs hundreds of times, for instance, yet when I finally saw them live in a small club and the entire room sang the chorus back to them, it **gave me goosebumps**. Months later, I can still feel that moment. [C] So recordings are wonderful companions for everyday life, but live music creates memories." }
+      ]},
+    { id: "s050", badge: "official", title: "Art and Self-Expression", src: "Official TOEFL · 050",
+      scenario: "A researcher is studying people's views on art and self-expression. The researcher will ask you some questions about artistic activities.",
+      questions: [
+        { q: "Do you engage in any artistic activities such as painting or playing music regularly? If so, what do you do? If not, which artistic activity would you like to try if you had the chance?",
+          lx: ["play the guitar", "a creative outlet", "take up"],
+          model: "[A] Yes, I play the guitar almost every day. [R] It's my main way to relax and be creative. I'm not a professional, but I love learning new songs. I'd also like to try painting one day. [E] For example, every evening, I practice for about half an hour, usually songs by my favorite indie bands. Sometimes my roommate sings, and we play together for friends. As for painting, my best friend paints, and when I watch her, it looks so relaxing that I want to try it too. [C] So music is my art for now, but painting is next on my list.",
+          model5: "[A] Yes, I play the guitar most days, and painting is something I'd love to try next. [R] The guitar is my main **creative outlet**: I'm certainly no professional, but learning new songs gives me a real sense of progress and helps me switch off. [E] I practice for roughly half an hour every evening, for instance, usually working through songs by my favorite indie bands, and occasionally my roommate sings along when friends come over. Painting, meanwhile, appeals to me because of my best friend, who paints; watching her lose herself in a canvas for hours makes me want to experience that kind of calm absorption myself. [C] So music is my art form for now, but painting is definitely next on my list." },
+        { q: "What kind of art or music do you enjoy the most, and how do you typically experience it, through creation or appreciation?",
+          lx: ["appreciate", "exhibition", "creation"],
+          model: "[A] I enjoy music the most, and I experience it in both ways — I listen and I play. With visual art, I'm only a viewer. [R] Music is part of my everyday life, but I go to galleries only sometimes. I like photography exhibitions the most because they show real life. [E] For example, I listen to indie rock every day and play some of the songs on my guitar. Last month, I went to a photography exhibition about life in small villages, and I stayed there for two hours. I can't take good photos myself, but I really **appreciate** them. [C] So music I create and enjoy, and art I mostly admire.",
+          model5: "[A] Music is what I enjoy most, and I experience it through both listening and playing, whereas with visual art I'm firmly on the **appreciation** side. [R] Music is woven into every day of my life, while galleries are more of an occasional pleasure; when I do go, photography tends to move me most, because it captures real life so directly. [E] I listen to indie rock daily, for instance, and recreate some of those songs on my guitar in the evenings. Last month, meanwhile, I visited a photography **exhibition** documenting life in remote villages and ended up spending two hours there, completely absorbed. I couldn't take photos like that myself, but I can certainly appreciate them. [C] So music is something I both create and consume, while art is something I mainly admire." },
+        { q: "If you were creating art or music, would you prefer sharing your work publicly or keeping it private? What influences your decision?",
+          lx: ["blow your own trumpet", "get feedback", "audience"],
+          model: "[A] I would prefer to keep my work private, or share it only with friends. [R] I'm not very confident, and I'm afraid of negative comments from strangers. Also, I make music for myself, not to be famous. But I understand that sharing can help you improve. [E] For example, I sometimes play the guitar for my friends, and they give me honest, kind **feedback**. But I've never posted a video online. My cousin posted his songs online, and some people wrote rude comments, which made him stop for months. [C] So for now, my music stays private, but maybe I'll share it one day.",
+          model5: "[A] For now, I'd keep it largely private, sharing it only with close friends. [R] Partly, that's a confidence issue: I'm wary of harsh comments from strangers. But it's also because I create mainly for my own enjoyment; I don't feel the need to **blow my own trumpet**. That said, I recognize that sharing work publicly is one of the best ways to improve. [E] I occasionally play for friends, for instance, who give me honest but kind **feedback**, yet I've never posted a single video online. My cousin, by contrast, uploaded his songs and received a handful of cruel comments, which discouraged him from playing for months. [C] So my music stays private for the moment, although, with more confidence, I might eventually share it with a wider **audience**." },
+        { q: "Some people think art and music can be powerful ways to communicate emotions and ideas that are difficult to express with words. Do you agree or disagree? Why?",
+          lx: ["convey", "put feelings into words", "strike a chord"],
+          model: "[A] I completely agree. [R] Some feelings are too big or too complicated for words, but a song, a painting or a melody can show them immediately. Art can also communicate across languages and cultures. [E] For example, when my grandfather died, I couldn't talk about my feelings. But one sad song by my favorite band expressed exactly what I felt, and I listened to it again and again. Also, I've seen paintings in museums that made me feel something strong, even though I didn't know anything about them. [C] So art speaks where words can't.",
+          model5: "[A] I wholeheartedly agree. [R] Some emotions are too complex or painful to **put into words**, yet a melody or an image can **convey** them almost instantly, and art does so across languages and cultures. [E] When my grandfather passed away, for instance, I found it impossible to talk about how I felt. A melancholy song by my favorite band, however, captured my grief so precisely that I listened to it on repeat for weeks; its lyrics **struck a chord** in a way no conversation could. Similarly, I've stood in front of paintings knowing nothing about their background and still felt deeply moved. [C] So art communicates exactly where words fail, which is perhaps its greatest power." }
+      ]},
+    { id: "s097", badge: "official", title: "Art and Creativity", src: "Official TOEFL · 097",
+      scenario: "You have volunteered for a research study at your university about people's experiences with art and creativity. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "Do you consider yourself to be a creative person? Why or why not?",
+          lx: ["creative", "think outside the box", "a creative outlet"],
+          model: "[A] I think I'm creative in some ways, but not in an artistic way. [R] I can't draw or write stories, but I like finding new ideas and solving problems in unusual ways. And music is my **creative outlet**. [E] For example, at my marketing internship, I suggested an idea for funny short videos for a client, and they used two of them. I also play the guitar and sometimes change songs to make my own versions. But when I try to draw, everything looks like a child's picture! [C] So I'm creative with ideas and music, but not with art.",
+          model5: "[A] In some ways yes, though not in the traditional artistic sense. [R] I have no talent for drawing or fiction, but I enjoy generating ideas and approaching problems from unexpected angles, and music gives me a genuine **creative outlet**. [E] During my marketing internship, for instance, I pitched an idea for humorous short videos, two of which the client actually used. I also enjoy reworking songs on the guitar into my own slower, acoustic versions. My drawings, on the other hand, still look as though a seven-year-old produced them. [C] So I'd describe myself as creative with ideas and music, but hopeless with a pencil." },
+        { q: "Some people think that learning about art is just as important as learning science or math. Do you agree or disagree? Why?",
+          lx: ["well-rounded", "creativity", "appreciate"],
+          model: "[A] I agree that art is just as important, although schools often treat it as less important. [R] Science and math teach logic, but art teaches creativity, observation and how to express feelings. In the future, creativity will be very important, because AI can do many logical tasks. [E] For example, my art teacher in school taught us to look carefully at the world, and that helped me in many subjects, even in biology. Also, many successful engineers and scientists say that art helped them think creatively. [C] So a good education needs both.",
+          model5: "[A] I agree, even though schools rarely treat it that way. [R] Science and math develop logical reasoning, whereas art cultivates creativity, observation and emotional expression — skills that will matter more than ever as AI takes over routine analytical tasks. A truly **well-rounded** education needs both. [E] My art teacher at school, for instance, trained us to observe details closely, a habit that, surprisingly, helped me in biology practicals. Moreover, plenty of innovative engineers and scientists credit artistic training with teaching them to think beyond conventional solutions. [C] So I'd argue that art isn't a luxury subject, but an essential counterpart to the sciences." },
+        { q: "Some people believe that engaging in creative activities can improve mental well-being. Do you agree or disagree? Why?",
+          lx: ["self-care", "cope with", "sense of accomplishment"],
+          model: "[A] I agree that creative activities can improve mental well-being. [R] When you draw, write or play music, you focus on one thing, and your worries disappear for a while. It's also a way to express feelings that are hard to say in words. [E] For example, my best friend started painting during a difficult time after her parents' divorce. She says painting helped her understand her emotions, and now she feels much calmer. Also, finishing a painting gives her a nice feeling of achievement. [C] So creativity can be a kind of therapy.", model5: "[A] I agree, and I think creativity can be genuinely therapeutic. [R] Creative activities demand complete focus, which pushes anxious thoughts aside, and they offer a way to express emotions that are difficult to put into words. On top of that, completing something creative brings a real **sense of accomplishment**. [E] A close friend of mine, for instance, took up painting during a painful period after her parents' divorce. She says it allowed her to process feelings she couldn't talk about, and over several months she became noticeably calmer and more confident. Many of her paintings from that time, she admits, are far from masterpieces, but that was never the point. [C] So creativity can be a powerful form of self-care, whatever the result looks like." },
+        { q: "Do you think future schools will teach more art or less? What factors might influence this?",
+          lx: ["budget cuts", "creativity", "artificial intelligence (AI)"],
+          model: "[A] I'm afraid that schools will probably teach less art, although they should teach more. [R] Many governments focus on test results in math, science and technology, and when budgets are small, art is often the first subject to be cut. But AI may change this, because creative skills will become more valuable. [E] For example, my cousin's school cut art classes from two hours to one hour a week to add more coding. But at the same time, some companies now say they want employees with creative skills that machines don't have. [C] So the future depends on whether schools see creativity as important.",
+          model5: "[A] In the short term, I suspect schools will teach less art, although long-term trends may reverse that. [R] Governments tend to prioritize measurable results in math, science and technology, so when budgets are tight, art is usually the first casualty. Paradoxically, however, the rise of AI may make uniquely human creative skills more valuable than ever. [E] My cousin's school, for instance, recently halved its art lessons to make room for coding. Meanwhile, more and more employers are emphasizing creativity and original thinking as precisely the qualities that machines struggle to replicate. [C] So the key factor will be whether policymakers start seeing creativity not as a luxury, but as a core skill for the future." }
+      ]},
+    { id: "sml", badge: "platform", title: "Music and Listening Habits", src: "Практика платформы",
+      scenario: "I'm conducting a study on how people listen to music and the role it plays in their lives. I'd like to ask you a few questions about your personal listening habits and experiences.",
+      questions: [
+        { q: "What kind of music do you usually enjoy listening to, and how often do you listen to music in a typical day or week? Are there specific times or situations when you're more likely to listen?",
+          lx: ["genre", "playlist", "listen to music"],
+          model: "[A] I mostly listen to indie rock and film soundtracks, and I listen every day. [R] Music is part of almost every activity in my day, but I choose different music for different situations. [E] For example, when I go running in the morning, I listen to a fast, energetic **playlist**. When I study, I need music without words, so I choose soundtracks. On the bus and in the evening, I listen to my favorite indie bands. On Sundays, I listen to jazz with my dad when I visit my family. [C] So I listen to music all the time, but the type depends on the situation.",
+          model5: "[A] I'm mostly into indie rock and film soundtracks, and I listen every day, often for several hours. [R] Music accompanies almost every activity, but I deliberately match the **genre** to the situation. [E] My morning runs, for instance, are powered by a fast, high-energy **playlist**; when I'm studying, I can only focus with instrumental soundtracks, since lyrics distract me; on the bus and in the evenings, it's my favorite indie bands; and whenever I'm home on a Sunday, my dad and I end up listening to his jazz collection. [C] So music is constant in my life, but I treat it almost like a tool, choosing exactly what each moment needs." },
+        { q: "What role does music play in your daily routine or personal well-being? And why do you think it's had that kind of impact on you?",
+          lx: ["unwind", "boost your mood", "focus"],
+          model: "[A] Music helps me control my energy and my mood. [R] I think it's because music affects emotions very quickly — one song can change how I feel in a minute. [E] For example, when I feel tired in the morning, a fast song wakes me up better than coffee. When I'm stressed before an exam, slow music or playing my guitar calms me down. And when I feel sad, a sad song actually helps, because I feel that someone understands me. [C] So music is like a tool I use every day to feel better.",
+          model5: "[A] Music essentially acts as my mood regulator throughout the day. [R] I think it's so powerful for me because it bypasses rational thought and works directly on emotions; a single song can shift my state of mind within seconds. [E] On sluggish mornings, for instance, an upbeat track wakes me up more effectively than coffee. Before exams, when anxiety creeps in, slow music, or better still, half an hour on my guitar, helps me **unwind**. And, paradoxically, when I'm feeling low, a melancholy song often comforts me more than a cheerful one, simply because it makes me feel understood. [C] So music is less a background to my day than a tool I use, quite deliberately, to look after my well-being." },
+        { q: "These days, a lot of people use streaming platforms like Spotify, Apple Music, or YouTube to explore new music or personalize their listening experience. In your opinion, how have these platforms changed the way people discover and connect with music? Do you think it's had mostly a positive or negative effect?",
+          lx: ["streaming platform", "algorithm", "niche"],
+          model: "[A] I think streaming platforms have changed music a lot, mostly in a positive way for listeners, but not always for artists. [R] Now we can listen to almost any song in the world for little money, and algorithms help us find new music. But artists earn very little from streaming, and people listen to songs quickly without really connecting to whole albums. [E] For example, I discovered my favorite band because the app recommended one of their songs. But that band says they earn more from selling T-shirts at concerts than from millions of streams. [C] So streaming is great for fans, but not so good for musicians.",
+          model5: "[A] They've transformed how we discover music, largely for the better from a listener's perspective, though far less so for artists. [R] Almost the entire history of recorded music is now available for a modest monthly fee, and **algorithms** expose us to **niche** artists we'd never otherwise encounter. On the other hand, artists earn remarkably little per stream, and constant shuffling encourages us to skim songs rather than connect deeply with whole albums. [E] I discovered my favorite band, for instance, purely because an app recommended one of their songs. Yet that same band has openly said they earn more from selling T-shirts at gigs than from millions of streams. [C] So streaming has been a gift to fans, but it urgently needs a fairer model for musicians." },
+        { q: "Music is often strongly connected to memory and emotion—sometimes a single song can remind us of a place, a person, or a specific chapter in our lives. Can you think of a time when a particular song helped you through a difficult or meaningful experience? What do you remember most about that moment, and why did the music stand out?",
+          lx: ["bring back memories", "strike a chord", "nostalgic"],
+          model: "[A] Yes, one song helped me a lot during my first semester at university. [R] I had just moved to a new city, I didn't know anyone, and I felt very homesick and lonely. [E] For example, every evening, I walked around my new neighborhood and listened to one song by my favorite band about leaving home and starting a new life. The **lyrics** felt like they were written for me. I remember the cold air, the city lights and the feeling that I wasn't the only one feeling this way. Now, when I hear it, I feel proud of how far I've come. [C] So that song will always be special to me.",
+          model5: "[A] Yes — one particular song carried me through my very first semester at university. [R] I'd just moved to a city where I knew no one, and I was overwhelmed by homesickness and loneliness. [E] Every evening, I'd wander around my unfamiliar neighborhood listening to a track by my favorite band about leaving home and starting over; the lyrics **struck a chord** so precisely that it felt as though they'd been written for me. I still vividly remember the cold air, the blur of city lights and the comforting sense that someone else had felt exactly the same. Nowadays, whenever I hear it, I feel **nostalgic** but also proud of how far I've come. [C] So that song isn't just music to me; it's a chapter of my life." }
+      ]}
+  ],
+
+  /* ===== Speaking Club: тема вдоль и поперёк ===== */
+  club: [
+    { icon: "music", title: "Музыка в моей жизни", en: "Music in my life", questions: [
+      { t: "personal", src: "Official 096", q: "How often do you listen to music — daily, weekly or less often?", same: "s096-0",
+        f: ["When do you never listen to music?", "Headphones or speakers?"], lx: ["listen to music", "playlist", "background music"] },
+      { t: "personal", src: "Official 116", q: "How important is music in your life? Why?", same: "s116-0",
+        f: ["Could you live a week without music?", "Was music important in your family?"], lx: ["express yourself", "unwind", "bring back memories"] },
+      { t: "personal", src: "Official 096", q: "What genres or types of music do you usually enjoy — classical, rock, jazz or something else?", same: "s096-1",
+        f: ["Which genre can't you stand?", "Has your taste changed since you were a teenager?"], lx: ["genre", "lyrics", "catchy"] },
+      { t: "personal", src: "Платформа · Music and Listening", q: "What kind of music do you enjoy, and are there specific times or situations when you're more likely to listen?", same: "sml-0",
+        f: ["What do you listen to when you study?", "Do you have a 'sad' playlist?"], lx: ["genre", "playlist", "listen to music"] },
+      { t: "personal", src: "Платформа · Music and Listening", q: "What role does music play in your daily routine or personal well-being? Why does it have that impact on you?", same: "sml-1",
+        f: ["Can music help you study?", "Does music ever make you feel worse?"], lx: ["unwind", "boost your mood", "focus"] },
+      { t: "personal", q: "What song can't you stop listening to at the moment? Why?",
+        model: "[A] At the moment, I can't stop listening to a new song by my favorite indie band. [R] It has a very **catchy** chorus, and the lyrics are about friendship and growing up, which feels very close to my life right now. [E] For example, I listen to it every morning on my run, and it's been stuck in my head for a week. I've even started learning it on the guitar, and my roommate already knows all the words because I play it so much. I think she's a bit tired of it! [C] So it's the soundtrack of my month.",
+        model5: "[A] Right now, I'm completely hooked on a new single by my favorite indie band. [R] The chorus is ridiculously **catchy**, but what really draws me in is the lyrics, which are about friendship and growing up — themes that feel very close to my life at this stage. [E] It's been the opening track of my morning run every day for a week, for instance, and it's been **stuck in my head** ever since. I've even started learning it on the guitar, to the point where my roommate knows every word, although I suspect she's secretly sick of it. [C] So it's officially the soundtrack of my month, and probably of this entire semester.",
+        f: ["How do you discover new songs?", "Do you listen to whole albums or single songs?"], lx: ["catchy", "lyrics", "a song gets stuck in your head"] }
+    ]},
+    { icon: "mic", title: "Концерты и живая музыка", en: "Live music", questions: [
+      { t: "hypo", src: "Official 096", q: "Can you tell me about a concert or live music event you would like to attend? Why?", same: "s096-2",
+        f: ["Who would you take with you?", "How much would you pay for a ticket?"], lx: ["live music", "atmosphere", "a once-in-a-lifetime"] },
+      { t: "compare", src: "Official 116", q: "Does live music have a stronger impact than recorded music? Why or why not?", same: "s116-3",
+        f: ["Is it worth paying more for live music?", "Do you film concerts on your phone?"], lx: ["live music", "atmosphere", "give sb goosebumps"] },
+      { t: "experience", q: "Tell me about the best concert or live performance you've ever been to.",
+        model: "[A] The best concert I've ever been to was my favorite band's show in a small club last year. [R] It was special because the place was tiny, so I was very close to the musicians, and the energy was amazing. [E] For example, there were only about three hundred people, and everyone knew all the songs. In the middle of the concert, the singer came down from the stage and sang one song among the audience. When everyone sang the chorus together, I got goosebumps. The drummer also **stole the show** with a crazy solo. [C] So it was small, but unforgettable.",
+        model5: "[A] Without a doubt, my favorite band's gig in a tiny club last year. [R] What made it unforgettable was the intimacy: with barely three hundred people packed in, I was close enough to see the guitarist's fingers on the strings, and the energy in the room was electric. [E] Midway through, for instance, the singer stepped off the stage and performed an acoustic song right in the middle of the crowd, and when everyone sang the chorus back to her, it **gave me goosebumps**. Later, the drummer completely **stole the show** with an outrageous five-minute solo. [C] So it was a small concert, but it **left a lasting impression** that no stadium show has matched.",
+        f: ["Big stadium or small club?", "What makes a great performer?"], lx: ["steal the show", "give sb goosebumps", "audience"] },
+      { t: "opinion", q: "Concert tickets have become very expensive. Is live music becoming only for rich people?",
+        model: "[A] I think big concerts are becoming too expensive for many people, but small concerts are still affordable. [R] Famous artists' tickets now cost hundreds of dollars, especially with resellers. Many students and families can't pay that. But local bands and small clubs are still cheap. [E] For example, my friend wanted to see a famous pop star, but the cheapest ticket was two hundred dollars, so she couldn't go. But every Thursday, a bar near my university has live music for five dollars, and the bands are really good. [C] So big shows are becoming a luxury, but live music isn't only for the rich.",
+        model5: "[A] Major concerts are certainly drifting out of reach for many people, although live music as a whole isn't yet a luxury. [R] Ticket prices for global stars have soared, particularly with resale platforms inflating them further, so students and families are increasingly priced out. Smaller venues and local bands, however, remain remarkably affordable. [E] A friend of mine, for instance, desperately wanted to see a famous pop star, but the cheapest ticket was two hundred dollars, so she watched clips online instead. Meanwhile, a bar near my campus hosts live bands every Thursday for five dollars, and some of them are genuinely excellent. [C] So stadium shows may be becoming a privilege, but anyone willing to explore the local scene can still enjoy live music.",
+        f: ["Should resellers be banned?", "Would you pay a lot to see your favorite band?"], lx: ["live music", "support local artists", "mainstream"] },
+      { t: "compare", q: "Would you rather go to a big music festival or a small concert? Why?",
+        model: "[A] I'd rather go to a small concert, although I'd like to try a big festival once. [R] At small concerts, you can see the musicians up close, the sound is better and it's cheaper. Festivals are exciting, but they're crowded, expensive and very tiring. [E] For example, at a small club concert last year, I stood two meters from the stage and even talked to the guitarist after the show. My friend went to a big festival and said she spent half the time in lines for food and toilets. [C] So small concerts are better for me, but a festival is on my dream list.",
+        model5: "[A] On balance, I'd choose a small concert, although a major festival remains on my bucket list. [R] Small venues offer intimacy, better sound and lower prices, whereas festivals, for all their excitement, involve huge crowds, high costs and considerable exhaustion. [E] At a club gig last year, for instance, I stood a couple of meters from the stage and even chatted with the guitarist afterwards. A friend who went to a large festival, by contrast, said she spent half the weekend queuing for food and toilets and saw her favorite band only as a tiny figure on a distant screen. [C] So for the music itself, small concerts win, but for the sheer experience, I'd still love to try a festival once.",
+        f: ["What would you take to a festival?", "Who is the best live performer you know?"], lx: ["atmosphere", "audience", "live music"] }
+    ]},
+    { icon: "heart", title: "Песни, эмоции и память", en: "Songs, emotions & memory", questions: [
+      { t: "experience", src: "Платформа · Music and Listening", q: "Can you think of a time when a particular song helped you through a difficult or meaningful experience? What do you remember most?", same: "sml-3",
+        f: ["What song reminds you of childhood?", "Is there a song you can't listen to anymore?"], lx: ["bring back memories", "strike a chord", "nostalgic"] },
+      { t: "opinion", src: "Official 096", q: "Can music have a powerful effect on our emotions and moods? Why?", same: "s096-3",
+        f: ["Can music change your mood in a minute?", "Should shops play music?"], lx: ["mood", "boost your mood", "unwind"] },
+      { t: "opinion", q: "Does listening to music help you study, or is it a distraction?",
+        model: "[A] It depends on the music — some music helps me, but songs with words distract me. [R] When there are lyrics, my brain listens to the words instead of reading. But calm instrumental music blocks other noises and helps me concentrate. [E] For example, when I study in the library with soundtracks or classical music, I can focus for an hour or more. But once I tried to write an essay while listening to my favorite band, and I wrote the same sentence three times because I was singing along! [C] So instrumental music, yes — favorite songs, no.",
+        model5: "[A] It depends entirely on the type of music. [R] Songs with lyrics compete with whatever I'm reading or writing, since my brain can't resist processing the words. Calm instrumental music, on the other hand, masks background noise and creates a kind of focus bubble. [E] When I study in the library with film soundtracks or classical piano, for instance, I can concentrate comfortably for over an hour. Yet when I once tried writing an essay to my favorite band's new album, I caught myself typing the same sentence three times, because I kept singing along. [C] So instrumental music is a study aid for me, whereas my favorite songs are strictly a reward for afterwards.",
+        f: ["What do you listen to when you need to focus?", "Is silence better?"], lx: ["focus", "lyrics", "distraction"] },
+      { t: "opinion", q: "Does someone's music taste say something about their personality?",
+        model: "[A] I think music taste says something about a person, but not everything. [R] The music we choose often shows our mood, our values and the people we spend time with. But people can be very different from their favorite music. [E] For example, my roommate loves heavy metal, and people think she's aggressive, but she's the calmest and kindest person I know. On the other hand, my friend who loves jazz is a bit of a dreamer, which fits his music. [C] So music taste gives some clues, but you need to know the person.",
+        model5: "[A] It offers a few clues, but it's far from a reliable guide. [R] The music we're drawn to can reflect our moods, our values and the communities we belong to, yet people often turn out to be surprisingly different from what their playlists suggest. [E] My roommate, for instance, adores heavy metal, so people often assume she's aggressive, when in reality she's the gentlest, most patient person I know; for her, metal is simply a release. A friend who's obsessed with jazz, by contrast, really is an imaginative dreamer, which does seem to fit his taste. [C] So music taste can hint at someone's personality, but judging people by their playlists is risky.",
+        f: ["What does your music say about you?", "Have you ever judged someone by their music?"], lx: ["genre", "self-expression", "mainstream"] }
+    ]},
+    { icon: "phone", title: "Стриминг и музыкальная индустрия", en: "Streaming & the industry", questions: [
+      { t: "opinion", src: "Платформа · Music and Listening", q: "How have streaming platforms changed the way people discover and connect with music? Mostly positive or negative?", same: "sml-2",
+        f: ["Do you pay for a streaming service?", "Do algorithms know your taste well?"], lx: ["streaming platform", "algorithm", "niche"] },
+      { t: "opinion", q: "Should people pay for music, or is it fine to listen for free online?",
+        model: "[A] I think people should pay for music if they can, because artists need to earn money. [R] Creating music takes a lot of time and work, and if nobody pays, many talented musicians can't continue. But free music online also helps new artists find fans. [E] For example, I pay for a music streaming subscription, and when I really love a band, I buy their T-shirt or a concert ticket, because I know they earn more that way. My friend downloads music illegally, and I think that's unfair to the artists. [C] So listen for free sometimes, but support the artists you love.",
+        model5: "[A] I believe people should pay, at least for the artists they genuinely love. [R] Creating music demands enormous time and skill, and if nobody pays, many talented musicians simply can't afford to continue. Free access does help unknown artists build an audience, admittedly, but it shouldn't be the only way we engage with them. [E] I pay for a streaming subscription, for instance, but whenever I really love a band, I also buy merchandise or concert tickets, since I know that money actually reaches them. A friend of mine, by contrast, still downloads music illegally, which strikes me as deeply unfair to the people creating it. [C] So free listening is fine for discovery, but loyalty to artists should come with real support.",
+        f: ["How do musicians earn money today?", "Have you ever bought a vinyl record?"], lx: ["support local artists", "streaming platform", "niche"] },
+      { t: "opinion", q: "AI can now create songs and paintings. Is AI-generated work real art?",
+        model: "[A] I don't think AI-generated work is real art in the same way as human art. [R] AI copies patterns from millions of human works, but it doesn't have feelings, experiences or something it wants to say. For me, art is about a person expressing themselves. But AI can be a useful tool for artists. [E] For example, I heard an AI-generated song that sounded like my favorite band. It was technically good, but it felt empty — there was no story behind it. On the other hand, my friend uses AI to get ideas for her paintings, and then she paints them herself. [C] So AI can help art, but it can't replace the artist.",
+        model5: "[A] I'd hesitate to call it art in the fullest sense, although it can certainly be a powerful tool. [R] AI generates work by recombining patterns from millions of human creations, but it has no experiences, emotions or intention, and for me, art is fundamentally about a person trying to communicate something. [E] I recently heard an AI-generated song imitating my favorite band, for instance; technically it was impressive, yet it felt strangely hollow, precisely because there was no story or feeling behind it. A friend of mine, by contrast, uses AI to brainstorm compositions and then paints them entirely by hand, which strikes me as a legitimate creative partnership. [C] So AI may assist artists, but it can't replace the human voice that makes art meaningful.",
+        f: ["Should AI songs be labeled?", "Who owns AI-created art?"], lx: ["artificial intelligence (AI)", "self-expression", "convey"] },
+      { t: "opinion", q: "Many musicians now become famous through social media rather than record labels. Is this a good change?",
+        model: "[A] Yes, I think it's mostly a good change. [R] Before, a few record companies decided who became famous. Now, any talented person with a phone can share their music and find fans. But it's also very hard to stand out, and musicians must spend a lot of time making videos instead of music. [E] For example, a girl from my city posted covers on social media, and one video went viral. Now she has her own songs and tours small venues. But I also know musicians who spend more time filming TikToks than writing songs, and they're frustrated. [C] So social media opens doors, but it also creates new pressure.",
+        model5: "[A] On the whole, yes, although it brings new pressures of its own. [R] Previously, a handful of record labels effectively decided who got heard; now anyone with talent and a phone can build an audience directly. The flip side is fierce competition and the expectation that musicians become full-time content creators. [E] A girl from my city, for instance, posted acoustic covers online, one of which **went viral**; she now releases her own songs and tours small venues across the country. Yet I also know local musicians who complain that they spend more time filming short videos than actually writing music. [C] So social media has democratized fame, but it has also blurred the line between artist and influencer.",
+        f: ["Do you follow any musicians online?", "Would you post your own music?"], lx: ["go viral", "mainstream", "audience"] }
+    ]},
+    { icon: "bulb", title: "Я и творчество", en: "Me & creativity", questions: [
+      { t: "personal", src: "Official 097", q: "Do you consider yourself to be a creative person? Why or why not?", same: "s097-0",
+        f: ["When do you feel most creative?", "Can you be creative at work?"], lx: ["creative", "think outside the box", "a creative outlet"] },
+      { t: "personal", src: "Official 050", q: "Do you engage in any artistic activities such as painting or playing music regularly? If not, which would you like to try?", same: "s050-0",
+        f: ["Who in your family is the most artistic?", "What did you create as a child?"], lx: ["play the guitar", "a creative outlet", "take up"] },
+      { t: "personal", src: "Official 050", q: "What kind of art or music do you enjoy most, and do you experience it through creation or appreciation?", same: "s050-1",
+        f: ["What's the last exhibition you saw?", "Do you prefer art or music?"], lx: ["appreciate", "exhibition", "creation"] },
+      { t: "compare", src: "Official 116", q: "Would you rather create music yourself or listen to music created by others? Why?", same: "s116-1",
+        f: ["Have you ever written a song or poem?", "Is listening a skill?"], lx: ["create", "a work in progress", "appreciate"] },
+      { t: "opinion", src: "Official 050", q: "If you created art or music, would you prefer sharing it publicly or keeping it private? What influences your decision?", same: "s050-2",
+        f: ["How do you react to criticism?", "Would you sell your art?"], lx: ["blow your own trumpet", "get feedback", "audience"] },
+      { t: "opinion", q: "Is creativity something you're born with, or can it be learned?",
+        model: "[A] I think some people are born with more talent, but creativity can definitely be learned. [R] Creativity is like a muscle — the more you practice, the stronger it becomes. People who say they're not creative often just never tried or were told they were bad at it. [E] For example, at school, my teacher said my drawings were terrible, so I stopped drawing. But at university, I took a design course, and with practice and good advice, I became much better and more confident. My guitar playing also improved slowly, not because of talent but because of practice. [C] So talent helps, but practice matters more.",
+        model5: "[A] I believe natural talent varies, but creativity itself can undoubtedly be developed. [R] Creativity behaves much like a muscle: the more it's exercised, the stronger it becomes. Many people who claim they aren't creative have simply never tried, or were discouraged early on. [E] At school, for instance, a teacher told me my drawings were hopeless, so I stopped drawing altogether. Years later, however, a university design course, with patient guidance and plenty of practice, showed me that I could improve considerably. Likewise, my guitar playing has grown not through any special gift but through hundreds of hours of practice. [C] So talent may give some people a head start, but it's practice and encouragement that truly unlock creativity.",
+        f: ["Who is the most creative person you know?", "Do schools kill creativity?"], lx: ["creative", "practice", "talented"] }
+    ]},
+    { icon: "palette", title: "Искусство и чувства", en: "Art & feelings", questions: [
+      { t: "opinion", src: "Official 050", q: "Can art and music communicate emotions and ideas that are difficult to express with words?", same: "s050-3",
+        f: ["What emotion is hardest to put into words?", "Can a painting change your mood?"], lx: ["convey", "put feelings into words", "strike a chord"] },
+      { t: "opinion", src: "Official 097", q: "Can engaging in creative activities improve mental well-being?", same: "s097-2",
+        f: ["Should doctors prescribe art?", "What's your creative way to relax?"], lx: ["self-care", "cope with", "sense of accomplishment"] },
+      { t: "experience", q: "Has a song, painting or film ever changed the way you see something?",
+        model: "[A] Yes, a photography exhibition about refugees changed the way I think about migration. [R] Before, I only heard numbers and arguments on the news. The photos showed real faces and real stories, and that made it personal for me. [E] For example, one photo showed a girl my age doing homework in a tent. Next to it, there was a short text about her dream to become a doctor. I stood there for a long time, and I realized that she was just like me. After that exhibition, I started volunteering with a refugee organization. [C] So art can change opinions better than any article.",
+        model5: "[A] Yes — a photography exhibition about refugees transformed my perspective on migration. [R] Until then, I'd encountered the subject mainly through statistics and political arguments on the news. The photographs, by contrast, showed individual faces and stories, which made the issue suddenly and deeply personal. [E] One image, for instance, showed a girl roughly my age doing her homework by lamplight in a tent, alongside a short caption about her dream of becoming a doctor. I stood in front of it for a long time, struck by how similar her hopes were to mine. Shortly afterwards, I started volunteering with a local refugee support organization. [C] So that exhibition **left a lasting impression** in a way no article ever had.",
+        f: ["Can art change society?", "What film made you think the most?"], lx: ["leave a lasting impression", "convey", "moving"] },
+      { t: "opinion", q: "Some modern art looks very simple — like a single line or a banana taped to a wall. Can anything be art?",
+        model: "[A] I think not everything is art, but art doesn't have to be beautiful or difficult to make. [R] For me, art is about the idea and the feeling it gives people. Some modern art makes people think or argue, and that's also a function of art. But sometimes it feels like a joke for rich collectors. [E] For example, when I saw the famous banana taped to a wall online, I laughed and thought it was ridiculous. But then I realized that everyone was talking about what art is — maybe that was the point. Still, I prefer art that shows skill and emotion. [C] So beauty is in the eye of the beholder.",
+        model5: "[A] I don't think literally anything is art, but I accept that art needn't be beautiful or technically difficult. [R] For me, what matters is the idea behind a work and the response it provokes; sparking debate is arguably one of art's functions. At the same time, some contemporary pieces do feel more like an expensive joke for wealthy collectors. [E] When I first saw the famous banana taped to a gallery wall, for instance, I laughed and dismissed it as absurd. Then I noticed that the whole world was arguing about what counts as art, which was perhaps precisely the point. Personally, though, I'm still drawn to works that combine skill with emotion. [C] So, in the end, **beauty is in the eye of the beholder**.",
+        f: ["What makes something art?", "Would you pay a lot for modern art?"], lx: ["beauty is in the eye of the beholder", "abstract", "speak to sb"] }
+    ]},
+    { icon: "cap", title: "Искусство в школе", en: "Arts in education", questions: [
+      { t: "opinion", src: "Official 097", q: "Is learning about art just as important as learning science or math? Why?", same: "s097-1",
+        f: ["What did art lessons teach you?", "Should art be on the final exams?"], lx: ["well-rounded", "creativity", "appreciate"] },
+      { t: "opinion", src: "Official 097", q: "Will future schools teach more art or less? What factors might influence this?", same: "s097-3",
+        f: ["What would you add to school art lessons?", "Can AI teach art?"], lx: ["budget cuts", "creativity", "artificial intelligence (AI)"] },
+      { t: "opinion", src: "Official 116", q: "Should music be a required part of children's education? Why or why not?", same: "s116-2",
+        f: ["Should every child learn an instrument?", "What music did you learn at school?"], lx: ["instrument", "self-expression", "well-rounded"] },
+      { t: "experience", q: "Did you enjoy art or music lessons at school? Why or why not?",
+        model: "[A] I enjoyed music lessons a lot, but art lessons were difficult for me. [R] In music, we sang and played simple instruments together, and it was fun and relaxed. In art, the teacher gave grades for drawing skills, and I wasn't good at drawing, so I often felt bad. [E] For example, in music class, we prepared a concert for parents every year, and I played the recorder — I still remember how proud I felt. But in art, my teacher once showed my drawing to the class as an example of mistakes. After that, I stopped trying. [C] So the teacher really changed how I felt about each subject.",
+        model5: "[A] I loved music lessons, whereas art lessons were a source of anxiety. [R] Music classes were relaxed and collaborative — we sang and played simple instruments together — while art was graded strictly on drawing skill, which I simply didn't have, so I often felt like a failure. [E] Every year, for instance, our music class put on a concert for parents, and I still remember the pride of playing my recorder solo. In art, by contrast, my teacher once held up my drawing in front of the class as an example of what not to do, and from that day on, I stopped trying altogether. [C] So, in my experience, how a subject is taught matters as much as the subject itself.",
+        f: ["Should art be graded?", "Who was your favorite teacher?"], lx: ["perform in front of an audience", "talented", "creative"] }
+    ]},
+    { icon: "landmark", title: "Музеи, галереи и город", en: "Museums & public art", questions: [
+      { t: "personal", q: "Do you enjoy visiting museums and galleries? Tell me about one you liked.",
+        model: "[A] Yes, I enjoy museums, especially small ones and photography galleries. [R] Big museums are often too crowded and tiring, but small galleries are calm, and I can really look at each work. [E] For example, last month I visited a small photography gallery in my city with an exhibition about life in mountain villages. There were only about forty photos, but each one told a story. I stayed for two hours and even bought a postcard of my favorite photo. In big museums, I usually get tired after one hour. [C] So I love museums, but I prefer small ones.",
+        model5: "[A] I do, though I much prefer small galleries to vast museums. [R] Major museums are often so crowded and overwhelming that I end up rushing past masterpieces, whereas smaller spaces let me slow down and genuinely engage with each work. [E] Last month, for instance, I visited a modest photography gallery in my city showing an exhibition on life in remote mountain villages. There were only around forty photographs, but each told a complete story, and I happily spent two hours there before buying a postcard of my favorite image. In large museums, by contrast, my attention usually fades within an hour. [C] So I love museums, but for me, less is definitely more.",
+        f: ["What's the most famous museum you've visited?", "Are museums boring for young people?"], lx: ["visit a museum", "exhibition", "admire a painting"] },
+      { t: "opinion", q: "Should museums and galleries be free for everyone?",
+        model: "[A] Yes, I think museums should be free, or at least free on some days. [R] Art and history belong to everyone, not only to people with money. Free entry helps students, families and poorer people learn and enjoy culture. But museums need money, so governments or sponsors should support them. [E] For example, many museums in London are free, and I saw people of all ages and backgrounds there when I visited. In my city, the main museum costs twenty dollars, so many students never go. But on free Sundays, it's full of young people. [C] So free entry makes culture open to everyone.",
+        model5: "[A] I believe they should be free, or at the very least offer regular free days. [R] Art and history are part of everyone's heritage, not a privilege for those who can afford a ticket, and free entry encourages students, families and lower-income visitors to engage with culture. Museums do need funding, of course, but that can come from governments, donors and sponsors. [E] Many of London's major museums, for instance, are free, and when I visited, I was struck by how diverse the visitors were. In my city, by contrast, the main museum charges twenty dollars, and most students I know have never been — except on its monthly free Sunday, when it's packed with young people. [C] So free access genuinely opens culture up to everyone.",
+        f: ["Would you donate to a museum?", "Should tourists pay more?"], lx: ["visit a museum", "appreciate art", "access"] },
+      { t: "opinion", q: "Should governments spend public money on the arts?",
+        model: "[A] Yes, I think governments should spend some public money on the arts. [R] Art makes cities more interesting, keeps culture alive and gives young artists a chance. Without support, only commercial art that sells easily would survive. But it shouldn't be more important than hospitals or schools. [E] For example, my city gives small grants to young musicians and painters, and thanks to that, we have free concerts in parks every summer. My friend got a grant for her first exhibition, which she couldn't pay for herself. [C] So a reasonable amount of public money for art is a good investment.",
+        model5: "[A] I believe they should, within reasonable limits. [R] Public arts funding keeps cultural traditions alive, enriches city life and gives emerging artists a chance that the commercial market rarely offers; without it, only the most marketable art would survive. Naturally, though, it shouldn't come at the expense of healthcare or education. [E] My city, for instance, awards small grants to young musicians and painters, which is why we enjoy free open-air concerts in the parks every summer. A friend of mine received one such grant to stage her very first exhibition, something she could never have funded herself. [C] So modest public investment in the arts pays back far more than it costs, in culture, community and opportunity.",
+        f: ["Which art deserves funding?", "Should famous artists pay more tax?"], lx: ["support local artists", "niche", "community"] },
+      { t: "opinion", q: "Is street art and graffiti a form of art or vandalism?",
+        model: "[A] I think it depends — some graffiti is real art, and some is just vandalism. [R] When artists paint beautiful murals with permission, they make the city more colorful and interesting. But writing names or tags on buildings without permission damages other people's property. [E] For example, in my city, there's a street where artists painted huge murals about the history of the neighborhood, and now tourists come to take photos. But my grandmother's building is often covered with ugly tags, and she has to pay to clean them. [C] So permission and quality make the difference.",
+        model5: "[A] It can be either, depending largely on permission and intention. [R] Commissioned murals can transform dull neighborhoods into vibrant open-air galleries, whereas tags scrawled on private buildings without consent are simply damage that someone else has to pay for. [E] In my city, for instance, one formerly run-down street is now lined with enormous murals depicting the neighborhood's history, and it's become a genuine tourist attraction. My grandmother's apartment block, on the other hand, is regularly covered in meaningless tags, and residents have to pay repeatedly to have them removed. [C] So street art can be a powerful form of public art, but only when it respects the community it appears in.",
+        f: ["Should cities give walls to street artists?", "What's the best street art you've seen?"], lx: ["self-expression", "beauty is in the eye of the beholder", "community"] }
+    ]},
+    { icon: "globe", title: "Искусство, культура и традиции", en: "Art, culture & tradition", questions: [
+      { t: "opinion", src: "Official 095 · Cultural Festivals", q: "Some people think cultural festivals are mainly just for fun, while others think they serve an important purpose, like helping to keep traditions alive. What do you think?",
+        model: "[A] I think cultural festivals are fun, but they also have an important purpose. [R] They help people, especially young people, learn about traditional music, dance, food and crafts. Without festivals, many traditions would slowly disappear. [E] For example, in my region, there's a summer folk festival where people dance traditional dances and play old instruments. As a child, I thought it was boring, but last year I went with friends and we learned a traditional dance. It was really fun, and I felt connected to my roots. [C] So festivals mix fun and tradition in a good way.",
+        model5: "[A] I'd say the fun is precisely what allows them to serve a deeper purpose. [R] Festivals make traditional music, dance, food and crafts enjoyable and accessible, particularly for young people who might otherwise ignore them, so they play a genuine role in keeping heritage alive. [E] My region, for instance, hosts a summer folk festival featuring traditional dances and centuries-old instruments. As a child, I found it painfully old-fashioned, but last year I went with friends, joined a dance workshop and, to my surprise, loved every minute; for the first time, I felt genuinely connected to my roots. [C] So festivals aren't just entertainment; they're how traditions survive from one generation to the next.",
+        f: ["What festival is unique to your region?", "Do young people care about traditions?"], lx: ["traditional", "evoke", "community"] },
+      { t: "opinion", q: "Do young people in your country still care about traditional music and art?",
+        model: "[A] I think most young people prefer modern music, but interest in traditional music is slowly coming back. [R] Many young people think traditional music is old-fashioned. But some modern artists mix traditional sounds with pop or electronic music, and that makes young people curious. [E] For example, a popular band in my country mixes folk melodies with electronic beats, and their concerts are full of teenagers. My cousin started learning a traditional instrument after hearing them. But most of my friends still only listen to international pop. [C] So traditional music isn't dead — it's changing.",
+        model5: "[A] Most young people gravitate towards international pop, although traditional music is enjoying a quiet revival. [R] Many still dismiss folk traditions as old-fashioned, yet a new wave of artists blending traditional sounds with modern genres is making them feel fresh and relevant again. [E] One of the most popular bands in my country, for instance, fuses folk melodies with electronic beats, and their concerts are packed with teenagers. My cousin was so inspired after seeing them that she started learning a traditional instrument. Most of my friends, admittedly, still listen almost exclusively to **mainstream** international music. [C] So traditional art isn't dying; it's evolving into something new.",
+        f: ["What's a traditional instrument from your country?", "Can tradition and pop mix?"], lx: ["mainstream", "nostalgic", "evoke"] },
+      { t: "opinion", q: "Should famous artworks taken from other countries in the past be returned to their countries of origin?",
+        model: "[A] I think many of these artworks should be returned, especially if they were taken by force. [R] These objects are part of a country's history and identity, and people there should be able to see them. But it's a complicated question, because some museums protect the objects well and many people can see them there. [E] For example, I read that some European museums have started returning ancient objects to African countries, and people there celebrated it as a return of their heritage. On the other hand, some museums say the objects are safer with them. [C] So I think returning them is fair, if the countries can care for them properly.",
+        model5: "[A] In many cases, I believe they should, particularly where objects were taken through force or colonial exploitation. [R] Such artworks are integral to a nation's history and identity, and it seems unjust that its own people must travel abroad to see them. The issue is admittedly complex, since some museums argue they preserve the objects well and make them accessible to millions of visitors. [E] Several European museums, for instance, have recently returned ancient artifacts to African countries, where their homecoming was celebrated as the restoration of lost heritage. [C] So, on balance, I think returning them is the fair thing to do, ideally through cooperation that ensures the works are properly cared for.",
+        f: ["Who should decide?", "Can digital copies be a solution?"], lx: ["masterpiece", "heritage", "appreciate"] }
+    ]},
+    { icon: "sparkles", title: "Представь, что…", en: "What if…?", questions: [
+      { t: "hypo", q: "If you could meet any musician or artist from history, who would it be and what would you ask?",
+        model: "[A] I would like to meet Vincent van Gogh. [R] His paintings are full of emotion and color, and his life was very difficult — he sold almost nothing while he was alive. I'd like to understand how he kept painting. [E] For example, I would ask him what he was feeling when he painted \"The Starry Night\", and why he continued to paint when nobody believed in him. I'd also love to tell him that today millions of people love his work and visit museums just to see it. [C] So meeting him would be very emotional for me.",
+        model5: "[A] I'd choose Vincent van Gogh. [R] His paintings burst with color and emotion, yet his life was marked by poverty, illness and almost total lack of recognition; he famously sold barely any work during his lifetime. I'd love to understand what kept him painting regardless. [E] I'd ask him, for instance, what he was feeling the night he painted \"The Starry Night\", and where he found the determination to continue when almost nobody believed in him. Above all, I'd want to tell him that his paintings now move millions of people around the world, which feels like the one thing he deserved to hear. [C] So it would be less an interview than an act of gratitude.",
+        f: ["What would you ask your favorite living artist?", "Would you like to be famous after death?"], lx: ["masterpiece", "convey", "moving"] },
+      { t: "hypo", q: "If you could have any famous painting in your home, which would you choose?",
+        model: "[A] I would choose a painting by Claude Monet with water lilies. [R] It's calm and full of soft colors, and looking at it feels like relaxing in a garden. I think it would make my home peaceful. [E] For example, I imagine hanging it in my living room, and after a stressful day, I would sit in front of it with a cup of tea. I saw one of these paintings in a museum once, and I didn't want to leave the room. [C] So it would be my own little place of calm.",
+        model5: "[A] I'd choose one of Claude Monet's water lily paintings. [R] Their soft colors and shimmering light create an extraordinary sense of calm, so living with one would feel like having a window onto a peaceful garden. [E] I picture it in my living room, for instance, where I could sit in front of it with a cup of tea after a stressful day and simply let my mind drift. When I saw one of these paintings in a museum years ago, I remember lingering long after my friends had moved on, reluctant to leave the room. [C] So for me, it wouldn't be a status symbol but a daily source of tranquility.",
+        f: ["What art do you have at home?", "Would you rather have the original or travel to see it?"], lx: ["admire a painting", "masterpiece", "speak to sb"] },
+      { t: "hypo", q: "If your life had a soundtrack, what kind of music would be on it?",
+        model: "[A] My life's soundtrack would be a mix of indie rock, film music and a little jazz. [R] Each type of music represents a different part of my life — my friends, my dreams and my family. [E] For example, indie rock would be for my years at university with friends, hiking trips and concerts. Film music would play during big moments, like moving to a new city or running my first half marathon. And old jazz would be for Sunday mornings with my dad. [C] So my soundtrack would be a bit chaotic, but full of good memories.",
+        model5: "[A] My life's soundtrack would be an eclectic mix of indie rock, epic film scores and a touch of old jazz. [R] Each genre represents a different side of my life: friendships, ambitions and family. [E] Indie rock, for instance, would accompany my university years — late-night conversations, hiking trips and sweaty club gigs. Sweeping orchestral music would swell during the big moments, such as arriving alone in a new city or crossing the finish line of my first half marathon. And crackly jazz records would play over quiet Sunday mornings at home with my dad. [C] So it would be a rather chaotic album, but one where every track **brings back** a meaningful **memory**.",
+        f: ["What song would play at your wedding?", "What song describes your year?"], lx: ["bring back memories", "evoke", "genre"] },
+      { t: "hypo", q: "Imagine you suddenly became a famous musician. How would your life change?",
+        model: "[A] If I became a famous musician, my life would become more exciting, but also more stressful. [R] I could travel the world, play for big audiences and do what I love every day. But I would lose my privacy and have less time for family and friends. [E] For example, I imagine playing at a festival like Glastonbury and hearing thousands of people singing my songs — that would be incredible. But I'd also hate it when people took photos of me in the supermarket or wrote bad things online. I'd try to keep my old friends close. [C] So fame would be a dream with a price.",
+        model5: "[A] My life would become far more exciting, but undoubtedly more stressful as well. [R] I'd get to travel the world and play for huge audiences every night, doing what I love; the trade-off, however, would be losing my privacy and much of my time with family and friends. [E] I imagine, for instance, standing on a festival stage hearing thousands of strangers sing my lyrics back to me, which would be utterly surreal. Yet I'd hate being photographed in the supermarket or reading cruel comments about myself online. I'd make a point of keeping my old friends close, since they'd remind me who I was before the fame. [C] So becoming famous would be a dream, but one with a considerable price tag.",
+        f: ["Would you want to be famous?", "What's the hardest part of being famous?"], lx: ["perform in front of an audience", "audience", "privacy"] }
+    ]}
+  ],
+
+  checklist: [
+    "Ответил(а) на вопрос прямо в первом предложении",
+    "Описал(а) впечатление точнее, чем «beautiful»: moving, catchy, gave me goosebumps…",
+    "Вставил(а) одну идиому — естественно, а не «для галочки»",
+    "Привёл(а) конкретный пример: песня, концерт, выставка, урок",
+    "Без ошибок: listen TO, play THE piano, a talent FOR",
+    "Уложился(ась) в 45 секунд без длинных пауз"
+  ],
+
+  targetLexis: ["listen to music", "play the guitar", "go to a concert", "live music", "lyrics", "catchy", "genre", "bring back memories", "give me goosebumps", "move me to tears", "strike a chord", "express myself", "draw inspiration from", "a talent for", "appreciate art", "visit a museum", "exhibition", "self-expression", "convey", "evoke", "a work in progress", "beauty is in the eye of the beholder", "that said"]
+};
+
+/* =====================================================================
+   ИЛЛЮСТРАЦИИ (SVG)
+   ===================================================================== */
+const HERO_ART = `
+<svg viewBox="0 0 320 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Мольберт с картиной, палитра, ноты и наушники">
+  <ellipse cx="165" cy="230" rx="128" ry="10" fill="rgba(0,0,0,.22)"/>
+  <path d="M70 226 l34 -150 M170 226 l-34 -150 M120 76 v150" stroke="#92400e" stroke-width="7" stroke-linecap="round"/>
+  <rect x="62" y="70" width="116" height="96" rx="4" fill="#fff" stroke="#92400e" stroke-width="5"/>
+  <rect x="70" y="78" width="100" height="80" fill="#e0f2fe"/>
+  <circle cx="146" cy="98" r="11" fill="#fde68a"/><path d="M70 158 l28 -34 l20 20 l16 -16 l36 30z" fill="#8b5cf6"/><path d="M70 158 l18 -14 l22 14z" fill="#a78bfa"/>
+  <rect x="66" y="164" width="108" height="8" rx="2" fill="#78350f"/>
+  <g transform="translate(196 150) rotate(-12)">
+    <path d="M0 30 c0 -22 26 -36 54 -32 c30 4 40 26 30 40 c-8 10 -22 4 -26 14 c-4 10 6 16 -6 22 c-24 10 -52 -14 -52 -44z" fill="#fde68a"/>
+    <circle cx="22" cy="18" r="7" fill="#ec4899"/><circle cx="42" cy="10" r="7" fill="#0ea5e9"/><circle cx="62" cy="16" r="7" fill="#8b5cf6"/><circle cx="20" cy="40" r="7" fill="#f97316"/>
+    <ellipse cx="46" cy="40" rx="6" ry="5" fill="#fff"/>
+  </g>
+  <g class="tl-coin">
+    <path d="M232 28 v40 M268 22 v40" stroke="#fff" stroke-width="5" stroke-linecap="round"/><path d="M232 28 l36 -6 v10 l-36 6z" fill="#fff"/>
+    <ellipse cx="224" cy="70" rx="10" ry="8" fill="#fff"/><ellipse cx="260" cy="64" rx="10" ry="8" fill="#fff"/>
+  </g>
+  <path d="M30 70 a26 26 0 0 1 52 0" stroke="#f472b6" stroke-width="6" fill="none"/>
+  <rect x="24" y="66" width="14" height="22" rx="5" fill="#ec4899"/><rect x="74" y="66" width="14" height="22" rx="5" fill="#ec4899"/>
+  <path d="M290 110 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3 z" fill="#a5f3fc"/>
+  <path d="M24 150 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3 z" fill="#fbcfe8"/>
+</svg>`;
+
+/* Мини-иллюстрации к идиомам (160×96). Классы a-* анимируются при наведении. */
+const NOTE = (x, y, c) => `<path d="M${x} ${y} v-22 l14 -4 v22" stroke="${c}" stroke-width="3" fill="none"/><ellipse cx="${x - 4}" cy="${y}" rx="5" ry="4" fill="${c}"/><ellipse cx="${x + 10}" cy="${y - 4}" rx="5" ry="4" fill="${c}"/>`;
+const IDIOM_ART = {
+  ears: `<circle cx="104" cy="50" r="26" fill="#fde68a"/><path d="M80 44 c-12 -6 -14 16 -2 16" fill="#fcd34d"/><circle cx="112" cy="46" r="3" fill="#0f172a"/><path d="M104 60 q8 6 16 0" stroke="#0f172a" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+         <g class="a-r">${NOTE(36, 52, "#8b5cf6")}${NOTE(56, 34, "#ec4899")}</g>`,
+  chord: `<rect x="20" y="36" width="120" height="30" rx="4" fill="#78350f"/>
+         <g class="a-belt"><path d="M20 42 h120 M20 48 h120 M20 54 h120 M20 60 h120" stroke="#fde68a" stroke-width="1.5"/></g>
+         <path d="M80 30 c10 -12 26 -4 24 8 c-2 12 -14 18 -24 26 c-10 -8 -22 -14 -24 -26 c-2 -12 14 -20 24 -8z" fill="#ec4899" opacity=".9"/>
+         <path d="M60 80 q20 10 40 0" stroke="#f9a8d4" stroke-width="3" fill="none" stroke-linecap="round"/>`,
+  show: `<path d="M10 90 h140" stroke="#334155" stroke-width="6"/><path d="M14 10 v80 M146 10 v80" stroke="#be123c" stroke-width="10"/>
+         <path d="M80 8 l-40 80 h80z" fill="#fef3c7" opacity=".8"/>
+         <g class="a-up"><circle cx="80" cy="44" r="8" fill="#fde68a"/><path d="M80 52 v18 M80 58 l-12 -10 M80 58 l12 -10 M80 70 l-8 14 M80 70 l8 14" stroke="#8b5cf6" stroke-width="4" stroke-linecap="round"/></g>
+         <path d="M64 22 l3 6 l6 2 l-6 2 l-3 6 l-3 -6 l-6 -2 l6 -2z M100 18 l3 6 l6 2 l-6 2 l-3 6 l-3 -6 l-6 -2 l6 -2z" fill="#f59e0b"/>`,
+  bell: `<g class="a-tag" style="transform-origin:80px 16px"><path d="M80 16 c-18 0 -26 14 -26 32 v14 l-8 10 h68 l-8 -10 v-14 c0 -18 -8 -32 -26 -32z" fill="#fbbf24"/>
+         <circle cx="80" cy="78" r="6" fill="#d97706"/><rect x="76" y="8" width="8" height="10" rx="3" fill="#d97706"/></g>
+         <path d="M40 40 q-6 10 0 20 M120 40 q6 10 0 20 M30 34 q-10 16 0 32 M130 34 q10 16 0 32" stroke="#fcd34d" stroke-width="3" fill="none" stroke-linecap="round"/>`,
+  trumpet: `<g class="a-r"><path d="M20 50 h70 l40 -24 v48 l-40 -24z" fill="#fbbf24" stroke="#d97706" stroke-width="2"/>
+         <rect x="44" y="38" width="6" height="12" rx="2" fill="#d97706"/><rect x="56" y="38" width="6" height="12" rx="2" fill="#d97706"/><rect x="68" y="38" width="6" height="12" rx="2" fill="#d97706"/></g>
+         <text x="140" y="24" font-family="system-ui" font-size="14" font-weight="800" fill="#ec4899">ME!</text>
+         <path d="M136 40 l12 -4 M138 52 h12 M136 64 l12 4" stroke="#f9a8d4" stroke-width="3" stroke-linecap="round"/>`,
+  beholder: `<rect x="20" y="20" width="56" height="52" rx="3" fill="#fff" stroke="#94a3b8" stroke-width="3"/>
+         <path d="M30 60 l10 -20 l10 14 l8 -8 l10 14z" fill="#8b5cf6"/><circle cx="62" cy="32" r="5" fill="#fbbf24"/>
+         <g class="a-beam"><path d="M96 46 q20 -20 40 0 q-20 20 -40 0z" fill="#fff" stroke="#334155" stroke-width="2.5"/><circle cx="116" cy="46" r="8" fill="#ec4899"/><circle cx="116" cy="46" r="3.5" fill="#0f172a"/></g>
+         <path d="M84 46 h8" stroke="#cbd5e1" stroke-width="3" stroke-dasharray="2 3"/>
+         <path d="M110 76 c4 -6 12 -6 12 0 c0 4 -6 8 -6 8 s-6 -4 -6 -8z" fill="#f472b6"/>`,
+  progress: `<rect x="34" y="20" width="70" height="60" rx="3" fill="#fff" stroke="#94a3b8" stroke-width="3"/>
+         <path d="M44 66 l14 -22 l10 12 l10 -8" stroke="#0ea5e9" stroke-width="4" fill="none" stroke-linecap="round"/>
+         <path d="M80 34 h16 M80 42 h10" stroke="#e2e8f0" stroke-width="3" stroke-dasharray="3 3"/>
+         <g class="a-tag" style="transform-origin:122px 70px"><rect x="116" y="20" width="8" height="50" rx="3" fill="#a16207" transform="rotate(25 120 45)"/><path d="M128 66 l6 14 l-10 -6z" fill="#ec4899"/></g>
+         <rect x="34" y="84" width="70" height="6" rx="3" fill="#e2e8f0"/><rect x="34" y="84" width="40" height="6" rx="3" fill="#8b5cf6"/>`,
+  blank: `<rect x="40" y="16" width="56" height="70" rx="4" fill="#fff" stroke="#94a3b8" stroke-width="2.5"/>
+         <path d="M50 30 h36" stroke="#e2e8f0" stroke-width="3"/>
+         <g class="a-no"><circle cx="122" cy="40" r="16" fill="#fde68a"/><circle cx="116" cy="38" r="2" fill="#0f172a"/><circle cx="128" cy="38" r="2" fill="#0f172a"/><path d="M116 48 h12" stroke="#0f172a" stroke-width="2.5" stroke-linecap="round"/></g>
+         <text x="122" y="18" text-anchor="middle" font-family="system-ui" font-size="14" font-weight="800" fill="#94a3b8">…</text>
+         <path d="M100 74 l20 -14" stroke="#a16207" stroke-width="4" stroke-linecap="round"/>`,
+  picture: `<rect x="24" y="20" width="60" height="50" rx="3" fill="#fde68a" stroke="#d97706" stroke-width="4"/>
+         <path d="M30 62 l14 -18 l10 12 l8 -6 l18 12z" fill="#ec4899"/><circle cx="70" cy="32" r="5" fill="#fff"/>
+         <text x="114" y="40" text-anchor="middle" font-family="system-ui" font-size="14" font-weight="800" fill="#334155">= 1000</text>
+         <g class="a-drop"><path d="M96 52 h40 M96 60 h34 M96 68 h38 M96 76 h28" stroke="#94a3b8" stroke-width="3" stroke-linecap="round"/></g>`
+};
+</script>
+<script src="topic-engine.js"></script>
+</body>
+</html>

@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nature & Ecology — Speaking Topics — TOEFL Prep</title>
+
+<!-- Те же подключения, что на остальных страницах платформы -->
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="auth.js"></script>
+<script src="topics.js"></script>
+
+<link rel="stylesheet" href="topic-engine.css">
+</head>
+<body>
+<div class="tl-layout flex flex-col md:flex-row min-h-screen">
+  <div id="app-sidebar"></div>
+  <script src="nav.js"></script>
+
+  <main class="tl-main">
+    <div class="tl-wrap" id="lesson"></div>
+  </main>
+</div>
+
+<!-- Панель ответа -->
+<div class="tl-dock" id="dock" aria-live="polite">
+  <div class="tl-dock-top"><span id="dockLabel">Ответ</span><button class="tl-dock-close" id="dockClose" aria-label="Закрыть">✕</button></div>
+  <div class="tl-dock-q" id="dockQ"></div>
+  <div class="tl-dock-status">
+    <div class="tl-dock-state"><span class="tl-rec-dot" id="recDot"></span><span id="dockState">Готово</span></div>
+    <div class="tl-dock-time" id="dockTime">0:45</div>
+  </div>
+  <div class="tl-phase" id="dockPhase"></div>
+  <div class="tl-dock-bar" id="dockBar"></div>
+  <div class="tl-dock-ctrl">
+    <label><input type="checkbox" id="recToggle"> Записывать голос</label>
+    <div class="tl-row">
+      <button class="tl-dock-btn" id="dockShowQ">Показать текст</button>
+      <button class="tl-dock-btn" id="dockStop">Стоп</button>
+    </div>
+  </div>
+  <div class="tl-dock-msg" id="dockMsg"></div>
+  <div class="tl-dock-out" id="dockOut"></div>
+</div>
+
+<script>
+/* =====================================================================
+   КОНТЕНТ УРОКА: NATURE & ECOLOGY
+   Новая тема = копия файла: меняются LESSON, HERO_ART и IDIOM_ART.
+   Общий движок и стили — topic-engine.js и topic-engine.css.
+   **слово** — подсветка целевой лексики.
+   _слово_ в коллокациях — «ключевой кубик».
+   [A] [R] [E] [C] в модельных ответах — цветная структура:
+   A = прямой ответ, R = причина, E = пример, C = вывод.
+   ===================================================================== */
+const LESSON = {
+  slug: "nature",
+  titleEn: "Nature & Ecology",
+  titleRu: "Природа и экология",
+  category: "Общество и природа",
+  intro: "Природа и отдых на улице, городские парки, погода и настроение, экопривычки и переработка мусора, изменение климата — кто должен решать проблему: каждый из нас или государство. Учим говорить об экологии конкретно и без лозунгов и проходим все вопросы по теме из базы.",
+  meta: [["≈ 60", "минут"], ["27", "слов · 2 уровня"], ["20", "коллокаций"], ["9", "идиом"], ["{Q}", "вопросов для обсуждения"]],
+
+  frames: {
+    warmup:    { icon: "flame",      time: "3 мин",  steps: ["Нажми динамик или прочитай вопрос", "Ответь вслух за 20 секунд", "Без подсказок — это «до урока»"] },
+    vocab:     { icon: "book",       time: "10 мин", steps: ["Посмотри на схему: мы и природа", "Найди себя на шкале", "Слова: начни с Core, слушай и повторяй"] },
+    coll:      { icon: "link",       time: "8 мин",  steps: ["Учи сочетание целиком", "Цветной кубик — то, что чаще путают", "Опиши свой эко-день с 5 сочетаниями"] },
+    idioms:    { icon: "quote",      time: "6 мин",  steps: ["Посмотри картинку — запомни образ", "Плашка «Можно» — смело в ответы", "Выбери 2 идиомы на сегодня"] },
+    expr:      { icon: "megaphone",  time: "5 мин",  steps: ["Послушай интонацию", "По 1 фразе из каждой группы", "Запомни шкалу 45 секунд"] },
+    check:     { icon: "puzzle",     time: "10 мин", steps: ["4 мини-игры", "Цель — 100% в Matching и Gap-fill", "Карточки — пока не узнаёшь все"] },
+    repeat:    { icon: "headphones", time: "5 мин",  steps: ["Слушай, не читая", "Повтори слово в слово", "Включи запись и сравни"] },
+    interview: { icon: "mic",        time: "15 мин", steps: ["Выбери сет — начни с Official", "Пройди все вопросы подряд, без пауз", "Сравни с моделью: цвета = структура"] },
+    club:      { icon: "chat",       time: "30+ мин", steps: ["Возьми 1–2 блока на занятие", "Ответь, потом — на «Копнём глубже»", "Отметь «Обсудили» или крути рулетку"] },
+    self:      { icon: "checkCircle",time: "3 мин",  steps: ["Прослушай свои записи", "Отметь, что получилось", "Цель — 15+ отмеченных слов"] }
+  },
+
+  warmup: [
+    "When did you last spend a whole day outdoors?",
+    "What's your favorite kind of weather?",
+    "What's one thing you do to help the environment?",
+    "Is there a park you love in your city?"
+  ],
+
+  /* Мы и природа: равные ветки, вместо процента — tag */
+  flow: {
+    icon: "globe",
+    title: "Мы и природа",
+    source: { kicker: "Всё начинается с…", title: "Nature", ru: "природа", words: ["the outdoors", "the environment", "the planet"] },
+    branches: [
+      { title: "Enjoy", ru: "наслаждаться", sub: "get outside", tag: "Отдых", color: "#0ea5e9", words: ["fresh air", "scenery", "green spaces", "hiking trails"] },
+      { title: "Protect", ru: "беречь", sub: "reduce your impact", tag: "Привычки", color: "#8b5cf6", words: ["recycle", "reduce waste", "reusable", "save energy"] },
+      { title: "Adapt", ru: "приспосабливаться", sub: "face the change", tag: "Климат", color: "#f97316", words: ["climate change", "heatwave", "extreme weather", "renewable energy"] }
+    ],
+    notes: [
+      "Почти любой ответ этой темы — про баланс: <b>природа нам помогает, а мы должны её беречь</b> — и личные привычки, и решения государства",
+      "Готовая фраза: <i>Individual habits matter, but real change needs both people and governments to do their part.</i>"
+    ]
+  },
+
+  scale: {
+    title: "Насколько ты эко? Перетащи кружок туда, где ты",
+    left: "NEVER THINK ABOUT IT", right: "ECO-WARRIOR",
+    words: [
+      { w: "never think about it", p: 4 }, { w: "recycle when it's easy", p: 17 }, { w: "carry a reusable bottle", p: 30 }, { w: "cut down on plastic", p: 44 },
+      { w: "walk or cycle", p: 58 }, { w: "eat less meat", p: 71 }, { w: "join cleanups", p: 85 }, { w: "eco-warrior", p: 97 }
+    ],
+    says: [
+      { max: 25,  t: "Honestly, I **recycle when it's easy**, but I don't think about it much." },
+      { max: 50,  t: "I **carry a reusable bottle** and try to **cut down on plastic**." },
+      { max: 75,  t: "I **walk or cycle** most places, and I **eat less meat** than before." },
+      { max: 101, t: "I'm a bit of an **eco-warrior** — I even **join cleanups** on weekends." }
+    ]
+  },
+
+  vocab: [
+    { en: "the outdoors", pos: "n", ru: "природа, свежий воздух (вне дома)", ex: "I spend as much time in the outdoors as I can.", level: "core" },
+    { en: "scenery", pos: "n", ru: "пейзаж, виды", ex: "The scenery in the mountains was breathtaking.", level: "core" },
+    { en: "wildlife", pos: "n", ru: "дикая природа, животные", ex: "We saw a lot of wildlife on the trail.", level: "core" },
+    { en: "fresh air", pos: "n", ru: "свежий воздух", ex: "A walk in the fresh air clears my head.", level: "core" },
+    { en: "hiking trail", pos: "n", ru: "пешеходная тропа", ex: "The hiking trail goes along the river.", level: "core" },
+    { en: "green space", pos: "n", ru: "зелёная зона (парки, скверы)", ex: "Cities need more green spaces.", level: "core" },
+    { en: "pollution", pos: "n", ru: "загрязнение", ex: "Air pollution is a big problem in my city.", level: "core" },
+    { en: "recycle", pos: "v", ru: "перерабатывать, сдавать в переработку", ex: "We recycle paper, plastic and glass.", level: "core" },
+    { en: "waste", pos: "n", ru: "отходы, мусор; трата", ex: "Our family produces a lot of food waste.", level: "core" },
+    { en: "plastic", pos: "n / adj", ru: "пластик; пластиковый", ex: "I try not to buy water in plastic bottles.", level: "core" },
+    { en: "reusable", pos: "adj", ru: "многоразовый", ex: "I always carry a reusable bag.", level: "core" },
+    { en: "energy", pos: "n", ru: "энергия, электричество", ex: "We turn off the lights to save energy.", level: "core" },
+    { en: "climate change", pos: "n", ru: "изменение климата", ex: "Climate change affects everyone.", level: "core" },
+    { en: "heatwave", pos: "n", ru: "аномальная жара", ex: "Last summer's heatwave lasted three weeks.", level: "core" },
+    { en: "environmentally friendly", pos: "adj", ru: "экологичный", ex: "Cycling is an environmentally friendly way to travel.", level: "core" },
+
+    { en: "biodiversity", pos: "n", ru: "биоразнообразие", ex: "Parks help protect biodiversity in cities.", level: "adv" },
+    { en: "sustainable", pos: "adj", ru: "устойчивый, экологичный (надолго)", ex: "We need a more sustainable way of living.", level: "adv" },
+    { en: "carbon footprint", pos: "n", ru: "углеродный след", ex: "Flying less reduces your carbon footprint.", level: "adv" },
+    { en: "renewable energy", pos: "n", ru: "возобновляемая энергия", ex: "The country is investing in renewable energy.", level: "adv" },
+    { en: "conservation", pos: "n", ru: "охрана природы, сбережение", ex: "Water conservation matters in hot regions.", level: "adv" },
+    { en: "landfill", pos: "n", ru: "свалка, полигон отходов", ex: "Most plastic still ends up in landfills.", level: "adv" },
+    { en: "single-use", pos: "adj", ru: "одноразовый", ex: "Many cafés have banned single-use cups.", level: "adv" },
+    { en: "deforestation", pos: "n", ru: "вырубка лесов", ex: "Deforestation destroys animal habitats.", level: "adv" },
+    { en: "extreme weather", pos: "n", ru: "экстремальные погодные явления", ex: "Extreme weather is becoming more common.", level: "adv" },
+    { en: "urban sprawl", pos: "n", ru: "разрастание городов", ex: "Urban sprawl is eating up farmland.", level: "adv" },
+    { en: "mandatory", pos: "adj", ru: "обязательный", ex: "Recycling should be mandatory for businesses.", level: "adv" },
+    { en: "hold accountable", pos: "phr", ru: "призвать к ответственности", ex: "Companies must be held accountable for pollution.", level: "adv" }
+  ],
+
+  collocations: [
+    { icon: "leaf", group: "Природа", items: [
+      { en: "_spend time_ outdoors", ru: "проводить время на природе", ex: "I try to spend time outdoors every weekend." },
+      { en: "_go_ hiking", ru: "ходить в поход (без «to»!)", ex: "We go hiking in the mountains twice a year." },
+      { en: "_enjoy_ the scenery", ru: "любоваться видами", ex: "We stopped to enjoy the scenery." },
+      { en: "_get some_ fresh air", ru: "подышать свежим воздухом", ex: "Let's go out and get some fresh air." },
+      { en: "_connect with_ nature", ru: "почувствовать связь с природой", ex: "Camping helps me connect with nature." }
+    ]},
+    { icon: "undo", group: "Экопривычки", items: [
+      { en: "_sort_ the rubbish", ru: "сортировать мусор", ex: "We sort the rubbish into four bins." },
+      { en: "_reduce_ waste", ru: "сокращать отходы", ex: "Buying in bulk helps reduce waste." },
+      { en: "_cut down on_ plastic", ru: "сократить пластик", ex: "I'm trying to cut down on plastic." },
+      { en: "_save_ energy", ru: "экономить электроэнергию", ex: "We save energy by turning off devices." },
+      { en: "_carry_ a reusable bottle", ru: "носить многоразовую бутылку", ex: "I carry a reusable bottle everywhere." }
+    ]},
+    { icon: "sun", group: "Погода", items: [
+      { en: "the weather _affects_ my mood", ru: "погода влияет на настроение", ex: "Gray weather really affects my mood." },
+      { en: "_heavy_ rain", ru: "сильный дождь (не strong!)", ex: "Heavy rain flooded the streets." },
+      { en: "a heatwave _hits_", ru: "наступает жара", ex: "When a heatwave hits, I stay indoors." },
+      { en: "the temperature _drops_", ru: "температура падает", ex: "At night, the temperature drops below zero." },
+      { en: "_be stuck_ indoors", ru: "сидеть взаперти дома", ex: "We were stuck indoors all weekend because of the storm." }
+    ]},
+    { icon: "globe", group: "Климат", items: [
+      { en: "_reduce_ carbon emissions", ru: "сокращать выбросы", ex: "Cities must reduce carbon emissions." },
+      { en: "_switch to_ renewable energy", ru: "перейти на возобновляемую энергию", ex: "Our university switched to solar power." },
+      { en: "_protect_ the environment", ru: "защищать окружающую среду", ex: "Everyone can help protect the environment." },
+      { en: "_raise awareness_ of", ru: "привлекать внимание к", ex: "The campaign raised awareness of plastic pollution." },
+      { en: "_take action_ on climate change", ru: "действовать против изменения климата", ex: "Governments must take action on climate change." }
+    ]}
+  ],
+
+  idioms: [
+    { art: "air", lit: "буквально: «глоток свежего воздуха»", en: "a breath of fresh air", ru: "глоток свежего воздуха, что-то новое и приятное", meaning: "что-то освежающее, приятная перемена", ex: "After a week of exams, the hike was a breath of fresh air.", reg: "ok", note: "Идеально для вопросов «how do you feel outdoors»." },
+    { art: "track", lit: "буквально: «вне протоптанной тропы»", en: "off the beaten track", ru: "в стороне от туристических маршрутов", meaning: "в тихом, малоизвестном месте", ex: "We found a lake off the beaten track.", reg: "ok", note: "Красиво для рассказа о походе или поездке." },
+    { art: "park", lit: "буквально: «прогулка в парке»", en: "a walk in the park", ru: "проще простого", meaning: "очень легко", ex: "Recycling here isn't a walk in the park — the rules are confusing.", reg: "ok", note: "Чаще всего в отрицании: «it's no walk in the park»." },
+    { art: "rain", lit: "буквально: «дождь или солнце»", en: "come rain or shine", ru: "в любую погоду, несмотря ни на что", meaning: "всегда, при любых условиях", ex: "I go running, come rain or shine.", reg: "ok", note: "Сразу показывает характер и привычку." },
+    { art: "storm", lit: "буквально: «пережить шторм»", en: "weather the storm", ru: "пережить трудные времена", meaning: "справиться с тяжёлой ситуацией", ex: "Coastal towns have to learn to weather the storm.", reg: "ok", note: "Подходит для вопросов о климате и трудностях." },
+    { art: "drop", lit: "буквально: «капля в океане»", en: "a drop in the ocean", ru: "капля в море", meaning: "слишком мало, чтобы что-то изменить", ex: "One person recycling feels like a drop in the ocean.", reg: "ok", note: "Ключевая идиома для вопроса «do individual actions matter»." },
+    { art: "iceberg", lit: "буквально: «верхушка айсберга»", en: "the tip of the iceberg", ru: "верхушка айсберга", meaning: "малая видимая часть большой проблемы", ex: "Plastic on beaches is just the tip of the iceberg.", reg: "ok", note: "Для мнения о масштабе проблемы." },
+    { art: "green", lit: "буквально: «стать зелёным»", en: "go green", ru: "перейти на экологичный образ жизни", meaning: "начать жить или работать экологичнее", ex: "Our office decided to go green and stopped using paper cups.", reg: "ok", note: "Коротко и естественно — про компании и людей." },
+    { art: "cats", lit: "буквально: «льёт кошками и собаками»", en: "it's raining cats and dogs", ru: "льёт как из ведра", meaning: "очень сильный дождь", ex: "We cancelled the picnic — it was raining cats and dogs.", reg: "careful", note: "Носители говорят редко, звучит «по учебнику». Лучше heavy rain / pouring." }
+  ],
+
+  expressions: [
+    { icon: "play", fn: "Начать ответ", items: [
+      "If I had more time outdoors, I'd definitely …",
+      "Yes, I recycle regularly — mainly …",
+      "My favorite kind of weather is …"
+    ]},
+    { icon: "bulb", fn: "Почему это важно", items: [
+      "Being in nature helps me switch off.",
+      "Small habits add up over time.",
+      "It's our responsibility to future generations."
+    ]},
+    { icon: "camera", fn: "Описать место или привычку", items: [
+      "There's a park near my place with a lake and old trees.",
+      "In our building, there are separate bins for glass and plastic.",
+      "Last summer, a heatwave hit, and …"
+    ]},
+    { icon: "scales", fn: "Баланс и контраст", items: [
+      "Individual actions matter; that said, governments have far more power.",
+      "While parks cost money, they save on healthcare.",
+      "On the flip side, …"
+    ]},
+    { icon: "trending", fn: "Будущее", items: [
+      "In twenty years, I think cities will be greener.",
+      "More and more people are switching to …",
+      "Extreme weather is likely to become more common, so …"
+    ]},
+    { icon: "flag", fn: "Завершить", items: [
+      "So for me, nature isn't a luxury — it's a need.",
+      "In the end, we all have to do our part.",
+      "That's why I think both people and governments need to act."
+    ]}
+  ],
+
+  answerSteps: [
+    { k: "A", s: 5,  i: "Yes, I recycle regularly, mostly paper and plastic." },
+    { k: "R", s: 12, i: "It's easy in my building, and small habits add up…" },
+    { k: "E", s: 22, i: "For example, we have four bins in our kitchen…" },
+    { k: "C", s: 6,  i: "So it's a small effort, but it matters." }
+  ],
+
+  matching: [
+    { a: "a breath of fresh air", b: "a refreshing, pleasant change" },
+    { a: "off the beaten track", b: "in a quiet place few tourists visit" },
+    { a: "come rain or shine", b: "whatever the conditions" },
+    { a: "a drop in the ocean", b: "too small an amount to make a difference" },
+    { a: "the tip of the iceberg", b: "a small visible part of a much bigger problem" },
+    { a: "go green", b: "start living in a more eco-friendly way" }
+  ],
+
+  gapfill: [
+    { t: "We go ___ in the mountains twice a year.", a: ["hiking"] },
+    { t: "Let's go out and get some fresh ___.", a: ["air"] },
+    { t: "I'm trying to cut down ___ plastic.", a: ["on"] },
+    { t: "___ rain flooded the streets last night.", a: ["Heavy", "heavy"] },
+    { t: "When a heatwave ___, I stay indoors.", a: ["hits", "comes"] },
+    { t: "Our university switched ___ solar power.", a: ["to"] },
+    { t: "The campaign raised ___ of plastic pollution.", a: ["awareness"] },
+    { t: "We were stuck ___ all weekend because of the storm.", a: ["indoors", "inside", "at home"] }
+  ],
+
+  paraphrase: [
+    { plain: "The weekend in the forest was a nice change.", better: ["The weekend in the forest was **a breath of fresh air**."] },
+    { plain: "I run every day, even when the weather is bad.", better: ["I run every day, **come rain or shine**."] },
+    { plain: "We found a quiet beach where tourists don't go.", better: ["We found a beach **off the beaten track**."] },
+    { plain: "My recycling is too small to change anything.", better: ["My recycling feels like **a drop in the ocean**."] },
+    { plain: "It was raining very hard.", better: ["It was **pouring**.", "There was **heavy rain**."] },
+    { plain: "Our company started to be more ecological.", better: ["Our company decided to **go green**."] },
+    { plain: "Plastic on beaches is only a small part of a big problem.", better: ["Plastic on beaches is just **the tip of the iceberg**."] },
+    { plain: "I want to make less trash.", better: ["I want to **reduce waste**.", "I'm trying to **cut down on** packaging."] }
+  ],
+
+  repeat: {
+    scenario: "Вы волонтёр в национальном парке. Рейнджер проводит инструктаж перед уборкой туристических троп, — повторите каждое предложение точно так, как услышали.",
+    sentences: [
+      "Welcome to the cleanup team.",
+      "Please stay on the marked trails.",
+      "Gloves and bags are in the blue box.",
+      "Put plastic and glass in separate bags.",
+      "If you see any injured animals, don't touch them and call a ranger.",
+      "Last spring, our volunteers collected more than two tons of trash along the river.",
+      "When you finish your section, bring your bags to the visitor center so we can weigh them."
+    ]
+  },
+
+  /* ===== Реальные сеты Take an Interview по теме (из базы платформы) ===== */
+  sets: [
+    { id: "s121", badge: "official", title: "Nature and the Outdoors", src: "Official TOEFL · 121",
+      scenario: "You have agreed to participate in a research study about people's experiences with nature and the outdoors. You will have a short online interview with a researcher. The researcher will ask you some questions.",
+      questions: [
+        { q: "First, if you had the chance to spend more time outdoors, what would you want to do?",
+          lx: ["spend time outdoors", "go hiking", "connect with nature"],
+          model: "[A] If I had more time outdoors, I would go camping and learn to kayak. [R] I love hiking, but I always have to come home the same day. Camping would let me stay in nature longer, see the stars and wake up in the mountains. Kayaking also looks peaceful and exciting at the same time. [E] For example, I'd love to spend a week camping next to a lake, kayaking in the morning, reading in the afternoon and making a fire in the evening with friends. Without my phone, of course! [C] So more time outdoors would mean more adventures in nature for me.", model5: "[A] I'd spend it camping and finally learning to kayak. [R] I love hiking, but day trips always end with a rushed train home; camping would let me stay in nature long enough to see the stars and wake up to mountain air. Kayaking, meanwhile, strikes me as the perfect mix of calm and adventure. [E] I picture, for instance, a week by a remote lake: kayaking at dawn while the water is still glassy, reading in a hammock through the afternoon and sitting around a campfire with friends in the evening, with phones firmly switched off. [C] So more time outdoors would mean slower, deeper adventures rather than squeezing nature into a single Saturday." },
+        { q: "And now can you tell me, how do you usually feel while you're outdoors compared to when you're indoors?",
+          lx: ["fresh air", "a breath of fresh air", "switch off"],
+          model: "[A] I usually feel much calmer and more energetic outdoors than indoors. [R] Inside, I'm surrounded by screens, deadlines and notifications, so my mind never really stops. Outside, I notice the sky, the trees and the **fresh air**, and my head becomes clear. [E] For example, after a day of lectures, I often feel tired and a bit grumpy. But when I go for a run in the park next to my dorm, after ten minutes I feel like a different person. Indoors, I feel the opposite — after a whole day in the library, I get a headache. [C] So for me, being outdoors is like pressing a reset button.",
+          model5: "[A] Outdoors, I feel noticeably calmer and more alive than I do indoors. [R] Indoors, I'm surrounded by screens, deadlines and constant notifications, so my mind rarely switches off, whereas outside my attention shifts to the sky, the trees and the **fresh air**, and my thoughts gradually settle. [E] After a long day of lectures, for instance, I'm often drained and a little irritable, yet ten minutes into a run in the park beside my dorm, I feel like a completely different person. By contrast, a full day in the library almost always leaves me with a headache and a strange restlessness. [C] So for me, time outdoors works like a reset button, and it's **a breath of fresh air** in the most literal sense.",
+          },
+        { q: "And in your view, do you think avoiding spending time outdoors in nature makes a difference in people's health and well-being? Why or why not?",
+          lx: ["well-being", "fresh air", "green space"],
+          model: "[A] Yes, I think it makes a big difference. [R] When people stay inside all the time, they get less sunlight and fresh air, move less and feel more stressed. Nature helps us relax and forget our problems for a while. [E] For example, during my exam period last winter, I stayed inside for almost two weeks, and I felt tired and sad. Then a friend took me for a walk in the forest, and after one hour, I felt like a new person. Now I try to go to the park every day, even for fifteen minutes. [C] So nature is like free medicine.", model5: "[A] I'm convinced it makes a significant difference. [R] People who rarely go outdoors miss out on sunlight, fresh air and movement, all of which affect mood and sleep. Nature also has a unique ability to quiet our thoughts, which no indoor activity quite replicates. [E] During last winter's exam period, for instance, I barely left my room for two weeks and became increasingly drained and low. Then a friend dragged me out for a walk in the forest, and within an hour I felt completely transformed. Since then, I've made a point of **spending time in nature** daily, even if it's just fifteen minutes in the park. [C] So nature is essentially free medicine, and we're foolish not to use it." },
+        { q: "Okay, last question. Do you think outdoor spaces should be free for everyone to use, or is it acceptable to charge fees? Why?",
+          lx: ["green space", "conservation", "protect the environment"],
+          model: "[A] I think most outdoor spaces should be free, but small fees are acceptable for national parks. [R] Nature is good for everyone's health, so city parks and beaches must be free, especially for people with little money. But national parks need money for rangers, trails and protecting animals. [E] For example, in Portugal last summer, we paid three euros to enter a natural park. The trails were clean, there were maps and toilets, and a ranger told us about the wildlife. That's a fair price. But I'd be angry if my local park started charging money. [C] So everyday green spaces should be free, and special places can ask for a small fee.",
+          model5: "[A] I'd distinguish between everyday green spaces, which should be free, and protected areas, where modest fees are justified. [R] Access to nature is fundamental to public health, so urban parks and beaches ought to remain free, particularly for low-income families. National parks, however, require substantial funding for rangers, trail maintenance and **conservation**, and fees help cover those costs. [E] In Portugal last summer, for instance, we paid three euros to enter a natural park, and the difference was obvious: well-marked trails, clean facilities and a ranger who explained the local wildlife. I'd be outraged, by contrast, if my local park suddenly introduced an entrance fee. [C] So I'd keep daily green spaces free while accepting small, transparent fees for protecting fragile places." }
+      ]
+    },
+    { id: "s054", badge: "official", title: "Public Parks and Recreation", src: "Official TOEFL · 054 / 117",
+      scenario: "You have signed up for a study run by a university research group that is investigating public parks and recreation. You will have a short video interview with one of the researchers. The researcher will ask you some questions.",
+      questions: [
+        { q: "First, can you tell me about a memorable visit you or a friend made to a park or recreational space, and what made it special?",
+          lx: ["green space", "enjoy the scenery", "bring people together"],
+          model: "[A] A memorable visit was a picnic with my hiking club in the big park near my dorm last spring. [R] It was special because it was the first warm day after a long winter, and it was the day I really felt part of a group at university. [E] For example, about twenty of us brought food from our home countries, and we spent the whole afternoon on the grass by the lake. Someone brought a guitar, so I played a few songs, and later we played frisbee until it got dark. [C] So it was special because of the people, the sun and the feeling that spring had finally come.",
+          model5: "[A] One visit that stands out was a picnic with my hiking club in the large park beside my dorm last spring. [R] It was the first genuinely warm day after a long, gray winter, and, more importantly, it was the day I truly felt I belonged to a group at university. [E] About twenty of us brought dishes from our home regions, for instance, and we spent the entire afternoon sprawled on the grass by the lake. Someone had brought a guitar, so I ended up playing a few songs, and we played frisbee until it was too dark to see. [C] So what made it special wasn't the park itself, but the combination of sunshine, good company and that sense that spring had finally arrived." },
+        { q: "I see. Do you think public parks and recreational spaces are more important for adults or for children? Why?",
+          lx: ["green space", "fresh air", "well-being"],
+          model: "[A] I think parks are important for both, but maybe a bit more for children. [R] Children need space to run, play and make friends, and many city families live in small apartments without a garden. Parks also help kids develop physically and stay away from screens. [E] For example, my little cousin lives in a small flat, and the playground in their local park is his favorite place. He goes every day after school, and that's where he made most of his friends. But adults need parks too — I go running there to deal with stress. [C] So parks are essential for everyone, but especially for children in cities.",
+          model5: "[A] They're vital for both, though I'd argue slightly more so for children. [R] Children need room to run, explore and socialize, and many urban families live in cramped apartments without any outdoor space. Parks also support children's physical development and offer a healthy alternative to screens. [E] My younger cousin, for instance, lives in a small flat, and the playground in their local park is effectively his second home; he goes there every day after school, and it's where he's made most of his friends. That said, adults benefit hugely as well — I rely on runs in the park to manage stress during exams. [C] So parks matter for everyone, but for city children, they're close to irreplaceable." },
+        { q: "Some people believe that public parks play a crucial role in promoting community health and well-being by offering outdoor areas for relaxing and exercising or playing. And therefore, local governments should spend more money on such places. What are your thoughts on this? Do you agree or disagree? Why?",
+          lx: ["green space", "well-being", "invest in"],
+          model: "[A] Yes, I agree that local governments should spend more money on parks. [R] Parks are free, so everyone can use them — rich or poor, young or old. They help people exercise, relax and meet neighbors, which makes the whole community healthier. [E] For example, the park near my dorm has a running track, an outdoor gym and a basketball court. Every evening it's full of students, families and older people doing exercise. Without it, many of them would just stay at home. [C] So parks are one of the best investments a city can make.", model5: "[A] I wholeheartedly agree. [R] Parks are one of the few truly free and inclusive spaces in a city: anyone, regardless of age or income, can use them to exercise, unwind or socialize. As a result, they benefit both physical and mental health across the entire community. [E] The park next to my dorm, for instance, has a running track, an open-air gym and a basketball court, and every evening it's buzzing with students, families and pensioners alike. For many of them, I suspect, it's the only exercise they get, since gyms are simply too expensive. [C] So investing in parks is one of the most cost-effective ways a city can improve public health." },
+        { q: "Finally, in many large cities, there is a tension between building more public parks for residents to relax and play versus using the space to build more housing. Do you think the need for more housing is more or less important than the need for public parks and recreational spaces? Why?",
+          lx: ["urban sprawl", "green space", "affordable housing"],
+          model: "[A] I think housing is a little more important, but cities shouldn't build on existing parks. [R] People need a place to live first — without affordable housing, young people and families can't stay in the city. But parks are not a luxury, so cities should find other space, like old factories or empty parking lots. [E] For example, in my city, rents are so high that many students share tiny rooms. At the same time, there's an old industrial area by the river that is empty. It could become apartments and a new park at the same time. [C] So we need both, and smart planning can give us both.",
+          model5: "[A] Housing is arguably the more urgent need, but I don't think it should come at the expense of existing parks. [R] A home is a basic necessity, and without affordable housing, young people and families are simply priced out of cities. Green spaces, however, aren't a luxury either, so the solution lies in redeveloping underused land rather than sacrificing parks. [E] In my city, for instance, rents are so high that many students squeeze into tiny shared rooms, yet a vast abandoned industrial zone by the river has sat empty for years. It could easily accommodate both new apartments and a riverside park. [C] So I'd reject the either-or framing: with smart planning, cities can build homes without destroying the **green spaces** that make them livable." }
+      ]
+    },
+    { id: "swl", badge: "platform", title: "Weather in Our Lives", src: "Практика платформы",
+      scenario: "I'm conducting a study about how people experience and respond to different kinds of weather. I'd like to ask you a few questions.",
+      questions: [
+        { q: "First, what type of weather do you enjoy the most, and why? How does it typically influence your mood, your energy, or your activities?",
+          lx: ["the weather affects my mood", "fresh air", "come rain or shine"],
+          model: "[A] I like sunny, cool weather the most, like a bright autumn day. [R] Sunshine gives me energy and puts me in a good mood, but I don't like heat because it makes me tired. In dark winter months, I often feel sleepy and less motivated. [E] For example, on sunny autumn days, I run longer, study better and want to meet friends. But in December, when it's dark at four p.m., I just want to stay at home under a blanket. To feel better, I try to go outside at lunchtime when it's light. [C] So the weather really affects my mood and energy.", model5: "[A] My favorite is crisp, sunny weather, like a bright autumn morning. [R] Sunshine noticeably lifts my mood and energy levels, while cool temperatures keep me alert, unlike summer heat, which leaves me sluggish. Dark winter months, by contrast, tend to drain my motivation. [E] On clear autumn days, for instance, I run further, concentrate better and actively want to see people. In December, however, when it's dark by four, I'm tempted to hibernate under a blanket. To counter that, I make a point of getting outside during the brightest part of the day, which genuinely helps. [C] So weather has a much bigger influence on my mood than I'd like to admit." },
+        { q: "People often say their productivity or outlook changes depending on the weather. Can you describe a specific day or event when the weather really had an impact on how you felt or what you were able to do?",
+          lx: ["heavy rain", "be stuck indoors", "the weather affects my mood"],
+          model: "[A] I remember a day last autumn when **heavy rain** ruined a hiking trip I'd planned for weeks. [R] I was really looking forward to it, so when it was cancelled, I felt disappointed and lazy for the whole weekend. [E] For example, we had to cancel the trip at six in the morning because of a storm warning. I stayed in my room, it was dark and gray all day, and I couldn't make myself study. But on Sunday afternoon the sun came out, I went for a run, and suddenly I had energy again and finished my essay in two hours. [C] So that day showed me how much the weather affects my mood.",
+          model5: "[A] I clearly remember a weekend last autumn when a storm wrecked a hiking trip I'd been planning for weeks. [R] I'd been looking forward to it so much that the cancellation left me disappointed and strangely unmotivated for the entire weekend. [E] We called the trip off at six in the morning, for instance, after a storm warning, and I spent Saturday stuck in my room under a dark, gray sky, completely unable to focus on studying. On Sunday afternoon, however, the sun broke through, I went for a quick run, and my energy came flooding back; I finished an essay in two hours that I'd been avoiding all week. [C] So that weekend proved to me how strongly the weather shapes both my mood and my productivity." },
+        { q: "In many places around the world, people are noticing more extreme weather—such as heatwaves, storms, or sudden changes in temperature. Have you observed anything like that where you live? If so, how has it affected your lifestyle, your commute, or even your health?",
+          lx: ["heatwave", "extreme weather", "a heatwave hits"],
+          model: "[A] Yes, I've definitely noticed more extreme weather where I live, especially hotter summers. [R] When I was a child, summer was warm and pleasant, but now we have heatwaves almost every year, and winters have less snow. [E] For example, last July, the temperature was over thirty-five degrees for two weeks. My dorm room has no air conditioning, so I couldn't sleep well, and I had to change my running time to six in the morning. The buses were also so hot that I started cycling to class instead. [C] So extreme weather is already changing my daily habits.",
+          model5: "[A] Absolutely; the most obvious change where I live is the increasingly brutal summers. [R] As a child, I remember summers being warm and pleasant, whereas now **heatwaves** have become almost annual, while winters bring noticeably less snow. [E] Last July, for instance, temperatures stayed above thirty-five degrees for two weeks straight. My dorm room has no air conditioning, so I barely slept, and I had to move my runs to six in the morning to avoid the worst of the heat. The buses became so stifling that I switched to cycling to campus altogether. [C] So **extreme weather** isn't an abstract future threat for me; it's already reshaping my daily routine." },
+        { q: "As climate patterns shift, some believe that governments and local communities need to do more—whether that's building infrastructure to handle storms, planting trees to cool cities, or providing better public information. Do you think enough is being done? Why or why not?",
+          lx: ["take action on climate change", "green space", "extreme weather"],
+          model: "[A] No, I don't think enough is being done, although things are slowly improving. [R] Governments often react only after a disaster happens, instead of preparing in advance. Simple solutions, like planting trees or improving drainage, are cheap compared to the cost of damage. [E] For example, two years ago heavy rain flooded the main streets of my city because the drains were old. Only after that, the city started to repair them. On the positive side, my neighborhood has started planting trees along the streets to give shade in summer. [C] So there is some progress, but cities need to act before disasters, not after.",
+          model5: "[A] Not yet, in my view, though there are encouraging signs. [R] Authorities still tend to respond to disasters rather than prevent them, even though preventive measures, such as planting trees or upgrading drainage, cost a fraction of the damage they avoid. [E] Two years ago, for instance, heavy rain flooded the main streets of my city because the drainage system was decades old, and only after that did the council start replacing it. On a more positive note, my neighborhood recently began lining streets with trees to provide shade during heatwaves. [C] So progress is happening, but far too slowly; cities need to plan ahead rather than learning to **weather the storm** after it has already hit." }
+      ]
+    },
+    { id: "s087", badge: "official", title: "Environmental Practices", src: "Official TOEFL · 087",
+      scenario: "You are participating in a research study conducted by your university's Department of Environmental Science about environmental practices. You will meet online with a researcher who will ask you some questions.",
+      questions: [
+        { q: "First, do you take any specific actions to reduce your environmental impact, such as recycling or conserving energy? Give details in your answer.",
+          lx: ["recycle", "save energy", "carry a reusable bottle"],
+          model: "[A] Yes, I take a few simple actions every day to reduce my environmental impact. [R] I know one person can't save the planet, but I think small habits are important, and they're easy if you make them a routine. [E] For example, I recycle paper, plastic and glass in my dorm, and I always **carry a reusable bottle** and a cloth bag. I walk or cycle to class instead of taking the bus, and I turn off my laptop and lights when I leave the room. I've also started eating meat only two or three times a week. [C] So my actions are small, but they add up.",
+          model5: "[A] Yes, I've built several small but consistent habits into my daily routine. [R] I'm realistic that one person can't solve environmental problems single-handedly, but I believe habits matter, and once they become automatic, they require almost no effort. [E] I **recycle** paper, plastic and glass in my dorm, for instance, and I never leave without a **reusable** bottle and a cloth bag. I walk or cycle to campus rather than taking the bus, and I make a point of switching off my laptop and lights whenever I leave my room. More recently, I've also cut my meat consumption to two or three times a week. [C] So none of these actions is dramatic on its own, but together they make a real dent in my footprint." },
+        { q: "Can you describe one or two steps your community or neighborhood takes to be environmentally friendly? For example, are there solar panels on buildings or rainwater barrels available where you live?",
+          lx: ["environmentally friendly", "renewable energy", "sort the rubbish"],
+          model: "[A] My university campus, where I live, takes a few environmentally friendly steps. [R] The university wants to be greener, and many students care about the environment, so they pushed for changes. [E] For example, last year solar panels were installed on the roof of the main library, and now they produce part of the electricity for the campus. Also, every floor of my dorm has bins for paper, plastic, glass and food waste, with clear signs. In the cafeteria, you get a discount if you bring your own cup. [C] So my community is not perfect, but it's moving in the right direction.",
+          model5: "[A] My university campus, which is effectively my neighborhood, has taken a couple of notable steps. [R] The administration has committed to becoming carbon neutral, and student pressure has helped turn that commitment into concrete action. [E] Last year, for instance, solar panels were installed across the roof of the main library, and they now supply a significant share of the campus's electricity. Every floor of my dorm also has clearly labeled bins for paper, plastic, glass and food waste, and the cafeteria offers a discount to anyone who brings their own cup. [C] So the campus is far from perfect, but it's moving steadily in a more **sustainable** direction." },
+        { q: "If you had the chance to participate in an ecological or nature-based activity, such as a community cleanup effort or tree planting event, what would you do and why?",
+          lx: ["take part in", "protect the environment", "make a difference"],
+          model: "[A] I'd like to take part in a river cleanup. [R] There's a river near my city where people often go for walks and picnics, but it's full of plastic bottles and bags. A cleanup would make a visible difference, and it's also a nice way to meet people. [E] For example, I've already joined one park cleanup with my hiking club, and in two hours we collected over thirty bags of trash. It felt great to see the park clean afterwards. A river cleanup would be even better, because the plastic there goes into the sea and hurts fish and birds. [C] So I'd choose a river cleanup because the result is immediate.",
+          model5: "[A] I'd sign up for a river cleanup without hesitation. [R] There's a river on the edge of my city that's popular for walks and picnics, yet its banks are littered with plastic bottles and bags. A cleanup produces visible results immediately, and it's also a great way to meet like-minded people. [E] I've already joined a park cleanup with my hiking club, for instance, and in just two hours we filled more than thirty bags with rubbish; seeing the park spotless afterwards was incredibly satisfying. Rivers matter even more, though, because plastic there eventually reaches the sea, where it harms fish and seabirds. [C] So I'd choose a river cleanup because it delivers an instant, tangible impact while tackling a much larger problem at its source." },
+        { q: "Some people believe that individual actions are not enough to address conservation issues and that significant changes must come from government policies. Do you agree or disagree with this viewpoint? Why or why not?",
+          lx: ["a drop in the ocean", "take action on", "hold accountable"],
+          model: "[A] I mostly agree that the biggest changes must come from government policies. [R] Governments can make rules for whole industries, build public transport and invest in clean energy, which individuals can't do. But individual actions are still important because they show governments what people want. [E] For example, I can stop using plastic bags, but when my country banned free plastic bags in shops, their use dropped by more than eighty percent in one year. That's a huge change no individual could achieve. [C] So governments have the most power, but people must also do their part.",
+          model5: "[A] I largely agree, although I wouldn't dismiss individual action entirely. [R] Only governments can regulate entire industries, fund public transport and redirect investment toward clean energy; by comparison, one person's efforts can feel like **a drop in the ocean**. Individual behavior does matter, however, because it signals to politicians what voters actually want. [E] I can personally refuse plastic bags, for instance, but when my country banned free plastic bags in shops, their use fell by more than eighty percent within a year, a shift no individual campaign could have achieved. [C] So meaningful change requires policy, but it's often public pressure and changing habits that persuade governments to act in the first place." }
+      ]
+    },
+    { id: "s071", badge: "official", title: "Recycling and Waste Management", src: "Official TOEFL · 071",
+      scenario: "You have agreed to participate in a research study about people's experiences with recycling and waste management. You will have a short online interview with a researcher. The researcher will ask you some questions.",
+      questions: [
+        { q: "First, do you regularly recycle items such as paper, plastic, and glass? Why or why not?",
+          lx: ["recycle", "sort the rubbish", "landfill"],
+          model: "[A] Yes, I recycle paper, plastic and glass regularly. [R] It's easy in my dorm because there are separate bins on every floor, and I know that recycling saves resources and reduces the amount of trash in landfills. Also, my parents taught me to do it from childhood. [E] For example, I keep a small box for paper and a bag for plastic bottles in my room, and every two days I empty them into the big bins downstairs. It takes me maybe two minutes. At home, my family even rinses jars before recycling them. [C] So recycling is just a normal habit for me.",
+          model5: "[A] Yes, I recycle paper, plastic and glass as a matter of routine. [R] My dorm makes it effortless, with separate bins on every floor, and I'm aware that recycling conserves resources and keeps waste out of **landfills**. It's also something my parents instilled in me from early childhood. [E] I keep a small box for paper and a bag for plastic bottles in my room, for instance, and every couple of days I empty them into the larger bins downstairs, which takes about two minutes. My family at home is even more meticulous; they rinse every jar before it goes in the glass bin. [C] So for me, recycling isn't a conscious choice anymore; it's simply part of daily life." },
+        { q: "Can you describe the recycling practices in your household or community?",
+          lx: ["sort the rubbish", "reduce waste", "food waste"],
+          model: "[A] In my family's home, we sort our rubbish into four different bins. [R] My mom is very serious about recycling, and our town gives a discount on waste bills to families who sort their trash. [E] For example, in our kitchen, we have bins for paper, plastic, glass and food waste. The food waste goes into compost for my grandmother's vegetable garden. Every two weeks, a special truck collects the recycling, and there's also a center where you can bring old electronics and batteries. [C] So recycling is well organized in my community, and everyone takes part.",
+          model5: "[A] At my family's home, we **sort the rubbish** into four separate streams. [R] My mother is passionate about recycling, and our town also offers lower waste fees to households that separate their rubbish, which gives everyone an extra incentive. [E] In our kitchen, for instance, there are bins for paper, plastic, glass and food scraps, and the food waste is turned into compost for my grandmother's vegetable garden. Recycling is collected every two weeks, and there's also a drop-off center for old electronics and batteries. [C] So recycling in my community is well organized and, crucially, convenient, which I think is the main reason almost everyone participates." },
+        { q: "What challenges or difficulties do you face when trying to recycle? And how do you overcome them?",
+          lx: ["a walk in the park", "sort the rubbish", "single-use"],
+          model: "[A] The main challenge for me is that the recycling rules are confusing. [R] Some plastics can be recycled and some can't, and the rules are different in my hometown and in the city where I study. Also, a lot of packaging is made of mixed materials, so I don't know where to put it. [E] For example, I didn't know that pizza boxes with grease can't go in the paper bin. To solve this, I downloaded my city's recycling app, where you can type the name of an item and see which bin it goes in. I also try to buy products with less packaging. [C] So recycling isn't a walk in the park, but a little research helps.",
+          model5: "[A] My biggest challenge is honestly just how confusing the rules are. [R] Some plastics are recyclable while others aren't, the rules differ between my hometown and the city where I study, and a lot of packaging combines several materials, which makes sorting almost impossible. [E] I had no idea, for instance, that greasy pizza boxes can't go in the paper bin. To deal with this, I downloaded my city's recycling app, which tells you exactly which bin an item belongs in, and I increasingly avoid products with excessive or **single-use** packaging altogether. [C] So recycling properly is no **walk in the park**, but a bit of research and smarter shopping solve most of the problems." },
+        { q: "Some people believe that effective recycling programs are crucial for reducing pollution and conserving natural resources and therefore should be mandatory. Do you agree or disagree with this belief? Why or why not?",
+          lx: ["mandatory", "conservation", "reduce waste"],
+          model: "[A] I agree that recycling should be mandatory, especially for businesses. [R] When recycling is voluntary, many people don't do it because they're busy or lazy. Rules make everyone take part, and the results are much bigger. But the system must also be simple and convenient. [E] For example, in Germany, people pay a small deposit for bottles and get the money back when they return them. Because of this, almost all bottles are recycled. In my city, recycling is voluntary, and I often see bottles in normal trash bins. [C] So mandatory recycling works, if the system is easy for people.",
+          model5: "[A] I agree, particularly when it comes to businesses, which produce enormous volumes of waste. [R] Voluntary schemes rely on goodwill, and busy people inevitably cut corners, whereas mandatory rules create universal participation and therefore far greater impact. Crucially, though, the system must also be simple and convenient, or compliance will remain low. [E] In Germany, for instance, customers pay a small deposit on bottles that's refunded on return, and as a result, nearly all bottles are recycled. In my city, by contrast, recycling is voluntary, and bottles routinely end up in ordinary bins. [C] So I'd support **mandatory** recycling, combined with incentives that make doing the right thing the easiest option." }
+      ]
+    },
+    { id: "scc", badge: "platform", title: "Climate Change Awareness", src: "Практика платформы",
+      scenario: "We're studying how aware people are of climate change and what actions they're taking in response. I'd like to ask you a few questions to learn more about your views and experiences.",
+      questions: [
+        { q: "To begin, how informed do you feel about the causes and effects of climate change? Would you say this is something you actively follow in the news or think about in your daily life?",
+          lx: ["climate change", "raise awareness of", "extreme weather"],
+          model: "[A] I'd say I'm fairly well informed about climate change, although I'm not an expert. [R] I learned the basics at school, and now I see it in the news almost every day. It's also something I notice personally, because summers in my city are getting hotter. [E] For example, I follow a few science channels on social media that explain new research in simple language. Last semester, I also took an elective course on sustainability, where we studied how carbon emissions cause global warming. [C] So I think about it quite often, but I try not to let it make me anxious.",
+          model5: "[A] I'd describe myself as reasonably well informed, though certainly not an expert. [R] I covered the basic science at school, and now it's almost impossible to avoid in the news. More personally, I can see it in my own city, where summers have become noticeably harsher. [E] I follow a couple of science communicators online, for instance, who break down new research in accessible language, and last semester I took an elective course on sustainability, where we examined how carbon emissions drive global warming in considerable depth. [C] So it's very much part of my daily thinking, although I make a conscious effort to stay informed without letting it turn into constant anxiety." },
+        { q: "Some people are making small changes in their lifestyles—like reducing energy use, recycling more, or cutting back on meat—to reduce their environmental impact. Have you taken any specific actions to reduce your own carbon footprint? If so, what motivated you to do that?",
+          lx: ["carbon footprint", "cut down on", "switch to"],
+          model: "[A] Yes, I've taken a few small actions, and eating less meat is the biggest one. [R] I learned that producing meat, especially beef, creates a lot of greenhouse gases, and I wanted to do something simple that I can do every day. [E] For example, I now eat meat only on weekends. I also try not to waste food, I bring my own bag to the supermarket and I cycle instead of taking the bus. My motivation came from a documentary about climate change that showed how much our food choices matter. [C] So I can't save the planet alone, but I can make small changes.", model5: "[A] I have taken several small steps, the most significant being **cutting back on** meat. [R] When I learned how much greenhouse gas beef production generates, changing my diet seemed like one of the most impactful things an individual can do every single day. [E] These days, for instance, I eat meat mainly at weekends, plan my shopping carefully to avoid **food waste**, carry reusable bags and cycle to campus. What first motivated me was a documentary showing that food systems account for a substantial share of global emissions, which made me realize my plate was part of the problem — and potentially part of the solution. [C] So while no individual can fix the climate alone, small daily choices do add up." },
+        { q: "Climate change can feel like a massive global issue, and many people feel their individual efforts are just a drop in the bucket. In your opinion, do small personal actions really make a meaningful difference? Or do you think real change has to come from larger systems? Why?",
+          lx: ["a drop in the ocean", "make a difference", "add up"],
+          model: "[A] I think small actions do make a difference, but real change needs larger systems too. [R] One person's actions are small, but millions of people together have a big effect. Personal choices also change what companies sell and what politicians do. [E] For example, ten years ago, it was hard to find plant-based milk in my city. Then more people started buying it, and now every supermarket and café has it. People's choices changed the market. But we still need governments to build clean energy and public transport, because individuals can't do that. [C] So both are needed — personal actions and big systems.",
+          model5: "[A] I believe personal actions matter, though mostly as a catalyst for larger change. [R] Individually, any one person's contribution is tiny, but collectively, millions of small choices reshape markets and signal to politicians what voters care about. [E] A decade ago, for instance, plant-based milk was hard to find in my city; as demand grew, it spread to every supermarket and café, which shows how consumer choices can transform an industry. Even so, only governments can build renewable energy infrastructure or decent public transport at scale. [C] So individual efforts may feel like **a drop in the ocean**, but enough drops eventually change the tide, especially when they push larger systems to act." },
+        { q: "Governments and major corporations are increasingly being called on to act more decisively—whether by investing in renewable energy or changing production methods. In your view, what role should these larger institutions play in addressing climate change? And how can they be held accountable?",
+          lx: ["renewable energy", "hold accountable", "reduce carbon emissions"],
+          model: "[A] I think governments and big companies should play the main role in fighting climate change. [R] They produce most of the emissions and have the money and power to change things quickly. Governments should invest in renewable energy and make strict rules, and companies should change how they produce things. [E] For example, governments can give tax benefits to companies that use clean energy and fine those that pollute. To hold them accountable, there should be independent reports every year, and journalists and voters should check if promises are kept. [C] So big institutions must lead, and the public must watch them closely.",
+          model5: "[A] I think they should take the leading role, since they're responsible for the bulk of emissions and control the resources needed to cut them. [R] Governments can set binding targets, invest in **renewable energy** and regulate polluting industries, while corporations can overhaul their supply chains far faster than individuals can change their habits. [E] Governments could, for instance, offer tax incentives to companies that switch to clean energy while imposing heavy fines on major polluters. To **hold** them **accountable**, independent audits should be published annually, and journalists, investors and voters must keep checking whether pledges actually translate into results. [C] So large institutions must lead, but only constant public scrutiny ensures their promises aren't just public relations." }
+      ]
+    }
+  ],
+  /* ===== Speaking Club: тема вдоль и поперёк ===== */
+  club: [
+    { icon: "leaf", title: "Я и природа", en: "Me and nature", questions: [
+      { t: "hypo", src: "Official 121", q: "If you had the chance to spend more time outdoors, what would you want to do?", same: "s121-0",
+        f: ["What stops you from going outdoors more?", "Would you try camping alone?"], lx: ["spend time outdoors", "go hiking", "connect with nature"] },
+      { t: "personal", src: "Official 121", q: "How do you usually feel while you're outdoors compared to when you're indoors?", same: "s121-1",
+        f: ["Where do you go to switch off?", "Can you relax in a city park?"], lx: ["fresh air", "a breath of fresh air", "switch off"] },
+      { t: "opinion", src: "Official 121", q: "Does avoiding time outdoors in nature make a difference to people's health and well-being? Why or why not?", same: "s121-2",
+        f: ["How much time outdoors is enough?", "Can a balcony or window view help?"], lx: ["well-being", "fresh air", "green space"] },
+      { t: "experience", src: "Official 054 / 117", q: "Tell me about a memorable visit you or a friend made to a park or recreational space. What made it special?", same: "s054-0",
+        f: ["Who were you with?", "Have you been back since?"], lx: ["green space", "enjoy the scenery", "bring people together"] },
+      { t: "compare", q: "Do you prefer the mountains or the sea? Why?",
+        model: "[A] I prefer the mountains, although I love swimming in the sea too. [R] In the mountains, I feel active and free, and the views are always changing. Beach holidays are relaxing, but after two days I get bored of lying in the sun. [E] For example, with my hiking club, we often walk twenty kilometers to a lake in the mountains, and the feeling at the top is amazing. Last summer in Portugal, I enjoyed the beach, but the best day was when we left it and hiked along the cliffs above the ocean. [C] So the mountains are my first choice, especially when I can see the sea from the top!",
+        model5: "[A] I'm definitely a mountain person, though I'd never say no to a swim in the sea. [R] In the mountains, I feel active and free, and the scenery changes with every turn of the trail, whereas beach holidays, pleasant as they are, leave me restless after a couple of days of lying in the sun. [E] With my hiking club, for instance, we regularly trek twenty kilometers to glacier lakes, and reaching the top is always exhilarating. Even in Portugal last summer, the highlight wasn't the beach itself, but a day spent hiking along the cliffs high above the Atlantic. [C] So the mountains win for me, ideally with a view of the sea from the summit.",
+        f: ["What's the most beautiful place you've seen?", "Forest, desert or lake — which is next?"], lx: ["enjoy the scenery", "off the beaten track", "go hiking"] },
+      { t: "compare", src: "Health · Speaking Club", q: "Is life in the city or in the countryside better for people's health?",
+        model: "[A] I think the countryside is better for health, but the city has some important advantages. [R] In the countryside, there is cleaner air, less noise and more nature, so people feel less stressed. But in the city, there are better hospitals, gyms and healthier food options, and people often walk more. [E] For example, my grandparents live in a village. They're very active, work in the garden and look very healthy for their age. But when my grandfather needed heart surgery, they had to travel three hours to the city hospital. [C] So both places have pros and cons for health.", model5: "[A] In terms of day-to-day well-being, I'd say the countryside has the edge, although cities offer crucial advantages too. [R] Rural areas typically mean cleaner air, less noise and easy access to nature, all of which reduce stress. Cities, on the other hand, provide better hospitals, more fitness facilities and, often, more walking in daily life. [E] My grandparents, for instance, live in a small village, where they garden every day and are remarkably fit for their age. Yet when my grandfather needed heart surgery, they had to travel three hours to the nearest specialist hospital. [C] So the countryside may be better for staying healthy, but the city is better when you need treatment.",
+        f: ["Would you move to the countryside?", "What do you miss in the city?"], lx: ["fresh air", "pollution", "green space"] }
+    ]},
+    { icon: "building", title: "Парки и город", en: "Parks & the city", questions: [
+      { t: "opinion", src: "Official 054 / 117", q: "Are public parks and recreational spaces more important for adults or for children? Why?", same: "s054-1",
+        f: ["What did you do in parks as a child?", "Should parks have quiet zones for adults?"], lx: ["green space", "fresh air", "well-being"] },
+      { t: "opinion", src: "Official 054 / 117", q: "Parks promote community health and well-being. Should local governments spend more money on them?", same: "s054-2",
+        f: ["What would you add to your local park?", "Who should look after parks?"], lx: ["green space", "well-being", "invest in"] },
+      { t: "opinion", src: "Official 054 / 117", q: "In big cities, is the need for more housing more or less important than the need for public parks? Why?", same: "s054-3",
+        f: ["Would you live in a tower block next to a park?", "What land could cities use instead?"], lx: ["urban sprawl", "green space", "affordable housing"] },
+      { t: "opinion", src: "Official 112 · Urban Life", q: "Should city governments create more parks in urban areas to promote happiness and life satisfaction?",
+        model: "[A] Yes, I think city governments should create more parks. [R] Cities are noisy, crowded and stressful, and parks give people a place to relax, exercise and meet each other for free. Studies show that people who live near green spaces are happier. [E] For example, when I moved to my current dorm next to a big park, I started walking there every evening. I feel much calmer than when I lived near a busy road. On weekends, the park is full of families and friends having picnics. [C] So parks are a cheap way to make cities happier.", model5: "[A] I'm firmly in favor. [R] Urban life is noisy, crowded and often stressful, and parks offer a free, accessible refuge where anyone can unwind, exercise or socialize. There's also growing evidence that living near green space is linked to greater life satisfaction. [E] When I moved into my current dorm beside a large park, for instance, evening walks there quickly became part of my routine, and I feel noticeably calmer than when I lived beside a busy main road. At weekends, the park fills with families and groups of friends picnicking, which gives the whole area a sense of community. [C] So parks are one of the most cost-effective investments a city can make in its residents' happiness.",
+        f: ["Do green roofs count as parks?", "Is your city green enough?"], lx: ["green space", "well-being", "pollution"] },
+      { t: "opinion", src: "Official 121", q: "Should outdoor spaces be free for everyone to use, or is it acceptable to charge fees?", same: "s121-3",
+        f: ["Would you pay to enter a beautiful beach?", "Should tourists pay more than locals?"], lx: ["green space", "conservation", "protect the environment"] }
+    ]},
+    { icon: "map", title: "Отдых на природе", en: "Outdoor activities", questions: [
+      { t: "opinion", src: "Official 109 · Exercise", q: "Some people believe that exercising outdoors is both more beneficial and more enjoyable than exercising indoors. Do you agree?",
+        model: "[A] I agree. For me, exercising outdoors is better in almost every way. [R] You get fresh air and sunlight, and the views make exercise more interesting, so you don't feel bored. It also **boosts my mood** much more than the gym. [E] For example, when I run on a treadmill, thirty minutes feel like two hours, and I keep looking at the clock. But when I run in the park, I watch the trees, the dogs and the people, and an hour passes very quickly. Of course, in heavy rain or snow, the gym is a good option. [C] So outdoors is my first choice whenever the weather allows.", model5: "[A] I largely agree; in my experience, exercising outdoors is both more pleasant and more beneficial. [R] Fresh air and natural light **boost your mood** far more than a crowded gym, and changing scenery makes the time pass so quickly that you hardly notice the effort. [E] On a treadmill, for instance, thirty minutes feels like an eternity, and I can't stop checking the clock. Running through the park, by contrast, I'm distracted by the trees, the dogs and the other runners, and an hour simply flies by. **That said**, indoor gyms are invaluable in heavy rain or freezing temperatures. [C] So whenever the weather permits, I'll always choose the outdoors.",
+        f: ["What's the worst weather you've exercised in?", "Gym or park — where are you more motivated?"], lx: ["come rain or shine", "fresh air", "spend time outdoors"] },
+      { t: "opinion", src: "Official 105 · Outdoor Activities", q: "Are outdoor activities essential for children's physical and mental health, or can indoor activities be just as beneficial?",
+        model: "[A] I agree that outdoor activities are essential for children. [R] Kids today spend a lot of time with phones and tablets inside. Playing outside helps them move, get fresh air, take small risks and make friends. Indoor activities like chess or music are useful too, but they can't replace running around outside. [E] For example, my little cousin used to play video games all day and was often grumpy. Since his parents started taking him to the park every day after school, he sleeps better and has made new friends. [C] So indoor activities are good, but outdoor play is necessary.", model5: "[A] I'd agree that outdoor activities are essential, although indoor ones have their own value. [R] With children's **screen time** at record levels, outdoor play offers something nothing else can: physical movement, fresh air and the chance to take small, healthy risks while learning to get along with others. Indoor activities like chess or music certainly develop the mind, but they can't replace that. [E] My younger cousin, for instance, used to spend entire afternoons gaming and was constantly irritable. Since his parents started taking him to the park after school, he sleeps better, seems calmer and has made several new friends. [C] So a **well-rounded** childhood needs both, but outdoor play is non-negotiable.",
+        f: ["Should schools have lessons outdoors?", "Did you play outside a lot as a child?"], lx: ["fresh air", "well-being", "screen time"] },
+      { t: "hypo", q: "Would you enjoy a camping trip with no electricity or phone signal for a week? Why or why not?",
+        model: "[A] Yes, I think I'd enjoy it, although the first two days would be hard. [R] I spend too much time on my phone, and a week without it would help me relax and notice nature. But I'd probably miss hot showers and my friends' messages. [E] For example, last year I spent two days in the mountains without signal, and at first I kept checking my phone out of habit. By the second evening, I was just sitting by the fire, looking at the stars and talking to friends. I slept better than ever. [C] So a week would be a challenge, but a really healthy one.",
+        model5: "[A] I think I'd genuinely enjoy it, though I'd expect a difficult first couple of days. [R] I spend far too much time on my phone, so a week offline would force me to slow down and actually notice my surroundings. I'd certainly miss hot showers and messages from friends, however. [E] Last year, for instance, I spent two days in the mountains without signal, and at first I kept reaching for my phone out of pure habit. By the second evening, though, I was happily sitting by the campfire, stargazing and talking for hours, and I slept better than I had in months. [C] So a full week would be a challenge, but probably the healthiest one I could set myself.",
+        f: ["What would you miss most?", "Who would you take with you?"], lx: ["off the beaten track", "connect with nature", "switch off"] },
+      { t: "opinion", q: "Are people today too disconnected from nature? Why?",
+        model: "[A] Yes, I think many people today are too disconnected from nature, especially in cities. [R] We spend most of our day indoors — at home, in offices and in cars — and our free time is often on screens. Many children don't know the names of trees or birds. [E] For example, when I take friends from the city to my grandmother's village, some of them have never seen how vegetables grow. One friend was surprised that potatoes grow under the ground! My grandmother, on the other hand, can tell the weather just by looking at the sky. [C] So we've lost a lot of our connection, and we should try to get it back.",
+        model5: "[A] I'd say many of us are, particularly in big cities. [R] Most of our lives unfold indoors — at home, at work and in transport — and much of our free time is spent on screens, so many children grow up unable to name a single local tree or bird. [E] When I take city friends to my grandmother's village, for instance, some have never seen vegetables actually growing, and one was astonished to learn that potatoes grow underground. My grandmother, by contrast, can predict the weather simply by glancing at the sky. [C] So we've lost a surprising amount of everyday knowledge about the natural world, and reconnecting with it would benefit both us and the environment.",
+        f: ["Can you name five local birds?", "How could cities reconnect people with nature?"], lx: ["connect with nature", "the outdoors", "wildlife"] }
+    ]},
+    { icon: "sun", title: "Погода и настроение", en: "Weather & mood", questions: [
+      { t: "personal", src: "Платформа · Weather in Our Lives", q: "What type of weather do you enjoy the most, and why? How does it influence your mood, energy or activities?", same: "swl-0",
+        f: ["What weather do you hate?", "Which season is best for studying?"], lx: ["the weather affects my mood", "fresh air", "come rain or shine"] },
+      { t: "experience", src: "Платформа · Weather in Our Lives", q: "Describe a specific day or event when the weather really had an impact on how you felt or what you were able to do.", same: "swl-1",
+        f: ["Have you ever been caught in a storm?", "Do you check the forecast every day?"], lx: ["heavy rain", "be stuck indoors", "the weather affects my mood"] },
+      { t: "opinion", src: "Mock Test", q: "Some people believe that people who live in places with warm, sunny weather are generally happier. Do you agree or disagree? Why?",
+        model: "[A] I partly agree — sunny weather makes people happier, but it's not the most important thing. [R] Sunshine gives us energy and makes it easier to go outside and meet people. But happiness depends much more on relationships, work and health. [E] For example, in Barcelona last summer, everyone seemed relaxed, and people stayed outside until late at night. But some of the happiest countries in the world, like Finland, are cold and dark for months. People there are happy because of trust, good education and work-life balance. [C] So the weather helps, but it can't make people happy alone.",
+        model5: "[A] I'd agree only partly; sunshine certainly lifts people's mood, but it's far from the decisive factor. [R] Warm, sunny weather encourages people outdoors and makes socializing effortless, yet long-term happiness depends much more on relationships, health and security. [E] In Barcelona last summer, for instance, the whole city seemed relaxed, with people chatting outdoors until well after midnight. Yet some of the world's happiest countries, Finland being the obvious example, endure months of cold and darkness; their contentment stems from social trust, strong public services and a healthy work-life balance. [C] So good weather is a pleasant bonus, but it can't compensate for what really makes a life satisfying.",
+        f: ["Would you move somewhere sunnier?", "How do you survive gray winters?"], lx: ["the weather affects my mood", "well-being", "that said"] },
+      { t: "personal", q: "What do you usually do on a rainy day?",
+        model: "[A] On a rainy day, I usually stay inside and do cozy, quiet activities. [R] I don't like getting wet, and rain makes me feel a bit sleepy, so it's the perfect time to relax or catch up on things I've been putting off. [E] For example, last Sunday it was pouring all day, so I made a big pot of tea, played my guitar for an hour and then finished a long book I'd started months ago. In the evening, my roommates and I cooked pasta together and watched a film. Sometimes, if it's just light rain, I still go running — I actually like running in the rain. [C] So rainy days are my lazy, cozy days.",
+        model5: "[A] Rainy days tend to become my slow, cozy days at home. [R] I'm not a fan of getting soaked, and rain makes me slightly drowsy, so I treat those days as an opportunity to rest or catch up on things I've been putting off. [E] Last Sunday, for instance, it was pouring from morning till night, so I brewed a big pot of tea, played guitar for an hour and finally finished a novel I'd abandoned months earlier. In the evening, my roommates and I cooked pasta together and watched a film. That said, if it's only drizzling, I'll still go for a run, as I actually find running in light rain rather refreshing. [C] So for me, rain is basically permission to slow down.",
+        f: ["Do you like the sound of rain?", "What's your perfect lazy day?"], lx: ["heavy rain", "be stuck indoors", "come rain or shine"] }
+    ]},
+    { icon: "flame", title: "Экстремальная погода", en: "Extreme weather", questions: [
+      { t: "experience", src: "Платформа · Weather in Our Lives", q: "Have you noticed more extreme weather where you live? How has it affected your lifestyle, commute or health?", same: "swl-2",
+        f: ["What was the hottest day you remember?", "How do older people cope with heatwaves?"], lx: ["heatwave", "extreme weather", "a heatwave hits"] },
+      { t: "opinion", src: "Платформа · Weather in Our Lives", q: "As climate patterns shift, are governments and local communities doing enough to prepare? Why or why not?", same: "swl-3",
+        f: ["What should your city do first?", "Who should pay for flood protection?"], lx: ["take action on climate change", "green space", "extreme weather"] },
+      { t: "opinion", src: "Mock Test", q: "Many scientists say that extreme weather, such as heat waves and floods, is becoming more common. How might this change the way people live in the future?",
+        model: "[A] I think extreme weather will change where and how people live and work. [R] Some places will become too hot or too dangerous, so people will move. Buildings, cities and even working hours will also need to change. [E] For example, in very hot countries, people may start working early in the morning and stop in the afternoon, like the Spanish siesta. New houses will probably have better insulation and shade, and cities will plant more trees. Some people living near the coast may have to move because of floods. [C] So extreme weather will slowly change our daily lives in many ways.",
+        model5: "[A] I expect it to reshape both where people live and how they organize their days. [R] Some regions will become dangerously hot or flood-prone, forcing people to relocate, while elsewhere buildings, urban design and even working hours will have to adapt. [E] In very hot climates, for instance, people may shift their working day to the early morning and avoid the afternoon heat, much like a traditional siesta. New homes will likely be built with better insulation and natural shading, cities will plant far more trees, and some coastal communities may eventually have to move inland. [C] So extreme weather won't just be news; it will quietly redesign everyday life.",
+        f: ["Would you move because of the climate?", "How will summers be different in your city?"], lx: ["extreme weather", "weather the storm", "adapt"] }
+    ]},
+    { icon: "undo", title: "Мои экопривычки", en: "My eco habits", questions: [
+      { t: "personal", src: "Official 087", q: "Do you take any specific actions to reduce your environmental impact, such as recycling or conserving energy?", same: "s087-0",
+        f: ["Which habit was hardest to start?", "Do your friends have eco habits?"], lx: ["recycle", "save energy", "carry a reusable bottle"] },
+      { t: "personal", src: "Official 071", q: "Do you regularly recycle items such as paper, plastic and glass? Why or why not?", same: "s071-0",
+        f: ["What do you never recycle?", "Who taught you to recycle?"], lx: ["recycle", "sort the rubbish", "landfill"] },
+      { t: "personal", src: "Official 071", q: "Can you describe the recycling practices in your household or community?", same: "s071-1",
+        f: ["What happens to your food waste?", "Is it easy to recycle electronics?"], lx: ["sort the rubbish", "reduce waste", "food waste"] },
+      { t: "personal", src: "Official 071", q: "What challenges or difficulties do you face when trying to recycle? How do you overcome them?", same: "s071-2",
+        f: ["What's the most confusing item to recycle?", "Should packaging have clearer labels?"], lx: ["a walk in the park", "sort the rubbish", "single-use"] },
+      { t: "experience", q: "Is there an eco-friendly habit you tried but gave up? What happened?",
+        model: "[A] Yes, I tried to go completely zero-waste for a month, but I gave up after two weeks. [R] It was much harder than I expected. Almost everything in the supermarket is wrapped in plastic, and the zero-waste shop near me is expensive and far away. [E] For example, I had to bring my own containers for rice, pasta and cheese, and some shop assistants didn't understand what I wanted. Once, I spent forty minutes trying to buy shampoo without plastic! In the end, I kept the easy habits, like a reusable bottle and cloth bags, and stopped the rest. [C] So I learned that small, realistic changes work better for me.",
+        model5: "[A] Yes, I once attempted a fully zero-waste month, but I abandoned it after about two weeks. [R] It proved far harder than I'd imagined: virtually everything in supermarkets is wrapped in plastic, and the only zero-waste shop nearby is both expensive and inconveniently far away. [E] I had to bring my own containers for rice, pasta and cheese, for instance, which left some shop assistants baffled, and on one occasion I spent forty minutes hunting for plastic-free shampoo. In the end, I kept the manageable habits, like my reusable bottle and cloth bags, and quietly dropped the rest. [C] So the experience taught me that realistic, sustainable changes beat heroic but short-lived ones.",
+        f: ["What eco habit is easiest to keep?", "Is zero-waste realistic for students?"], lx: ["cut down on plastic", "reusable", "sustainable"] },
+      { t: "opinion", src: "Shopping · Official 067", q: "Some people believe that buying too many products you do not need harms the environment. Do you agree?",
+        model: "[A] Yes, I completely agree with this idea. [R] Every product needs raw materials, energy and transport, and when people buy things they don't need, all of that is wasted. Most of those things end up in a landfill very quickly. **Overconsumption** is a huge environmental problem. [E] I noticed this myself when I moved apartments — I found boxes of things I'd bought and never used, including clothes with the tags still on. It was embarrassing. Since then, I try to buy less and choose **second-hand** when I can. [C] So buying less is one of the easiest ways to help the planet.", model5: "[A] I agree with this idea completely. [R] Every product requires raw materials, energy and transport, so when people buy things they don't actually need, all of those resources are wasted — and most of those items end up in a landfill surprisingly quickly. In fact, **overconsumption** is one of the most serious environmental problems we face. [E] I realized this myself when I moved apartments and found boxes of things I'd bought and never used, including clothes with the tags still attached. It was genuinely embarrassing. [C] Since then, I've tried to buy less and choose **second-hand** whenever possible, because consuming less is one of the simplest ways to help the planet.",
+        f: ["What did you buy that you never used?", "Do you buy second-hand?"], lx: ["reduce waste", "landfill", "sustainable"] }
+    ]},
+    { icon: "users", title: "Сообщество и экология", en: "Community & the environment", questions: [
+      { t: "experience", src: "Official 087", q: "Can you describe one or two steps your community or neighborhood takes to be environmentally friendly?", same: "s087-1",
+        f: ["Are there solar panels near you?", "What is your neighborhood bad at?"], lx: ["environmentally friendly", "renewable energy", "sort the rubbish"] },
+      { t: "hypo", src: "Official 087", q: "If you could participate in an ecological activity, such as a community cleanup or tree planting event, what would you do and why?", same: "s087-2",
+        f: ["Have you ever planted a tree?", "How can you get friends to join?"], lx: ["take part in", "protect the environment", "make a difference"] },
+      { t: "hypo", src: "Mock Test", q: "If you could change one thing in your neighborhood to make it more environmentally friendly, what would you change? Why?",
+        model: "[A] I would turn the big parking lot near my dorm into a small park with a bike station. [R] There are too many cars in my area, so the air is polluted, and there's no green space nearby except the main park. A small park would cool the area in summer and encourage people to walk and cycle. [E] For example, the parking lot is usually half empty, but it's always hot and dusty. If we planted trees there and added benches, a vegetable garden and bike rentals, students and neighbors could relax there and leave their cars at home. [C] So this one change would make the area greener, cooler and healthier.",
+        model5: "[A] I'd convert the large parking lot beside my dorm into a pocket park with a bike-sharing station. [R] My area is dominated by cars, which makes the air noticeably polluted, and there's little greenery apart from the main park. A small park would cool the neighborhood during heatwaves while nudging people toward walking and cycling. [E] The parking lot, for instance, is usually half empty, yet it's permanently hot and dusty. Planting trees there and adding benches, a community vegetable garden and rental bikes would give students and residents somewhere to relax and a genuine incentive to leave their cars at home. [C] So a single, relatively cheap change could make the whole area greener, cooler and healthier.",
+        f: ["Who would you need to convince?", "Would neighbors complain?"], lx: ["green space", "pollution", "environmentally friendly"] }
+    ]},
+    { icon: "scales", title: "Кто должен действовать?", en: "Who should act?", questions: [
+      { t: "opinion", src: "Official 087", q: "Are individual actions not enough to address conservation issues? Must significant changes come from government policies?", same: "s087-3",
+        f: ["Which law would help the environment most?", "Do politicians listen to young people?"], lx: ["a drop in the ocean", "take action on", "hold accountable"] },
+      { t: "opinion", src: "Official 071", q: "Should effective recycling programs be mandatory to reduce pollution and conserve resources?", same: "s071-3",
+        f: ["Should people be fined for not recycling?", "Do deposit systems work?"], lx: ["mandatory", "conservation", "reduce waste"] },
+      { t: "opinion", src: "Платформа · Climate Change", q: "Do small personal actions really make a meaningful difference, or does real change have to come from larger systems?", same: "scc-2",
+        f: ["What's the most effective personal action?", "Can one person change a company?"], lx: ["a drop in the ocean", "make a difference", "add up"] },
+      { t: "opinion", src: "Платформа · Climate Change", q: "What role should governments and corporations play in addressing climate change? How can they be held accountable?", same: "scc-3",
+        f: ["Do you believe company 'green' promises?", "Should polluters pay higher taxes?"], lx: ["renewable energy", "hold accountable", "reduce carbon emissions"] },
+      { t: "opinion", q: "Should flying be made more expensive to protect the environment?",
+        model: "[A] I think frequent flying should be more expensive, but not for people who fly once a year. [R] Planes produce a lot of emissions, and cheap flights encourage people to fly for weekend trips when they could take a train. But if all tickets become expensive, only rich people will be able to travel. [E] For example, some people I know fly to another city just for a party, because tickets cost less than twenty euros. Meanwhile, a train ticket for the same trip costs three times more. A tax on frequent flyers, and cheaper trains, would be fairer. [C] So I'd make flying more expensive for those who fly the most.",
+        model5: "[A] I'd support higher costs for frequent flyers, but not a blanket price rise that hits everyone. [R] Aviation is a major source of emissions, and ultra-cheap flights encourage trips that could easily be made by train. Making every ticket expensive, however, would turn travel into a privilege for the wealthy. [E] I know people, for instance, who fly to another city purely for a party because tickets cost under twenty euros, while the equivalent train journey costs three times as much. A frequent-flyer levy, combined with cheaper rail fares, would be both fairer and more effective. [C] So I'd make flying more expensive for those who fly most, while making greener alternatives genuinely affordable.",
+        f: ["Would you take a 10-hour train instead of a flight?", "Is it fair to limit travel?"], lx: ["carbon footprint", "sustainable", "reduce carbon emissions"] }
+    ]},
+    { icon: "globe", title: "Климат и будущее", en: "Climate & the future", questions: [
+      { t: "personal", src: "Платформа · Climate Change", q: "How informed do you feel about the causes and effects of climate change? Do you follow it in the news?", same: "scc-0",
+        f: ["Where do you get reliable information?", "Do your parents and you see it differently?"], lx: ["climate change", "raise awareness of", "extreme weather"] },
+      { t: "personal", src: "Платформа · Climate Change", q: "Have you taken any specific actions to reduce your carbon footprint? What motivated you?", same: "scc-1",
+        f: ["Have you tried eating less meat?", "What's the hardest change for you?"], lx: ["carbon footprint", "cut down on", "switch to"] },
+      { t: "opinion", src: "Shopping · Interview 4", q: "Is it important for consumers to consider the environmental or ethical impact of the things they buy? Do you try to make sustainable choices?",
+        model: "[A] Yes, I think it's very important, and I try to make more **sustainable** choices, although I'm not perfect. [R] Every purchase sends a message to companies, and if consumers stop supporting brands that pollute or treat workers unfairly, those brands are forced to change. [E] For example, I now buy most of my clothes **second-hand**, I avoid **fast fashion** brands, and I choose products with less plastic packaging when I can. **That said**, sustainable products are often more expensive, which makes it hard for students. [C] So I do what I can, because small choices still add up.", model5: "[A] Yes, I think it's extremely important, and I try to make more **sustainable** choices, although I'm far from perfect. [R] Every purchase sends a message to companies, and if enough consumers stop supporting brands that pollute or treat workers unfairly, those brands will be forced to change. [E] I now buy most of my clothes **second-hand**, avoid **fast fashion** brands and choose products with less plastic packaging whenever I can. Admittedly, sustainable products are often more expensive, which can make things difficult on a student budget. [C] Even so, I'm convinced that small choices add up when enough people make them.",
+        f: ["Is 'eco' packaging always better?", "Would you pay more for an ethical brand?"], lx: ["sustainable", "environmentally friendly", "single-use"] },
+      { t: "opinion", src: "Mock Test", q: "Do you think people will live in a more environmentally friendly way twenty years from now? Why or why not?",
+        model: "[A] Yes, I think people will live in a more environmentally friendly way in twenty years. [R] Technology is improving fast, and green options are becoming cheaper and more normal. Young people also care more about the environment than older generations. [E] For example, ten years ago, electric cars were rare and expensive, but now I see them everywhere in my city, and many of my friends' parents have solar panels on their houses. In twenty years, I think most cars will be electric, and recycling and renewable energy will be completely normal. [C] So I'm quite optimistic, as long as governments keep supporting these changes.",
+        model5: "[A] I'm cautiously optimistic that we will. [R] Green technologies are improving rapidly and becoming cheaper, so the sustainable option is increasingly also the convenient one; meanwhile, younger generations tend to treat environmental issues as a priority rather than an afterthought. [E] A decade ago, for instance, electric cars were rare and prohibitively expensive, whereas now they're commonplace in my city, and several of my friends' families have installed solar panels. Within twenty years, I'd expect most new cars to be electric and **renewable energy** to dominate the grid. [C] So the direction of travel is encouraging, provided governments keep the policies and incentives in place.",
+        f: ["What green technology excites you most?", "What will be normal in 2045?"], lx: ["renewable energy", "go green", "sustainable"] },
+      { t: "personal", q: "Does news about climate change make you feel anxious? How do you deal with that?",
+        model: "[A] Sometimes, yes — climate news can make me feel anxious and a bit helpless. [R] The headlines are often scary, and it feels like the problem is too big for one person. But I've learned that doing something practical helps more than worrying. [E] For example, after reading about a big flood last year, I couldn't sleep well for a few days. So I limited climate news to a few reliable sources, once a day, and I joined my hiking club's cleanup projects. Doing something real with other people makes me feel much more hopeful. [C] So I deal with the anxiety by acting, not just reading.",
+        model5: "[A] At times, yes; climate news can leave me feeling anxious and somewhat powerless. [R] Headlines are often alarming, and the problem can seem far too vast for any individual to influence. I've found, however, that practical action is a far better antidote than endless worrying. [E] After reading about a devastating flood last year, for instance, I slept badly for several nights. So I deliberately limited my climate news to a few reliable sources, once a day, and started joining the cleanup projects my hiking club organizes. Doing something tangible alongside other people has made me far more hopeful. [C] So my approach to climate anxiety is simple: read less, act more.",
+        f: ["Is the media too negative about the climate?", "What gives you hope?"], lx: ["climate change", "make a difference", "the tip of the iceberg"] }
+    ]},
+    { icon: "sparkles", title: "Представь, что…", en: "What if…?", questions: [
+      { t: "hypo", q: "If you were the mayor of your city for one year, what green change would you make first?",
+        model: "[A] If I were mayor, I would first make public transport free for students and cheaper for everyone. [R] Traffic is the biggest source of pollution in my city, and many people drive because buses are expensive and slow. Cheaper transport would reduce cars on the roads quickly. [E] For example, I'd pay for it with a fee for cars entering the city center, like in London. I'd also add more bus lanes, so buses would be faster than cars at rush hour. Some cities, like Tallinn, already have free public transport, and traffic has gone down. [C] So my first step would be making it easy and cheap to leave the car at home.",
+        model5: "[A] My first move would be making public transport free for students and significantly cheaper for everyone else. [R] Traffic is the single largest source of air pollution in my city, and many people drive simply because buses are slow and overpriced, so affordable transit could take thousands of cars off the road almost immediately. [E] I'd fund it, for instance, through a congestion charge on cars entering the city center, as London does, and I'd create dedicated bus lanes so public transport would actually beat cars at rush hour. Cities like Tallinn have already shown that free transit can reduce traffic. [C] So I'd start by making the greener choice the cheaper and faster one.",
+        f: ["What would people complain about?", "What would you do second?"], lx: ["reduce carbon emissions", "pollution", "go green"] },
+      { t: "hypo", q: "If you could protect one natural place in the world forever, which would you choose and why?",
+        model: "[A] I would protect the Amazon rainforest. [R] It's one of the most important places on Earth because it produces oxygen, stores carbon and is home to millions of species of plants and animals. But it's being destroyed very quickly because of farming and logging. [E] For example, I watched a documentary that showed how an area of forest the size of a football field disappears every few minutes. Many animals live only there, and some medicines come from Amazon plants. If it disappears, it will affect the climate of the whole planet. [C] So protecting the Amazon would help everyone, not just one country.",
+        model5: "[A] I'd choose the Amazon rainforest without hesitation. [R] It plays a vital role for the entire planet, storing vast amounts of carbon, regulating rainfall and sheltering an extraordinary share of the world's biodiversity, yet it's being cleared at an alarming rate for farming and logging. [E] I watched a documentary, for instance, explaining that an area of forest roughly the size of a football field is lost every few minutes. Countless species exist nowhere else, and many medicines are derived from its plants. If it reaches a tipping point, the consequences for the global climate could be irreversible. [C] So protecting the Amazon would be an investment in the future of everyone, not just the countries it spans.",
+        f: ["Which place in your country needs protection?", "Should tourists be allowed there?"], lx: ["deforestation", "biodiversity", "conservation"] },
+      { t: "hypo", q: "Would you live in a small eco-house off the grid, with solar power and your own vegetable garden?",
+        model: "[A] I'd love to try it for a year, but I don't think I could live like that forever. [R] It would be amazing to produce my own energy and food and live close to nature. But it would also be hard work, and I'd be far from my friends and the city. [E] For example, I imagine waking up, picking vegetables for breakfast and working on my laptop powered by the sun. My grandmother would be proud of my garden! But in winter, with little sun and lots of snow, it could be lonely and difficult. [C] So it's a great dream for a year, but not for my whole life.",
+        model5: "[A] I'd happily try it for a year, though I doubt I could commit to it permanently. [R] Generating my own energy and growing my own food sounds incredibly rewarding, and I'd love living so close to nature. It would, however, involve relentless physical work, and I'd be cut off from friends and city life. [E] I picture myself, for instance, picking vegetables for breakfast and then working on a solar-powered laptop, while my grandmother, with her famous green thumb, would be thrilled with my garden. In a dark, snowy winter, though, the isolation could become genuinely difficult. [C] So it's a wonderful experiment for a year, but probably not a lifelong plan.",
+        f: ["What would you miss most from the city?", "Could you grow your own food?"], lx: ["sustainable", "renewable energy", "off the beaten track"] }
+    ]}
+  ],
+
+  checklist: [
+    "Ответил(а) на вопрос прямо в первом предложении",
+    "Привёл(а) конкретный пример: место, привычку, погоду, цифру",
+    "Вставил(а) одну идиому — естественно, а не «для галочки»",
+    "В вопросах «кто виноват» показал(а) баланс: люди И государство",
+    "Без ошибок: go hiking (без to), heavy rain, cut down ON, switch TO",
+    "Уложился(ась) в 45 секунд без длинных пауз"
+  ],
+
+  targetLexis: ["spend time outdoors", "go hiking", "enjoy the scenery", "fresh air", "green space", "wildlife", "recycle", "sort the rubbish", "reduce waste", "cut down on plastic", "reusable", "single-use", "heavy rain", "heatwave", "extreme weather", "carbon footprint", "renewable energy", "sustainable", "biodiversity", "mandatory", "hold accountable", "a drop in the ocean", "that said"]
+};
+
+/* =====================================================================
+   ИЛЛЮСТРАЦИИ (SVG)
+   ===================================================================== */
+const HERO_ART = `
+<svg viewBox="0 0 320 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Горы, солнце, осенние деревья, ветряк и знак переработки">
+  <ellipse cx="165" cy="232" rx="128" ry="10" fill="rgba(0,0,0,.22)"/>
+  <g class="tl-coin"><circle cx="250" cy="52" r="24" fill="#fde68a"/><circle cx="250" cy="52" r="33" fill="#fde68a" opacity=".25"/></g>
+  <path d="M20 200 L104 82 L150 140 L190 96 L290 200z" fill="#c4b5fd"/>
+  <path d="M104 82 L124 110 L112 104 L100 116 L90 102z M190 96 L206 116 L194 112 L184 120 L176 114z" fill="#fff"/>
+  <path d="M10 214 q80 -30 150 -8 q80 22 150 -6 v18 h-300z" fill="#7c3aed" opacity=".55"/>
+  <g transform="translate(48 150)"><rect x="-3" y="30" width="6" height="34" fill="#78350f"/><circle cx="0" cy="22" r="20" fill="#fb923c"/><circle cx="-10" cy="32" r="13" fill="#f97316"/><circle cx="12" cy="30" r="12" fill="#fdba74"/></g>
+  <g transform="translate(96 166)"><rect x="-3" y="22" width="6" height="30" fill="#78350f"/><circle cx="0" cy="16" r="16" fill="#e11d48"/><circle cx="9" cy="24" r="10" fill="#fb7185"/></g>
+  <g transform="translate(250 110)">
+    <path d="M-3 0 h6 l3 104 h-12z" fill="#fff"/>
+    <g><path d="M0 0 l4 -44 l-8 0z M0 0 l36 26 l4 -7z M0 0 l-40 18 l4 7z" fill="#fff"/></g>
+    <circle r="5" fill="#e0e7ff"/>
+  </g>
+  <g transform="translate(160 186)">
+    <circle r="22" fill="#fff"/>
+    <path d="M-10 -8 a13 13 0 0 1 18 -4 l-3 -6 M8 -12 l6 2 l-2 6 M14 4 a13 13 0 0 1 -12 12 l5 3 M2 16 l-6 -1 l2 -6 M-12 6 a13 13 0 0 1 -2 -14" stroke="#0ea5e9" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <path d="M30 60 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3 z" fill="#a5f3fc"/>
+  <path d="M296 150 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3 z" fill="#fbcfe8"/>
+</svg>`;
+
+/* Мини-иллюстрации к идиомам (160×96). Классы a-* анимируются при наведении. */
+const CLOUD = (x, y, c) => `<path d="M${x} ${y} c-12 0 -14 -16 -2 -18 c0 -12 18 -16 24 -6 c8 -8 24 -2 22 10 c10 2 8 14 -2 14z" fill="${c}"/>`;
+const IDIOM_ART = {
+  air: `<circle cx="52" cy="50" r="24" fill="#fdba74"/><circle cx="60" cy="44" r="3" fill="#0f172a"/><path d="M70 54 q6 -2 8 2" stroke="#0f172a" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+         <g class="a-r"><path d="M86 40 q20 -8 40 0 q14 6 24 -2 M86 54 q24 -6 44 2 M86 66 q18 -4 34 4" stroke="#38bdf8" stroke-width="3.5" fill="none" stroke-linecap="round"/></g>
+         <path d="M28 30 q-8 -14 4 -18" stroke="#fb923c" stroke-width="3" fill="none" stroke-linecap="round"/>`,
+  track: `<path d="M10 86 C40 70 60 60 80 50 S120 30 150 22" stroke="#c4b5fd" stroke-width="12" fill="none" stroke-linecap="round"/>
+         <path d="M80 86 c10 -20 26 -28 40 -26" stroke="#94a3b8" stroke-width="3" fill="none" stroke-dasharray="4 5"/>
+         <g class="a-up"><circle cx="124" cy="58" r="6" fill="#fdba74"/><path d="M124 64 v14 M124 68 l-7 6 M124 68 l7 -2 M124 78 l-5 10 M124 78 l6 9" stroke="#7c3aed" stroke-width="3" stroke-linecap="round"/></g>
+         <path d="M140 70 l6 -18 l6 18z M28 30 l6 -18 l6 18z" fill="#fb923c"/>`,
+  park: `<path d="M10 82 h140" stroke="#94a3b8" stroke-width="3"/>
+         <g transform="translate(36 40)"><rect x="-2" y="14" width="4" height="28" fill="#78350f"/><circle r="16" cy="8" fill="#fb923c"/></g>
+         <rect x="96" y="62" width="44" height="6" rx="2" fill="#a16207"/><path d="M100 68 v14 M136 68 v14 M96 56 h44" stroke="#a16207" stroke-width="4"/>
+         <g class="a-r"><circle cx="72" cy="46" r="6" fill="#fdba74"/><path d="M72 52 v16 M72 58 l-8 6 M72 58 l8 4 M72 68 l-6 12 M72 68 l6 12" stroke="#0ea5e9" stroke-width="3.5" stroke-linecap="round"/></g>`,
+  rain: `${CLOUD(26, 40, "#cbd5e1")}<g class="a-drop"><path d="M36 52 l-4 10 M48 52 l-4 10 M60 52 l-4 10" stroke="#38bdf8" stroke-width="3" stroke-linecap="round"/></g>
+         <circle cx="128" cy="30" r="16" fill="#fbbf24"/><path d="M128 6 v6 M128 48 v6 M104 30 h6 M146 30 h6" stroke="#fbbf24" stroke-width="3" stroke-linecap="round"/>
+         <g class="a-r"><circle cx="86" cy="54" r="6" fill="#fdba74"/><path d="M86 60 v14 M86 64 l-7 6 M86 64 l7 -2 M86 74 l-6 10 M86 74 l7 9" stroke="#e11d48" stroke-width="3.5" stroke-linecap="round"/></g>`,
+  storm: `${CLOUD(44, 34, "#64748b")}<path d="M66 40 l-8 16 h8 l-6 14" stroke="#fbbf24" stroke-width="3.5" fill="none" stroke-linejoin="round"/>
+         <path d="M8 76 q18 -10 36 0 t36 0 t36 0 t36 0" stroke="#38bdf8" stroke-width="3.5" fill="none"/>
+         <g class="a-tag" style="transform-origin:116px 70px"><path d="M96 66 h40 l-6 10 h-28z" fill="#e11d48"/><path d="M116 66 v-26 l14 18 h-14z" fill="#fff" stroke="#cbd5e1"/></g>`,
+  drop: `<path d="M6 70 q20 -8 40 0 t40 0 t40 0 t34 0 v26 h-154z" fill="#0ea5e9"/>
+         <path d="M6 70 q20 -8 40 0 t40 0 t40 0 t34 0" stroke="#7dd3fc" stroke-width="3" fill="none"/>
+         <g class="a-drop"><path d="M80 18 c-8 12 -10 18 -10 22 a10 10 0 0 0 20 0 c0 -4 -2 -10 -10 -22z" fill="#38bdf8" stroke="#fff" stroke-width="2"/></g>`,
+  iceberg: `<rect x="0" y="40" width="160" height="56" fill="#0c4a6e"/><path d="M0 40 h160" stroke="#7dd3fc" stroke-width="2"/>
+         <path d="M66 40 l14 -26 l12 14 l6 12z" fill="#fff"/>
+         <g class="a-beam"><path d="M40 40 h84 l12 24 l-24 26 h-56 l-26 -24z" fill="#bae6fd" opacity=".55"/></g>`,
+  green: `<rect x="14" y="44" width="38" height="40" fill="#64748b"/><rect x="22" y="22" width="10" height="24" fill="#475569"/>
+         <g class="a-up"><circle cx="30" cy="14" r="7" fill="#cbd5e1"/><circle cx="40" cy="8" r="5" fill="#e2e8f0"/></g>
+         <path d="M62 60 h26 l-6 -6 M88 60 l-6 6" stroke="#94a3b8" stroke-width="3" fill="none" stroke-linecap="round"/>
+         <path d="M120 84 l3 -50 h4 l3 50z" fill="#fff" stroke="#cbd5e1"/>
+         <g class="a-tag" style="transform-origin:125px 34px"><path d="M125 34 l3 -26 h-6z M125 34 l22 14 l3 -5z M125 34 l-24 10 l3 5z" fill="#38bdf8"/></g>
+         <circle cx="148" cy="16" r="8" fill="#fbbf24"/>`,
+  cats: `${CLOUD(46, 30, "#94a3b8")}
+         <g class="a-drop"><g transform="translate(40 50)"><circle r="7" fill="#fb923c"/><path d="M-6 -4 l1 -8 l5 5z M6 -4 l-1 -8 l-5 5z" fill="#fb923c"/></g>
+         <g transform="translate(86 62)"><ellipse rx="9" ry="7" fill="#a16207"/><ellipse cx="-8" cy="-2" rx="3" ry="6" fill="#78350f"/><ellipse cx="8" cy="-2" rx="3" ry="6" fill="#78350f"/></g>
+         <path d="M112 50 l-4 10 M126 44 l-4 10 M62 72 l-4 10" stroke="#38bdf8" stroke-width="3" stroke-linecap="round"/></g>`
+};
+</script>
+<script src="topic-engine.js"></script>
+</body>
+</html>

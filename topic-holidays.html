@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Holidays, Traditions & Volunteering — Speaking Topics — TOEFL Prep</title>
+
+<!-- Те же подключения, что на остальных страницах платформы -->
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="auth.js"></script>
+<script src="topics.js"></script>
+
+<link rel="stylesheet" href="topic-engine.css">
+</head>
+<body>
+<div class="tl-layout flex flex-col md:flex-row min-h-screen">
+  <div id="app-sidebar"></div>
+  <script src="nav.js"></script>
+
+  <main class="tl-main">
+    <div class="tl-wrap" id="lesson"></div>
+  </main>
+</div>
+
+<!-- Панель ответа -->
+<div class="tl-dock" id="dock" aria-live="polite">
+  <div class="tl-dock-top"><span id="dockLabel">Ответ</span><button class="tl-dock-close" id="dockClose" aria-label="Закрыть">✕</button></div>
+  <div class="tl-dock-q" id="dockQ"></div>
+  <div class="tl-dock-status">
+    <div class="tl-dock-state"><span class="tl-rec-dot" id="recDot"></span><span id="dockState">Готово</span></div>
+    <div class="tl-dock-time" id="dockTime">0:45</div>
+  </div>
+  <div class="tl-phase" id="dockPhase"></div>
+  <div class="tl-dock-bar" id="dockBar"></div>
+  <div class="tl-dock-ctrl">
+    <label><input type="checkbox" id="recToggle"> Записывать голос</label>
+    <div class="tl-row">
+      <button class="tl-dock-btn" id="dockShowQ">Показать текст</button>
+      <button class="tl-dock-btn" id="dockStop">Стоп</button>
+    </div>
+  </div>
+  <div class="tl-dock-msg" id="dockMsg"></div>
+  <div class="tl-dock-out" id="dockOut"></div>
+</div>
+
+<script>
+/* =====================================================================
+   КОНТЕНТ УРОКА: HOLIDAYS, TRADITIONS & VOLUNTEERING
+   Новая тема = копия файла: меняются LESSON, HERO_ART и IDIOM_ART.
+   Общий движок и стили — topic-engine.js и topic-engine.css.
+   **слово** — подсветка целевой лексики.
+   _слово_ в коллокациях — «ключевой кубик».
+   [A] [R] [E] [C] в модельных ответах — цветная структура:
+   A = прямой ответ, R = причина, E = пример, C = вывод.
+   ===================================================================== */
+const LESSON = {
+  slug: "holidays",
+  titleEn: "Holidays, Traditions & Volunteering",
+  titleRu: "Праздники, традиции и волонтёрство",
+  category: "Общество и культура",
+  intro: "Любимые праздники и как их отмечают, семейные традиции и что с ними происходит, фестивали и культурное разнообразие, волонтёрство — зачем люди помогают, должно ли оно быть обязательным и как оно объединяет сообщество. Учим говорить о традициях и помощи другим тепло, но без пафоса, и проходим все вопросы по теме из базы.",
+  meta: [["≈ 60", "минут"], ["27", "слов · 2 уровня"], ["20", "коллокаций"], ["9", "идиом"], ["{Q}", "вопросов для обсуждения"]],
+
+  frames: {
+    warmup:    { icon: "flame",      time: "3 мин",  steps: ["Нажми динамик или прочитай вопрос", "Ответь вслух за 20 секунд", "Без подсказок — это «до урока»"] },
+    vocab:     { icon: "book",       time: "10 мин", steps: ["Посмотри на схему: что нас объединяет", "Найди себя на шкале", "Слова: начни с Core, слушай и повторяй"] },
+    coll:      { icon: "link",       time: "8 мин",  steps: ["Учи сочетание целиком", "Цветной кубик — то, что чаще путают", "Опиши любимый праздник с 5 сочетаниями"] },
+    idioms:    { icon: "quote",      time: "6 мин",  steps: ["Посмотри картинку — запомни образ", "Плашка «Можно» — смело в ответы", "Выбери 2 идиомы на сегодня"] },
+    expr:      { icon: "megaphone",  time: "5 мин",  steps: ["Послушай интонацию", "По 1 фразе из каждой группы", "Запомни шкалу 45 секунд"] },
+    check:     { icon: "puzzle",     time: "10 мин", steps: ["4 мини-игры", "Цель — 100% в Matching и Gap-fill", "Карточки — пока не узнаёшь все"] },
+    repeat:    { icon: "headphones", time: "5 мин",  steps: ["Слушай, не читая", "Повтори слово в слово", "Включи запись и сравни"] },
+    interview: { icon: "mic",        time: "15 мин", steps: ["Выбери сет — начни с Official", "Пройди все вопросы подряд, без пауз", "Сравни с моделью: цвета = структура"] },
+    club:      { icon: "chat",       time: "30+ мин", steps: ["Возьми 1–2 блока на занятие", "Ответь, потом — на «Копнём глубже»", "Отметь «Обсудили» или крути рулетку"] },
+    self:      { icon: "checkCircle",time: "3 мин",  steps: ["Прослушай свои записи", "Отметь, что получилось", "Цель — 15+ отмеченных слов"] }
+  },
+
+  warmup: [
+    "What's your favorite holiday of the year?",
+    "How did you celebrate your last birthday?",
+    "Is there a family tradition you really love?",
+    "Have you ever volunteered? Doing what?"
+  ],
+
+  /* Что нас объединяет: равные ветки, вместо процента — tag */
+  flow: {
+    icon: "users",
+    title: "Что нас объединяет",
+    source: { kicker: "Быть частью чего-то…", title: "Community", ru: "сообщество", words: ["a sense of belonging", "come together", "bring people together"] },
+    branches: [
+      { title: "Celebrate", ru: "праздновать", sub: "share joy", tag: "Праздники", color: "#f97316", words: ["a family gathering", "mark the occasion", "exchange gifts", "festive"] },
+      { title: "Remember", ru: "помнить", sub: "keep roots alive", tag: "Традиции", color: "#8b5cf6", words: ["traditions", "customs", "pass down", "heritage"] },
+      { title: "Give back", ru: "помогать", sub: "make a difference", tag: "Помощь", color: "#ec4899", words: ["volunteer", "donate", "a fundraiser", "lend a hand"] }
+    ],
+    notes: [
+      "Почти каждый ответ этой темы сводится к одной мысли: <b>праздники, традиции и помощь создают чувство принадлежности</b> — a sense of belonging",
+      "Готовая фраза: <i>For me, traditions aren't about the rituals themselves, but about the people we share them with.</i>"
+    ]
+  },
+
+  scale: {
+    title: "Насколько ты в сообществе? Перетащи кружок туда, где ты",
+    left: "KEEP TO MYSELF", right: "HEART OF THE COMMUNITY",
+    words: [
+      { w: "keep to myself", p: 4 }, { w: "low-key celebrations", p: 17 }, { w: "family gatherings", p: 30 }, { w: "help out now and then", p: 44 },
+      { w: "regular volunteer", p: 58 }, { w: "organize events", p: 71 }, { w: "community leader", p: 85 }, { w: "heart of the community", p: 97 }
+    ],
+    says: [
+      { max: 25,  t: "I tend to **keep to myself** — I prefer **low-key celebrations** at home." },
+      { max: 50,  t: "I love **family gatherings**, and I **help out now and then** when someone asks." },
+      { max: 75,  t: "I'm a **regular volunteer**, and sometimes I help **organize events** in my neighborhood." },
+      { max: 101, t: "People call me **the heart of the community** — I'm always organizing something." }
+    ]
+  },
+
+  vocab: [
+    { en: "celebrate", pos: "v", ru: "праздновать, отмечать", ex: "We celebrate New Year with the whole family.", level: "core" },
+    { en: "celebration", pos: "n", ru: "празднование, праздник", ex: "The wedding celebration lasted two days.", level: "core" },
+    { en: "tradition", pos: "n", ru: "традиция", ex: "Making dumplings on New Year's Eve is our family tradition.", level: "core" },
+    { en: "custom", pos: "n", ru: "обычай", ex: "It's a local custom to bring flowers to the host.", level: "core" },
+    { en: "festival", pos: "n", ru: "фестиваль, праздник", ex: "The town holds a folk festival every summer.", level: "core" },
+    { en: "holiday", pos: "n", ru: "праздник; каникулы", ex: "New Year is the biggest holiday in my country.", level: "core" },
+    { en: "decorations", pos: "n", ru: "украшения", ex: "We put up the decorations two weeks before the holiday.", level: "core" },
+    { en: "family gathering", pos: "n", ru: "семейное застолье, сбор семьи", ex: "Family gatherings can be loud but fun.", level: "core" },
+    { en: "festive", pos: "adj", ru: "праздничный", ex: "The whole city has a festive atmosphere in December.", level: "core" },
+    { en: "volunteer", pos: "v / n", ru: "быть волонтёром; волонтёр", ex: "I volunteer at an animal shelter on Saturdays.", level: "core" },
+    { en: "charity", pos: "n", ru: "благотворительность; благотворительная организация", ex: "She gives part of her salary to charity.", level: "core" },
+    { en: "donate", pos: "v", ru: "жертвовать", ex: "We donated old clothes to a homeless shelter.", level: "core" },
+    { en: "community", pos: "n", ru: "сообщество, местные жители", ex: "Our community organized a big cleanup.", level: "core" },
+    { en: "fundraiser", pos: "n", ru: "сбор средств (мероприятие)", ex: "The school held a fundraiser for a new playground.", level: "core" },
+    { en: "homeless shelter", pos: "n", ru: "приют для бездомных", ex: "Students cook meals at the homeless shelter every Sunday.", level: "core" },
+
+    { en: "heritage", pos: "n", ru: "наследие", ex: "Festivals help us keep our cultural heritage alive.", level: "adv" },
+    { en: "a sense of belonging", pos: "n", ru: "чувство принадлежности", ex: "Traditions give children a sense of belonging.", level: "adv" },
+    { en: "commemorate", pos: "v", ru: "отмечать в память о", ex: "The holiday commemorates the end of the war.", level: "adv" },
+    { en: "ritual", pos: "n", ru: "ритуал", ex: "Our New Year ritual is writing wishes on paper.", level: "adv" },
+    { en: "commercialized", pos: "adj", ru: "коммерциализированный", ex: "Many holidays have become too commercialized.", level: "adv" },
+    { en: "preserve", pos: "v", ru: "сохранять", ex: "We need to preserve old customs.", level: "adv" },
+    { en: "diversity", pos: "n", ru: "разнообразие", ex: "Cultural diversity makes a city more interesting.", level: "adv" },
+    { en: "inclusive", pos: "adj", ru: "инклюзивный, для всех", ex: "Schools should celebrate in an inclusive way.", level: "adv" },
+    { en: "civic responsibility", pos: "n", ru: "гражданская ответственность", ex: "Volunteering teaches civic responsibility.", level: "adv" },
+    { en: "give back", pos: "phr v", ru: "отдавать (обществу), благодарить делом", ex: "I volunteer to give back to the community that helped me.", level: "adv" },
+    { en: "make a difference", pos: "phr", ru: "изменить ситуацию к лучшему", ex: "Even small donations make a difference.", level: "adv" },
+    { en: "nonprofit (organization)", pos: "n", ru: "некоммерческая организация", ex: "She works for a nonprofit that helps refugees.", level: "adv" }
+  ],
+
+  collocations: [
+    { icon: "gift", group: "Праздники", items: [
+      { en: "_celebrate_ a holiday", ru: "отмечать праздник", ex: "We celebrate the holiday with a big dinner." },
+      { en: "_mark_ the occasion", ru: "отметить событие", ex: "To mark the occasion, we planted a tree." },
+      { en: "_exchange_ gifts", ru: "обмениваться подарками", ex: "We exchange small gifts at midnight." },
+      { en: "_throw_ a party", ru: "устроить вечеринку", ex: "My friends threw a surprise party for my birthday." },
+      { en: "_get together_ with family", ru: "собраться с семьёй", ex: "We get together with the whole family twice a year." }
+    ]},
+    { icon: "globe", group: "Традиции", items: [
+      { en: "_keep_ a tradition alive", ru: "сохранять традицию", ex: "My grandmother keeps the tradition alive." },
+      { en: "_pass down_ traditions", ru: "передавать традиции", ex: "Recipes are passed down from generation to generation." },
+      { en: "_follow_ a custom", ru: "следовать обычаю", ex: "We still follow the custom of visiting relatives." },
+      { en: "_preserve_ our heritage", ru: "сохранять наследие", ex: "Museums help preserve our heritage." },
+      { en: "_break with_ tradition", ru: "отойти от традиции", ex: "This year, we broke with tradition and went abroad." }
+    ]},
+    { icon: "heart", group: "Волонтёрство", items: [
+      { en: "_do_ volunteer work", ru: "заниматься волонтёрством", ex: "I do volunteer work twice a month." },
+      { en: "_volunteer at_ a shelter", ru: "волонтёрить в приюте (at!)", ex: "I volunteer at an animal shelter." },
+      { en: "_raise money for_ a cause", ru: "собирать деньги на", ex: "We raised money for a children's hospital." },
+      { en: "_donate to_ charity", ru: "жертвовать на благотворительность (to!)", ex: "My parents donate to charity every month." },
+      { en: "_sign up to_ volunteer", ru: "записаться волонтёром", ex: "Over fifty students signed up to volunteer." }
+    ]},
+    { icon: "users", group: "Сообщество", items: [
+      { en: "_give back to_ the community", ru: "отдавать обществу", ex: "I want to give back to the community I grew up in." },
+      { en: "_make_ a difference", ru: "менять к лучшему", ex: "You don't need money to make a difference." },
+      { en: "_bring_ people together", ru: "объединять людей", ex: "Festivals bring people together." },
+      { en: "_lend_ a hand", ru: "помочь, протянуть руку", ex: "Neighbors lent a hand after the flood." },
+      { en: "_take part in_ an event", ru: "участвовать в мероприятии (in!)", ex: "Hundreds of people took part in the cleanup." }
+    ]}
+  ],
+
+  idioms: [
+    { art: "hand", lit: "буквально: «рука помощи»", en: "a helping hand", ru: "помощь, поддержка", meaning: "помощь тому, кто в ней нуждается", ex: "Volunteers offered a helping hand to families after the flood.", reg: "ok", note: "Самая нужная идиома для блока о волонтёрстве." },
+    { art: "allout", lit: "буквально: «выйти полностью»", en: "go all out", ru: "выложиться по полной", meaning: "приложить максимум усилий (часто к празднику)", ex: "My mom goes all out for New Year — decorations everywhere!", reg: "ok", note: "Живо описывает подготовку к празднику." },
+    { art: "ring", lit: "буквально: «звонком встретить Новый год»", en: "ring in the New Year", ru: "встретить Новый год", meaning: "отпраздновать наступление Нового года", ex: "We rang in the New Year on the town square.", reg: "ok", note: "Красивая замена «celebrate New Year»." },
+    { art: "forward", lit: "буквально: «заплатить вперёд»", en: "pay it forward", ru: "передать добро дальше", meaning: "ответить на доброту, помогая кому-то другому", ex: "A teacher helped me for free, so now I pay it forward by tutoring kids.", reg: "ok", note: "Отличная мотивация для вопроса «why do you volunteer»." },
+    { art: "bit", lit: "буквально: «сделать свой кусочек»", en: "do your bit", ru: "внести свою лепту", meaning: "сделать свою часть общего дела", ex: "Everyone can do their bit for the community.", reg: "ok", note: "Скромно и естественно про свой вклад." },
+    { art: "little", lit: "буквально: «каждая мелочь помогает»", en: "every little helps", ru: "с миру по нитке", meaning: "даже маленький вклад имеет значение", ex: "I can only donate a few dollars, but every little helps.", reg: "ok", note: "Для вопросов о пожертвованиях." },
+    { art: "town", lit: "буквально: «покрасить город в красный»", en: "paint the town red", ru: "гулять на полную, отрываться", meaning: "шумно праздновать, развлекаясь в городе", ex: "After the exams, we painted the town red.", reg: "ok", note: "Для рассказа о шумном празднике." },
+    { art: "moon", lit: "буквально: «раз в голубую луну»", en: "once in a blue moon", ru: "раз в сто лет", meaning: "очень редко", ex: "The whole family gets together once in a blue moon.", reg: "ok", note: "Удобно про редкие семейные встречи." },
+    { art: "thought", lit: "буквально: «важна мысль»", en: "it's the thought that counts", ru: "дорог не подарок, а внимание", meaning: "важна забота, а не цена подарка", ex: "The gift was small, but it's the thought that counts.", reg: "careful", note: "Клише про подарки. Хорошо с иронией или в нужном месте." }
+  ],
+
+  expressions: [
+    { icon: "play", fn: "Начать ответ", items: [
+      "The holiday that means the most to me is …",
+      "In my family, we have a tradition of …",
+      "Yes, I volunteer at … on Saturdays."
+    ]},
+    { icon: "bulb", fn: "Почему это важно", items: [
+      "What makes it special is that the whole family gets together.",
+      "It gives me a real sense of belonging.",
+      "I want to give back to the community."
+    ]},
+    { icon: "camera", fn: "Описать праздник", items: [
+      "On New Year's Eve, we always …",
+      "The streets are full of lights and music.",
+      "Everyone brings a dish, and we eat until midnight."
+    ]},
+    { icon: "scales", fn: "Баланс и контраст", items: [
+      "Holidays bring families together; that said, they can also be stressful.",
+      "While some traditions fade, others adapt to modern life.",
+      "On the flip side, …"
+    ]},
+    { icon: "trending", fn: "Будущее", items: [
+      "I think traditions will survive, but in a new form.",
+      "More and more young people are volunteering online.",
+      "Cities are becoming more diverse, so …"
+    ]},
+    { icon: "flag", fn: "Завершить", items: [
+      "So for me, traditions are about people, not rituals.",
+      "In the end, even a small act of kindness makes a difference.",
+      "That's why I'll keep this tradition alive."
+    ]}
+  ],
+
+  answerSteps: [
+    { k: "A", s: 5,  i: "The holiday that means the most to me is New Year." },
+    { k: "R", s: 12, i: "What makes it special is that the whole family gets together…" },
+    { k: "E", s: 22, i: "Every year, for example, we make dumplings together…" },
+    { k: "C", s: 6,  i: "So for me, it's about family, not presents." }
+  ],
+
+  matching: [
+    { a: "a helping hand", b: "help or support for someone" },
+    { a: "go all out", b: "make a huge effort" },
+    { a: "pay it forward", b: "respond to kindness by helping someone else" },
+    { a: "do your bit", b: "do your share of a shared task" },
+    { a: "once in a blue moon", b: "very rarely" },
+    { a: "paint the town red", b: "go out and celebrate wildly" }
+  ],
+
+  gapfill: [
+    { t: "We ___ small gifts at midnight.", a: ["exchange"] },
+    { t: "My friends ___ a surprise party for my birthday.", a: ["threw", "organized", "had"] },
+    { t: "Recipes are passed ___ from generation to generation.", a: ["down"] },
+    { t: "I volunteer ___ an animal shelter.", a: ["at"] },
+    { t: "My parents donate ___ charity every month.", a: ["to"] },
+    { t: "We ___ money for a children's hospital.", a: ["raised", "collected"] },
+    { t: "Hundreds of people took part ___ the cleanup.", a: ["in"] },
+    { t: "I want to give ___ to the community I grew up in.", a: ["back"] }
+  ],
+
+  paraphrase: [
+    { plain: "We celebrated New Year in the town square.", better: ["We **rang in the New Year** on the town square."] },
+    { plain: "My mom decorates everything for the holidays.", better: ["My mom **goes all out** for the holidays."] },
+    { plain: "We see all our relatives very rarely.", better: ["The whole family gets together **once in a blue moon**."] },
+    { plain: "I help people because someone helped me.", better: ["I **pay it forward**.", "I want to **give back** to the community."] },
+    { plain: "I give a little money, but it's still good.", better: ["I can only donate a little, but **every little helps**."] },
+    { plain: "Old traditions should not disappear.", better: ["We should **keep our traditions alive** and **preserve our heritage**."] },
+    { plain: "Festivals help people be together.", better: ["Festivals **bring people together** and create **a sense of belonging**."] },
+    { plain: "I helped my neighbors after the storm.", better: ["I **lent a hand** to my neighbors after the storm.", "I offered **a helping hand**."] }
+  ],
+
+  repeat: {
+    scenario: "Вы волонтёр в районном общественном центре. Координатор объясняет, как пройдёт зимний сбор продуктов, — повторите каждое предложение точно так, как услышали.",
+    sentences: [
+      "Thank you all for signing up to volunteer.",
+      "The food drive starts on Saturday morning.",
+      "Please wear the green volunteer shirts.",
+      "We accept canned food, rice and pasta.",
+      "Fresh food must go straight to the kitchen at the back of the building.",
+      "Last year, our community collected enough food to support three hundred families during the holidays.",
+      "If anyone wants to donate money instead of food, please give them a receipt from the front desk."
+    ]
+  },
+
+  /* ===== Реальные сеты Take an Interview по теме (из базы платформы) ===== */
+  sets: [
+    { id: "s073", badge: "official", title: "Holiday Celebrations", src: "Official TOEFL · 073",
+      scenario: "You received an email from your university inviting you to join a research study about holiday celebrations. You have scheduled a short online interview with a researcher.",
+      questions: [
+        { q: "First, do you celebrate holidays with your family, friends, or both? How often do you participate with them?",
+          lx: ["get together with family", "celebrate", "family gathering"],
+          model: "[A] I celebrate holidays with both my family and my friends. [R] Big traditional holidays are for family, because that's how we've always done it. Smaller celebrations, like birthdays or the end of exams, I usually celebrate with friends. [E] For example, every New Year, I go home and **get together with** my whole family — about fifteen people. We also meet for my grandmother's birthday in spring. With friends, we celebrate birthdays and other events almost every month, usually with dinner or a small party. [C] So family is for big holidays, and friends are for everyday celebrations.",
+          model5: "[A] Both, though they tend to play different roles. [R] The major traditional holidays are firmly family occasions, partly out of habit and partly because they're the rare moments when everyone is in one place. Smaller celebrations, by contrast, I mostly share with friends. [E] Every New Year, for instance, I travel home to **get together with** around fifteen relatives, and we reunite again each spring for my grandmother's birthday. With friends, meanwhile, there's something to **celebrate** almost every month — a birthday, the end of exams or simply a Friday — usually over dinner or a small party. [C] So my family anchors the big holidays, while my friends fill in the celebrations in between." },
+        { q: "Can you describe one of your favorite holiday celebrations or festivals? What do you do to mark the occasion?",
+          lx: ["mark the occasion", "tradition", "ring in the New Year"],
+          model: "[A] My favorite holiday is New Year. [R] It's the biggest holiday in my country, and it's the one time of the year when my whole family is together. [E] For example, on December 31st, we all make dumplings together in my grandmother's kitchen — it's our family **tradition**. In the evening, we have a big dinner, and at midnight we open champagne, make wishes and **exchange gifts**. Then we go outside to watch the fireworks with our neighbors. The next day, we usually just eat leftovers and play board games. [C] So for me, New Year is all about family and warmth.",
+          model5: "[A] My favorite is undoubtedly New Year, which is the biggest holiday in my country. [R] What makes it so special is that it's the one occasion when my entire extended family gathers under one roof. [E] On New Year's Eve, for instance, we all crowd into my grandmother's kitchen to make dumplings from her mother's recipe, a **tradition** that's lasted four generations. After a long, noisy dinner, we **ring in the New Year** at midnight with champagne, wishes and an exchange of small gifts, before heading outside to watch the fireworks with our neighbors. New Year's Day, by contrast, is blissfully lazy: leftovers and board games. [C] So, to me, New Year isn't about the party, but about family and continuity." },
+        { q: "Tell me about a special event that was particularly memorable for you. What made it meaningful?",
+          lx: ["mark the occasion", "throw a party", "memorable"],
+          model: "[A] A very memorable event was my grandparents' fiftieth wedding anniversary last year. [R] It was special because the whole family came, even relatives from other countries, and it showed me how important family is. [E] For example, my cousins and I secretly prepared a slideshow with old photos of my grandparents, from their wedding to today. When we showed it at the party, my grandmother cried and my grandfather made a funny speech about how they met. Later, everyone danced to the music from their youth. [C] So it was meaningful because it celebrated love and family history.",
+          model5: "[A] The most memorable recently was my grandparents' fiftieth wedding anniversary last year. [R] It was meaningful not only because relatives flew in from three different countries, but because it brought five decades of family history into a single room. [E] My cousins and I, for instance, spent weeks secretly assembling a slideshow of old photographs, from their black-and-white wedding portraits to last summer's beach holiday. When we played it at the party, my grandmother was moved to tears, while my grandfather delivered a hilarious, rambling speech about how they'd met at a dance. The evening ended with everyone dancing to the music of their youth. [C] So it was a celebration not just of a marriage, but of everything that marriage had created." },
+        { q: "Some people believe that traditional cultural observances are becoming less important in modern society. Do you agree or disagree with this viewpoint? Why?",
+          lx: ["keep a tradition alive", "commercialized", "evolve"],
+          model: "[A] I partly agree — some traditions are becoming less important, but others are just changing. [R] Modern life is busy, families live far from each other and many holidays have become very **commercialized**. But people still need traditions to feel connected to their family and culture. [E] For example, my grandparents went to many traditional village festivals that young people no longer attend. But my generation still celebrates New Year with family, and we even started new traditions, like video calls with relatives abroad at midnight. [C] So traditions aren't disappearing; they're adapting to modern life.",
+          model5: "[A] I partly agree, although I'd say many traditions are evolving rather than disappearing. [R] Busy lifestyles, families scattered across countries and the increasing commercialization of holidays have certainly weakened some customs. Yet the underlying human need for ritual and belonging hasn't gone anywhere. [E] Many of the village festivals my grandparents attended, for instance, have quietly faded because young people moved to cities. At the same time, my generation still treats New Year as a sacred family occasion, and we've even invented new rituals, such as a midnight video call with cousins abroad, so that nobody is left out. [C] So traditions aren't so much dying as adapting, and the ones that matter most tend to find a way to survive." }
+      ]},
+    { id: "sht", badge: "platform", title: "Holidays and Cultural Traditions", src: "Практика платформы",
+      scenario: "We're conducting a study about the role of holidays and cultural traditions in people's lives. I'd like to ask you a few questions to understand how these experiences shape your identity and community.",
+      questions: [
+        { q: "Can you tell me about a holiday or celebration that holds special meaning for you? What do you usually do to celebrate it, and why is it important to you?",
+          lx: ["tradition", "a sense of belonging", "celebrate"],
+          model: "[A] The celebration that means the most to me is my grandmother's Sunday lunch on her birthday in spring. [R] It's not an official holiday, but it's the day when four generations of my family meet, and it reminds me where I come from. [E] For example, every year, my grandmother cooks the same traditional dishes — beetroot soup, slow-cooked beef and her famous honey cake. My cousins and I help in the kitchen, the children play in the garden, and in the evening we look at old family photos together. [C] So it's important because it gives me a strong **sense of belonging**.",
+          model5: "[A] For me, the most meaningful celebration isn't an official holiday at all, but my grandmother's birthday lunch every spring. [R] It's the one day when four generations of my family sit at the same table, and it's a powerful reminder of where I come from. [E] Every year, for instance, my grandmother insists on cooking the same traditional menu — beetroot soup, slow-cooked beef and her legendary honey cake — while my cousins and I act as reluctant kitchen assistants and the youngest children run wild in the garden. As evening falls, someone inevitably brings out the old photo albums, and the stories begin. [C] So it matters to me because it gives me a deep **sense of belonging** that no public holiday quite matches." },
+        { q: "Traditions—whether big or small—often help bring people together and create shared memories. In your experience, what role do holidays or traditional celebrations play in your family or local community? Would you say they help strengthen relationships or foster a sense of belonging?",
+          lx: ["bring people together", "a sense of belonging", "community"],
+          model: "[A] Yes, I think holidays really strengthen relationships, both in my family and in my community. [R] In everyday life, everyone is busy, but holidays give us a reason to stop and spend time together. They create memories that we talk about for years. [E] For example, every summer my neighborhood has a street festival with food, music and games. People who normally just say hello in the elevator sit at long tables and talk for hours. In my family, New Year is the time when we fix arguments and feel close again. [C] So celebrations are like glue for families and communities.",
+          model5: "[A] I'd say they act as a kind of social glue, both in my family and in my neighborhood. [R] Everyday life keeps people busy and apart, whereas holidays create a shared pause, a reason to slow down and reconnect, along with memories that are retold for years afterwards. [E] Every summer, for instance, my neighborhood holds a street festival with food, live music and games for children; neighbors who normally exchange no more than a nod in the elevator end up chatting for hours at long communal tables. Within my family, meanwhile, New Year often becomes the moment when old tensions quietly dissolve. [C] So celebrations genuinely **bring people together** and foster a sense of belonging that's hard to create any other way." },
+        { q: "Over time, some customs evolve, while others may fade due to migration, modernization, or changing lifestyles. Do you think it's important to preserve cultural traditions? Why or why not? And how do you feel when a tradition is lost or forgotten?",
+          lx: ["preserve", "heritage", "pass down"],
+          model: "[A] Yes, I think it's important to **preserve** cultural traditions, but not all of them. [R] Traditions connect us to our history and our family, and they make each culture unique. But some old customs are unfair or don't fit modern values, so it's okay if they disappear. [E] For example, my great-grandmother knew many traditional songs, but nobody in my family learned them, and now they're lost. That makes me sad. On the other hand, some old wedding customs were unfair to women, and I'm glad they changed. [C] So we should keep the beautiful traditions and let the harmful ones go.",
+          model5: "[A] I believe it's important to **preserve** many traditions, though not every single one. [R] Traditions link us to our history and give each culture its distinctive character; when they vanish, part of our **heritage** goes with them. Some customs, however, reflect outdated or unfair values, and their disappearance isn't necessarily a loss. [E] My great-grandmother, for instance, knew dozens of traditional folk songs, but nobody thought to learn them, and when she died, they died with her, which genuinely saddens me. Certain old wedding customs, by contrast, treated women as property, and I'm glad they've faded. [C] So I'd argue we should deliberately **pass down** the traditions that enrich us, while letting go of those that don't." },
+        { q: "With societies becoming increasingly diverse, some believe that schools and public institutions should do more to recognize and celebrate a wide range of cultural traditions. Do you think promoting cultural diversity in public spaces or classrooms is beneficial? Why or why not?",
+          lx: ["diversity", "inclusive", "respect"],
+          model: "[A] Yes, I think promoting cultural **diversity** in schools is very beneficial. [R] When children learn about different traditions, they understand and respect each other more. Also, children from minority families feel accepted and proud of their culture. [E] For example, my younger cousin's class has an international day every year, when children bring food and share traditions from their families' countries. My cousin told me he learned about Diwali from a classmate from India, and now they're best friends. [C] So celebrating diversity helps children grow up more open-minded.",
+          model5: "[A] I believe it's highly beneficial, provided it's done in an **inclusive** rather than tokenistic way. [R] Learning about one another's traditions fosters understanding and respect from an early age, while children from minority backgrounds see that their culture is valued rather than merely tolerated. [E] My younger cousin's school, for instance, holds an annual international day, when children bring dishes and share customs from their families' countries. He came home enthusing about Diwali, which a classmate from India had explained, and the two have since become inseparable. [C] So celebrating diversity in classrooms doesn't erase anyone's identity; it helps children grow into more open-minded adults." }
+      ]},
+    { id: "s095", badge: "official", title: "Cultural Festivals", src: "Official TOEFL · 095",
+      scenario: "You have volunteered for a research study at your university about cultural festivals. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "First, cultural festivals are events that celebrate traditions like food, music, art, or clothing from a certain culture. Have you ever been to one? Or would you like to go to one? Why?",
+          lx: ["cuisine", "try the local cuisine", "traditional dishes"],
+          model: "[A] Yes, last summer I went to an international food festival in my city, and I'd love to go again. [R] It's a fun way to try food from many countries in one day and to learn about different cultures without traveling. [E] For example, I tried Ethiopian injera with spicy lentils, Korean street pancakes and Peruvian ceviche — all in one afternoon! People from each community cooked their traditional dishes and told us about their festivals and music. It felt like a small trip around the world. [C] So food festivals are a delicious way to learn about other cultures.", model5: "[A] I have — last summer I went to an international food festival in my city, and I'd go again in a heartbeat. [R] It's a wonderfully accessible way to experience other cultures: you can sample a dozen **cuisines** in an afternoon and actually talk to the people behind them, all without buying a plane ticket. [E] In a single afternoon, for instance, I tried Ethiopian injera with spiced lentils, Korean street pancakes and Peruvian ceviche. What made it special, though, was that each stall was run by members of that community, who happily explained their dishes, their festivals and even the music playing in the background. [C] So food festivals offer something rare: a genuine cultural exchange that starts with a plate of food." },
+        { q: "If you were to go to a cultural festival, what would you like to see or do there?",
+          lx: ["traditional", "take part in", "workshop"],
+          model: "[A] At a cultural festival, I would like to try traditional food and **take part in** a dance or music workshop. [R] I think the best way to understand a culture is not only to watch but to do something together with people. [E] For example, if I went to a Mexican festival, I would love to try real tacos and tamales, watch a mariachi band and learn a few steps of a traditional dance. I'd also like to see traditional clothes and talk to the people about what the festival means to them. [C] So I'd want to taste, listen and participate.",
+          model5: "[A] I'd want to experience it actively rather than just watch, ideally through food, music and a hands-on workshop. [R] In my experience, you understand a culture far better when you take part than when you simply observe from a distance. [E] At a Mexican festival, for instance, I'd love to sample authentic tamales, listen to a mariachi band and then join a workshop to learn a few steps of a traditional dance, however clumsy I'd be. Above all, I'd want to chat with the organizers about what the festival actually means to them, since the stories behind traditions are often the most fascinating part. [C] So, for me, the ideal festival is one where you **taste**, listen and **take part in** the culture." },
+        { q: "If you were to participate in a cultural festival for your own culture, what would you want to share with other people and why?",
+          lx: ["heritage", "traditional dishes", "pass down"],
+          model: "[A] I would share our traditional food and folk music. [R] Food and music are the easiest ways to show a culture to people from other countries, and they make people smile. [E] For example, I'd make my grandmother's dumplings with people and show them how to fold them — it's fun, and everyone can try. I would also bring a traditional instrument and play some folk songs I learned at the summer festival in my region. Maybe I'd teach people a simple traditional dance too. [C] So I'd share things that people can taste, hear and do together.",
+          model5: "[A] I'd focus on our food and folk music, since they're the most immediate ways to share a culture. [R] Food breaks the ice instantly, while music conveys emotion without any need for translation, so together they let people experience a culture rather than merely learn about it. [E] I'd set up a dumpling-making station, for instance, teaching visitors to fold my grandmother's dumplings — a recipe **passed down** through four generations — so that everyone left with something they'd made themselves. Alongside it, I'd play some of the folk songs I picked up at our regional summer festival and perhaps coax a few brave visitors into a simple traditional dance. [C] So I'd share the parts of my **heritage** that people can taste, hear and join in with." },
+        { q: "Some people think cultural festivals are mainly just for fun, while others think that they serve an important purpose, like helping to keep traditions alive. What do you think?",
+          lx: ["traditional", "evoke", "community"],
+          model: "[A] I think cultural festivals are fun, but they also have an important purpose. [R] They help people, especially young people, learn about traditional music, dance, food and crafts. Without festivals, many traditions would slowly disappear. [E] For example, in my region, there's a summer folk festival where people dance traditional dances and play old instruments. As a child, I thought it was boring, but last year I went with friends and we learned a traditional dance. It was really fun, and I felt connected to my roots. [C] So festivals mix fun and tradition in a good way.", model5: "[A] I'd say the fun is precisely what allows them to serve a deeper purpose. [R] Festivals make traditional music, dance, food and crafts enjoyable and accessible, particularly for young people who might otherwise ignore them, so they play a genuine role in keeping heritage alive. [E] My region, for instance, hosts a summer folk festival featuring traditional dances and centuries-old instruments. As a child, I found it painfully old-fashioned, but last year I went with friends, joined a dance workshop and, to my surprise, loved every minute; for the first time, I felt genuinely connected to my roots. [C] So festivals aren't just entertainment; they're how traditions survive from one generation to the next." }
+      ]},
+    { id: "s049", badge: "official", title: "Volunteering and Community Service", src: "Official TOEFL · 049 / 066",
+      scenario: "You have signed up for a study run by a university research group that is investigating volunteering and community service. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "First, have you ever participated in any volunteer activities? And if you do, how often do you volunteer?",
+          lx: ["volunteer at", "do volunteer work", "animal shelter"],
+          model: "[A] Yes, I **volunteer at** an animal shelter every Saturday morning. [R] I love animals, and I miss my family's dog, so it's a way to spend time with animals and help them. It also helps me relax after a busy week. [E] For example, every Saturday, I walk the dogs, clean their cages and play with the shy ones so they become friendly and can find a home. Sometimes I also help at adoption days. Besides that, I occasionally help with a refugee support organization when they need extra people. [C] So volunteering is a regular part of my week.",
+          model5: "[A] Yes — I **volunteer at** an animal shelter every Saturday morning, and occasionally elsewhere when help is needed. [R] I started partly because I miss my family's dog, but it's become far more than that: it's the calmest part of my week and genuinely useful. [E] My Saturdays, for instance, involve walking dogs, cleaning kennels and spending time with the more nervous animals so that they become sociable enough to be adopted. On adoption days, I help introduce families to the dogs. Beyond the shelter, I lend a hand at a refugee support organization a few times a year, usually sorting donations. [C] So volunteering has become a fixed and rewarding part of my routine." },
+        { q: "Can you tell me about a charity effort or a donation drive that you have heard about that made an impact on where you live?",
+          lx: ["raise money for", "fundraiser", "make a difference"],
+          model: "[A] Last winter, my city organized a donation drive for a family whose house burned down. [R] It made a big impact because it showed how quickly people can help each other when they work together. [E] For example, a local café posted the story on social media, and in just two days, people **raised** enough **money for** the family to rent a new apartment. Neighbors also brought clothes, furniture and toys for the children. The local newspaper wrote about it, and many people said they felt proud of our city. [C] So it showed me that a community can really **make a difference**.",
+          model5: "[A] Last winter, my city rallied behind a family whose home had been destroyed by a fire. [R] What made it so impactful was the sheer speed and scale of the response, which showed how much a community can achieve when it acts together. [E] A local café, for instance, shared the family's story on social media, and within just two days residents had **raised** enough **money** to cover a year's rent on a new apartment. Neighbors, meanwhile, donated clothes, furniture and toys for the three children, and a local builder offered free repairs. When the local paper covered the story, many people said it made them proud of where they live. [C] So it demonstrated that ordinary people really can **make a difference** remarkably quickly." },
+        { q: "Can you describe a public service project that you have been involved in or would like to participate in if you had the time?",
+          lx: ["take part in", "tutor", "give back"],
+          model: "[A] If I had more time, I would like to tutor children from poor families for free. [R] When I was at school, a teacher gave me free extra English lessons, and it changed my life. Now I want to do the same for other children. [E] For example, I imagine helping a few children with English and math twice a week at a community center. Many families can't pay for private tutors, so these children often fall behind at school. Even one or two hours a week could help them pass exams and feel more confident. [C] So tutoring would be my way to **pay it forward**.",
+          model5: "[A] If I had more time, I'd love to **tutor** children from low-income families free of charge. [R] At school, a teacher gave me free extra English lessons when my family couldn't afford a tutor, and it genuinely changed the direction of my life, so this would be my way of **giving back**. [E] I picture, for instance, helping a small group of children with English and math twice a week at a local community center. Many families simply can't pay for private tutoring, so these children fall further and further behind their classmates. Even a couple of hours a week could help them pass exams and, perhaps more importantly, believe in themselves. [C] So tutoring would be my way to **pay it forward**." },
+        { q: "Some people believe that volunteering should be a mandatory part of the school curriculum to help students develop a sense of community. Do you agree or disagree with this idea? Why?",
+          lx: ["civic responsibility", "mandatory", "a sense of community"],
+          model: "[A] I partly agree — I think schools should include volunteering, but students should choose what they do. [R] Many students never try volunteering, so a school program can show them how good it feels. But if it's forced and boring, students will hate it and never volunteer again. [E] For example, at my high school, we had to do twenty hours of community service, but we could choose where. I chose the animal shelter, and I still volunteer there today. My friend chose a project she didn't like and did only the minimum. [C] So mandatory volunteering works best when students have a real choice.",
+          model5: "[A] I partly agree: I'd support it as a requirement, but only if students have genuine freedom of choice. [R] Many young people would never try volunteering otherwise, and a well-designed program can develop **civic responsibility** and **a sense of community**. If it feels forced or pointless, however, it may put students off for life. [E] My high school, for instance, required twenty hours of community service but let us choose the cause. I picked the local animal shelter and, years later, still volunteer there every week. A friend, by contrast, ended up in a project she had no interest in and simply counted down the hours. [C] So mandatory volunteering can be valuable, provided students choose something that genuinely matters to them." }
+      ]},
+    { id: "sce", badge: "platform", title: "Civic Engagement", src: "Практика платформы",
+      scenario: "I'm researching people's experiences with volunteering and different forms of community involvement. I'll be asking you a few questions to learn more about how you engage with causes or organizations that matter to you.",
+      questions: [
+        { q: "Have you ever volunteered your time or skills for a cause, either formally through an organization or informally in your community? If so, what was your role, and what kind of impact did the experience have on you?",
+          lx: ["volunteer at", "refugee", "make a difference"],
+          model: "[A] Yes, I volunteer with a refugee support organization a few times a year. [R] I started after I saw a photography exhibition about refugees, and I wanted to do something real to help. [E] For example, my role is to sort donated clothes and help at their language café, where refugees practice the local language with volunteers. Last spring, I helped a young woman my age prepare for a job interview. When she got the job, she sent me a message, and I felt so happy. [C] So this experience made me more open and grateful.",
+          model5: "[A] Yes, alongside my regular shelter work, I volunteer a few times a year with a refugee support organization. [R] I got involved after a photography exhibition about refugees profoundly changed how I saw the issue, and I wanted to do something concrete rather than just feel sympathetic. [E] My role, for instance, is a mix of sorting donated clothing and helping at their weekly language café, where newcomers practice conversation with volunteers. Last spring, I helped a young woman my own age prepare for a job interview, and when she messaged me to say she'd got the job, I was genuinely overjoyed. [C] So the experience has made me more open-minded and far more aware of how much I take for granted." },
+        { q: "People volunteer for many different reasons—some are passionate about a particular cause, some want to give back to their community, and others may be looking to gain experience or connect with others. What personally motivates you—or would motivate you—to volunteer your time? And why does that reason matter to you?",
+          lx: ["give back", "pay it forward", "make a difference"],
+          model: "[A] My main motivation is to **give back**, because other people helped me in the past. [R] When I was at school, a teacher gave me free English lessons, and when I moved to a new city, strangers helped me a lot. I want to do the same for others. [E] For example, at the shelter, I feel happy when a shy dog finally trusts people and gets adopted. At the refugee organization, I remember how lonely I felt in a new city and try to help others feel welcome. Of course, it also feels good and helps me meet nice people. [C] So for me, volunteering is a way to **pay it forward**.",
+          model5: "[A] Above all, I'm motivated by a desire to **give back**, since I've benefited so much from other people's kindness. [R] A teacher once gave me free English lessons that changed my prospects, and when I first moved to this city, strangers went out of their way to help me settle in, so volunteering feels like my way of returning the favor. [E] At the shelter, for instance, nothing beats seeing a frightened dog gradually learn to trust people and finally go home with a family. At the refugee organization, meanwhile, I draw on my own memories of loneliness in a new city to make newcomers feel welcome. The friendships I've made along the way are a lovely bonus. [C] So for me, volunteering is simply a way to **pay it forward**." },
+        { q: "There's been some debate about whether schools and workplaces should require volunteer work as part of education or professional development. Supporters say it encourages civic responsibility, while critics argue it should be a personal choice. What's your opinion on this idea? Do you think requiring volunteer work is beneficial, or could it reduce the meaning of the experience?",
+          lx: ["civic responsibility", "mandatory", "meaningful"],
+          model: "[A] I think encouraging volunteering is good, but requiring it can make it less meaningful. [R] When people volunteer because they want to, they work with passion and really care. When they're forced, they often do the minimum, and the people they help can feel it. But a requirement can help some people discover volunteering for the first time. [E] For example, my sister's company asked every employee to do one volunteer day, and some of her colleagues complained the whole day. But one of them liked it so much that he now volunteers every month. [C] So encouragement is better than obligation.",
+          model5: "[A] On balance, I'd favor encouragement over obligation, although a light requirement can have its place. [R] Volunteering derives much of its value from being freely chosen; when it's compulsory, people tend to do the bare minimum, and those being helped can often sense the reluctance. That said, a requirement can introduce people to volunteering who would never otherwise have tried it. [E] My sister's company, for instance, once made a volunteer day compulsory, and several colleagues complained throughout. Yet one of them enjoyed it so much that he now volunteers every month of his own accord. [C] So I believe institutions should create opportunities and incentives, but leave the final decision to the individual, so the experience remains **meaningful**." },
+        { q: "Many people believe that volunteering plays a key role in building stronger, more connected communities. From your perspective, do you think volunteer work truly helps bring people together or foster a sense of unity? Why or why not—and have you seen examples of this in your own experience?",
+          lx: ["bring people together", "a sense of belonging", "community"],
+          model: "[A] Yes, I really think volunteering **brings people together**. [R] When people work together for a good cause, they forget their differences — age, background or opinions — and focus on a common goal. This creates friendships and trust. [E] For example, last spring, my neighborhood organized a park cleanup. Retired people, students and families with small children worked side by side for a whole Saturday. Afterwards, we had a picnic, and now people say hello to each other on the street and help each other more. [C] So volunteering builds real connections in a community.",
+          model5: "[A] I'm convinced it does, and I've seen it happen firsthand. [R] Working toward a shared goal encourages people to look beyond differences of age, background or opinion, and the trust built through shared effort tends to outlast the project itself. [E] Last spring, for instance, my neighborhood organized a park cleanup that drew retirees, students and young families who had never spoken to one another. After a long Saturday of collecting litter and planting flowers side by side, everyone stayed for an impromptu picnic. Months later, neighbors who were once strangers greet each other by name and readily help one another out. [C] So volunteering doesn't just improve places; it builds **community** and a genuine **sense of belonging**." }
+      ]},
+    { id: "sci", badge: "platform", title: "Community Involvement", src: "Практика платформы",
+      scenario: "I'm conducting a study on how people engage with their communities, especially through volunteering. I'd like to ask you a few questions to understand your experiences and views on this topic.",
+      questions: [
+        { q: "Have you ever volunteered your time, energy, or skills to support a cause, organization, or local event? If so, what kind of volunteering did you do, and what was that experience like?",
+          lx: ["volunteer at", "food drive", "rewarding"],
+          model: "[A] Yes, besides my regular volunteering at an animal shelter, I helped at a winter food drive last year. [R] My community center needed people to collect and sort food for families before the holidays, and I had some free time after exams. [E] For example, for three days, I stood at a supermarket entrance asking people to donate food, and then I sorted cans and packed boxes. It was tiring and cold, but when we delivered boxes to families, one little girl hugged me, and I almost cried. [C] So it was hard work, but very **rewarding**.",
+          model5: "[A] Yes — apart from my weekly shifts at an animal shelter, I helped run a winter **food drive** last year. [R] My local community center was short of volunteers before the holidays, and since my exams had just finished, I signed up. [E] For three days, for instance, I stood outside a supermarket in the freezing cold, inviting shoppers to donate, before spending the evenings sorting cans and packing parcels. It was exhausting work, but when we delivered the boxes, a little girl threw her arms around me in thanks, and I had to fight back tears. [C] So it was undoubtedly hard, but also one of the most **rewarding** things I've ever done." },
+        { q: "People volunteer in different ways—some do it regularly, while others participate during holidays or special campaigns. What motivates you personally to volunteer—or what do you think would encourage you to get involved? Is it a sense of giving back, gaining experience, connecting with others, or something else?",
+          lx: ["give back", "connect with others", "make a difference"],
+          model: "[A] For me, the main motivation is seeing that my help really changes something. [R] When I can see the result — a happy dog, a family with food, a cleaner park — I feel useful and I want to continue. Meeting nice people is also important. [E] For example, I keep going to the animal shelter because I see the dogs change week by week, and many of them find homes. I also made two good friends there. I think more people would volunteer if organizations showed them clear results and made it easy to start. [C] So real impact and good company keep me going.",
+          model5: "[A] What keeps me going, more than anything, is seeing that my effort genuinely changes something. [R] Tangible results — a dog that finally trusts people, a family with food for the holidays, a cleaner park — make the time feel worthwhile, and the people I **connect with** along the way are a wonderful bonus. [E] I keep returning to the shelter, for instance, because I can watch individual dogs transform week by week before going to new homes, and I've made two close friends among the other volunteers. I suspect far more people would get involved if organizations showed volunteers the concrete impact of their work and made it easy to start with just a few hours. [C] So visible impact and good company are what motivate me most." },
+        { q: "Some researchers suggest that volunteering doesn't just help the community—it can also improve the mental and emotional well-being of the person who volunteers. In your opinion, do you think volunteering is beneficial not only for the people receiving help, but also for those offering it? Why do you think that might be the case?",
+          lx: ["well-being", "sense of purpose", "resilience"],
+          model: "[A] Yes, I think volunteering helps the volunteers too. [R] When you help others, you feel useful and needed, and you meet people with similar values. It also helps you see your own problems in a different way. [E] For example, last year I volunteered at an animal shelter on Saturdays during a stressful time at university. Walking the dogs and seeing them happy made me feel calm and useful. I also made two good friends there. [C] So volunteering is good for the heart and the mind.", model5: "[A] I'm convinced it benefits volunteers just as much, in some cases even more. [R] Helping others gives us a sense of purpose and usefulness, connects us with like-minded people and, quite often, puts our own worries into perspective. [E] Last year, for instance, during a particularly stressful semester, I started volunteering at an animal shelter on Saturday mornings. Walking the dogs and seeing them visibly happier became the calmest part of my week, and I also made two close friends there. Interestingly, I came away each time feeling more energized than when I arrived. [C] So volunteering is a rare activity where everyone involved comes out better off." },
+        { q: "Some schools and workplaces have started encouraging volunteering by offering incentives like time off, public recognition, or even integrating it into programs. Do you believe educational institutions or employers should actively support volunteering in this way? Why or why not?",
+          lx: ["company culture", "volunteer", "time off"],
+          model: "[A] I think employers should support volunteering, but not make it required. [R] Volunteering helps the community, and it also makes employees happier and builds team spirit. But if it's required, it stops being real volunteering. [E] For example, my sister's company gives everyone two paid days a year for volunteering. Last spring, her team cleaned a park together, and she said it was the best team-building they've ever had. Nobody was forced to go, but almost everyone went. [C] So support is great, but it should be a choice.", model5: "[A] I believe employers should actively encourage volunteering, but stop short of making it mandatory. [R] It benefits the community, boosts employee morale and builds a sense of team spirit that no office party can match. Once it becomes compulsory, however, it loses the very spirit that makes it valuable. [E] My sister's company, for instance, gives every employee two paid volunteering days a year. Last spring, her team spent one of them restoring a local park, and she described it as the best team-building experience they'd ever had. Tellingly, nobody was obliged to take part, yet nearly everyone did. [C] So support and incentives work well, whereas obligation would backfire." }
+      ]}
+  ],
+
+  /* ===== Speaking Club: тема вдоль и поперёк ===== */
+  club: [
+    { icon: "gift", title: "Мои праздники", en: "My celebrations", questions: [
+      { t: "personal", src: "Official 073", q: "Do you celebrate holidays with your family, friends, or both? How often?", same: "s073-0",
+        f: ["Which holiday do you spend with friends?", "Have you ever spent a holiday alone?"], lx: ["get together with family", "celebrate", "family gathering"] },
+      { t: "personal", src: "Official 073", q: "Can you describe one of your favorite holiday celebrations or festivals? What do you do to mark the occasion?", same: "s073-1",
+        f: ["What food is essential for that holiday?", "What's the best gift you've received?"], lx: ["mark the occasion", "tradition", "ring in the New Year"] },
+      { t: "personal", src: "Платформа · Holidays and Traditions", q: "Tell me about a holiday or celebration that holds special meaning for you. How do you celebrate it, and why is it important?", same: "sht-0",
+        f: ["Who in your family keeps traditions alive?", "Will you celebrate it the same way with your own family?"], lx: ["tradition", "a sense of belonging", "celebrate"] },
+      { t: "experience", src: "Official 073", q: "Tell me about a special event that was particularly memorable for you. What made it meaningful?", same: "s073-2",
+        f: ["Who organized it?", "Do you have photos from it?"], lx: ["mark the occasion", "throw a party", "memorable"] },
+      { t: "compare", q: "Do you prefer big birthday parties or quiet celebrations? Why?",
+        model: "[A] I prefer quiet celebrations with a few close friends. [R] At big parties, I can't really talk to anyone, and I feel I have to entertain everyone. With a small group, I can relax and have real conversations. [E] For example, for my last birthday, I invited five close friends to a small restaurant, and we talked and laughed for hours. Two years ago, my friends **threw** me a big surprise **party** with forty people — it was fun, but I spent the whole evening saying hello and didn't really talk to anyone. [C] So for me, smaller is better.",
+        model5: "[A] I much prefer low-key celebrations with a handful of close friends. [R] At big parties, I end up acting as host, flitting between conversations without really having any, whereas a small group allows for proper conversation and genuine relaxation. [E] For my last birthday, for instance, I invited five close friends to a cozy little restaurant, and we talked and laughed until they practically closed around us. Two years ago, by contrast, my friends **threw** me a surprise **party** for forty people; it was a lovely gesture and great fun, yet I spent the entire evening greeting people and barely spoke to anyone for more than five minutes. [C] So, for me, the best celebrations are small and personal.",
+        f: ["What's the best birthday you've had?", "Do you like surprises?"], lx: ["throw a party", "celebrate", "low-key"] }
+    ]},
+    { icon: "users", title: "Праздники, семья и общество", en: "Holidays, family & society", questions: [
+      { t: "opinion", src: "Платформа · Holidays and Traditions", q: "What role do holidays or traditional celebrations play in your family or local community? Do they strengthen relationships or foster a sense of belonging?", same: "sht-1",
+        f: ["Does your neighborhood celebrate together?", "Can holidays cause arguments?"], lx: ["bring people together", "a sense of belonging", "community"] },
+      { t: "opinion", q: "Have holidays become too commercialized?",
+        model: "[A] Yes, I think many holidays have become too commercialized. [R] Shops start selling holiday decorations months before, and advertising tells us that we must buy expensive gifts to show love. People feel stressed and spend too much money. [E] For example, in my city, New Year decorations appear in the shops in October! Last year, my friend spent almost a whole month's salary on presents and then worried about money for weeks. My family decided to give only one small gift each and spend more time together. [C] So I think we should focus on people, not shopping.",
+        model5: "[A] I'd say many of them have, to a worrying degree. [R] Retailers now begin promoting holidays months in advance, and advertising constantly implies that love must be measured in expensive gifts, leaving many people stressed and in debt. The original meaning — family, gratitude, reflection — risks getting lost in the shopping. [E] In my city, for instance, New Year decorations appear in shops as early as October, and last year a friend spent almost an entire month's salary on presents, then spent weeks anxious about money. My own family, by contrast, recently agreed on a one-small-gift rule, and the holidays have felt calmer and far more meaningful since. [C] So the holidays themselves aren't the problem, but how **commercialized** we've allowed them to become.",
+        f: ["What's a good gift that costs nothing?", "Should shops wait until December?"], lx: ["commercialized", "exchange gifts", "it's the thought that counts"] },
+      { t: "opinion", q: "Big family gatherings can be stressful. Why do you think that is, and how can people make holidays more relaxing?",
+        model: "[A] I think big family gatherings are often stressful because of high expectations and too much work. [R] Everyone wants a perfect holiday, so the hosts cook and clean for days. Also, relatives may ask uncomfortable questions or start old arguments. [E] For example, every New Year, my aunt asks me when I'm going to get married, which is a bit annoying. And my mom used to cook alone for two days and was exhausted. Now everyone brings one dish, and we have a rule — no politics at the table! [C] So sharing the work and some simple rules make holidays much more relaxing.",
+        model5: "[A] Largely, I think, because of unrealistic expectations and an unfair division of labor. [R] Everyone wants the holiday to be perfect, so hosts exhaust themselves cooking and cleaning for days, while gathering many personalities around one table inevitably revives old tensions and invites awkward questions. [E] Every New Year, for instance, one aunt reliably asks when I'm planning to get married, and my mother used to spend two days cooking single-handedly, arriving at dinner too tired to enjoy it. These days, however, every household brings one dish, and we've introduced a strict no-politics rule at the table. [C] So sharing the workload and setting a few simple ground rules can turn a stressful obligation into a genuinely enjoyable occasion.",
+        f: ["What's the most awkward question relatives ask?", "Who does most of the work in your family?"], lx: ["family gathering", "go all out", "get together with family"] },
+      { t: "hypo", q: "Would you ever spend an important holiday away from your family, for example abroad?",
+        model: "[A] Yes, I would try it once, but not every year. [R] Spending a holiday abroad would be an interesting experience, and I could learn how other cultures celebrate. But for me, important holidays are about family, so I'd miss them a lot. [E] For example, I'd love to spend New Year in Japan, where people visit temples and eat special noodles. It would be very different from my family's dumplings and fireworks. But I know my grandmother would be sad, so I'd call her by video at midnight. [C] So once for the adventure, but family is still my first choice.",
+        model5: "[A] I'd try it once, for the experience, though I couldn't make a habit of it. [R] Celebrating abroad would offer a fascinating insight into how other cultures mark the same occasion; for me, however, the big holidays are fundamentally about family, and I'd feel their absence keenly. [E] I'd love to spend New Year in Japan, for instance, where people visit shrines at midnight and eat long noodles for a long life, a world away from our dumplings and fireworks. Knowing how much my grandmother would miss me, though, I'd make sure to video call the whole family at midnight their time. [C] So I'd do it once for the adventure, but family would remain my default for the holidays that matter most.",
+        f: ["What holiday from another culture would you like to try?", "Do you know anyone who celebrates abroad?"], lx: ["break with tradition", "ring in the New Year", "celebrate"] }
+    ]},
+    { icon: "globe", title: "Традиции", en: "Traditions", questions: [
+      { t: "opinion", src: "Official 073", q: "Are traditional cultural observances becoming less important in modern society?", same: "s073-3",
+        f: ["Which traditions are disappearing?", "Which new traditions have appeared?"], lx: ["keep a tradition alive", "commercialized", "evolve"] },
+      { t: "opinion", src: "Платформа · Holidays and Traditions", q: "Is it important to preserve cultural traditions? How do you feel when a tradition is lost or forgotten?", same: "sht-2",
+        f: ["What tradition would you like to save?", "Should the government protect traditions?"], lx: ["preserve", "heritage", "pass down"] },
+      { t: "opinion", src: "Official 107 · Food Preferences", q: "Is preparing traditional meals at home an important way to stay connected to one's culture? Or can people connect with culture in other ways?",
+        model: "[A] I agree that cooking traditional meals is an important way to stay connected to culture, but it's not the only way. [R] Recipes carry family history and traditions, and cooking them together connects generations. But music, language, festivals and stories are also important. [E] For example, every New Year, my family makes dumplings together, using my great-grandmother's recipe. It's my favorite tradition, and I feel very connected to my roots. But my cousin, who doesn't cook at all, connects with our culture through traditional music. [C] So food is a strong connection, but there are other ways too.", model5: "[A] I agree that it's one of the most powerful ways, although certainly not the only one. [R] Traditional recipes carry family history, and cooking them together creates a tangible link between generations; few things evoke a sense of belonging as vividly as the smell of a dish from childhood. Culture, however, also lives in language, music, festivals and stories. [E] Every New Year, for instance, my family gathers to make dumplings from my great-grandmother's recipe, which has been **passed down** for four generations, and it's the moment I feel most connected to my roots. My cousin, by contrast, can barely boil an egg, yet she's deeply engaged with our culture through folk music. [C] So food is a wonderful bridge to culture, but there are many others.",
+        f: ["Which family recipe matters most to you?", "Who taught you to cook it?"], lx: ["traditional dishes", "culinary tradition", "pass down"] },
+      { t: "opinion", src: "Art & Music · Speaking Club", q: "Do young people in your country still care about traditional music and art?",
+        model: "[A] I think most young people prefer modern music, but interest in traditional music is slowly coming back. [R] Many young people think traditional music is old-fashioned. But some modern artists mix traditional sounds with pop or electronic music, and that makes young people curious. [E] For example, a popular band in my country mixes folk melodies with electronic beats, and their concerts are full of teenagers. My cousin started learning a traditional instrument after hearing them. But most of my friends still only listen to international pop. [C] So traditional music isn't dead — it's changing.", model5: "[A] Most young people gravitate towards international pop, although traditional music is enjoying a quiet revival. [R] Many still dismiss folk traditions as old-fashioned, yet a new wave of artists blending traditional sounds with modern genres is making them feel fresh and relevant again. [E] One of the most popular bands in my country, for instance, fuses folk melodies with electronic beats, and their concerts are packed with teenagers. My cousin was so inspired after seeing them that she started learning a traditional instrument. Most of my friends, admittedly, still listen almost exclusively to **mainstream** international music. [C] So traditional art isn't dying; it's evolving into something new.",
+        f: ["Can tradition and pop music mix?", "What traditional art do you know?"], lx: ["mainstream", "nostalgic", "evoke"] },
+      { t: "hypo", q: "Is there a tradition you would change or stop if you could? Why?",
+        model: "[A] Yes, I would change the tradition of giving many expensive gifts at New Year. [R] Many families spend too much money, and people feel stressed and guilty if they can't afford nice presents. The holiday should be about being together. [E] For example, my cousin once borrowed money to buy gifts for everyone, and he paid it back for months. In my family, we now do a \"secret Santa\" — everyone buys just one small gift for one person. It's more fun, and nobody feels pressure. [C] So I'd keep the gifts, but make them smaller and more personal.",
+        model5: "[A] I'd reform the tradition of exchanging lots of expensive New Year gifts. [R] It places enormous financial pressure on many families, and people who can't afford generous presents often feel guilty or ashamed, which undermines the whole spirit of the holiday. [E] My cousin, for instance, once borrowed money just to buy presents for everyone and spent months paying it back. My family, by contrast, has switched to a \"secret Santa\" system, in which each person buys one modest gift for one relative chosen at random; it's more fun, far cheaper and completely free of pressure. [C] So I wouldn't abolish gift-giving, but I'd make it smaller and more personal — after all, **it's the thought that counts**.",
+        f: ["Which tradition would you never change?", "Who decides when a tradition changes?"], lx: ["break with tradition", "it's the thought that counts", "commercialized"] }
+    ]},
+    { icon: "sparkles", title: "Фестивали и разнообразие", en: "Festivals & diversity", questions: [
+      { t: "experience", src: "Official 095", q: "Have you ever been to a cultural festival — for example, a food or music festival? Or would you like to go to one? Why?", same: "s095-0",
+        f: ["What was the most unusual thing there?", "Would you go again?"], lx: ["cuisine", "try the local cuisine", "traditional dishes"] },
+      { t: "hypo", src: "Official 095", q: "If you were to go to a cultural festival, what would you like to see or do there?", same: "s095-1",
+        f: ["Watching or taking part — what do you prefer?", "Which country's festival would you choose?"], lx: ["traditional", "take part in", "workshop"] },
+      { t: "hypo", src: "Official 095", q: "If you participated in a cultural festival for your own culture, what would you want to share with other people and why?", same: "s095-2",
+        f: ["What do foreigners not know about your culture?", "What would you NOT share?"], lx: ["heritage", "traditional dishes", "pass down"] },
+      { t: "opinion", src: "Official 095", q: "Are cultural festivals mainly just for fun, or do they serve an important purpose, like keeping traditions alive?", same: "s095-3",
+        f: ["Can a festival become too touristy?", "Who should pay for festivals?"], lx: ["traditional", "evoke", "community"] },
+      { t: "opinion", src: "Платформа · Holidays and Traditions", q: "Should schools and public institutions do more to recognize and celebrate a wide range of cultural traditions?", same: "sht-3",
+        f: ["Did your school celebrate other cultures?", "Can celebrating diversity go too far?"], lx: ["diversity", "inclusive", "respect"] },
+      { t: "opinion", src: "Budget & Money · Speaking Club", q: "Some cities organize free public events, such as outdoor concerts or street festivals. Do you think cities should spend money on events like these?",
+        model: "[A] Yes, I think cities should spend money on these events. [R] Free events bring people together, support local artists and businesses, and make a city feel alive — especially for people who can't **afford** expensive tickets. [E] Every summer my city organizes free concerts in the main park, and it's one of the few times you see students, families and older people enjoying the same thing. Local cafés are always packed those nights. [C] So I think they're **worth the cost**, as long as the city doesn't cut basic services to pay for them.", model5: "[A] Yes, I believe cities should invest in events like these. [R] Free events bring communities together, support local artists and businesses, and make a city feel vibrant — especially for residents who can't **afford** expensive tickets. [E] Every summer, my city hosts free concerts in the main park, and it's one of the rare occasions when you see students, families and elderly people enjoying the same thing side by side. On those nights, the local cafés are always packed. [C] I'd say they're well **worth the cost**, as long as the city doesn't cut essential services to pay for them.",
+        f: ["What free event would you like in your city?", "Do festivals bring tourists?"], lx: ["community", "bring people together", "budget"] }
+    ]},
+    { icon: "heart", title: "Мой опыт волонтёрства", en: "My volunteering", questions: [
+      { t: "personal", src: "Official 049 / 066", q: "Have you ever participated in any volunteer activities? How often do you volunteer?", same: "s049-0",
+        f: ["How did you find that opportunity?", "Would you recommend it to a friend?"], lx: ["volunteer at", "do volunteer work", "animal shelter"] },
+      { t: "experience", src: "Платформа · Civic Engagement", q: "Have you volunteered your time or skills for a cause? What was your role, and what impact did it have on you?", same: "sce-0",
+        f: ["What surprised you most?", "Did it change your plans for the future?"], lx: ["volunteer at", "refugee", "make a difference"] },
+      { t: "experience", src: "Платформа · Community Involvement", q: "Have you ever volunteered to support a cause, organization or local event? What was that experience like?", same: "sci-0",
+        f: ["What was the hardest part?", "Would you do it again?"], lx: ["volunteer at", "food drive", "rewarding"] },
+      { t: "hypo", src: "Official 049 / 066", q: "Can you describe a public service project you have been involved in or would like to participate in if you had the time?", same: "s049-2",
+        f: ["What skills could you offer?", "How much time could you give?"], lx: ["take part in", "tutor", "give back"] },
+      { t: "experience", q: "Tell me about a time volunteering was harder than you expected.",
+        model: "[A] Volunteering at the animal shelter was harder than I expected in the first month. [R] I thought it would be just walking cute dogs, but there was a lot of dirty work, and some animals were sick or scared. Emotionally, it was also difficult. [E] For example, on my second Saturday, I cleaned cages for three hours in the cold. And there was an old dog who was very sad and didn't want to eat. I visited him every week, and after two months, he finally found a family. I cried when he left. [C] So it was harder than I thought, but that's why it feels so meaningful now.",
+        model5: "[A] My first month at the animal shelter was far tougher than I'd anticipated. [R] I'd naively imagined pleasant walks with playful dogs, but the reality involved plenty of unglamorous physical work, along with animals that were sick, traumatized or both, which was emotionally draining. [E] On only my second Saturday, for instance, I spent three hours scrubbing kennels in near-freezing temperatures. There was also an elderly dog who seemed utterly heartbroken and refused to eat; I sat with him every week, and when, two months later, he was finally adopted, I cried all the way home. [C] So it was harder than I expected, but precisely those difficulties are what make it so meaningful to me now.",
+        f: ["What do new volunteers not expect?", "How do you deal with sad moments?"], lx: ["animal shelter", "rewarding", "make a difference"] }
+    ]},
+    { icon: "bulb", title: "Зачем люди помогают", en: "Why people help", questions: [
+      { t: "personal", src: "Платформа · Civic Engagement", q: "What personally motivates you — or would motivate you — to volunteer your time? Why does that reason matter to you?", same: "sce-1",
+        f: ["Has someone helped you a lot?", "What cause matters most to you?"], lx: ["give back", "pay it forward", "make a difference"] },
+      { t: "personal", src: "Платформа · Community Involvement", q: "What motivates you personally to volunteer — giving back, gaining experience, connecting with others, or something else?", same: "sci-1",
+        f: ["What would make more students volunteer?", "Should volunteers get anything in return?"], lx: ["give back", "connect with others", "make a difference"] },
+      { t: "opinion", src: "Платформа · Community Involvement", q: "Is volunteering beneficial not only for the people receiving help, but also for those offering it? Why?", same: "sci-2",
+        f: ["Can volunteering be stressful?", "What have you gained from helping others?"], lx: ["well-being", "sense of purpose", "resilience"] },
+      { t: "opinion", q: "Is it still real volunteering if someone does it mainly to improve their CV?",
+        model: "[A] I think it's still volunteering, even if the motivation isn't perfect. [R] The people who receive help don't care why the volunteer is there — they care that they get help. And many people start for their CV and later start to care about the cause. [E] For example, a classmate started volunteering at the refugee center only because he wanted to apply for a scholarship. But after a few months, he made friends there, and now he volunteers every week, even after he got the scholarship. [C] So the reason at the start is less important than what people do.",
+        model5: "[A] I'd say it still counts, even if the motivation isn't entirely selfless. [R] For the people receiving help, the volunteer's reasons are largely irrelevant; what matters is that the help arrives. Moreover, motivations frequently evolve, and people who start out of self-interest often end up genuinely committed. [E] A classmate of mine, for instance, began volunteering at the refugee center purely to strengthen a scholarship application. Within a few months, however, he'd formed real friendships there, and long after the scholarship was secured, he still volunteers every week. [C] So I'd judge volunteering by its impact rather than by the purity of anyone's initial motives.",
+        f: ["Does volunteering help you get a job?", "Should universities count volunteering in admissions?"], lx: ["make a difference", "give back", "motivation"] },
+      { t: "compare", q: "Is donating money as valuable as donating your time?",
+        model: "[A] I think both are valuable, but in different ways. [R] Money helps organizations buy food, medicine and pay professional workers, so it's very important. But time and personal contact give people something money can't — attention, kindness and human connection. [E] For example, my parents donate to a children's hospital every month, and the money helped buy new equipment. But at the refugee center, what people value most is someone to talk to and practice the language with, and that needs time, not money. [C] So the best choice depends on what you can give and what the cause needs.",
+        model5: "[A] Both matter, but they meet different needs. [R] Money gives organizations flexibility to buy supplies, run services and employ professionals, often far more efficiently than volunteers could. Time, on the other hand, offers something money can't buy: human attention and connection. [E] My parents, for instance, donate monthly to a children's hospital, and their contributions helped fund new medical equipment. At the refugee center where I volunteer, by contrast, what newcomers value most is simply someone patient to talk to and practice the language with, which requires presence rather than cash. [C] So the most valuable gift depends both on what you can offer and on what the cause truly needs, and **every little helps**.",
+        f: ["Do you donate money?", "Which charities do you trust?"], lx: ["donate to charity", "every little helps", "make a difference"] }
+    ]},
+    { icon: "cap", title: "Обязательное волонтёрство?", en: "Should volunteering be required?", questions: [
+      { t: "opinion", src: "Official 049 / 066", q: "Should volunteering be a mandatory part of the school curriculum to help students develop a sense of community?", same: "s049-3",
+        f: ["How many hours would be fair?", "What if a student refuses?"], lx: ["civic responsibility", "mandatory", "a sense of community"] },
+      { t: "opinion", src: "Платформа · Civic Engagement", q: "Should schools and workplaces require volunteer work, or could that reduce the meaning of the experience?", same: "sce-2",
+        f: ["Is forced kindness still kindness?", "Should volunteering be paid?"], lx: ["civic responsibility", "mandatory", "meaningful"] },
+      { t: "opinion", src: "Платформа · Community Involvement", q: "Should schools or employers actively support volunteering with incentives like time off or public recognition?", same: "sci-3",
+        f: ["Would you use paid volunteering days?", "Should volunteers get public awards?"], lx: ["company culture", "volunteer", "time off"] },
+      { t: "opinion", q: "Some countries have a year of national or community service for young people. Is that a good idea?",
+        model: "[A] I think a year of community service could be a good idea, if young people can choose what they do. [R] It would help young people gain experience, learn responsibility and meet people from different backgrounds. But it shouldn't be forced military service, and it shouldn't delay education too much. [E] For example, a friend from Germany did a voluntary social year in a hospital before university. She says she grew up a lot, learned to work with older people and decided to study medicine because of it. [C] So a flexible service year can be very valuable.",
+        model5: "[A] I think it could be very valuable, provided it's flexible and young people can choose how they serve. [R] A service year can build responsibility and practical skills, while bringing together young people from very different backgrounds, something modern societies increasingly lack. It shouldn't, however, become a disguised form of compulsory military service or unduly delay education. [E] A friend from Germany, for instance, spent a voluntary social year working in a hospital before university. She describes it as the year she grew up, and it was there, caring for elderly patients, that she decided to study medicine. [C] So a well-designed service year could benefit both young people and the communities they serve.",
+        f: ["What kind of service would you choose?", "Should it be paid?"], lx: ["civic responsibility", "community", "gain work experience"] }
+    ]},
+    { icon: "building", title: "Сообщество и благотворительность", en: "Community & charity", questions: [
+      { t: "experience", src: "Official 049 / 066", q: "Can you tell me about a charity effort or donation drive that made an impact where you live?", same: "s049-1",
+        f: ["How did people hear about it?", "Did you take part?"], lx: ["raise money for", "fundraiser", "make a difference"] },
+      { t: "opinion", src: "Платформа · Civic Engagement", q: "Does volunteer work truly help bring people together and foster a sense of unity? Have you seen examples of this?", same: "sce-3",
+        f: ["Do you know your neighbors?", "What event would bring your neighborhood together?"], lx: ["bring people together", "a sense of belonging", "community"] },
+      { t: "opinion", q: "Do you trust charities? How can people know their money is used well?",
+        model: "[A] I trust some charities, but I always check before I donate. [R] Most charities do great work, but sometimes there are scandals where money is spent on high salaries or advertising instead of helping people. [E] For example, before I donate, I look at the charity's website to see reports about how they spend money. I prefer small local organizations, like the animal shelter where I volunteer, because I can see the results with my own eyes. I also never give money to people who call me on the phone asking for donations. [C] So trust is important, but checking is even more important.",
+        model5: "[A] I trust many, but I believe in checking before giving. [R] The vast majority do valuable work, yet occasional scandals involving inflated salaries or wasteful spending understandably make people cautious. Transparency is therefore essential. [E] Before donating, for instance, I look for annual reports showing what proportion of donations actually reaches the cause. I also favor small local organizations, such as the shelter where I volunteer, because I can see the impact firsthand. And I never donate in response to unsolicited phone calls, which are a common route for fraud. [C] So I'd say trust should be earned through transparency, and donors have every right to ask where their money goes.",
+        f: ["Have you ever donated online?", "Should charities spend money on advertising?"], lx: ["donate to charity", "nonprofit (organization)", "transparency"] },
+      { t: "opinion", q: "Online fundraising lets anyone raise money for a cause. Is this a good thing?",
+        model: "[A] Yes, I think online fundraising is mostly a good thing. [R] It helps people who need money quickly, like for medical treatment, and anyone can start a campaign easily. But there are also fake campaigns, so people need to be careful. [E] For example, last year a student at my university needed money for an operation, and his friends started an online campaign. In one week, hundreds of people donated, and he got the surgery. But I also read about a woman who invented a sick child to collect money. [C] So online fundraising is powerful, but we should check before we donate.",
+        model5: "[A] On the whole, it's a remarkably positive development, though it comes with risks. [R] It allows ordinary people to mobilize support astonishingly quickly, particularly in emergencies such as urgent medical treatment, without needing the backing of a large organization. Unfortunately, the same ease of use makes fraudulent campaigns possible. [E] Last year, for instance, friends of a student at my university launched an online campaign to fund his operation, and within a week hundreds of donors had covered the full cost. At the same time, I've read about scammers inventing heartbreaking stories to exploit people's generosity. [C] So online fundraising is a powerful tool for good, but donors should verify campaigns before giving.",
+        f: ["Would you start a campaign for a friend?", "How do you spot a fake campaign?"], lx: ["raise money for", "fundraiser", "every little helps"] },
+      { t: "opinion", q: "Do people today know their neighbors less than in the past? Why?",
+        model: "[A] Yes, I think people know their neighbors less today, especially in big cities. [R] People move often, work long hours and spend free time online or far from home. In the past, people lived in the same place for years and helped each other more. [E] For example, my grandparents know almost everyone in their village and always help each other with gardening and repairs. In my apartment building in the city, I know only two neighbors by name. But after our park cleanup last spring, I started talking to more people. [C] So we're more distant, but community events can change that.",
+        model5: "[A] In most cities, I think they do, although it isn't irreversible. [R] People move far more often, work longer hours and spend much of their free time online or away from home, whereas in the past families stayed in one place for generations and relied on neighbors far more. [E] My grandparents, for instance, know virtually everyone in their village and routinely help one another with harvests and repairs. In my city apartment block, by contrast, I could name only two neighbors until last spring, when a park cleanup introduced me to a dozen more, and we now greet each other regularly. [C] So modern life does make us more anonymous, but shared activities can quickly rebuild that sense of **community**.",
+        f: ["Do you know your neighbors?", "What makes a good neighbor?"], lx: ["community", "a sense of belonging", "lend a hand"] }
+    ]},
+    { icon: "flag", title: "Представь, что…", en: "What if…?", questions: [
+      { t: "hypo", q: "If you could create a new national holiday, what would it celebrate and how?",
+        model: "[A] I would create a \"Neighbors' Day\" to celebrate local communities. [R] Many people today don't know their neighbors, and this holiday would give everyone a reason to meet and help each other. [E] For example, on this day, every street would have a big shared lunch outside, where each family brings one dish. In the afternoon, people would do small projects together — plant trees, paint benches or help older neighbors with repairs. In the evening, there would be music and dancing. [C] So it would be a holiday about kindness and community.",
+        model5: "[A] I'd create a national \"Neighbors' Day\" celebrating local communities. [R] With so many people living alongside strangers, a holiday dedicated to getting to know one another could rebuild the kind of connections that modern life has eroded. [E] Every street, for instance, would host a shared lunch outdoors, with each household contributing a dish. In the afternoon, residents would take on small projects together — planting trees, repainting benches or helping elderly neighbors with repairs — and the day would end with music and dancing in local squares. [C] So it would be a holiday not about consumption, but about kindness and **community**.",
+        f: ["What date would you choose?", "What would people eat?"], lx: ["bring people together", "community", "mark the occasion"] },
+      { t: "hypo", q: "Imagine you were asked to organize a festival in your city. What would it be like?",
+        model: "[A] I would organize an international food and music festival in the main park. [R] My city has people from many countries, but they don't often meet each other. A festival would help people learn about different cultures in a fun way. [E] For example, each community would have a stall with traditional food, and there would be a stage with music and dance from different countries. Children could do crafts, and everyone could join a big dance workshop in the evening. Entry would be free. [C] So it would be a celebration of diversity.",
+        model5: "[A] I'd organize a free international food and music festival in the city's main park. [R] My city is home to people from dozens of countries, yet these communities rarely interact, so a festival could become a joyful bridge between them. [E] Each community, for instance, would run a stall serving its traditional dishes, while a central stage would host music and dance from around the world. There'd be craft workshops for children and, as the sun set, a giant open dance class led by performers from different cultures. [C] So it would be a celebration of **diversity** designed to turn neighbors from different backgrounds into friends.",
+        f: ["Who would you invite to perform?", "How would you pay for it?"], lx: ["diversity", "bring people together", "take part in"] },
+      { t: "hypo", q: "If you could volunteer abroad for a year, what would you do and where?",
+        model: "[A] I would volunteer in a wildlife center in Costa Rica. [R] I love animals, and I already volunteer at an animal shelter, so I'd like to help wild animals too. It would also help me improve my Spanish. [E] For example, I imagine taking care of injured birds and monkeys, helping to prepare them to return to the forest, and teaching tourists about protecting nature. In my free time, I'd explore the rainforest and learn about local culture. [C] So it would combine my love of animals, nature and languages.",
+        model5: "[A] I'd volunteer at a wildlife rescue center in Costa Rica. [R] It would combine my existing passion for animal welfare with a chance to protect wildlife on a larger scale, while also immersing myself in Spanish, which I've been studying for a year. [E] I imagine, for instance, caring for injured birds and monkeys, helping to rehabilitate them for release back into the rainforest, and leading short talks for tourists on conservation. In my free time, I'd explore the jungle and learn as much as I could about local life and culture. [C] So it would bring together three things I care about — animals, nature and languages — in one unforgettable year.",
+        f: ["Is 'voluntourism' always helpful?", "What skills would you bring?"], lx: ["volunteer at", "make a difference", "give back"] },
+      { t: "hypo", q: "If you had one million dollars to give to a cause, which would you choose and why?",
+        model: "[A] I would give the money to education for children from poor families. [R] I believe education is the best way to change a person's life, and many talented children never get the chance to study well because of money. [E] For example, I'd use the money for free tutoring programs, scholarships and laptops for students who can't afford them. I know how much one teacher's free lessons helped me, so I'd like to give that chance to hundreds of children. [C] So education would be my choice, because it changes lives for the long term.",
+        model5: "[A] I'd invest it in education for children from low-income families. [R] Education is, in my view, the most powerful long-term lever for changing lives, and countless talented children never fulfill their potential simply because their families can't afford support. [E] I'd fund free tutoring programs, for instance, along with scholarships and laptops for students who lack them. Having experienced firsthand how one teacher's free lessons transformed my own prospects, I'd love to multiply that effect for hundreds of children. [C] So I'd choose education, because it doesn't just help someone today; it **makes a difference** for generations.",
+        f: ["Would you give it all at once?", "Which cause gets too little attention?"], lx: ["make a difference", "pay it forward", "nonprofit (organization)"] }
+    ]}
+  ],
+
+  checklist: [
+    "Ответил(а) на вопрос прямо в первом предложении",
+    "Объяснил(а), что праздник или помощь даёт людям: a sense of belonging",
+    "Вставил(а) одну идиому — естественно, а не «для галочки»",
+    "Привёл(а) конкретный пример: праздник, традиция, волонтёрство",
+    "Без ошибок: volunteer AT, donate TO, take part IN",
+    "Уложился(ась) в 45 секунд без длинных пауз"
+  ],
+
+  targetLexis: ["celebrate", "mark the occasion", "exchange gifts", "get together with family", "keep a tradition alive", "pass down", "preserve", "heritage", "a sense of belonging", "commercialized", "diversity", "volunteer at", "donate to charity", "raise money for", "give back to the community", "make a difference", "bring people together", "lend a hand", "a helping hand", "pay it forward", "do my bit", "every little helps", "that said"]
+};
+
+/* =====================================================================
+   ИЛЛЮСТРАЦИИ (SVG)
+   ===================================================================== */
+const HERO_ART = `
+<svg viewBox="0 0 320 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Подарок, гирлянда с фонариками и руки, держащие сердце">
+  <ellipse cx="165" cy="232" rx="128" ry="10" fill="rgba(0,0,0,.22)"/>
+  <path d="M10 30 q150 60 300 0" stroke="#fff" stroke-width="2.5" fill="none" opacity=".8"/>
+  <g class="tl-coin">
+    <circle cx="44" cy="44" r="8" fill="#f472b6"/><circle cx="92" cy="58" r="8" fill="#38bdf8"/><circle cx="140" cy="64" r="8" fill="#c4b5fd"/>
+    <circle cx="188" cy="62" r="8" fill="#fb923c"/><circle cx="236" cy="54" r="8" fill="#f472b6"/><circle cx="282" cy="40" r="8" fill="#38bdf8"/>
+  </g>
+  <rect x="44" y="132" width="112" height="92" rx="6" fill="#ec4899"/>
+  <rect x="36" y="114" width="128" height="26" rx="5" fill="#f472b6"/>
+  <rect x="92" y="114" width="16" height="110" fill="#fff"/>
+  <path d="M100 114 c-30 -34 -52 -6 -30 2 c10 4 22 0 30 -2z M100 114 c30 -34 52 -6 30 2 c-10 4 -22 0 -30 -2z" fill="#fff" stroke="#fbcfe8" stroke-width="2"/>
+  <g transform="translate(186 120)">
+    <path d="M0 70 c-6 -24 6 -40 22 -48 l26 -12 c8 -4 14 6 6 12 l-18 12" fill="#fdba74"/>
+    <path d="M112 70 c6 -24 -6 -40 -22 -48 l-26 -12 c-8 -4 -14 6 -6 12 l18 12" fill="#fb923c"/>
+    <path d="M56 58 c-12 -12 -30 -18 -30 -36 c0 -12 14 -18 24 -10 c4 3 6 6 6 6 s2 -3 6 -6 c10 -8 24 -2 24 10 c0 18 -18 24 -30 36z" fill="#e11d48"/>
+    <rect x="-6" y="70" width="34" height="34" rx="6" fill="#7c3aed"/><rect x="84" y="70" width="34" height="34" rx="6" fill="#7c3aed"/>
+  </g>
+  <path d="M286 100 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3 z" fill="#a5f3fc"/>
+  <path d="M20 168 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3 z" fill="#fbcfe8"/>
+  <path d="M176 92 l2 5 l5 2 l-5 2 l-2 5 l-2 -5 l-5 -2 l5 -2 z" fill="#fff"/>
+</svg>`;
+
+/* Мини-иллюстрации к идиомам (160×96). Классы a-* анимируются при наведении. */
+const SPARK = (x, y, c) => `<path d="M${x} ${y - 7} l2 5 l5 2 l-5 2 l-2 5 l-2 -5 l-5 -2 l5 -2z" fill="${c}"/>`;
+const IDIOM_ART = {
+  hand: `<g class="a-r"><path d="M14 66 c10 -4 22 -4 34 -2 l20 -8 c6 -2 10 6 4 10 l-16 10 c-12 6 -28 6 -42 4z" fill="#fdba74"/></g>
+         <g class="a-l"><path d="M146 30 c-10 4 -22 4 -34 2 l-20 8 c-6 2 -10 -6 -4 -10 l16 -10 c12 -6 28 -6 42 -4z" fill="#fb923c"/></g>
+         <path d="M80 58 c-6 -6 -14 -9 -14 -17 c0 -6 7 -9 12 -5 l2 2 l2 -2 c5 -4 12 -1 12 5 c0 8 -8 11 -14 17z" fill="#e11d48"/>`,
+  allout: `<path d="M20 86 h120" stroke="#94a3b8" stroke-width="3"/>
+         <rect x="40" y="40" width="80" height="46" rx="4" fill="#c4b5fd"/><path d="M34 42 l46 -26 l46 26z" fill="#7c3aed"/>
+         <g class="a-drop"><circle cx="30" cy="26" r="5" fill="#f472b6"/><circle cx="130" cy="20" r="5" fill="#38bdf8"/><circle cx="146" cy="44" r="4" fill="#fb923c"/><circle cx="14" cy="50" r="4" fill="#38bdf8"/></g>
+         <path d="M40 54 q20 10 40 0 q20 10 40 0" stroke="#f472b6" stroke-width="3" fill="none"/>
+         <circle cx="60" cy="58" r="3" fill="#fde68a"/><circle cx="80" cy="54" r="3" fill="#fff"/><circle cx="100" cy="58" r="3" fill="#fde68a"/>
+         <rect x="72" y="66" width="16" height="20" rx="2" fill="#5b21b6"/>`,
+  ring: `<g class="a-tag" style="transform-origin:56px 14px"><path d="M56 14 c-16 0 -22 12 -22 28 v12 l-8 10 h60 l-8 -10 v-12 c0 -16 -6 -28 -22 -28z" fill="#fbbf24"/><circle cx="56" cy="68" r="5" fill="#d97706"/></g>
+         <rect x="98" y="26" width="54" height="40" rx="6" fill="#1e293b"/><text x="125" y="51" text-anchor="middle" font-family="system-ui" font-size="13" font-weight="800" fill="#f472b6">00:00</text>
+         ${SPARK(112, 16, "#38bdf8")}${SPARK(144, 84, "#f472b6")}${SPARK(18, 26, "#c4b5fd")}`,
+  forward: `<circle cx="28" cy="38" r="10" fill="#fdba74"/><path d="M16 80 c0 -18 24 -18 24 0" fill="#7c3aed"/>
+         <circle cx="80" cy="38" r="10" fill="#fdba74"/><path d="M68 80 c0 -18 24 -18 24 0" fill="#ec4899"/>
+         <circle cx="132" cy="38" r="10" fill="#fdba74"/><path d="M120 80 c0 -18 24 -18 24 0" fill="#0ea5e9"/>
+         <g class="a-r"><path d="M52 20 c-3 -3 -7 -5 -7 -9 c0 -3 4 -5 6 -3 l1 1 l1 -1 c2 -2 6 0 6 3 c0 4 -4 6 -7 9z" fill="#e11d48"/></g>
+         <path d="M40 54 h20 l-5 -5 M60 54 l-5 5 M92 54 h20 l-5 -5 M112 54 l-5 5" stroke="#94a3b8" stroke-width="3" fill="none" stroke-linecap="round"/>`,
+  bit: `<circle cx="80" cy="50" r="34" fill="#e0e7ff"/>
+         <path d="M80 50 L80 16 A34 34 0 0 1 112 39z" fill="#7c3aed"/><path d="M80 50 L112 39 A34 34 0 0 1 100 78z" fill="#ec4899"/><path d="M80 50 L100 78 A34 34 0 0 1 52 70z" fill="#38bdf8"/>
+         <g class="a-up"><path d="M80 50 L52 70 A34 34 0 0 1 49 34z" fill="#fb923c" transform="translate(-14 2)"/></g>
+         <path d="M80 50 L49 34 A34 34 0 0 1 80 16z" fill="#c4b5fd"/>`,
+  little: `<path d="M50 40 h60 l-6 46 h-48z" fill="#bae6fd" stroke="#0284c7" stroke-width="3"/>
+         <path d="M54 66 h52 l-2 20 h-48z" fill="#fbbf24" opacity=".85"/>
+         <g class="a-drop"><circle cx="70" cy="14" r="7" fill="#fbbf24" stroke="#d97706" stroke-width="2"/><circle cx="92" cy="24" r="6" fill="#fbbf24" stroke="#d97706" stroke-width="2"/></g>
+         <path d="M76 52 c-3 -3 -7 -5 -7 -9 c0 -3 4 -5 6 -3 l1 1 l1 -1 c2 -2 6 0 6 3 c0 4 -4 6 -7 9z" fill="#e11d48" transform="translate(4 0)"/>`,
+  town: `<path d="M8 86 h144" stroke="#475569" stroke-width="3"/>
+         <rect x="16" y="44" width="26" height="42" fill="#334155"/><rect x="46" y="28" width="30" height="58" fill="#1e293b"/><rect x="82" y="50" width="24" height="36" fill="#334155"/><rect x="110" y="36" width="34" height="50" fill="#1e293b"/>
+         <g class="a-flame"><rect x="22" y="52" width="6" height="6" fill="#f43f5e"/><rect x="54" y="38" width="6" height="6" fill="#f43f5e"/><rect x="64" y="56" width="6" height="6" fill="#fb7185"/><rect x="118" y="46" width="6" height="6" fill="#f43f5e"/><rect x="130" y="62" width="6" height="6" fill="#fb7185"/><rect x="88" y="60" width="6" height="6" fill="#f43f5e"/></g>
+         <path d="M96 10 c6 0 10 10 8 18 c-10 -6 -22 2 -30 -4 c6 -2 10 -14 22 -14z" fill="#e11d48"/>
+         ${SPARK(30, 18, "#f472b6")}${SPARK(140, 16, "#c4b5fd")}`,
+  moon: `<rect x="6" y="6" width="148" height="84" rx="8" fill="#0f172a"/>
+         <g class="a-beam"><circle cx="80" cy="46" r="26" fill="#38bdf8"/><circle cx="72" cy="40" r="5" fill="#7dd3fc"/><circle cx="90" cy="54" r="4" fill="#7dd3fc"/></g>
+         <circle cx="24" cy="22" r="1.8" fill="#fff"/><circle cx="134" cy="26" r="1.8" fill="#fff"/><circle cx="122" cy="74" r="1.5" fill="#fff"/><circle cx="34" cy="70" r="1.5" fill="#fff"/>`,
+  thought: `<rect x="22" y="50" width="40" height="34" rx="3" fill="#f472b6"/><rect x="38" y="50" width="8" height="34" fill="#fff"/><path d="M42 50 c-10 -14 -20 -2 -10 0z M42 50 c10 -14 20 -2 10 0z" fill="#fff"/>
+         <g class="a-up"><circle cx="78" cy="44" r="4" fill="#e0e7ff"/><circle cx="90" cy="32" r="6" fill="#e0e7ff"/>
+         <path d="M98 30 c-4 -14 16 -22 24 -12 c8 -8 26 -2 22 12 c8 6 2 20 -10 16 c-6 8 -22 8 -26 0 c-12 2 -18 -10 -10 -16z" fill="#e0e7ff"/>
+         <path d="M120 34 c-3 -3 -7 -5 -7 -9 c0 -3 4 -5 6 -3 l1 1 l1 -1 c2 -2 6 0 6 3 c0 4 -4 6 -7 9z" fill="#e11d48"/></g>`
+};
+</script>
+<script src="topic-engine.js"></script>
+</body>
+</html>

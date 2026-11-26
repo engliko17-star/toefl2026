@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Technology & Social Media — Speaking Topics — TOEFL Prep</title>
+
+<!-- Те же подключения, что на остальных страницах платформы -->
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="auth.js"></script>
+<script src="topics.js"></script>
+
+<link rel="stylesheet" href="topic-engine.css">
+</head>
+<body>
+<div class="tl-layout flex flex-col md:flex-row min-h-screen">
+  <div id="app-sidebar"></div>
+  <script src="nav.js"></script>
+
+  <main class="tl-main">
+    <div class="tl-wrap" id="lesson"></div>
+  </main>
+</div>
+
+<!-- Панель ответа -->
+<div class="tl-dock" id="dock" aria-live="polite">
+  <div class="tl-dock-top"><span id="dockLabel">Ответ</span><button class="tl-dock-close" id="dockClose" aria-label="Закрыть">✕</button></div>
+  <div class="tl-dock-q" id="dockQ"></div>
+  <div class="tl-dock-status">
+    <div class="tl-dock-state"><span class="tl-rec-dot" id="recDot"></span><span id="dockState">Готово</span></div>
+    <div class="tl-dock-time" id="dockTime">0:45</div>
+  </div>
+  <div class="tl-phase" id="dockPhase"></div>
+  <div class="tl-dock-bar" id="dockBar"></div>
+  <div class="tl-dock-ctrl">
+    <label><input type="checkbox" id="recToggle"> Записывать голос</label>
+    <div class="tl-row">
+      <button class="tl-dock-btn" id="dockShowQ">Показать текст</button>
+      <button class="tl-dock-btn" id="dockStop">Стоп</button>
+    </div>
+  </div>
+  <div class="tl-dock-msg" id="dockMsg"></div>
+  <div class="tl-dock-out" id="dockOut"></div>
+</div>
+
+<script>
+/* =====================================================================
+   КОНТЕНТ УРОКА: TECHNOLOGY & SOCIAL MEDIA
+   Новая тема = копия файла: меняются LESSON, HERO_ART и IDIOM_ART.
+   Общий движок и стили — topic-engine.js и topic-engine.css.
+   **слово** — подсветка целевой лексики.
+   _слово_ в коллокациях — «ключевой кубик».
+   [A] [R] [E] [C] в модельных ответах — цветная структура:
+   A = прямой ответ, R = причина, E = пример, C = вывод.
+   ===================================================================== */
+const LESSON = {
+  slug: "tech",
+  titleEn: "Technology & Social Media",
+  titleRu: "Технологии и соцсети",
+  category: "Технологии и медиа",
+  intro: "Телефон и экранное время, соцсети — что постить и чему верить, общение онлайн и недопонимание в переписке, видеозвонки, ИИ и работа, зависимость от технологий и цифровое неравенство. Самая частая «современная» тема Take an Interview: учим говорить о ней точно и без банальностей и проходим все вопросы из базы.",
+  meta: [["≈ 60", "минут"], ["27", "слов · 2 уровня"], ["20", "коллокаций"], ["9", "идиом"], ["{Q}", "вопросов для обсуждения"]],
+
+  frames: {
+    warmup:    { icon: "flame",      time: "3 мин",  steps: ["Нажми динамик или прочитай вопрос", "Ответь вслух за 20 секунд", "Без подсказок — это «до урока»"] },
+    vocab:     { icon: "book",       time: "10 мин", steps: ["Посмотри на схему: телефон — друг или ловушка", "Найди себя на шкале", "Слова: начни с Core, слушай и повторяй"] },
+    coll:      { icon: "link",       time: "8 мин",  steps: ["Учи сочетание целиком", "Цветной кубик — то, что чаще путают", "Опиши свой день онлайн с 5 сочетаниями"] },
+    idioms:    { icon: "quote",      time: "6 мин",  steps: ["Посмотри картинку — запомни образ", "Плашка «Можно» — смело в ответы", "Выбери 2 идиомы на сегодня"] },
+    expr:      { icon: "megaphone",  time: "5 мин",  steps: ["Послушай интонацию", "По 1 фразе из каждой группы", "Запомни шкалу 45 секунд"] },
+    check:     { icon: "puzzle",     time: "10 мин", steps: ["4 мини-игры", "Цель — 100% в Matching и Gap-fill", "Карточки — пока не узнаёшь все"] },
+    repeat:    { icon: "headphones", time: "5 мин",  steps: ["Слушай, не читая", "Повтори слово в слово", "Включи запись и сравни"] },
+    interview: { icon: "mic",        time: "15 мин", steps: ["Выбери сет — начни с Official", "Пройди все вопросы подряд, без пауз", "Сравни с моделью: цвета = структура"] },
+    club:      { icon: "chat",       time: "30+ мин", steps: ["Возьми 1–2 блока на занятие", "Ответь, потом — на «Копнём глубже»", "Отметь «Обсудили» или крути рулетку"] },
+    self:      { icon: "checkCircle",time: "3 мин",  steps: ["Прослушай свои записи", "Отметь, что получилось", "Цель — 15+ отмеченных слов"] }
+  },
+
+  warmup: [
+    "What's the first thing you do with your phone in the morning?",
+    "Which app do you use the most?",
+    "Do you post on social media, or do you mostly scroll?",
+    "Could you live without the internet for a week?"
+  ],
+
+  /* Телефон в руке: равные ветки, вместо процента — tag */
+  flow: {
+    icon: "phone",
+    title: "Телефон в руке: друг или ловушка?",
+    source: { kicker: "Беру телефон…", title: "My smartphone", ru: "мой смартфон", words: ["always online", "check my phone", "notifications"] },
+    branches: [
+      { title: "Connect", ru: "общаться", sub: "close, even far away", tag: "Связь", color: "#0ea5e9", words: ["keep in touch", "a video call", "a group chat", "long-distance"] },
+      { title: "Get things done", ru: "решать задачи", sub: "a tool in my pocket", tag: "Польза", color: "#8b5cf6", words: ["look things up", "online banking", "a navigation app", "productivity"] },
+      { title: "Get lost", ru: "залипнуть", sub: "where the hours go", tag: "Ловушка", color: "#ec4899", words: ["doomscrolling", "endless notifications", "screen time", "FOMO"] }
+    ],
+    notes: [
+      "Почти любой вопрос про технологии — это баланс <b>пользы</b> и <b>ловушки</b>. Сильный ответ называет обе стороны и говорит, от чего это зависит",
+      "Готовая фраза: <i>Technology is a double-edged sword — it all depends on how we use it.</i>"
+    ]
+  },
+
+  scale: {
+    title: "Сколько тебя в сети? Перетащи кружок туда, где ты",
+    left: "DIGITAL MINIMALIST", right: "CHRONICALLY ONLINE",
+    words: [
+      { w: "digital minimalist", p: 4 }, { w: "offline weekends", p: 17 }, { w: "screen-time limits", p: 30 }, { w: "check it now and then", p: 44 },
+      { w: "heavy user", p: 58 }, { w: "glued to my phone", p: 71 }, { w: "doomscrolling", p: 85 }, { w: "chronically online", p: 97 }
+    ],
+    says: [
+      { max: 25,  t: "I'm a bit of a **digital minimalist** — I keep my phone in a drawer and enjoy **offline weekends**." },
+      { max: 50,  t: "I use my phone a lot, but I've set **screen-time limits**, so I only **check it now and then**." },
+      { max: 75,  t: "I'll admit I'm a **heavy user** — I'm pretty much **glued to my phone**." },
+      { max: 101, t: "Honestly, I'm **chronically online**. I lose hours **doomscrolling** every night." }
+    ]
+  },
+
+  vocab: [
+    { en: "device", pos: "n", ru: "устройство (гаджет)", ex: "I use three devices every day: a phone, a laptop and a tablet.", level: "core" },
+    { en: "app", pos: "n", ru: "приложение", ex: "I deleted two apps that wasted my time.", level: "core" },
+    { en: "notification", pos: "n", ru: "уведомление", ex: "I turned off most notifications on my phone.", level: "core" },
+    { en: "screen time", pos: "n", ru: "экранное время", ex: "My screen time is about five hours a day.", level: "core" },
+    { en: "scroll through", pos: "phr v", ru: "листать (ленту)", ex: "I scroll through Instagram on the bus.", level: "core" },
+    { en: "post", pos: "v / n", ru: "публиковать; пост", ex: "I rarely post anything about my private life.", level: "core" },
+    { en: "follower", pos: "n", ru: "подписчик", ex: "She has over ten thousand followers.", level: "core" },
+    { en: "comment", pos: "n / v", ru: "комментарий; комментировать", ex: "I never read the comments under news articles.", level: "core" },
+    { en: "go viral", pos: "phr", ru: "стать вирусным, разлететься по сети", ex: "My friend's video went viral overnight.", level: "core" },
+    { en: "video call", pos: "n", ru: "видеозвонок", ex: "I have a video call with my parents every Sunday.", level: "core" },
+    { en: "group chat", pos: "n", ru: "групповой чат", ex: "Our class has a group chat for homework questions.", level: "core" },
+    { en: "privacy", pos: "n", ru: "конфиденциальность, приватность", ex: "I worry about my privacy online.", level: "core" },
+    { en: "update", pos: "n / v", ru: "обновление; обновлять", ex: "My phone needs an update again.", level: "core" },
+    { en: "upload", pos: "v", ru: "загружать (в сеть)", ex: "I uploaded the photos from the trip.", level: "core" },
+    { en: "online / offline", pos: "adj / adv", ru: "в сети / не в сети", ex: "I try to stay offline on Sunday mornings.", level: "core" },
+
+    { en: "tech-savvy", pos: "adj", ru: "хорошо разбирающийся в технологиях", ex: "My grandmother is surprisingly tech-savvy.", level: "adv" },
+    { en: "digital native", pos: "n", ru: "«цифровой абориген» (вырос с интернетом)", ex: "As a digital native, I can't imagine life without the internet.", level: "adv" },
+    { en: "algorithm", pos: "n", ru: "алгоритм (ленты)", ex: "The algorithm shows me more of what I already like.", level: "adv" },
+    { en: "misinformation", pos: "n", ru: "дезинформация, ложные сведения", ex: "Misinformation spreads faster than the truth online.", level: "adv" },
+    { en: "cyberbullying", pos: "n", ru: "травля в интернете", ex: "Schools need clear rules against cyberbullying.", level: "adv" },
+    { en: "addictive", pos: "adj", ru: "вызывающий зависимость", ex: "Many apps are designed to be addictive.", level: "adv" },
+    { en: "FOMO (fear of missing out)", pos: "n", ru: "страх что-то пропустить", ex: "FOMO makes me check my phone all the time.", level: "adv" },
+    { en: "doomscrolling", pos: "n", ru: "бесконечное листание плохих новостей", ex: "Doomscrolling before bed ruins my sleep.", level: "adv" },
+    { en: "digital divide", pos: "n", ru: "цифровое неравенство", ex: "The pandemic made the digital divide very visible.", level: "adv" },
+    { en: "overreliance", pos: "n", ru: "чрезмерная зависимость", ex: "Overreliance on GPS has ruined my sense of direction.", level: "adv" },
+    { en: "face-to-face interaction", pos: "n", ru: "живое общение", ex: "Nothing replaces face-to-face interaction.", level: "adv" },
+    { en: "artificial intelligence (AI)", pos: "n", ru: "искусственный интеллект", ex: "AI is changing the way we study and work.", level: "adv" }
+  ],
+
+  collocations: [
+    { icon: "phone", group: "Телефон", items: [
+      { en: "_check_ your phone", ru: "проверять телефон", ex: "I check my phone about a hundred times a day." },
+      { en: "_turn off_ notifications", ru: "выключить уведомления", ex: "Turning off notifications changed my life." },
+      { en: "_download_ an app", ru: "скачать приложение", ex: "I downloaded an app to track my screen time." },
+      { en: "_charge_ your phone", ru: "зарядить телефон", ex: "I charge my phone outside my bedroom." },
+      { en: "_go_ online / offline", ru: "выйти в сеть / из сети", ex: "I go offline completely on Sunday mornings." }
+    ]},
+    { icon: "users", group: "Соцсети", items: [
+      { en: "_post_ a photo / _post_ on Instagram", ru: "выложить фото (post on, не post in)", ex: "I posted a photo from my trip on Instagram." },
+      { en: "_follow_ someone", ru: "подписаться на кого-то", ex: "I follow a few cooking accounts." },
+      { en: "_share_ a post", ru: "поделиться постом", ex: "Think before you share a post." },
+      { en: "_leave_ a comment", ru: "оставить комментарий", ex: "I never leave comments on strangers' posts." },
+      { en: "_go_ viral", ru: "стать вирусным", ex: "The video went viral within hours." }
+    ]},
+    { icon: "chat", group: "Общение", items: [
+      { en: "_keep in touch_ with", ru: "поддерживать связь с", ex: "I keep in touch with my school friends online." },
+      { en: "_text_ someone", ru: "написать кому-то (сообщение)", ex: "I'll text you when I arrive." },
+      { en: "_make_ a video call", ru: "позвонить по видео", ex: "We make a video call every Sunday." },
+      { en: "_reply to_ a message", ru: "ответить на сообщение (reply to!)", ex: "Sorry, I forgot to reply to your message." },
+      { en: "_misread_ the tone", ru: "неправильно понять тон", ex: "It's easy to misread the tone of a text." }
+    ]},
+    { icon: "bulb", group: "Последствия", items: [
+      { en: "_spend_ time _on_ your phone", ru: "проводить время в телефоне (on!)", ex: "I spend too much time on my phone." },
+      { en: "_be addicted to_ sth", ru: "быть зависимым от", ex: "Many teenagers are addicted to short videos." },
+      { en: "_rely on_ technology", ru: "полагаться на технологии", ex: "We rely on technology for almost everything." },
+      { en: "_protect_ your privacy", ru: "защищать личные данные", ex: "Use strong passwords to protect your privacy." },
+      { en: "_spread_ misinformation", ru: "распространять ложь", ex: "Bots are often used to spread misinformation." }
+    ]}
+  ],
+
+  idioms: [
+    { art: "glued", lit: "буквально: «приклеенный к телефону»", en: "be glued to your phone", ru: "не отрываться от телефона", meaning: "постоянно смотреть в экран", ex: "My little brother is glued to his phone all day.", reg: "ok", note: "Самая нужная идиома темы — подходит почти к любому вопросу." },
+    { art: "rabbit", lit: "буквально: «провалиться в кроличью нору»", en: "go down a rabbit hole", ru: "залипнуть, «провалиться» в тему", meaning: "начать с одного видео и потерять часы", ex: "I opened one video and went down a rabbit hole until 2 a.m.", reg: "ok", note: "Живая фраза про бесконечный скроллинг." },
+    { art: "loop", lit: "буквально: «вне петли»", en: "be out of the loop", ru: "быть не в курсе", meaning: "не знать последних новостей в своём кругу", ex: "Without the group chat, I'd be totally out of the loop.", reg: "ok", note: "Отлично объясняет FOMO и групповые чаты." },
+    { art: "sword", lit: "буквально: «обоюдоострый меч»", en: "a double-edged sword", ru: "палка о двух концах", meaning: "то, что одновременно полезно и вредно", ex: "Social media is a double-edged sword.", reg: "ok", note: "Идеальная фраза для opinion-вопросов «plus or minus»." },
+    { art: "translation", lit: "буквально: «потерялось при переводе»", en: "get lost in translation", ru: "исказиться, не дойти до адресата", meaning: "смысл или тон теряется при передаче", ex: "Sarcasm often gets lost in translation in a text.", reg: "ok", note: "Лучшая фраза для вопросов о недопонимании в переписке." },
+    { art: "posted", lit: "буквально: «держать в курсе (по почте)»", en: "keep someone posted", ru: "держать в курсе", meaning: "сообщать новости по мере появления", ex: "I'll keep you posted about the trip.", reg: "ok", note: "Игра слов с «post» — легко запомнить." },
+    { art: "behind", lit: "буквально: «позади времени»", en: "be behind the times", ru: "отстать от жизни", meaning: "быть старомодным, не следить за новым", ex: "My dad still prints his emails — he's a bit behind the times.", reg: "ok", note: "Удобно про пожилых людей и цифровое неравенство." },
+    { art: "plug", lit: "буквально: «выдернуть вилку»", en: "pull the plug (on sth)", ru: "прекратить, «отключить»", meaning: "решительно остановить что-то", ex: "I finally pulled the plug on TikTok — I deleted it.", reg: "ok", note: "Сильная фраза для истории про цифровой детокс." },
+    { art: "bigbrother", lit: "буквально: «Большой Брат следит за тобой» (Оруэлл)", en: "Big Brother is watching (you)", ru: "за тобой следят", meaning: "ощущение тотальной слежки", ex: "With all these cameras and apps, it feels like Big Brother is watching.", reg: "careful", note: "Драматично и клишированно. Только с иронией или в теме приватности." }
+  ],
+
+  expressions: [
+    { icon: "play", fn: "Начать ответ", items: [
+      "Honestly, I'm on my phone more than I'd like to admit.",
+      "I'd say technology plays a huge role in my day.",
+      "As a digital native, I …"
+    ]},
+    { icon: "bulb", fn: "Причина", items: [
+      "The main reason is that apps are designed to be addictive.",
+      "It saves me a lot of time — for example, …",
+      "The problem isn't the technology itself, but how we use it."
+    ]},
+    { icon: "camera", fn: "Пример из жизни", items: [
+      "Last month, I checked my screen time and was shocked to see …",
+      "I once sent a joke in a group chat that got completely misunderstood.",
+      "My grandmother, for instance, learned to video call during the pandemic."
+    ]},
+    { icon: "scales", fn: "Баланс и контраст", items: [
+      "Social media keeps us connected; that said, it can also make us feel lonely.",
+      "It's a double-edged sword.",
+      "On the flip side, …"
+    ]},
+    { icon: "trending", fn: "Будущее", items: [
+      "I suspect people will become more selective about their screen time.",
+      "AI won't replace us, but it will change what we do.",
+      "In ten years, video calls will feel completely normal for …"
+    ]},
+    { icon: "flag", fn: "Завершить", items: [
+      "So it all comes down to how we use it.",
+      "In the end, technology should serve us, not the other way round.",
+      "That's why I try to use my phone intentionally."
+    ]}
+  ],
+
+  answerSteps: [
+    { k: "A", s: 5,  i: "Honestly, I'm on my phone about five hours a day." },
+    { k: "R", s: 12, i: "The main reason is that I use it for everything…" },
+    { k: "E", s: 22, i: "Last month, for example, I checked my screen time…" },
+    { k: "C", s: 6,  i: "So I'm trying to use it more intentionally." }
+  ],
+
+  matching: [
+    { a: "be glued to your phone", b: "look at your phone all the time" },
+    { a: "go down a rabbit hole", b: "get absorbed in something online for hours" },
+    { a: "be out of the loop", b: "not know the latest news in your group" },
+    { a: "a double-edged sword", b: "something with both good and bad effects" },
+    { a: "get lost in translation", b: "lose its meaning or tone when passed on" },
+    { a: "be behind the times", b: "be old-fashioned" }
+  ],
+
+  gapfill: [
+    { t: "I spend too much time ___ my phone.", a: ["on"] },
+    { t: "Sorry, I forgot to reply ___ your message.", a: ["to"] },
+    { t: "I posted a photo ___ Instagram yesterday.", a: ["on"] },
+    { t: "Turning ___ notifications helped me focus.", a: ["off"] },
+    { t: "I keep in ___ with my school friends online.", a: ["touch"] },
+    { t: "Her video went ___ overnight.", a: ["viral"] },
+    { t: "Use strong passwords to ___ your privacy.", a: ["protect"] },
+    { t: "We ___ on technology for almost everything.", a: ["rely", "depend"] }
+  ],
+
+  paraphrase: [
+    { plain: "I look at my phone all the time.", better: ["I'm **glued to my phone**.", "I **check my phone** constantly."] },
+    { plain: "I watched videos for hours and didn't notice the time.", better: ["I **went down a rabbit hole** of videos until 2 a.m."] },
+    { plain: "Social media is good and bad.", better: ["Social media is **a double-edged sword**."] },
+    { plain: "My friend didn't understand my joke in a text.", better: ["My joke **got lost in translation** — she **misread the tone**."] },
+    { plain: "I sit in my phone too much.", better: ["I **spend too much time on my phone**."] },
+    { plain: "I didn't know the news because I left the chat.", better: ["Without the group chat, I was completely **out of the loop**."] },
+    { plain: "I stopped using TikTok.", better: ["I finally **pulled the plug** on TikTok."] },
+    { plain: "False news spreads fast on the internet.", better: ["**Misinformation** spreads incredibly fast online."] }
+  ],
+
+  repeat: {
+    scenario: "Вы подрабатываете в университетской IT-службе. Координатор объясняет новым сотрудникам, как помогать студентам, — повторите каждое предложение точно так, как услышали.",
+    sentences: [
+      "Welcome to the campus help desk.",
+      "Most questions are about the Wi-Fi.",
+      "Students must log in with their university email.",
+      "Never ask a student to tell you their password.",
+      "If a laptop won't connect, try restarting it before anything else.",
+      "Remind students that the new security update must be installed by Friday.",
+      "Anyone who has lost their student account details should fill out a request form online."
+    ]
+  },
+
+  /* ===== Реальные сеты Take an Interview по теме (из базы платформы) ===== */
+  sets: [
+    { id: "s090", badge: "official", title: "Technology in Daily Life", src: "Official TOEFL · 090",
+      scenario: "You have volunteered for a research study about people's experiences with technology in daily life. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "First, how important is technology in your day-to-day activities?",
+          lx: ["rely on technology", "device", "app"],
+          model: "[A] Technology is extremely important in my daily life — I use it for almost everything. [R] As a student, I need my laptop for studying and my phone for communication, banking, maps and even paying for coffee. [E] For example, this morning my phone woke me up, showed me the weather and the bus schedule, and I paid for my breakfast with it. Then I attended an online lecture on my laptop and sent my essay by email. Without these **devices**, I honestly don't know how I'd organize my day. [C] So I **rely on technology** a lot, maybe even too much.",
+          model5: "[A] It's absolutely central; I **rely on technology** for almost every part of my day. [R] As a student, my laptop is essentially my classroom and library, while my phone handles everything from communication and banking to navigation and payments. [E] This morning alone, for instance, my phone woke me up, told me whether to take an umbrella, showed me when the next bus was due and paid for my coffee. By lunchtime, I'd attended a lecture, submitted an essay and messaged three classmates, all through screens. Honestly, if my **devices** disappeared tomorrow, I'd struggle to organize even a basic day. [C] So technology isn't just important to me; it's practically invisible because it's everywhere." },
+        { q: "Have you ever felt frustrated while using technology? What happened?",
+          lx: ["update", "back up", "crash"],
+          model: "[A] Yes, many times, but one situation was really stressful. [R] Technology is great when it works, but when it fails at the wrong moment, it can be a disaster. [E] For example, last semester, my laptop suddenly installed an **update** ten minutes before an online exam. It took twenty minutes, and I was sure I would miss the exam. I had to call my professor in panic. Luckily, she gave me extra time. Since then, I always check for updates the night before important deadlines. [C] So technology can be very frustrating when you depend on it.",
+          model5: "[A] Plenty of times, but one incident stands out. [R] Technology is wonderful when it works, but precisely because we depend on it so heavily, a failure at the wrong moment can feel catastrophic. [E] Last semester, for instance, ten minutes before an online exam, my laptop decided to install a mandatory **update** that took nearly twenty minutes. I sat there watching the progress bar crawl, convinced I'd fail, before calling my professor in a complete panic. Fortunately, she was understanding and gave me extra time. Ever since, I check for updates and **back up** my files the night before any important deadline. [C] So my frustration taught me a useful lesson: never trust technology blindly." },
+        { q: "Some people believe technology will replace many jobs, while others think it will create more opportunities. What is your opinion and why?",
+          lx: ["automate", "replace", "develop new skills"],
+          model: "[A] I think technology will replace some jobs, but it will create even more new ones. [R] This always happens with new technology. Old jobs disappear, but people start doing new work that didn't exist before. [E] For example, twenty years ago, nobody worked as a social media manager or an app developer. Now millions of people have these jobs. Of course, some people, like cashiers, are losing jobs to machines, so they need help to learn new skills. [C] So overall, technology creates opportunities, but the change can be painful.", model5: "[A] I believe technology will eliminate some jobs but create even more opportunities overall. [R] History shows that every major technological shift destroys certain roles while generating entirely new ones that nobody could have predicted. [E] Twenty years ago, for example, jobs like social media manager or app developer simply didn't exist, yet today millions of people earn a living from them. **That said**, the transition is painful for those whose jobs disappear, such as cashiers replaced by self-checkout machines, so governments and companies need to help them retrain. [C] So technology is, on balance, a source of opportunity, provided nobody is left behind along the way." },
+        { q: "Some people believe that reliance on technology is reducing our ability to think independently and solve problems. Do you agree or disagree with this belief? Why or why not?",
+          lx: ["overreliance", "look things up", "think for yourself"],
+          model: "[A] I partly agree. [R] When we can find any answer in seconds, we don't try to think or remember things ourselves. But technology can also help us learn and solve more complex problems. [E] For example, I can't find my way anywhere without GPS anymore, and I don't remember any phone numbers except my mom's. On the other hand, I use online tools to learn statistics, and I understand it better than before. [C] So technology can make us lazy thinkers, but only if we use it instead of thinking, not to help our thinking.",
+          model5: "[A] I partly agree, although I think the problem lies in how we use technology rather than technology itself. [R] When any answer is a few seconds away, we're tempted to **look things up** instead of reasoning them out, and skills we don't use inevitably weaken. Used well, however, technology can sharpen our thinking. [E] I'm a good example of both sides: thanks to my **overreliance** on GPS, I can barely navigate my own city without it, and I couldn't tell you a single phone number other than my mother's. Yet online tools have also helped me understand statistics far more deeply than any textbook did. [C] So technology makes us lazy thinkers only when we use it to replace thinking rather than support it." }
+      ]},
+    { id: "s115", badge: "official", title: "Digital Device Usage", src: "Official TOEFL · 115",
+      scenario: "You received an email from your university inviting you to join a research study about digital device usage. You have scheduled a short online interview with a researcher.",
+      questions: [
+        { q: "First, how many hours a day do you typically spend using electronics like smartphones, tablets, or computers?",
+          lx: ["screen time", "spend time on", "device"],
+          model: "[A] Honestly, I spend about eight or nine hours a day on electronic **devices**. [R] Most of this time is for studying — my lectures, books and assignments are all online. But I also **spend** about four hours **on** my phone, which is too much. [E] For example, I study on my laptop for around five hours a day. My phone's **screen time** report says I use it for four hours, mostly for messages, social media and videos in the evening. Last month I set a limit for social media apps, and now it's a little better. [C] So my screen time is high, but I'm working on it.",
+          model5: "[A] If I'm honest, somewhere between eight and nine hours a day. [R] A large part of that is unavoidable, since my lectures, readings and assignments are all digital. The part I'm less proud of is the four or so hours I **spend on** my phone, much of it on things I couldn't even remember afterwards. [E] On a typical day, for instance, I study on my laptop for about five hours, while my phone's weekly report shows an average of four hours of **screen time**, mostly messaging, social media and videos late in the evening. Since I introduced daily limits on social apps last month, that figure has started to fall. [C] So my overall screen time is high, but I'm trying to make the non-study part more intentional." },
+        { q: "What types of activities do you usually do on your digital devices? For example, do you use them for work, entertainment, or socializing?",
+          lx: ["keep in touch with", "stream", "productivity"],
+          model: "[A] I use my devices for three main things: studying, communicating and entertainment. [R] My laptop is mainly for work, and my phone is for everything else. [E] For example, on my laptop, I attend online lectures, write essays and do research. On my phone, I text my friends, make video calls with my parents and **keep in touch with** classmates in group chats. In the evening, I watch series or YouTube videos to relax. I also use apps for practical things, like banking and maps. [C] So my devices are my office, my phone book and my cinema at the same time.",
+          model5: "[A] My devices serve three main purposes: studying, staying connected and relaxing. [R] I keep a fairly clear division between them, using my laptop mainly for work and my phone for almost everything else. [E] On my laptop, for instance, I attend online lectures, write essays and research assignments. My phone, meanwhile, is how I **keep in touch with** friends through group chats and with my parents through weekly video calls. In the evenings, I unwind by streaming series or watching videos, and throughout the day I rely on practical apps for banking, navigation and train tickets. [C] So, in a sense, my devices function as my office, my social life and my cinema all at once." },
+        { q: "Can you tell me about a time when you needed to take a break from using digital tools? How did it affect you?",
+          lx: ["take a break from", "pull the plug", "recharge"],
+          model: "[A] Last summer, I took a break from digital tools during a three-day hiking trip. [R] I felt very tired from screens after exams, and my eyes and head hurt. Also, there was no signal in the mountains. [E] On the first day, I kept reaching for my phone, and I felt a bit anxious. But on the second day, I started to enjoy the views and long conversations with my friends, and I slept much better. When I came back, I had two hundred messages, and almost none were important. [C] So the break helped me **recharge** and use my phone less afterwards.",
+          model5: "[A] Last summer, after an exhausting exam period, I effectively **pulled the plug** for three days during a hiking trip. [R] I'd been staring at screens for weeks, my eyes were strained and I felt mentally foggy, so the lack of signal in the mountains came as a welcome excuse. [E] The first day was surprisingly uncomfortable; I kept instinctively reaching for my phone. By the second day, however, I was absorbed in the scenery and long conversations with friends, and I slept more deeply than I had in months. When I returned, two hundred unread messages were waiting, and, tellingly, almost none of them mattered. [C] So the break not only helped me **recharge** but also permanently changed how often I reach for my phone." },
+        { q: "Some people believe that spending too much time on personal technology can negatively impact face-to-face social interactions. Do you agree or disagree with this viewpoint? Why?",
+          lx: ["face-to-face interaction", "be glued to your phone", "be present"],
+          model: "[A] I agree. [R] When people look at their phones all the time, they don't really listen to each other, and conversations become shorter and less deep. Also, some people feel more comfortable texting than talking, so they avoid real conversations. [E] For example, last month I went to dinner with five friends, and almost everyone was **glued to their phone**. We sat together, but nobody really talked. Now my friends and I have a rule: phones go in the middle of the table, and the first person who checks theirs pays for dessert. [C] So technology can hurt **face-to-face interaction** if we're not careful.",
+          model5: "[A] I agree, though I'd add that it's a habit we can control. [R] When phones are constantly within reach, people listen with only half their attention, conversations lose depth, and some, particularly younger people, start to feel more comfortable texting than speaking in person. [E] Last month, for instance, I had dinner with five friends, and for long stretches almost everyone was **glued to their phone**; we were together physically, yet hardly connecting. Since then, our group has adopted a simple rule: phones go in a pile in the middle of the table, and whoever checks theirs first pays for dessert. Our dinners have become noticeably livelier. [C] So technology can certainly weaken **face-to-face interaction**, but only if we let it." }
+      ]},
+    { id: "s108", badge: "official", title: "Social Media Use", src: "Official TOEFL · 108",
+      scenario: "You have volunteered for a research study about social media use. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "First, if you were to choose a social media platform to use most regularly, which one would you choose and why?",
+          lx: ["follow", "scroll through", "keep in touch with"],
+          model: "[A] I would choose Instagram. [R] It's where most of my friends are, it's visual, and I can use it both for fun and for learning. I can see what my friends are doing and also follow interesting accounts. [E] For example, I **follow** my friends, a few photographers and some accounts about marketing, which is my field of study. I use it to **keep in touch with** school friends who live in other cities. I also share photos from my trips, but not very often. [C] So Instagram is the platform that fits my life best.",
+          model5: "[A] I'd choose Instagram, mainly because it combines staying in touch with genuine inspiration. [R] Most of my friends are active there, it's highly visual, which suits me, and with a bit of curation it can be educational as well as entertaining. [E] Alongside friends, for instance, I **follow** several photographers and a handful of accounts on marketing, which happens to be my field of study, so my feed is a mix of social updates and professional ideas. It's also how I **keep in touch with** school friends who've moved to other cities, and occasionally I share photos from my travels. [C] So Instagram is the platform that fits my life best, as long as I control the feed rather than letting the algorithm control me." },
+        { q: "Do you think social media is more beneficial for younger people or older people? Why?",
+          lx: ["lonely", "keep in touch", "vulnerable"],
+          model: "[A] I think social media is more beneficial for older people. [R] Many older people live alone and feel lonely, and social media helps them **keep in touch** with family and friends. Young people, on the other hand, can become addicted and compare themselves with others, which is bad for their self-esteem. [E] For example, my grandmother joined Facebook two years ago. Now she sees photos of her grandchildren every day and chats with her old school friends. My younger sister, however, often feels bad after scrolling through perfect pictures of influencers. [C] So older people get more benefits and fewer risks.",
+          model5: "[A] On balance, I'd argue older people benefit more. [R] For many older people, especially those living alone, social media offers a lifeline against loneliness, connecting them with family and old friends. Younger users, by contrast, are more **vulnerable** to its downsides — addictive design, constant comparison and pressure to present a perfect image. [E] My grandmother, for instance, joined Facebook two years ago and now sees photos of her grandchildren daily and has even reconnected with classmates from sixty years ago. My younger sister, meanwhile, often comes away from scrolling through influencers' flawless photos feeling worse about herself. [C] So older people tend to gain more and risk less, although both groups need to use it wisely." },
+        { q: "Some people believe that social media can help people stay connected, while others think it can lead to feelings of isolation. What are your thoughts on this? Do you agree or disagree? Why?",
+          lx: ["a double-edged sword", "FOMO", "stay connected"],
+          model: "[A] I think both are true — social media can connect us and isolate us. [R] It helps us **stay connected** with people far away. But when we only see other people's best moments, we can feel left out and lonely. Also, online contact can't replace real meetings. [E] For example, when I moved to university, social media helped me stay close to my school friends. But one weekend, I stayed home alone and saw photos of all my friends at a party. I felt terrible and very isolated, even though I was \"connected\". [C] So social media is **a double-edged sword**.",
+          model5: "[A] I'd say both are true; social media is **a double-edged sword**. [R] It's an invaluable way to **stay connected** across distances, yet it also exposes us to an endless stream of other people's highlights, which can trigger **FOMO** and loneliness. Moreover, likes and comments can easily become a substitute for real contact. [E] When I moved away for university, for instance, social media helped me remain close to my school friends. Yet one weekend, stuck alone in my dorm with a cold, I scrolled through photos of friends at a party and felt more isolated than if I'd seen nothing at all. [C] So whether it connects or isolates us depends largely on whether it complements real relationships or replaces them." },
+        { q: "Looking to the future, do you think social media use will continue to grow? Or will people start to limit their usage? What factors do you think will most affect future usage of social media? Explain your thoughts.",
+          lx: ["screen time", "regulation", "digital detox"],
+          model: "[A] I think social media will continue to grow overall, but many people will start to limit it. [R] New platforms and technologies like AI and virtual reality will attract more users. But people are becoming more aware of the negative effects on mental health and sleep. Governments may also make new rules, especially for children. [E] For example, many of my friends now use screen-time limits or delete apps during exams, and some countries are discussing age limits for social media. At the same time, my grandmother and her friends joined social media only recently. [C] So usage will grow, but people will use it more carefully.",
+          model5: "[A] I expect overall usage to keep growing, while individual users become increasingly deliberate about limiting it. [R] New features, from AI-generated content to virtual reality, will continue to draw people in, and older generations are still joining. At the same time, awareness of the impact on mental health and sleep is rising, and governments are starting to intervene. [E] Many of my friends, for instance, now set **screen-time** limits or delete apps entirely during exam periods, and several countries are debating minimum ages for social media. Meanwhile, my grandmother and her friends have only just discovered it. [C] So the biggest factors, I think, will be **regulation** and awareness, which will shape not whether we use social media, but how." }
+      ]},
+    { id: "s078", badge: "official", title: "Social Media", src: "Official TOEFL · 078",
+      scenario: "You received an email from your university inviting you to join a research study about social media. You have scheduled a short online interview with a researcher.",
+      questions: [
+        { q: "To start, how often do you use social media platforms and for what purposes? Or, if you don't use them, why not?",
+          lx: ["scroll through", "keep in touch with", "post"],
+          model: "[A] I use social media every day, about two hours in total. [R] I use it mainly to stay in contact with friends, to follow news and to relax. [E] For example, in the morning, I check messages and news on the bus. During the day, I use group chats to organize study meetings with classmates. In the evening, I **scroll through** Instagram or watch short videos to relax. I don't **post** very often — maybe once a month, usually photos from trips. [C] So social media is a daily habit for me, but I'm more of a viewer than a creator.",
+          model5: "[A] I use it daily, for roughly two hours in total, although it's spread across the day in short bursts. [R] My main purposes are staying in contact with friends, keeping up with news and, admittedly, switching off in the evenings. [E] On my morning commute, for instance, I catch up on messages and headlines; during the day, our class group chat is essential for organizing study sessions; and in the evening, I **scroll through** Instagram or watch short videos to unwind. I rarely **post** anything myself — perhaps once a month, usually photos from a trip. [C] So social media is very much part of my routine, but I'm far more of an observer than a creator." },
+        { q: "In your opinion, what makes social media either enjoyable or difficult to deal with?",
+          lx: ["algorithm", "negative comments", "compare yourself"],
+          model: "[A] Social media is enjoyable because it's fun and connects people, but it's difficult because of comparison and negativity. [R] I love seeing my friends' news, funny videos and new ideas. But people show only perfect moments, and some comments are rude and aggressive. [E] For example, I enjoy following a travel photographer who shows amazing places, and it inspires me. But once I posted my opinion about a film, and strangers wrote very rude comments. I deleted the post. Also, after scrolling, I sometimes **compare myself** with others and feel bad. [C] So it's fun, but it can also be stressful.",
+          model5: "[A] What makes it enjoyable is the connection and inspiration; what makes it difficult is comparison and hostility. [R] I genuinely love seeing friends' news, discovering creative ideas and laughing at the occasional absurd video. Yet the constant stream of carefully curated perfection, along with the aggressive tone of some comment sections, can quickly turn the experience sour. [E] Following a travel photographer, for instance, regularly inspires me to plan new trips. On the other hand, when I once shared a fairly harmless opinion about a film, strangers responded with such rude comments that I deleted the post within an hour. And, if I'm honest, scrolling sometimes leaves me **comparing myself** unfavorably with others. [C] So social media can enrich my day or drain it, depending largely on what I choose to engage with." },
+        { q: "What kinds of things do you think are appropriate to share on social media, and why?",
+          lx: ["privacy", "post", "digital footprint"],
+          model: "[A] I think it's fine to share positive, general things, but not private or personal information. [R] What we post stays online forever, and anyone — employers, strangers or even criminals — can see it. [E] For example, I share photos of nature, food or events, and sometimes good news, like passing an exam. But I never post my address, my travel plans while I'm away, or photos of other people without asking them. A friend once posted that her family was on vacation, and her apartment was robbed. [C] So I think we should share carefully and protect our **privacy**.",
+          model5: "[A] In my view, general, positive content is fine, whereas anything that compromises **privacy** — yours or other people's — is not. [R] Everything we post contributes to a **digital footprint** that's almost impossible to erase, and it may be seen by future employers, strangers or even criminals. [E] I happily share photos of landscapes, meals or events, for instance, and occasionally good news, such as passing a difficult exam. However, I never post my address, real-time travel plans or photos of friends without their permission. A friend once announced online that her family was abroad, and their apartment was burgled while they were away. [C] So the rule I follow is simple: if I wouldn't tell it to a stranger, I don't post it." },
+        { q: "Some believe that social media has more negative effects than positive ones on society in general. Do you agree or disagree with this viewpoint? Explain why.",
+          lx: ["misinformation", "a double-edged sword", "raise awareness"],
+          model: "[A] I partly agree — I think the negative effects are a little bigger today. [R] Social media spreads fake news very quickly, divides people into groups that hate each other, and hurts young people's mental health. But it also helps people find information, support each other and fight for good causes. [E] For example, during the pandemic, a lot of false information about health spread online, and some people believed it. But social media also helped my city collect money for a family who lost their house in a fire in just two days. [C] So it's both, but the negative side needs more control.",
+          model5: "[A] I'd partly agree; at present, the negative effects arguably outweigh the positive ones, though that isn't inevitable. [R] Social media has accelerated the spread of **misinformation**, deepened political polarization and harmed many young people's mental health. At the same time, it has given a voice to the voiceless and helped communities **raise awareness** and mobilize remarkably quickly. [E] During the pandemic, for instance, dangerous health myths spread online faster than official advice. Yet in my city, a social media campaign raised enough money in just two days to rehouse a family whose home had burned down. [C] So social media is **a double-edged sword**, and whether it does more good or harm depends largely on how platforms are regulated and how responsibly we use them." }
+      ]},
+    { id: "sdc", badge: "platform", title: "Digital Communication", src: "Практика платформы",
+      scenario: "We're discussing how relationships—whether with friends, family members, or even coworkers—are influenced by digital forms of communication. I'd like to ask you a few questions about how you stay in touch with the people in your life.",
+      questions: [
+        { q: "How often do you communicate with friends or family through digital channels like text messages, voice calls, social media, or messaging apps? Would you say this is your primary form of communication?",
+          lx: ["keep in touch with", "group chat", "voice message"],
+          model: "[A] I communicate digitally every day, and for family and old friends, it's my main way of communication. [R] I live far from my hometown, so messaging apps and video calls are the easiest way to **keep in touch with** my parents and school friends. With university friends, I talk more face-to-face. [E] For example, I text my mom almost every day, and we have a video call every Sunday. I also have a **group chat** with my school friends, where we send photos and **voice messages**. But with my roommate and classmates, I mostly talk in person. [C] So digital communication is my main way for people who are far away.",
+          model5: "[A] Every single day, and for family and old friends it's undoubtedly my primary form of communication. [R] Since I moved several hundred kilometers away for university, messaging apps and video calls have become the only practical way to **keep in touch with** my parents and school friends. With people on campus, by contrast, most of my communication happens face to face. [E] I exchange messages with my mother almost daily, for instance, and we have a standing video call every Sunday evening. My school friends and I share a lively **group chat** full of photos, memes and rambling **voice messages**. My roommate and classmates, however, I mostly just talk to in person. [C] So whether digital communication dominates depends entirely on the distance." },
+        { q: "Some people believe that digital communication makes it much easier to maintain relationships across long distances and busy schedules. Others feel it doesn't have the same depth or emotional connection as face-to-face conversations. What's your view? Do you think online communication strengthens or weakens personal connections—and why?",
+          lx: ["face-to-face interaction", "keep in touch", "shallow"],
+          model: "[A] I think online communication strengthens relationships over distance, but it can't fully replace face-to-face conversations. [R] Without messaging apps, I would probably lose contact with many friends. But text messages are often short, and it's hard to share real feelings or support someone through a screen. [E] For example, my best friend moved to Canada two years ago, and we still talk every week thanks to video calls. But when she visited last summer, one long walk together felt more meaningful than months of messages. [C] So digital communication keeps relationships alive, but real meetings make them deep.",
+          model5: "[A] I'd say it strengthens relationships across distance, but it can't fully replace the depth of meeting in person. [R] Without digital tools, many friendships would simply fade when people move away. Text-based communication, however, tends to be brief and fragmented, and comforting someone or sharing something difficult through a screen rarely feels quite the same. [E] My best friend, for instance, moved to Canada two years ago, and thanks to weekly video calls, we're still close. Yet when she visited last summer, a single long walk together felt more meaningful than months of messages. [C] So digital communication is what keeps relationships alive, while **face-to-face interaction** is what keeps them deep." },
+        { q: "Have you ever experienced a misunderstanding or conflict because of something written in a text, post, or email? If so, how did you handle the situation or try to clarify things afterward?",
+          lx: ["misread the tone", "get lost in translation", "clear things up"],
+          model: "[A] Yes, I had a misunderstanding with a close friend because of a text message. [R] In writing, you can't hear the tone of voice or see the face, so jokes can look rude. [E] For example, my friend sent me a photo of her new haircut, and I replied \"Wow, brave choice\". I meant it as a compliment, but she **misread the tone** and thought I was laughing at her. She didn't reply for two days. Finally, I called her and explained what I meant, and we laughed about it. [C] Now, for important things, I call instead of texting.",
+          model5: "[A] Yes, a seemingly innocent text once caused a real rift with a close friend. [R] In writing, there's no tone of voice or facial expression to soften a message, so a playful comment can easily come across as sarcastic. [E] When she sent me a photo of her dramatic new haircut, for instance, I replied, \"Wow, brave choice,\" intending it as admiration. She, however, **misread the tone** entirely, assumed I was mocking her and went silent for two days. Eventually, I realized something was wrong and called her; within five minutes we'd **cleared things up** and were laughing about it. [C] Since then, whenever a topic is even slightly sensitive, I pick up the phone rather than type, because humor so easily **gets lost in translation**." },
+        { q: "As more and more of our communication happens online, do you think people should be more mindful about the way they express themselves digitally—such as thinking about tone, timing, or word choice? Why or why not, and what difference do you think that awareness could make in our relationships?",
+          lx: ["mindful", "misread the tone", "think before you post"],
+          model: "[A] Yes, I think people should be more careful about how they write online. [R] A short or late reply can look rude, even when the person didn't mean it. Also, messages sent when we're angry can hurt people and can't be taken back. [E] For example, my sister once sent an angry message to her boss late at night, and the next morning she really regretted it. Now I have a rule: if I'm angry, I wait an hour before I reply. I also add a few friendly words or an emoji so my message doesn't sound cold. [C] So a little awareness can prevent many conflicts.",
+          model5: "[A] Absolutely; a little more mindfulness online could prevent a great deal of unnecessary conflict. [R] Because written messages lack tone and facial cues, a brief or delayed reply can easily be read as coldness, and words typed in anger are both permanent and impossible to take back. [E] My sister, for instance, once fired off a furious message to her manager late at night and spent the following morning deeply regretting it. Since hearing that story, I've adopted a simple rule: whenever I'm annoyed, I wait at least an hour before replying. I also make a point of adding a warm phrase to short messages, so they don't sound abrupt. [C] So being **mindful** about tone and timing costs very little, yet it can protect relationships that matter." }
+      ]},
+    { id: "soc", badge: "platform", title: "Online Communication", src: "Практика платформы",
+      scenario: "We're conducting a study on how people use digital platforms to communicate in their everyday lives. I'd like to ask you a few questions about your habits and thoughts around online interaction.",
+      questions: [
+        { q: "How often do you use online platforms—like messaging apps, email, or social media—to stay in touch with friends, family, or coworkers? And how does that compare to the amount of face-to-face communication in your life?",
+          lx: ["keep in touch with", "face-to-face", "group chat"],
+          model: "[A] I use online platforms many times every day, but I still have a lot of face-to-face communication. [R] At university, I see my classmates and roommate in person all the time. But my family and old friends live in another city, so with them I mostly communicate online. [E] For example, I write in my class **group chat** to organize study sessions, I email my professors, and I text my mom every day. But I also have lunch with friends every day and go out on weekends. [C] So I'd say it's about half online and half **face-to-face**.",
+          model5: "[A] Online platforms are part of my day from morning to night, yet face-to-face communication still makes up a substantial part of my life. [R] On campus, I see classmates and my roommate in person constantly, whereas my family and school friends live in another city, so with them almost everything happens online. [E] On a typical day, for instance, I coordinate study sessions in our class **group chat**, email a professor or two and exchange messages with my mother. At the same time, I have lunch with friends daily and spend weekends with them in person. [C] So I'd estimate my communication is roughly half online and half **face-to-face**, with distance being the deciding factor." },
+        { q: "Some people feel that texting and messaging apps make it easier to stay connected—especially over long distances. Others feel that digital communication can be shallow or less personal. What's your opinion? Do you think online messaging strengthens your relationships, or do you feel it lacks something important?",
+          lx: ["shallow", "keep in touch", "voice message"],
+          model: "[A] I think messaging helps my relationships, but it lacks something important — real emotion. [R] It's easy to send a quick message every day, so I feel close to people who are far away. But short texts and emojis can't show real feelings, and it's easy to hide how you really are. [E] For example, I message my grandmother every week, and it makes her happy. But once, she wrote that everything was fine, and when I called her, I could hear in her voice that she was sad and lonely. [C] So I use messages for everyday contact, but calls for real conversations.",
+          model5: "[A] Messaging certainly strengthens my relationships, though it lacks one crucial ingredient: genuine emotional nuance. [R] Because it's so effortless, it allows regular contact that would otherwise be impossible across distance. Yet brief texts and emojis make it remarkably easy to hide how we really feel, which can make communication feel **shallow**. [E] I message my grandmother weekly, for instance, which she loves. Once, though, she wrote that everything was fine, but when I called her that evening, I could hear immediately in her voice that she was lonely and low. That conversation mattered far more than any text could have. [C] So I rely on messages for everyday connection, but I pick up the phone whenever it really counts." },
+        { q: "Have you ever experienced confusion or miscommunication in a text or email? If so, how did you handle it—and are there things you do now to make sure your messages are understood clearly?",
+          lx: ["misread the tone", "clear things up", "proofread"],
+          model: "[A] Yes, once I had a miscommunication with a professor because of an email. [R] I wrote too quickly and too informally, and my message sounded rude, even though I didn't mean it. [E] For example, I asked for a deadline extension and wrote just: \"I need more time for the essay. Can I send it next week?\" The professor replied very coldly. I wrote a second email, apologized, explained my situation politely, and she agreed. Now I always read important emails twice and start with a polite greeting. [C] So I learned that clear and polite writing really matters.",
+          model5: "[A] I have, most memorably with a professor. [R] I'd dashed off an email far too quickly and informally, so a request I considered perfectly reasonable came across as demanding. [E] Asking for a deadline extension, for instance, I wrote simply, \"I need more time for the essay. Can I send it next week?\" Her reply was noticeably cool. I immediately sent a second, properly worded email, apologizing for my tone and explaining my circumstances, and she agreed to the extension. Since then, I always **proofread** important emails, open with a polite greeting and ask myself how the message would sound if I received it. [C] So that small embarrassment taught me that, in writing, tone is something you have to build deliberately." },
+        { q: "With the rise of video calls and virtual meetings, many parts of our lives—like school, work, and even medical appointments—have moved online. Do you think video communication will continue to grow and become a normal part of everyday life in the future? Why or why not?",
+          lx: ["video call", "convenient", "face-to-face"],
+          model: "[A] Yes, I think video communication will keep growing, but it won't replace everything. [R] Video calls save time and money, and they make it possible to talk to anyone, anywhere. But for some things, like serious medical exams or close friendships, people still need to meet in person. [E] For example, last year I had a doctor's appointment by **video call** for a simple question about my medicine, and it took ten minutes instead of two hours. My parents also have video calls with my grandmother every week. But for a real health check, you still need to see the doctor. [C] So video will be normal, but not for everything.",
+          model5: "[A] I'm confident it will keep growing and become an entirely normal part of life, though it won't replace in-person contact altogether. [R] Video calls save enormous amounts of time and money and make expertise accessible regardless of distance. However, some situations — physical examinations, difficult conversations, or simply building trust — still require being in the same room. [E] Last year, for instance, I had a **video call** with a doctor about a simple question regarding my medication, and it took ten minutes instead of the usual two-hour round trip. My grandmother, meanwhile, now sees her grandchildren weekly on screen. Yet for a proper check-up, nothing replaces an actual visit. [C] So video will become the default for convenience, while in-person contact becomes the choice for what matters most." }
+      ]},
+    { id: "smp", badge: "platform", title: "Mobile Phone Use", src: "Практика платформы",
+      scenario: "I'm conducting a study on how mobile phones are used in everyday life and the effects they have on people's routines and well-being. I'd like to ask you a few questions.",
+      questions: [
+        { q: "To start, how much time do you typically spend on your phone during an average day? And what kinds of activities do you use it for most—messaging, social media, work, entertainment, or something else?",
+          lx: ["screen time", "spend time on", "scroll through"],
+          model: "[A] I spend about four hours a day on my phone. [R] My phone is my calendar, my bank, my map and my way to talk to friends, so I use it for many different things. But part of the time is just entertainment. [E] For example, my **screen time** report shows that I use messaging apps for about an hour, social media for an hour and a half, and the rest is for maps, music, banking and study apps. Most of the social media time is in the evening, when I'm tired. [C] So my phone is useful, but I could use it less in the evenings.",
+          model5: "[A] My phone tells me I average about four hours a day, which is somewhat more than I'd like. [R] It serves as my calendar, wallet, map and main channel for staying in touch, so a fair share of that time is genuinely useful; the rest, admittedly, is entertainment. [E] According to my **screen time** report, for instance, roughly an hour goes on messaging and around ninety minutes on social media, with the remainder spread across maps, music, banking and study apps. Tellingly, most of the social media time is concentrated in the evenings, when I'm tired and least able to resist **scrolling**. [C] So my phone is undeniably useful, but the evening hours are where I could reclaim a lot of time." },
+        { q: "How do you feel when you're away from your phone—either by choice or when you forget it? Does it make you feel anxious, free, or something else? Why do you think that is?",
+          lx: ["screen time", "anxiety", "take a break from"],
+          model: "[A] At first I feel anxious, but after an hour I feel free and relaxed. [R] I'm used to checking my phone all the time, so without it I'm afraid I'll miss something important. But then I realize nothing bad happens. [E] For example, last month I forgot my phone at home for a whole day. In the morning, I kept reaching into my pocket. But by the afternoon, I was really enjoying my lecture and lunch with friends, and I noticed things around me I usually miss. [C] So my phone gives me anxiety and being without it gives me freedom.", model5: "[A] Initially I feel uneasy, but surprisingly quickly that turns into a sense of freedom. [R] I'm so used to checking my phone constantly that its absence triggers a nagging fear of missing something important. Once I realize that nothing terrible happens, however, the **anxiety** gives way to relief. [E] Last month, for example, I left my phone at home for an entire day. All morning, I kept instinctively reaching for my pocket, but by the afternoon I was fully absorbed in a lecture and a long, uninterrupted lunch with friends, noticing details I'd normally scroll past. [C] Ironically, it seems the phone creates much of the anxiety it promises to relieve." },
+        { q: "Many of today's apps are designed to catch your attention and keep you scrolling or tapping. Some people see their phone as a helpful tool for staying connected and productive, while others say it's a major source of distraction and even stress. Where do you fall on that spectrum? Do you think smartphones make life easier overall, or do they sometimes get in the way of being present?",
+          lx: ["distraction", "attention span", "stay focused"],
+          model: "[A] I think smartphones make life easier, but they also take away a lot of our attention. [R] My phone helps me organize everything — my calendar, reminders, maps and messages. But social media apps are designed to keep us scrolling, and it's very easy to lose an hour. [E] For example, I once checked my screen time and saw that I spent four hours a day on my phone, mostly on short videos. After that, I deleted two apps and turned off notifications. Now I use it about two hours a day and feel calmer. [C] So phones are useful tools, but only if we control them.", model5: "[A] Overall, smartphones make life easier, but they come at a real cost to our attention. [R] My phone is essentially my organizer, holding my calendar, reminders and maps. Many apps, however, are deliberately designed to keep us scrolling, so it's remarkably easy to lose an hour without noticing. [E] When I first checked my screen time, for instance, I was shocked to see I averaged four hours a day, mostly on short videos. I deleted two apps and switched off most notifications, and within a month my daily usage had halved, while I felt noticeably calmer and more present with friends. [C] So phones are excellent servants but terrible masters." },
+        { q: "Some people believe schools, workplaces, or even governments should do more to help people develop healthier digital habits—like setting limits or promoting phone-free spaces. Do you think society should play a role in helping people manage their screen time more effectively? Why or why not, and what kind of support or change would you find helpful?",
+          lx: ["screen time", "attention span", "self-discipline"],
+          model: "[A] I think society can help, but mostly through education, not strict rules. [R] Many apps are designed to keep us scrolling, so it's not fair to say it's only a personal problem. But adults don't like being controlled. [E] For example, my university created a phone-free study room, and it's always full, because people want help to focus. I also think schools should teach children how social media works and how to set limits. But I don't want the government to decide how many hours I use my phone. [C] So I support phone-free spaces and education, not bans.", model5: "[A] I believe society has a role to play, though more through support and education than through restrictions. [R] Since many apps are deliberately engineered to be addictive, treating excessive screen time purely as a matter of personal willpower seems unfair. At the same time, adults rightly resist being told how to live. [E] My university, for instance, opened a phone-free study room last year, and it's permanently full, which suggests people actively want help to focus. Similarly, I think schools should teach children how algorithms capture their attention. A government-imposed time limit for adults, however, would feel intrusive. [C] So phone-free spaces and digital literacy, yes; bans, no." }
+      ]},
+    { id: "srt", badge: "platform", title: "The Role of Technology", src: "Практика платформы",
+      scenario: "We're exploring how people use and think about technology in their daily lives. I'll ask you a few questions.",
+      questions: [
+        { q: "To start with, what types of technology do you use most often during a typical day?",
+          lx: ["device", "app", "rely on"],
+          model: "[A] I mostly use my smartphone and my laptop, and also some smart devices at home. [R] My phone helps me with communication and everyday tasks, and my laptop is for studying. [E] For example, I use my phone for messages, maps, music and paying for things. My laptop is for online lectures, writing essays and research. I also use wireless headphones every day and a smartwatch that counts my steps and reminds me about my classes. [C] So technology is with me from morning to night.",
+          model5: "[A] My smartphone and laptop dominate my day, supported by a few smaller **devices**. [R] Broadly speaking, my phone handles communication and everyday logistics, while my laptop is essentially my workplace. [E] On my phone, for instance, I message friends, navigate the city, listen to music and pay for almost everything; on my laptop, I attend lectures, write essays and research assignments. On top of that, my wireless headphones are practically attached to my ears, and my smartwatch counts my steps and nudges me ten minutes before each class. [C] So technology accompanies me from the moment I wake up until I fall asleep, often without my even noticing it." },
+        { q: "Many people believe that technology makes our lives more convenient and efficient. Others think it can be distracting and lead to overdependence. How do you feel about your own use of technology? Do you see it as more helpful or more harmful in your daily routine?",
+          lx: ["overreliance", "distraction", "a double-edged sword"],
+          model: "[A] For me, technology is more helpful than harmful, but I know I depend on it too much. [R] It saves me a lot of time every day and helps me study and stay in contact with people. But sometimes it distracts me, and I feel lost without it. [E] For example, apps help me plan my week, pay bills in seconds and learn languages. But when my phone died during a trip last month, I couldn't find my hotel or call anyone, and I felt completely helpless. [C] So technology helps me a lot, but I should learn to manage without it sometimes.",
+          model5: "[A] On balance, it's far more helpful than harmful in my routine, although I'm aware of a worrying degree of **overreliance**. [R] It saves me hours every week, supports my studies and keeps me connected, yet it can also be a serious **distraction**, and I've lost some basic self-sufficiency along the way. [E] Apps let me plan my week, pay bills in seconds and practice Spanish on the bus, for instance. But when my phone battery died during a trip last month, I couldn't find my hotel, call anyone or even pay for a taxi, and I felt surprisingly helpless. [C] So technology is clearly **a double-edged sword**, and that episode convinced me to keep a few low-tech skills alive." },
+        { q: "Some people argue that the constant presence of smartphones and social media is changing the way we communicate. Do you think these changes are mostly positive or mostly negative? Why?",
+          lx: ["face-to-face interaction", "attention span", "keep in touch"],
+          model: "[A] I think the changes are both positive and negative, but slightly more negative. [R] On the positive side, we can communicate with anyone, anywhere, instantly. On the negative side, people talk less face-to-face, write shorter messages and pay less attention to each other. [E] For example, my grandparents wrote long letters to each other when they were young, and they still keep them. Today, my friends and I send hundreds of short messages and emojis every day, but we rarely have long, deep conversations. And when we meet, everyone checks their phones. [C] So we communicate more, but not always better.",
+          model5: "[A] I'd describe them as mixed, though slightly more negative than positive. [R] On the plus side, we can now reach anyone, anywhere, instantly, which has transformed long-distance relationships. On the minus side, communication has become faster but shallower, and our **attention spans** in conversation seem to be shrinking. [E] My grandparents, for instance, exchanged long, thoughtful letters during their engagement, which they still treasure. My friends and I, by contrast, exchange hundreds of fragments and emojis every day, yet rarely have genuinely deep conversations, and when we do meet, phones inevitably interrupt. [C] So we're communicating more than ever, but not necessarily better, and the challenge is to use technology to enrich conversation rather than replace it." },
+        { q: "As technology continues to evolve, governments and communities are discussing how to ensure equal access to digital tools and internet connectivity. Do you think ensuring digital access for everyone is important? Why or why not?",
+          lx: ["digital divide", "access", "fall behind"],
+          model: "[A] Yes, I think ensuring digital access for everyone is very important. [R] Today, you need the internet for school, work, banking and even seeing a doctor. People without access **fall behind** and have fewer opportunities. [E] For example, during the pandemic, all classes moved online, and some students in my brother's school didn't have a laptop or good internet. They missed many lessons, and their grades went down. The city later gave free tablets to these students, which helped a lot. [C] So internet access is not a luxury anymore; it's a basic need.",
+          model5: "[A] I believe it's essential; internet access has effectively become a basic necessity. [R] Education, employment, banking and even healthcare increasingly assume that everyone is online, so those without reliable access inevitably **fall behind**, and the **digital divide** deepens existing inequalities. [E] During the pandemic, for instance, when all classes moved online, several students at my brother's school had no laptop and only a weak mobile connection. They missed lesson after lesson, and their grades suffered noticeably until the city distributed free tablets and data packages. [C] So guaranteeing digital access isn't about luxury; it's about giving everyone a fair chance to participate in modern society." }
+      ]}
+  ],
+
+  /* ===== Speaking Club: тема вдоль и поперёк ===== */
+  club: [
+    { icon: "phone", title: "Мой день с технологиями", en: "My digital day", questions: [
+      { t: "personal", src: "Official 090", q: "How important is technology in your day-to-day activities?", same: "s090-0",
+        f: ["What would be hardest to live without?", "Was it different five years ago?"], lx: ["rely on technology", "device", "app"] },
+      { t: "personal", src: "Платформа · Role of Technology", q: "What types of technology do you use most often during a typical day?", same: "srt-0",
+        f: ["Which device do you use first in the morning?", "Do you use any smart home devices?"], lx: ["device", "app", "rely on"] },
+      { t: "personal", src: "Official 115", q: "How many hours a day do you typically spend using electronics like smartphones, tablets or computers?", same: "s115-0",
+        f: ["Does that number surprise you?", "How much is too much?"], lx: ["screen time", "spend time on", "device"] },
+      { t: "personal", src: "Official 115", q: "What types of activities do you usually do on your digital devices — work, entertainment or socializing?", same: "s115-1",
+        f: ["Which activity takes the most time?", "Which is the most useful?"], lx: ["keep in touch with", "stream", "productivity"] },
+      { t: "personal", src: "Платформа · Mobile Phone Use", q: "How much time do you spend on your phone during an average day, and what do you use it for most?", same: "smp-0",
+        f: ["Have you ever checked your screen time report?", "What would you like to use it for less?"], lx: ["screen time", "spend time on", "scroll through"] },
+      { t: "personal", q: "Which app could you not live without, and why?",
+        model: "[A] The app I couldn't live without is my maps app. [R] I have a terrible sense of direction, and I use it every day to find buses, shops and new places. Without it, I would be lost — literally. [E] For example, when I moved to a new city for university, I didn't know any streets. The maps app showed me the way to campus, told me when the bus was coming and helped me find a good café near my dorm. Last month my phone died in the city center, and it took me an hour to find my way home. [C] So my maps app is my most important tool.",
+        model5: "[A] I couldn't function without my maps app. [R] I have a genuinely terrible sense of direction, partly, I suspect, because I've relied on GPS since I was a teenager, so the app guides me through practically every unfamiliar journey. [E] When I first moved to a new city for university, for instance, it showed me the way to campus, told me exactly when each bus would arrive and helped me discover a cozy café near my dorm. The dependence became painfully clear last month, when my phone died in the city center and it took me over an hour to find my way home. [C] So my maps app is undoubtedly my most essential tool, which is both convenient and slightly worrying.",
+        f: ["Which app would you happily delete?", "Is it a problem to depend on one app?"], lx: ["rely on", "overreliance", "app"] }
+    ]},
+    { icon: "battery", title: "Экраны и перерывы", en: "Screens & breaks", questions: [
+      { t: "experience", src: "Official 115", q: "Tell me about a time when you needed to take a break from using digital tools. How did it affect you?", same: "s115-2",
+        f: ["Would you do it again?", "How long could you last?"], lx: ["take a break from", "pull the plug", "recharge"] },
+      { t: "personal", src: "Платформа · Mobile Phone Use", q: "How do you feel when you're away from your phone — anxious, free, or something else? Why?", same: "smp-1",
+        f: ["Do you take your phone to the bathroom?", "What's your worst phone habit?"], lx: ["screen time", "anxiety", "take a break from"] },
+      { t: "opinion", src: "Платформа · Mobile Phone Use", q: "Should schools, workplaces or governments help people manage their screen time — for example, with limits or phone-free spaces?", same: "smp-3",
+        f: ["Would you use a phone-free café?", "Should apps show screen-time warnings?"], lx: ["screen time", "attention span", "self-discipline"] },
+      { t: "opinion", src: "Платформа · Entertainment Habits", q: "Some people worry that too much screen time causes sleep disruption, lower productivity and screen fatigue. Are these concerns valid in your experience? What do you do to manage your screen time?",
+        model: "[A] I think these concerns are valid, at least in my experience. [R] When I use my phone a lot, especially at night, I sleep worse and feel tired the next day. My eyes also get tired after many hours of screens. [E] For example, I once watched videos in bed until two a.m. and felt terrible the whole next day. Now I use a timer on my apps — after one hour of social media, the app closes. I also keep my phone outside my bedroom at night. [C] So screen time is a real problem, but we can control it with simple rules.", model5: "[A] In my experience, they're entirely valid, although the solution is simpler than it seems. [R] Heavy evening screen use clearly worsens my sleep, partly because of the light and partly because of the endless stream of stimulating content, and after long days of screens my eyes feel strained and my attention scattered. [E] I once scrolled through videos in bed until two a.m., for example, and spent the following day in a fog. Since then, I've set a one-hour daily limit on social media apps, after which they lock automatically, and my phone now spends the night outside my bedroom. [C] So the concerns are real, but a few firm boundaries can make a remarkable difference.",
+        f: ["Do you use night mode or blue-light filters?", "What helps you put the phone down?"], lx: ["screen time", "sleep-deprived", "set boundaries"] },
+      { t: "opinion", q: "At what age should children get their first smartphone?",
+        model: "[A] I think children shouldn't have their own smartphone before about thirteen or fourteen. [R] Younger children can't control their screen time, and social media can be dangerous for them — there's cyberbullying, strangers and content that isn't for kids. But a simple phone for calls is useful for safety. [E] For example, my little cousin got a smartphone at nine, and now he plays games all day and doesn't want to go outside. My neighbor's daughter has a basic phone for calls and messages, and she plays outside with friends every afternoon. [C] So a simple phone first, and a smartphone later.",
+        model5: "[A] In my view, not before about thirteen or fourteen, although a basic phone for calls can make sense earlier. [R] Younger children rarely have the self-control to manage **addictive** apps, and unrestricted access exposes them to **cyberbullying**, strangers and inappropriate content. A simple phone, by contrast, offers safety without those risks. [E] My cousin, for instance, was given a smartphone at nine and now spends most afternoons gaming, refusing to go outside. My neighbor's daughter, meanwhile, has a basic phone for calls and messages and still spends her afternoons playing outdoors with friends. [C] So I'd recommend a simple phone first and a smartphone only once children are mature enough to handle it, ideally with parental guidance.",
+        f: ["When did you get your first phone?", "Should schools ban smartphones?"], lx: ["addictive", "cyberbullying", "screen time"] }
+    ]},
+    { icon: "users", title: "Соцсети: я и платформы", en: "Me & social media", questions: [
+      { t: "personal", src: "Official 108", q: "If you were to choose a social media platform to use most regularly, which one would you choose and why?", same: "s108-0",
+        f: ["Which platform would you delete first?", "Which one is most popular in your country?"], lx: ["follow", "scroll through", "keep in touch with"] },
+      { t: "personal", src: "Official 078", q: "How often do you use social media platforms and for what purposes?", same: "s078-0",
+        f: ["Do you post or mostly scroll?", "When do you use it most?"], lx: ["scroll through", "keep in touch with", "post"] },
+      { t: "opinion", src: "Official 078", q: "In your opinion, what makes social media either enjoyable or difficult to deal with?", same: "s078-1",
+        f: ["What would make social media better?", "How do you deal with negative comments?"], lx: ["algorithm", "negative comments", "compare yourself"] },
+      { t: "opinion", src: "Official 078", q: "What kinds of things do you think are appropriate to share on social media, and why?", same: "s078-2",
+        f: ["What should never be posted?", "Have you ever deleted a post?"], lx: ["privacy", "post", "digital footprint"] },
+      { t: "opinion", q: "Is it OK for parents to post photos of their children on social media?",
+        model: "[A] I think parents should be very careful, and it's better not to post many photos of children. [R] Children can't agree or disagree, and the photos stay online forever. Later, a teenager may feel embarrassed, and strangers can also use these photos. [E] For example, my aunt posted hundreds of photos of my cousin as a baby — even in the bath. Now he's fifteen and very angry about it, because his classmates found some of them. My sister, on the other hand, only shares photos of her son in a private chat with family. [C] So private sharing is fine, but public posts can hurt children later.",
+        model5: "[A] I think parents should be extremely cautious, ideally keeping such photos within a private circle. [R] Young children can't give consent, yet the images may remain online indefinitely, potentially embarrassing them later or even being misused by strangers. Essentially, parents are creating a **digital footprint** on their child's behalf. [E] My aunt, for instance, publicly posted hundreds of photos of my cousin as a baby, some of them in the bath. He's now fifteen and furious, not least because classmates unearthed several of them. My sister, by contrast, shares photos of her son only in a private family chat, which seems a far more sensible compromise. [C] So sharing within the family is fine, but public posting should respect the child's future **privacy**.",
+        f: ["Would you post photos of your future kids?", "Should there be laws about this?"], lx: ["privacy", "post", "digital footprint"] }
+    ]},
+    { icon: "globe", title: "Соцсети и общество", en: "Social media & society", questions: [
+      { t: "opinion", src: "Official 078", q: "Does social media have more negative effects than positive ones on society in general?", same: "s078-3",
+        f: ["Who should control social media?", "Has social media changed politics?"], lx: ["misinformation", "a double-edged sword", "raise awareness"] },
+      { t: "compare", src: "Official 108", q: "Is social media more beneficial for younger people or older people? Why?", same: "s108-1",
+        f: ["Should there be a minimum age?", "How do your grandparents use social media?"], lx: ["lonely", "keep in touch", "vulnerable"] },
+      { t: "opinion", src: "Official 108", q: "Can social media help people stay connected, or does it lead to feelings of isolation?", same: "s108-2",
+        f: ["Have you ever felt FOMO?", "Can online friendships be real?"], lx: ["a double-edged sword", "FOMO", "stay connected"] },
+      { t: "opinion", src: "Official 108", q: "Will social media use continue to grow, or will people start to limit it? What will most affect future usage?", same: "s108-3",
+        f: ["What will replace social media?", "Will you use it more or less in five years?"], lx: ["screen time", "regulation", "digital detox"] },
+      { t: "opinion", q: "Fake news spreads quickly online. How can people tell what's true, and who is responsible for stopping misinformation?",
+        model: "[A] I think both platforms and users are responsible for stopping fake news. [R] Platforms have algorithms that show shocking posts to many people, so they should check and label false information. But users also need to think before they believe or share something. [E] For example, last year my uncle shared a post saying a famous singer had died, and many people believed it. It was fake. Now, before I share anything, I check if serious news websites report the same thing. Schools should also teach students how to check information. [C] So we all need to be more careful online.",
+        model5: "[A] Responsibility is shared: platforms must act, but every user plays a part too. [R] Algorithms tend to amplify sensational content, so platforms should be obliged to label and limit clearly false information. Ultimately, however, **misinformation** spreads because ordinary people share it without checking. [E] Last year, for instance, my uncle shared a post announcing a famous singer's death, which hundreds of people passed on before it turned out to be a hoax. These days, before sharing anything surprising, I check whether reputable news outlets are reporting the same story, and I look at who posted it originally. I also believe schools should teach media literacy as seriously as math. [C] So stopping fake news requires better platforms and more critical users at the same time.",
+        f: ["Have you ever believed fake news?", "Should AI-generated images be labeled?"], lx: ["misinformation", "spread misinformation", "algorithm"] },
+      { t: "opinion", q: "Being an influencer is now a dream job for many young people. Is it a real career?",
+        model: "[A] I think being an influencer can be a real career, but only for very few people. [R] Successful influencers work hard — they plan content, film, edit and talk with brands. But it's very unstable: an algorithm change can destroy your income, and most people never earn enough to live. [E] For example, a girl from my school started a cooking channel and now earns money from brands. But she says she works every day and is always stressed about her numbers. Many of my other classmates tried and gave up after a few months. [C] So it's a real job, but it's risky, and young people should have a plan B.",
+        model5: "[A] It can be a genuine career, though only a tiny minority manage to make a living from it. [R] Successful influencers effectively run small media businesses — planning content, filming, editing and negotiating with brands. The income, however, is notoriously unstable: a single algorithm change can wipe out their reach overnight, and the overwhelming majority never earn enough to live on. [E] A girl from my school, for instance, built a cooking channel that now attracts brand sponsorships, yet she admits she works seven days a week and constantly worries about her numbers. Several other classmates tried and quietly gave up within months. [C] So it's a real profession, but a high-risk one, and anyone pursuing it would be wise to keep a plan B.",
+        f: ["Would you like to be an influencer?", "Should influencers be regulated like advertisers?"], lx: ["go viral", "follower", "algorithm"] }
+    ]},
+    { icon: "chat", title: "Общение онлайн", en: "Communicating online", questions: [
+      { t: "personal", src: "Платформа · Digital Communication", q: "How often do you communicate with friends or family through texts, calls, social media or messaging apps? Is this your primary form of communication?", same: "sdc-0",
+        f: ["Do you prefer texting or calling?", "Who do you message most?"], lx: ["keep in touch with", "group chat", "voice message"] },
+      { t: "compare", src: "Платформа · Online Communication", q: "How often do you use online platforms to stay in touch, and how does that compare to face-to-face communication in your life?", same: "soc-0",
+        f: ["Do you prefer online or offline communication?", "Is it easier to be honest online?"], lx: ["keep in touch with", "face-to-face", "group chat"] },
+      { t: "opinion", src: "Платформа · Digital Communication", q: "Does online communication strengthen or weaken personal connections — and why?", same: "sdc-1",
+        f: ["Can a friendship survive only online?", "What can't you do through a screen?"], lx: ["face-to-face interaction", "keep in touch", "shallow"] },
+      { t: "opinion", src: "Платформа · Online Communication", q: "Do you think online messaging strengthens your relationships, or does it lack something important?", same: "soc-1",
+        f: ["Do you send voice messages?", "What's your opinion on emojis?"], lx: ["shallow", "keep in touch", "voice message"] },
+      { t: "opinion", src: "Платформа · Role of Technology", q: "Are the changes smartphones and social media have brought to the way we communicate mostly positive or mostly negative?", same: "srt-2",
+        f: ["Will people still write letters?", "Has texting changed language?"], lx: ["face-to-face interaction", "attention span", "keep in touch"] },
+      { t: "opinion", src: "Official 115", q: "Does spending too much time on personal technology negatively impact face-to-face social interactions?", same: "s115-3",
+        f: ["Do you check your phone during conversations?", "What's a good 'phone rule' for meeting friends?"], lx: ["face-to-face interaction", "be glued to your phone", "be present"] }
+    ]},
+    { icon: "quote", title: "Тон, недопонимание и конфликты", en: "Tone & misunderstandings", questions: [
+      { t: "experience", src: "Платформа · Digital Communication", q: "Have you ever had a misunderstanding or conflict because of something written in a text, post or email? How did you handle it?", same: "sdc-2",
+        f: ["What kind of messages are easiest to misread?", "Do you use a lot of emojis?"], lx: ["misread the tone", "get lost in translation", "clear things up"] },
+      { t: "experience", src: "Платформа · Online Communication", q: "Have you experienced confusion in a text or email? What do you do now to make sure your messages are understood clearly?", same: "soc-2",
+        f: ["How formal should emails to teachers be?", "Do you reread messages before sending?"], lx: ["misread the tone", "clear things up", "proofread"] },
+      { t: "opinion", src: "Платформа · Digital Communication", q: "Should people be more mindful about tone, timing and word choice online? What difference could that make in relationships?", same: "sdc-3",
+        f: ["Is it rude to reply late?", "Is it OK to text someone late at night?"], lx: ["mindful", "misread the tone", "think before you post"] },
+      { t: "opinion", q: "Why do people argue so aggressively online? Should there be stricter rules against cyberbullying?",
+        model: "[A] I think people argue aggressively online because they feel anonymous and far away from the other person. [R] When you can't see someone's face, it's easier to forget they have feelings. And yes, I think there should be stricter rules, especially to protect young people. [E] For example, a girl in my brother's school was bullied in a group chat, and she stopped going to school for a month. The school didn't know what to do because it happened online. After that, the school made clear rules and punishments for **cyberbullying**. [C] So online words can hurt as much as real ones, and rules should reflect that.",
+        model5: "[A] Largely, I think, because the screen creates a sense of distance and anonymity. [R] When we can't see someone's reaction, it's remarkably easy to forget there's a real person on the other end, so people say things they'd never say face to face. Given the harm this causes, especially to young people, I do believe stricter rules are needed. [E] At my brother's school, for instance, a girl was relentlessly targeted in a class group chat and stopped attending for a month. Initially, the school claimed it had no authority over online behavior; only afterwards did it introduce clear rules and consequences for **cyberbullying**. [C] So words online can wound just as deeply as words spoken aloud, and both schools and platforms should treat them accordingly.",
+        f: ["Should people have to use their real names online?", "What should you do if you see cyberbullying?"], lx: ["cyberbullying", "comment", "anonymous"] },
+      { t: "compare", q: "Do you prefer voice messages or text messages? Why?",
+        model: "[A] I prefer text messages, but I send voice messages to close friends. [R] Text messages are fast to read, and I can answer when I want. Voice messages take more time to listen to, and I can't listen in a library or on a bus. But voice messages show emotions better. [E] For example, when my friend sends a five-minute voice message, I often wait hours to listen to it. But when my grandmother sends me a short voice message, I love hearing her voice, and it feels much warmer than text. [C] So texts are practical, and voice messages are personal.",
+        model5: "[A] For practical matters I prefer texts, whereas with close friends and family voice messages feel warmer. [R] Texts can be skimmed in seconds and answered whenever it suits me, while voice messages demand time and a quiet place to listen. On the other hand, a voice conveys emotion in a way that text simply can't. [E] When a friend sends me a five-minute voice message, for instance, I'll often postpone listening for hours, which defeats the purpose. Yet whenever my grandmother sends me even a ten-second recording, hearing her voice feels far more personal than any written message, and her tone never **gets lost in translation**. [C] So texts win on efficiency, but voice messages win on warmth.",
+        f: ["Are long voice messages rude?", "Do you prefer calls or messages?"], lx: ["voice message", "get lost in translation", "convenient"] }
+    ]},
+    { icon: "laptop", title: "Видео, удалёнка и онлайн-сервисы", en: "Video & online life", questions: [
+      { t: "opinion", src: "Платформа · Online Communication", q: "Will video communication — for school, work and even medical appointments — continue to grow and become a normal part of everyday life?", same: "soc-3",
+        f: ["Would you see a doctor by video?", "Are video calls tiring?"], lx: ["video call", "convenient", "face-to-face"] },
+      { t: "opinion", src: "Mock · The Workplace", q: "In the future, most work meetings may take place online rather than in person. What are the advantages and disadvantages for workers?",
+        model: "[A] Online meetings have clear advantages, but also some serious disadvantages. [R] The main advantage is that workers save time and money, because they don't need to **commute**. The disadvantage is that it's harder to build relationships and understand people through a screen. [E] For example, during my internship, our weekly online meetings were short and efficient. But when we had to solve a difficult problem, we always met **face-to-face**, because online people just turned off their cameras and stayed silent. [C] So I think a mix of online and in-person meetings is best.", model5: "[A] Moving meetings online would bring real advantages, but some significant drawbacks as well. [R] On the positive side, workers would save countless hours otherwise spent **commuting**, and meetings tend to be shorter and more focused. On the downside, building relationships through a screen is far harder, and subtle signals like body language are easily lost. [E] During my internship, for example, our weekly online check-ins were efficient, whereas brainstorming sessions only worked **face-to-face**; online, half the team switched off their cameras and barely spoke. [C] So rather than going fully online, I think workplaces will settle on a hybrid model, using each format for what it does best.",
+        f: ["Cameras on or off?", "What makes an online meeting good?"], lx: ["work remotely", "commute", "face-to-face"] },
+      { t: "compare", q: "Do you prefer video calls or ordinary phone calls? Why?",
+        model: "[A] With family, I prefer video calls, but for everything else, I prefer normal phone calls. [R] Video calls feel closer because you can see faces and emotions. But they need a good connection, a quiet place and, honestly, you need to look okay. Phone calls are easier and faster. [E] For example, every Sunday I have a video call with my parents, and my mom always wants to see my room and what I'm eating. But when I call a friend to make plans, or call a shop, I just use a normal call, often while I'm walking. [C] So I choose depending on the person and the purpose.",
+        model5: "[A] With family, video calls win; for almost everything else, I prefer an ordinary phone call. [R] Seeing someone's face makes a conversation feel far closer, which matters with people I rarely see. Video calls, however, require a stable connection, a quiet spot and, frankly, looking presentable, whereas a phone call can happen anywhere, even while walking. [E] Every Sunday, for instance, I video call my parents, and my mother inevitably insists on inspecting my room and whatever I'm eating. When I'm arranging plans with a friend or calling a shop, by contrast, a quick audio call is far more convenient. [C] So my choice depends entirely on whether the conversation is about connection or just information.",
+        f: ["Do you get nervous making phone calls?", "Will phone calls disappear?"], lx: ["video call", "convenient", "face-to-face"] },
+      { t: "opinion", q: "Banks, shops and government services are moving online. Is this good for everyone?",
+        model: "[A] It's good for many people, but not for everyone. [R] Online services save time — you can pay bills or get documents from home at any time. But older people and people without internet or good skills can have big problems. [E] For example, I renewed my student card online in five minutes, without waiting in line. But my grandfather couldn't get a doctor's appointment because it was only possible through an app, and he doesn't have a smartphone. My mom had to help him. [C] So online services are great, but there should always be an offline option too.",
+        model5: "[A] For most people it's a huge improvement, but it risks leaving some people behind. [R] Online services save time and are available around the clock. Yet older people, those without reliable internet and those lacking digital skills can find themselves effectively shut out, which widens the **digital divide**. [E] I renewed my student card online in five minutes, for instance, without queuing at all. My grandfather, by contrast, was unable to book a doctor's appointment because the clinic had switched to an app-only system, and he doesn't own a smartphone; my mother had to step in. [C] So moving services online makes sense, provided an offline alternative always remains available for those who need it.",
+        f: ["Do you still use cash?", "Who helps older people with technology in your family?"], lx: ["digital divide", "convenient", "be behind the times"] }
+    ]},
+    { icon: "cpu", title: "ИИ и будущее", en: "AI & the future", questions: [
+      { t: "opinion", src: "Official 090", q: "Some people believe technology will replace many jobs, while others think it will create more opportunities. What is your opinion?", same: "s090-2",
+        f: ["Which jobs will disappear first?", "Which job is safe from AI?"], lx: ["automate", "replace", "develop new skills"] },
+      { t: "experience", q: "Do you use AI tools for work or study? How do they help you, and what are the risks?",
+        model: "[A] Yes, I use AI tools almost every day for my studies. [R] They save a lot of time — they help me find information, check my grammar and explain difficult topics. But there are also risks: AI sometimes makes mistakes, and if you use it too much, you stop thinking for yourself. [E] For example, last month I asked AI to explain a statistics problem, and the explanation was great. But once it gave me a fake source for an essay, and I almost used it. [C] So AI is a useful assistant, but you always have to check it.", model5: "[A] I do, almost daily, mainly for my studies. [R] AI tools save an enormous amount of time: they explain complex topics, check my grammar and help me brainstorm. The risks, however, are just as real — they occasionally invent facts, and relying on them too heavily can weaken your own thinking. [E] Last month, for instance, an AI tool gave me a brilliantly clear explanation of a statistics problem I'd been stuck on for hours. Yet on another occasion, it suggested a source for my essay that turned out not to exist, which could have cost me dearly. [C] So I treat AI as a helpful assistant, but never as an authority I trust without checking.",
+        f: ["Do your teachers allow AI?", "What should AI never do for students?"], lx: ["productivity", "automate", "rely on"] },
+      { t: "opinion", q: "Should students be allowed to use AI to help with homework and essays?",
+        model: "[A] I think students should be allowed to use AI, but with clear rules. [R] AI is a useful tool, and students will use it at work in the future anyway. But if AI writes the whole essay, students don't learn anything. [E] For example, my professor lets us use AI to find ideas and check grammar, but we must write the essay ourselves and explain how we used AI. I think that's fair. A classmate submitted an essay fully written by AI, and the professor noticed immediately because it sounded generic. [C] So AI should be a helper, not a replacement for thinking.",
+        model5: "[A] I believe they should, provided there are clear rules about how. [R] AI is a powerful tool that students will inevitably use in their careers, so banning it outright seems unrealistic. If it writes entire essays, however, students skip the very thinking that education is meant to develop. [E] My professor, for instance, allows us to use AI to brainstorm ideas and check grammar, but we must write the essay ourselves and explain exactly how we used it, which strikes me as a sensible compromise. A classmate who submitted a fully AI-generated essay was caught almost immediately, because it sounded polished but utterly generic. [C] So AI should be treated like a calculator: a helper for the process, not a substitute for understanding.",
+        f: ["How can teachers check AI use?", "Will AI make exams like TOEFL harder?"], lx: ["artificial intelligence (AI)", "overreliance", "think for yourself"] },
+      { t: "hypo", q: "Would you feel comfortable riding in a self-driving car? Why or why not?",
+        model: "[A] Honestly, I wouldn't feel completely comfortable yet, but maybe in a few years. [R] Self-driving cars could be safer than people, because they don't get tired or look at their phones. But the technology is new, and I'd worry about what happens in unusual situations, like snow or road works. [E] For example, I watched a video of a self-driving taxi in the USA, and it drove very smoothly. But I also read about cases when these cars got confused and stopped in the middle of the road. [C] So I'd try it, but I'd want to see more proof that it's safe.",
+        model5: "[A] Not entirely, at least not yet, although I suspect that will change within a few years. [R] In principle, self-driving cars could be far safer than humans, since they never get tired, drunk or distracted by their phones. The technology is still relatively new, however, and I'd worry about how it copes with unpredictable situations, such as heavy snow or roadworks. [E] I've watched videos of driverless taxis in the United States navigating city traffic remarkably smoothly, for instance, yet I've also read about cases where they became confused and simply stopped in the middle of a busy road. [C] So I'd certainly try one out of curiosity, but I'd want considerably more evidence before trusting it completely.",
+        f: ["Who is responsible if a self-driving car crashes?", "Will people stop learning to drive?"], lx: ["artificial intelligence (AI)", "rely on", "the jury is still out"] },
+      { t: "opinion", q: "Could robots or AI help take care of elderly people? Is that a good idea?",
+        model: "[A] I think robots can help elderly people, but they can't replace human care. [R] Many countries have more old people and not enough nurses. Robots can remind people to take medicine, help them move or call a doctor in an emergency. But old people also need conversation, touch and love. [E] For example, my grandmother has a smart speaker that reminds her about her pills and plays her favorite music, and it really helps. But what makes her happiest is when we visit her. [C] So technology should help caregivers, not replace them.",
+        model5: "[A] They could certainly help, but I'd be wary of them replacing human care. [R] With populations aging and care workers in short supply, robots and AI can take on practical tasks, from medication reminders to detecting falls and calling for help. Yet older people need conversation, touch and genuine companionship, which no machine can truly provide. [E] My grandmother, for instance, has a smart speaker that reminds her to take her pills and plays her favorite old songs, and it's made her noticeably more independent. Nevertheless, what visibly lights her up is when one of us drops by for tea. [C] So technology should free up caregivers' time for human connection, not serve as an excuse to cut it.",
+        f: ["Would you want a robot helper at home?", "Should robots have feelings?"], lx: ["artificial intelligence (AI)", "lonely", "rely on"] }
+    ]},
+    { icon: "bulb", title: "Технологии и мышление", en: "Technology & the mind", questions: [
+      { t: "opinion", src: "Official 090", q: "Is reliance on technology reducing our ability to think independently and solve problems?", same: "s090-3",
+        f: ["What skill have you lost because of technology?", "Do you still do mental math?"], lx: ["overreliance", "look things up", "think for yourself"] },
+      { t: "opinion", src: "Платформа · Mobile Phone Use", q: "Do smartphones make life easier overall, or do they sometimes get in the way of being present?", same: "smp-2",
+        f: ["When is your phone most distracting?", "What does 'being present' mean to you?"], lx: ["distraction", "attention span", "stay focused"] },
+      { t: "opinion", src: "Платформа · Role of Technology", q: "Do you see your own use of technology as more helpful or more harmful in your daily routine?", same: "srt-1",
+        f: ["What would you change about your habits?", "Is technology neutral?"], lx: ["overreliance", "distraction", "a double-edged sword"] },
+      { t: "experience", src: "Official 090", q: "Have you ever felt frustrated while using technology? What happened?", same: "s090-1",
+        f: ["How do you react when technology fails?", "Who do you call for tech help?"], lx: ["update", "back up", "crash"] },
+      { t: "opinion", q: "Are short videos and constant notifications shortening our attention span?",
+        model: "[A] Yes, I think they are. [R] Short videos give our brain fast rewards, so slow activities like reading a book or listening to a lecture start to feel boring. Notifications also interrupt us all the time, so we lose concentration. [E] For example, two years ago I could read a novel for two hours. Last year, I noticed that after ten minutes of reading, I wanted to check my phone. So I turned off notifications and stopped watching short videos before bed. After a month, I could read for an hour again. [C] So our **attention span** can get shorter, but we can also train it back.",
+        model5: "[A] I'm fairly convinced they are, although the effect seems to be reversible. [R] Short videos deliver a constant stream of instant rewards, so slower activities, like reading or following a lecture, start to feel tedious by comparison. Meanwhile, constant **notifications** fragment our concentration throughout the day. [E] Two years ago, for instance, I could happily read a novel for two hours. Last year, I noticed I was reaching for my phone after barely ten minutes. I turned off nearly all notifications and stopped watching short videos in the evening, and within about a month I could read for an hour without interruption again. [C] So technology can certainly erode our **attention span**, but with deliberate effort, we can rebuild it.",
+        f: ["How long can you focus without checking your phone?", "Should schools teach focus?"], lx: ["attention span", "notification", "addictive"] }
+    ]},
+    { icon: "landmark", title: "Доступ, приватность и власть", en: "Access, privacy & power", questions: [
+      { t: "opinion", src: "Платформа · Role of Technology", q: "Is ensuring equal digital access and internet connectivity for everyone important? Why or why not?", same: "srt-3",
+        f: ["Should internet be free like water?", "Who suffers most from the digital divide?"], lx: ["digital divide", "access", "fall behind"] },
+      { t: "opinion", q: "Do you worry about how companies use your personal data?",
+        model: "[A] Yes, I worry about it, but honestly, I don't always protect my data. [R] Apps collect information about where we go, what we buy and what we like, and companies use it for advertising or even sell it. But reading all the privacy rules takes too long, so most people just click \"accept\". [E] For example, after I talked with a friend about buying new running shoes, I started seeing shoe ads everywhere, and it felt creepy. Since then, I've turned off location for most apps and stopped using my real birthday on websites. [C] So I'm worried, and I'm slowly trying to **protect my privacy** better.",
+        model5: "[A] I do, although, like most people, I'm not as careful as I should be. [R] Apps collect astonishing amounts of information — where we go, what we buy, even how long we look at a post — and companies use it to target advertising or share it with third parties. Yet privacy policies are so long that almost everyone simply clicks \"accept\". [E] After I mentioned to a friend that I needed new running shoes, for instance, shoe ads suddenly followed me across every app, which felt genuinely unsettling. Since then, I've disabled location tracking for most apps and stopped giving my real date of birth to websites that don't need it. [C] So I'm concerned, and I'm gradually taking small steps to **protect my privacy**, although stronger laws would help far more.",
+        f: ["Do you read privacy policies?", "Is a little data a fair price for free apps?"], lx: ["privacy", "protect your privacy", "Big Brother is watching"] },
+      { t: "opinion", q: "Should older people be helped to use new technology? Who should help them?",
+        model: "[A] Yes, I think older people should get help with new technology, from both families and the community. [R] Many services are online now, so without digital skills, older people can feel lonely and depend on others. Learning technology also helps them stay in touch with family. [E] For example, during the pandemic, I taught my grandmother how to make video calls. At first, she was nervous, but now she calls me every week and even sends me photos of her garden. Our local library also offers free computer classes for seniors, and they're very popular. [C] So families and communities should work together.",
+        model5: "[A] Definitely, and I think responsibility should be shared between families and the wider community. [R] With so many services now online, older people without digital skills risk becoming isolated and dependent on others, whereas a few basic skills can transform their independence and help them stay in touch. [E] During the pandemic, for instance, I patiently taught my grandmother to make video calls; she was hesitant at first, but she now calls me every week and proudly sends photos of her garden. Our local library, meanwhile, runs free computer classes for seniors that are always fully booked, which shows how much demand there is. [C] So helping older people get online isn't charity; it's simply making sure nobody is left **behind the times** against their will.",
+        f: ["Who taught you to use technology?", "What's hardest for older people?"], lx: ["digital divide", "be behind the times", "tech-savvy"] },
+      { t: "opinion", q: "Have big tech companies become too powerful?",
+        model: "[A] Yes, I think big tech companies have become too powerful. [R] A few companies control what billions of people see, buy and believe. They have huge amounts of data and money, and sometimes they're stronger than governments. [E] For example, when one big social media platform changes its algorithm, it can change what news millions of people see and even influence elections. Small companies also find it very hard to compete because big companies just buy them. [C] So I think governments should control these companies more strictly.",
+        model5: "[A] I'd argue they have, and that the concentration of power is a genuine concern. [R] A handful of companies now shape what billions of people see, buy and believe, while holding vast amounts of personal data and wealth that rival some countries' entire economies. [E] When a major platform tweaks its **algorithm**, for instance, it can alter which news millions of people encounter overnight and, potentially, influence public opinion during elections. Smaller competitors, meanwhile, struggle to survive, since the giants can simply acquire any promising rival. [C] So while these companies have undeniably brought enormous benefits, I believe stronger regulation is needed to ensure that their power serves the public interest."  ,
+        f: ["Could you live without products from big tech?", "Should big tech companies be broken up?"], lx: ["algorithm", "regulation", "privacy"] }
+    ]},
+    { icon: "sparkles", title: "Представь, что…", en: "What if…?", questions: [
+      { t: "hypo", q: "Imagine the internet stopped working for a whole week. How would your life change?",
+        model: "[A] My life would change a lot, and the first days would be very difficult. [R] I use the internet for studying, communication, payments and even finding my way around. Without it, I'd need to do everything in an old-fashioned way. [E] For example, I would have to go to the library for books, call my friends from a landline or just visit them, and use paper maps. I couldn't pay by phone, so I'd need cash. But I think by the end of the week, I'd read more, sleep better and talk to people face-to-face more. [C] So it would be a shock at first, but maybe a healthy one.",
+        model5: "[A] My life would be thrown into chaos at first, although I suspect it might ultimately be good for me. [R] Since I rely on the internet for studying, communication, payments and navigation, I'd suddenly have to rediscover a whole range of old-fashioned skills. [E] I'd be borrowing printed books from the library, for instance, knocking on friends' doors instead of messaging them and navigating with a paper map — probably badly. Without mobile payments, I'd have to withdraw cash and carefully count it. By the end of the week, though, I imagine I'd be reading more, sleeping better and having far more **face-to-face** conversations. [C] So it would start as a crisis and might end as an unexpected digital detox.",
+        f: ["What would you miss first?", "What would you do with the free time?"], lx: ["rely on", "pull the plug", "face-to-face interaction"] },
+      { t: "hypo", q: "If you could invent any gadget to make your life easier, what would it be?",
+        model: "[A] I would invent a gadget that cooks healthy meals automatically. [R] I'm often too busy or tired to cook, so I order unhealthy food. A machine that cooks for me would save time and help me eat better. [E] For example, I would put fresh ingredients inside in the morning, choose a recipe in an app, and when I came home, a hot, healthy dinner would be ready. It could also tell me what food is in my fridge and order what's missing. [C] So my gadget would make my life healthier and easier.",
+        model5: "[A] I'd invent a compact kitchen robot that cooks healthy meals automatically. [R] On busy days, I'm often too exhausted to cook, which is precisely when I end up ordering unhealthy takeout, so a device that handles the cooking would improve both my diet and my schedule. [E] I'd simply load fresh ingredients in the morning, pick a recipe through an app and come home to a hot, nutritious dinner. Ideally, it would also keep track of what's in my fridge, suggest meals to prevent food waste and automatically reorder anything that's running low. [C] So my invention would essentially be a personal chef, giving me back both time and health.",
+        f: ["What gadget do you wish existed when you were a child?", "Would you trust a robot to cook?"], lx: ["device", "app", "convenient"] },
+      { t: "hypo", q: "Someone offers you a lot of money to give up your smartphone for a month. Would you accept? Why or why not?",
+        model: "[A] Yes, I'd accept, although the first week would be hard. [R] A month is not very long, and I think it would be a good experience — I'd prove to myself that I'm not addicted, and the money would help my budget. [E] For example, I would buy a simple phone for calls and texts, print my bus schedule and use my laptop for studying. I'd ask my friends to call me instead of messaging. I think I'd read more books and sleep better. The hardest part would be not having maps. [C] So I'd take the money and the challenge.",
+        model5: "[A] I'd accept without much hesitation, even though the first week would be a struggle. [R] A month is manageable, and beyond the money, it would be a valuable experiment, a chance to prove to myself that I can live without constant connection. [E] I'd switch to a basic phone for calls and texts, for instance, print my bus timetable and use my laptop only for studying. I'd warn friends that they'd have to call me the old-fashioned way. My biggest challenge would undoubtedly be navigation, given my **overreliance** on maps, but I suspect I'd also read more, sleep better and notice far more of the world around me. [C] So I'd gladly take both the money and the challenge.",
+        f: ["How much money would be enough?", "Who do you know who couldn't do it?"], lx: ["pull the plug", "overreliance", "take a break from"] },
+      { t: "hypo", q: "Imagine it's 2050. How do you think technology will change our daily lives?",
+        model: "[A] I think by 2050 technology will be everywhere, but almost invisible. [R] Devices will become smaller and smarter, and AI will do many everyday tasks for us. But I hope people will also value offline time more. [E] For example, instead of phones, we might wear smart glasses that show maps and translate languages in real time. Cars will drive themselves, and AI assistants will plan our schedules and shopping. Doctors may check our health through small sensors at home. [C] So life will be more convenient, but we'll need to work hard to keep real human connection.",
+        model5: "[A] By 2050, I suspect technology will be everywhere yet largely invisible. [R] Devices will shrink and blend into our surroundings, while AI quietly handles a large share of routine decisions. At the same time, I hope that offline time will become something people actively value and protect. [E] Smartphones, for instance, may be replaced by lightweight glasses that display directions and translate conversations in real time. Self-driving cars could make commuting productive, AI assistants might organize our schedules and shopping, and tiny sensors at home could alert doctors to health problems before we notice any symptoms. [C] So life will almost certainly be more convenient, but preserving genuine human connection will require more effort than ever." ,
+        f: ["What technology would you not want in 2050?", "Will people still use phones?"], lx: ["artificial intelligence (AI)", "device", "face-to-face interaction"] }
+    ]}
+  ],
+
+  checklist: [
+    "Ответил(а) на вопрос прямо в первом предложении",
+    "Назвал(а) обе стороны: польза и ловушка",
+    "Вставил(а) одну идиому — естественно, а не «для галочки»",
+    "Привёл(а) конкретный пример: приложение, сообщение, случай из жизни",
+    "Правильные предлоги: spend time on, reply to, post on",
+    "Уложился(ась) в 45 секунд без длинных пауз"
+  ],
+
+  targetLexis: ["screen time", "check my phone", "turn off notifications", "scroll through", "post on", "go viral", "keep in touch with", "reply to", "misread the tone", "spend time on", "rely on technology", "protect my privacy", "misinformation", "algorithm", "digital divide", "face-to-face interaction", "overreliance", "a double-edged sword", "be glued to my phone", "get lost in translation", "out of the loop", "attention span", "that said"]
+};
+
+/* =====================================================================
+   ИЛЛЮСТРАЦИИ (SVG)
+   ===================================================================== */
+const HERO_ART = `
+<svg viewBox="0 0 320 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Смартфон с уведомлениями, сердечки, облачко чата и ноутбук">
+  <ellipse cx="165" cy="230" rx="128" ry="10" fill="rgba(0,0,0,.22)"/>
+  <rect x="20" y="150" width="150" height="72" rx="8" fill="#334155"/><rect x="28" y="158" width="134" height="56" rx="4" fill="#bae6fd"/>
+  <rect x="6" y="220" width="178" height="8" rx="4" fill="#475569"/>
+  <path d="M40 200 l20 -14 l16 8 l22 -18 l20 10 l26 -16" stroke="#0284c7" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <g transform="rotate(8 220 140)">
+    <rect x="170" y="40" width="100" height="180" rx="18" fill="#1e293b"/><rect x="178" y="56" width="84" height="148" rx="8" fill="#fff"/>
+    <rect x="208" y="46" width="24" height="5" rx="2.5" fill="#475569"/>
+    <rect x="186" y="66" width="68" height="22" rx="6" fill="#ede9fe"/><circle cx="196" cy="77" r="5" fill="#8b5cf6"/><rect x="206" y="72" width="40" height="4" rx="2" fill="#a78bfa"/><rect x="206" y="80" width="28" height="4" rx="2" fill="#ddd6fe"/>
+    <rect x="186" y="94" width="68" height="22" rx="6" fill="#fce7f3"/><circle cx="196" cy="105" r="5" fill="#ec4899"/><rect x="206" y="100" width="36" height="4" rx="2" fill="#f9a8d4"/><rect x="206" y="108" width="24" height="4" rx="2" fill="#fbcfe8"/>
+    <rect x="186" y="122" width="68" height="60" rx="6" fill="#e0f2fe"/><path d="M196 172 l14 -18 l10 12 l8 -8 l16 14z" fill="#38bdf8"/><circle cx="238" cy="136" r="6" fill="#fde68a"/>
+  </g>
+  <g class="tl-coin">
+    <circle cx="282" cy="40" r="16" fill="#ef4444"/><text x="282" y="46" text-anchor="middle" font-size="16" font-weight="800" font-family="system-ui" fill="#fff">9</text>
+  </g>
+  <g transform="translate(36 40)">
+    <path d="M0 14 a14 14 0 0 1 14 -14 h70 a14 14 0 0 1 14 14 v30 a14 14 0 0 1 -14 14 h-50 l-16 14 v-14 h-4 a14 14 0 0 1 -14 -14z" fill="#fff"/>
+    <circle cx="30" cy="29" r="5" fill="#8b5cf6"/><circle cx="49" cy="29" r="5" fill="#a78bfa"/><circle cx="68" cy="29" r="5" fill="#c4b5fd"/>
+  </g>
+  <path d="M150 108 c6 -6 14 -2 14 4 c0 7 -8 11 -14 15 c-6 -4 -14 -8 -14 -15 c0 -6 8 -10 14 -4z" fill="#f472b6"/>
+  <path d="M296 110 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3 z" fill="#a5f3fc"/>
+</svg>`;
+
+/* Мини-иллюстрации к идиомам (160×96). Классы a-* анимируются при наведении. */
+const IDIOM_ART = {
+  glued: `<circle cx="60" cy="30" r="13" fill="#fde68a"/><path d="M42 86 c0 -24 8 -36 18 -36 s18 12 18 36z" fill="#8b5cf6"/>
+         <circle cx="56" cy="30" r="2" fill="#0f172a"/><circle cx="64" cy="30" r="2" fill="#0f172a"/>
+         <g class="a-l"><rect x="80" y="22" width="22" height="36" rx="4" fill="#1e293b"/><rect x="83" y="26" width="16" height="26" rx="2" fill="#7dd3fc"/></g>
+         <path d="M66 32 l14 4 M66 28 l14 0" stroke="#fbbf24" stroke-width="2" stroke-dasharray="2 3"/>
+         <path d="M106 18 q6 -6 10 0 q4 6 10 0" stroke="#e2e8f0" stroke-width="3" fill="none" stroke-linecap="round"/>
+         <text x="112" y="76" font-family="system-ui" font-size="11" font-weight="800" fill="#e11d48">5h 12m</text>`,
+  rabbit: `<ellipse cx="80" cy="76" rx="44" ry="12" fill="#1e293b"/><ellipse cx="80" cy="74" rx="38" ry="8" fill="#0f172a"/>
+         <g class="a-drop"><ellipse cx="80" cy="44" rx="16" ry="14" fill="#fff" stroke="#cbd5e1" stroke-width="2"/>
+         <path d="M72 32 c-4 -16 0 -24 4 -24 s4 10 0 24 M88 32 c4 -16 0 -24 -4 -24 s-4 10 0 24" fill="#fff" stroke="#cbd5e1" stroke-width="2"/>
+         <circle cx="74" cy="44" r="2" fill="#0f172a"/><circle cx="86" cy="44" r="2" fill="#0f172a"/><circle cx="80" cy="50" r="2" fill="#f9a8d4"/></g>
+         <rect x="120" y="14" width="26" height="40" rx="5" fill="#1e293b"/><path d="M127 26 l12 8 l-12 8z" fill="#ec4899"/>`,
+  loop: `<g class="a-belt"><circle cx="58" cy="50" r="30" fill="none" stroke="#8b5cf6" stroke-width="5" stroke-dasharray="10 6"/>
+         <circle cx="58" cy="22" r="7" fill="#c4b5fd"/><circle cx="84" cy="62" r="7" fill="#c4b5fd"/><circle cx="32" cy="62" r="7" fill="#c4b5fd"/></g>
+         <circle cx="134" cy="50" r="9" fill="#fde68a"/><path d="M126 76 c0 -10 3 -16 8 -16 s8 6 8 16" fill="#94a3b8"/>
+         <text x="134" y="28" text-anchor="middle" font-family="system-ui" font-size="16" font-weight="800" fill="#94a3b8">?</text>`,
+  sword: `<g class="a-tag" style="transform-origin:80px 50px"><path d="M20 50 l20 -10 h80 l20 10 l-20 10 h-80z" fill="#e2e8f0" stroke="#94a3b8" stroke-width="2"/>
+         <path d="M40 50 h80" stroke="#94a3b8" stroke-width="1.5"/><rect x="72" y="34" width="16" height="32" rx="3" fill="#7c3aed"/></g>
+         <text x="18" y="26" font-family="system-ui" font-size="18" font-weight="800" fill="#0ea5e9">+</text><text x="134" y="28" font-family="system-ui" font-size="20" font-weight="800" fill="#e11d48">−</text>`,
+  translation: `<path d="M16 22 h56 a8 8 0 0 1 8 8 v22 a8 8 0 0 1 -8 8 h-36 l-10 10 v-10 h-10 a8 8 0 0 1 -8 -8 v-22 a8 8 0 0 1 8 -8z" fill="#dbeafe"/>
+         <text x="44" y="46" text-anchor="middle" font-family="system-ui" font-size="12" font-weight="800" fill="#1d4ed8">lol ;)</text>
+         <g class="a-r"><path d="M88 38 h16 M98 32 l6 6 l-6 6" stroke="#94a3b8" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+         <circle cx="134" cy="44" r="16" fill="#fde68a"/><circle cx="128" cy="40" r="2" fill="#0f172a"/><circle cx="140" cy="40" r="2" fill="#0f172a"/><path d="M128 52 q6 -5 12 0" stroke="#0f172a" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+         <text x="150" y="24" font-family="system-ui" font-size="14" font-weight="800" fill="#e11d48">?!</text>`,
+  posted: `<rect x="28" y="30" width="60" height="44" rx="5" fill="#fff" stroke="#94a3b8" stroke-width="2.5"/><path d="M28 34 l30 22 l30 -22" stroke="#94a3b8" stroke-width="2.5" fill="none"/>
+         <g class="a-r"><path d="M100 50 h30 M120 42 l10 8 l-10 8" stroke="#ec4899" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+         <rect x="134" y="28" width="20" height="34" rx="4" fill="#1e293b"/><circle cx="150" cy="30" r="6" fill="#ef4444"/><text x="150" y="33" text-anchor="middle" font-size="8" font-weight="800" fill="#fff" font-family="system-ui">1</text>`,
+  behind: `<path d="M8 86 h144" stroke="#cbd5e1" stroke-width="4" stroke-linecap="round"/>
+         <g class="a-r"><rect x="96" y="40" width="22" height="36" rx="4" fill="#1e293b"/><rect x="99" y="44" width="16" height="26" rx="2" fill="#7dd3fc"/><path d="M120 50 h14 M122 60 h14" stroke="#bae6fd" stroke-width="3" stroke-linecap="round"/></g>
+         <rect x="24" y="50" width="38" height="26" rx="4" fill="#a16207"/><circle cx="43" cy="63" r="9" fill="#fde68a"/><circle cx="43" cy="63" r="4" fill="#a16207"/><path d="M30 50 q13 -14 26 0" stroke="#78350f" stroke-width="3" fill="none"/>
+         <path d="M66 70 q4 -6 8 0" stroke="#94a3b8" stroke-width="2" fill="none"/>`,
+  plug: `<path d="M10 50 h44" stroke="#334155" stroke-width="5" stroke-linecap="round"/><rect x="50" y="38" width="22" height="24" rx="4" fill="#475569"/>
+         <g class="a-l"><path d="M72 44 h10 M72 56 h10" stroke="#94a3b8" stroke-width="4" stroke-linecap="round"/></g>
+         <rect x="104" y="30" width="34" height="40" rx="8" fill="#fff" stroke="#94a3b8" stroke-width="2.5"/><path d="M116 44 v6 M126 44 v6" stroke="#334155" stroke-width="3" stroke-linecap="round"/>
+         <path d="M90 22 l6 6 M96 22 l-6 6" stroke="#f59e0b" stroke-width="3" stroke-linecap="round"/>`,
+  bigbrother: `<g class="a-beam"><path d="M30 50 q50 -40 100 0 q-50 40 -100 0z" fill="#fff" stroke="#334155" stroke-width="3"/>
+         <circle cx="80" cy="50" r="14" fill="#6366f1"/><circle cx="80" cy="50" r="6" fill="#0f172a"/><circle cx="84" cy="46" r="2.5" fill="#fff"/></g>
+         <path d="M20 84 h120" stroke="#cbd5e1" stroke-width="3" stroke-dasharray="4 6" stroke-linecap="round"/>
+         <rect x="132" y="12" width="18" height="12" rx="3" fill="#475569"/><circle cx="146" cy="18" r="3" fill="#ef4444"/>`
+};
+</script>
+<script src="topic-engine.js"></script>
+</body>
+</html>

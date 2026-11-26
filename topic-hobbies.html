@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hobbies & Free Time — Speaking Topics — TOEFL Prep</title>
+
+<!-- Те же подключения, что на остальных страницах платформы -->
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="auth.js"></script>
+<script src="topics.js"></script>
+
+<link rel="stylesheet" href="topic-engine.css">
+</head>
+<body>
+<div class="tl-layout flex flex-col md:flex-row min-h-screen">
+  <div id="app-sidebar"></div>
+  <script src="nav.js"></script>
+
+  <main class="tl-main">
+    <div class="tl-wrap" id="lesson"></div>
+  </main>
+</div>
+
+<!-- Панель ответа -->
+<div class="tl-dock" id="dock" aria-live="polite">
+  <div class="tl-dock-top"><span id="dockLabel">Ответ</span><button class="tl-dock-close" id="dockClose" aria-label="Закрыть">✕</button></div>
+  <div class="tl-dock-q" id="dockQ"></div>
+  <div class="tl-dock-status">
+    <div class="tl-dock-state"><span class="tl-rec-dot" id="recDot"></span><span id="dockState">Готово</span></div>
+    <div class="tl-dock-time" id="dockTime">0:45</div>
+  </div>
+  <div class="tl-phase" id="dockPhase"></div>
+  <div class="tl-dock-bar" id="dockBar"></div>
+  <div class="tl-dock-ctrl">
+    <label><input type="checkbox" id="recToggle"> Записывать голос</label>
+    <div class="tl-row">
+      <button class="tl-dock-btn" id="dockShowQ">Показать текст</button>
+      <button class="tl-dock-btn" id="dockStop">Стоп</button>
+    </div>
+  </div>
+  <div class="tl-dock-msg" id="dockMsg"></div>
+  <div class="tl-dock-out" id="dockOut"></div>
+</div>
+
+<script>
+/* =====================================================================
+   КОНТЕНТ УРОКА: HOBBIES & FREE TIME
+   Новая тема = копия файла: меняются LESSON, HERO_ART и IDIOM_ART.
+   Общий движок и стили — topic-engine.js и topic-engine.css.
+   **слово** — подсветка целевой лексики.
+   _слово_ в коллокациях — «ключевой кубик».
+   [A] [R] [E] [C] в модельных ответах — цветная структура:
+   A = прямой ответ, R = причина, E = пример, C = вывод.
+   ===================================================================== */
+const LESSON = {
+  slug: "hobbies",
+  titleEn: "Hobbies & Free Time",
+  titleRu: "Хобби и свободное время",
+  category: "Досуг и увлечения",
+  intro: "Чем ты занимаешься в свободное время, одному или с друзьями, дома или на улице, одно большое увлечение или много маленьких, хобби и счастье, сад и растения, питомцы, хобби и деньги. Учим рассказывать о себе живо и конкретно — без «I like reading and music» — и проходим все вопросы по теме из базы.",
+  meta: [["≈ 60", "минут"], ["27", "слов · 2 уровня"], ["20", "коллокаций"], ["9", "идиом"], ["{Q}", "вопросов для обсуждения"]],
+
+  frames: {
+    warmup:    { icon: "flame",      time: "3 мин",  steps: ["Нажми динамик или прочитай вопрос", "Ответь вслух за 20 секунд", "Без подсказок — это «до урока»"] },
+    vocab:     { icon: "book",       time: "10 мин", steps: ["Посмотри на схему: зачем нам хобби", "Найди себя на шкале", "Слова: начни с Core, слушай и повторяй"] },
+    coll:      { icon: "link",       time: "8 мин",  steps: ["Учи сочетание целиком", "Цветной кубик — то, что чаще путают", "Расскажи о своём хобби с 5 сочетаниями"] },
+    idioms:    { icon: "quote",      time: "6 мин",  steps: ["Посмотри картинку — запомни образ", "Плашка «Можно» — смело в ответы", "Выбери 2 идиомы на сегодня"] },
+    expr:      { icon: "megaphone",  time: "5 мин",  steps: ["Послушай интонацию", "По 1 фразе из каждой группы", "Запомни шкалу 45 секунд"] },
+    check:     { icon: "puzzle",     time: "10 мин", steps: ["4 мини-игры", "Цель — 100% в Matching и Gap-fill", "Карточки — пока не узнаёшь все"] },
+    repeat:    { icon: "headphones", time: "5 мин",  steps: ["Слушай, не читая", "Повтори слово в слово", "Включи запись и сравни"] },
+    interview: { icon: "mic",        time: "15 мин", steps: ["Выбери сет — начни с Official", "Пройди все вопросы подряд, без пауз", "Сравни с моделью: цвета = структура"] },
+    club:      { icon: "chat",       time: "30+ мин", steps: ["Возьми 1–2 блока на занятие", "Ответь, потом — на «Копнём глубже»", "Отметь «Обсудили» или крути рулетку"] },
+    self:      { icon: "checkCircle",time: "3 мин",  steps: ["Прослушай свои записи", "Отметь, что получилось", "Цель — 15+ отмеченных слов"] }
+  },
+
+  warmup: [
+    "What did you do last weekend?",
+    "What's one hobby you've had for a long time?",
+    "Do you prefer relaxing at home or going out in your free time?",
+    "Is there a hobby you'd love to try one day?"
+  ],
+
+  /* Зачем нам хобби: равные ветки, вместо процента — tag */
+  flow: {
+    icon: "heart",
+    title: "Зачем нам хобби",
+    source: { kicker: "Свободный вечер…", title: "Free time", ru: "свободное время", words: ["spare time", "a pastime", "take up a hobby"] },
+    branches: [
+      { title: "Relax", ru: "отдохнуть", sub: "switch off the brain", tag: "Отдых", color: "#0ea5e9", words: ["unwind", "recharge", "a cozy night in", "let my hair down"] },
+      { title: "Grow", ru: "развиваться", sub: "get better at something", tag: "Рост", color: "#8b5cf6", words: ["pick up a skill", "a challenge", "a sense of achievement", "a creative outlet"] },
+      { title: "Connect", ru: "быть с людьми", sub: "find your people", tag: "Люди", color: "#ec4899", words: ["join a club", "like-minded people", "share a passion", "make friends"] }
+    ],
+    notes: [
+      "Сильный ответ про хобби называет не только <b>что</b> ты делаешь, но и <b>что оно тебе даёт</b> — отдых, рост или людей",
+      "Готовая фраза: <i>Playing the guitar is my creative outlet — it's the one hour a day when I completely switch off.</i>"
+    ]
+  },
+
+  scale: {
+    title: "Домосед или вечно в движении? Перетащи кружок туда, где ты",
+    left: "HOMEBODY", right: "ALWAYS ON THE GO",
+    words: [
+      { w: "homebody", p: 4 }, { w: "a cozy night in", p: 17 }, { w: "books and baking", p: 30 }, { w: "a bit of both", p: 44 },
+      { w: "weekend hikes", p: 58 }, { w: "always trying something new", p: 71 }, { w: "a packed schedule", p: 85 }, { w: "always on the go", p: 97 }
+    ],
+    says: [
+      { max: 25,  t: "I'm a real **homebody** — nothing beats **a cozy night in** with a book and tea." },
+      { max: 50,  t: "I'm **a bit of both** — **books and baking** during the week, friends at the weekend." },
+      { max: 75,  t: "I love **weekend hikes**, and I'm **always trying something new**." },
+      { max: 101, t: "I'm **always on the go** — my free time has **a packed schedule** of clubs and classes." }
+    ]
+  },
+
+  vocab: [
+    { en: "hobby", pos: "n", ru: "хобби, увлечение", ex: "My main hobby is playing the guitar.", level: "core" },
+    { en: "spare time", pos: "n", ru: "свободное время", ex: "In my spare time, I go hiking.", level: "core" },
+    { en: "leisure activities", pos: "n", ru: "досуг, занятия в свободное время", ex: "Leisure activities help me balance my studies.", level: "core" },
+    { en: "pastime", pos: "n", ru: "времяпрепровождение, занятие", ex: "Fishing is a popular pastime in my town.", level: "core" },
+    { en: "collect", pos: "v", ru: "коллекционировать", ex: "My grandfather collects old coins.", level: "core" },
+    { en: "crafts", pos: "n", ru: "рукоделие, поделки", ex: "My sister loves crafts like knitting and pottery.", level: "core" },
+    { en: "board games", pos: "n", ru: "настольные игры", ex: "We play board games every Friday night.", level: "core" },
+    { en: "gardening", pos: "n", ru: "садоводство", ex: "Gardening is very popular among older people.", level: "core" },
+    { en: "pet", pos: "n", ru: "домашнее животное", ex: "We had a dog as a family pet for twelve years.", level: "core" },
+    { en: "join a club", pos: "phr", ru: "вступить в клуб", ex: "I joined a hiking club in my first year.", level: "core" },
+    { en: "beginner", pos: "n", ru: "новичок", ex: "The class is perfect for complete beginners.", level: "core" },
+    { en: "practice", pos: "v / n", ru: "практиковаться; практика", ex: "I practice the guitar for half an hour every evening.", level: "core" },
+    { en: "relaxing", pos: "adj", ru: "расслабляющий", ex: "Painting is incredibly relaxing.", level: "core" },
+    { en: "indoors / outdoors", pos: "adv", ru: "в помещении / на улице", ex: "In winter, I spend most of my free time indoors.", level: "core" },
+    { en: "passion", pos: "n", ru: "страсть, большое увлечение", ex: "Photography has become a real passion of mine.", level: "core" },
+
+    { en: "take up", pos: "phr v", ru: "начать заниматься (хобби)", ex: "I took up pottery last year.", level: "adv" },
+    { en: "be into sth", pos: "phr", ru: "увлекаться чем-то", ex: "I'm really into board games at the moment.", level: "adv" },
+    { en: "dabble in", pos: "phr v", ru: "заниматься понемногу, «пробовать»", ex: "I dabble in photography, but I'm not serious about it.", level: "adv" },
+    { en: "therapeutic", pos: "adj", ru: "успокаивающий, терапевтический", ex: "I find baking really therapeutic.", level: "adv" },
+    { en: "rewarding", pos: "adj", ru: "приносящий удовлетворение", ex: "Learning an instrument is hard but rewarding.", level: "adv" },
+    { en: "absorbing", pos: "adj", ru: "захватывающий, поглощающий", ex: "Chess is so absorbing that I lose track of time.", level: "adv" },
+    { en: "like-minded people", pos: "n", ru: "единомышленники", ex: "Clubs are a great way to meet like-minded people.", level: "adv" },
+    { en: "a creative outlet", pos: "n", ru: "способ творческого самовыражения", ex: "Music is my creative outlet.", level: "adv" },
+    { en: "devote time to", pos: "phr", ru: "посвящать время", ex: "I devote every Sunday morning to my garden.", level: "adv" },
+    { en: "commitment", pos: "n", ru: "обязательство, вложение сил", ex: "Learning the piano requires a lot of commitment.", level: "adv" },
+    { en: "companionship", pos: "n", ru: "общение, дружеское присутствие", ex: "For my grandmother, her cat offers companionship.", level: "adv" },
+    { en: "monetize", pos: "v", ru: "монетизировать, зарабатывать на", ex: "She monetized her baking hobby by selling cakes online.", level: "adv" }
+  ],
+
+  collocations: [
+    { icon: "play", group: "Начать и бросить", items: [
+      { en: "_take up_ a hobby", ru: "начать заниматься хобби", ex: "I took up rock climbing last year." },
+      { en: "_get into_ sth", ru: "увлечься чем-то", ex: "I got into photography during the pandemic." },
+      { en: "_pick up_ a skill", ru: "освоить навык (по ходу)", ex: "I picked up some Spanish from songs." },
+      { en: "_stick with_ it", ru: "не бросать, продолжать", ex: "Learning the violin is hard, but I stuck with it." },
+      { en: "_give up_ a hobby", ru: "бросить хобби", ex: "I gave up the piano when I was fifteen." }
+    ]},
+    { icon: "heart", group: "Заниматься", items: [
+      { en: "_play the_ guitar", ru: "играть на гитаре (с the!)", ex: "I play the guitar most evenings." },
+      { en: "_go_ hiking / fishing", ru: "ходить в поход / на рыбалку", ex: "We go hiking once a month." },
+      { en: "_do_ puzzles / crafts", ru: "собирать пазлы / заниматься рукоделием", ex: "My grandmother does crossword puzzles every morning." },
+      { en: "_spend_ time _doing_ sth", ru: "проводить время за чем-то (+ing!)", ex: "I spend hours reading at the weekend." },
+      { en: "_be good at_ sth", ru: "хорошо уметь что-то (at!)", ex: "I'm not very good at drawing." }
+    ]},
+    { icon: "clock", group: "Свободное время", items: [
+      { en: "_have_ some time to yourself", ru: "побыть наедине с собой", ex: "On Sundays, I finally have some time to myself." },
+      { en: "_make the most of_ your free time", ru: "использовать свободное время по максимуму", ex: "I try to make the most of my weekends." },
+      { en: "_kill_ time", ru: "убить время", ex: "I play games on my phone to kill time on the bus." },
+      { en: "_lose track of_ time", ru: "потерять счёт времени", ex: "When I paint, I completely lose track of time." },
+      { en: "_take_ a break from", ru: "отдохнуть от", ex: "Hobbies help me take a break from studying." }
+    ]},
+    { icon: "users", group: "Люди и клубы", items: [
+      { en: "_join_ a club", ru: "вступить в клуб", ex: "I joined the university film club." },
+      { en: "_sign up for_ a class", ru: "записаться на занятия", ex: "I signed up for a pottery class." },
+      { en: "_take_ lessons", ru: "брать уроки", ex: "My brother takes guitar lessons online." },
+      { en: "_meet_ like-minded people", ru: "встретить единомышленников", ex: "Clubs help you meet like-minded people." },
+      { en: "_share_ a passion for", ru: "разделять увлечение", ex: "My roommate and I share a passion for board games." }
+    ]}
+  ],
+
+  idioms: [
+    { art: "jack", lit: "буквально: «Джек на все руки (но ни в чём не мастер)»", en: "a jack of all trades", ru: "мастер на все руки (но ни в чём не профи)", meaning: "человек, который понемногу умеет многое", ex: "I'm a jack of all trades — I dabble in music, cooking and photography.", reg: "ok", note: "Идеально для вопроса «one hobby or many?»." },
+    { art: "labour", lit: "буквально: «труд любви»", en: "a labor of love", ru: "работа для души", meaning: "дело, которое делаешь из любви, а не ради денег", ex: "My grandmother's garden is a real labor of love.", reg: "ok", note: "Красиво про сад, рукоделие, ремонт старых вещей." },
+    { art: "birds", lit: "буквально: «убить двух птиц одним камнем»", en: "kill two birds with one stone", ru: "убить двух зайцев", meaning: "достичь двух целей одним действием", ex: "Hiking with friends kills two birds with one stone: exercise and socializing.", reg: "ok", note: "Сильный аргумент про хобби с пользой." },
+    { art: "green", lit: "буквально: «зелёный большой палец»", en: "have a green thumb", ru: "уметь выращивать растения", meaning: "хорошо ухаживать за растениями", ex: "My grandmother has a green thumb — everything she plants grows.", reg: "ok", note: "Главная идиома для вопросов о садоводстве." },
+    { art: "merrier", lit: "буквально: «чем больше, тем веселее»", en: "the more, the merrier", ru: "чем больше, тем лучше", meaning: "в компании веселее", ex: "Board games? The more, the merrier!", reg: "ok", note: "Для вопроса «alone or with others»." },
+    { art: "habit", lit: "буквально: «существо привычки»", en: "a creature of habit", ru: "человек привычки", meaning: "тот, кто любит делать одно и то же", ex: "I'm a creature of habit — I go to the same café every Sunday.", reg: "ok", note: "Для вопроса «same activities or new ones»." },
+    { art: "element", lit: "буквально: «в своей стихии»", en: "be in your element", ru: "быть в своей стихии", meaning: "чувствовать себя естественно и счастливо", ex: "On a mountain trail, I'm completely in my element.", reg: "ok", note: "Сильная фраза о любимом занятии." },
+    { art: "hair", lit: "буквально: «распустить волосы»", en: "let your hair down", ru: "расслабиться, оторваться", meaning: "отдохнуть и повеселиться без забот", ex: "On Friday nights, I let my hair down with friends.", reg: "ok", note: "Подходит к любому вопросу про отдых." },
+    { art: "practice", lit: "буквально: «практика делает совершенным»", en: "practice makes perfect", ru: "повторение — мать учения", meaning: "чтобы стать мастером, нужно много практиковаться", ex: "My guitar teacher always says practice makes perfect.", reg: "careful", note: "Клише. Лучше от лица учителя или с иронией." }
+  ],
+
+  expressions: [
+    { icon: "play", fn: "Начать ответ", items: [
+      "In my spare time, I'm really into …",
+      "I'd describe myself as a bit of a homebody.",
+      "My main hobby at the moment is …"
+    ]},
+    { icon: "bulb", fn: "Что хобби тебе даёт", items: [
+      "It's my creative outlet.",
+      "It helps me switch off after a long day.",
+      "What I love about it is the sense of achievement."
+    ]},
+    { icon: "camera", fn: "Пример из жизни", items: [
+      "I got into it a couple of years ago, when …",
+      "Last month, for example, I finally managed to …",
+      "I remember the first time I tried it — it was a disaster!"
+    ]},
+    { icon: "scales", fn: "Баланс и контраст", items: [
+      "Having many hobbies keeps life interesting; that said, you never get really good at any of them.",
+      "While I love being outdoors, a cozy night in has its charm.",
+      "On the flip side, …"
+    ]},
+    { icon: "trending", fn: "Мечты и планы", items: [
+      "One day, I'd love to take up …",
+      "If I had more time, I'd …",
+      "It's always been on my list."
+    ]},
+    { icon: "flag", fn: "Завершить", items: [
+      "So for me, hobbies aren't a luxury — they keep me sane.",
+      "In the end, it's about doing something just for the joy of it.",
+      "That's why I always make time for it."
+    ]}
+  ],
+
+  answerSteps: [
+    { k: "A", s: 5,  i: "Yes — my main hobby is playing the guitar." },
+    { k: "R", s: 12, i: "What I love about it is that it helps me switch off…" },
+    { k: "E", s: 22, i: "Last month, for example, I finally learned…" },
+    { k: "C", s: 6,  i: "So it's my favorite way to relax." }
+  ],
+
+  matching: [
+    { a: "a jack of all trades", b: "someone who can do many things but isn't an expert in any" },
+    { a: "a labor of love", b: "work done for pleasure, not money" },
+    { a: "have a green thumb", b: "be good at growing plants" },
+    { a: "a creature of habit", b: "someone who likes doing the same things" },
+    { a: "be in your element", b: "feel happy and natural doing something" },
+    { a: "let your hair down", b: "relax and have fun" }
+  ],
+
+  gapfill: [
+    { t: "I ___ up pottery last year.", a: ["took"] },
+    { t: "I play ___ guitar most evenings.", a: ["the"] },
+    { t: "I spend hours ___ at the weekend.", a: ["reading", "painting", "drawing", "cooking"] },
+    { t: "I'm not very good ___ drawing.", a: ["at"] },
+    { t: "When I paint, I completely lose ___ of time.", a: ["track"] },
+    { t: "I ___ up for a photography class.", a: ["signed"] },
+    { t: "Learning the violin is hard, but I stuck ___ it.", a: ["with"] },
+    { t: "We ___ hiking once a month.", a: ["go"] }
+  ],
+
+  paraphrase: [
+    { plain: "I started to do photography.", better: ["I **took up** photography.", "I **got into** photography."] },
+    { plain: "I like many hobbies, but I'm not very good at any.", better: ["I'm a bit of **a jack of all trades**.", "I **dabble in** lots of things."] },
+    { plain: "When I paint, I don't notice the time.", better: ["When I paint, I completely **lose track of time**."] },
+    { plain: "My grandmother is good with plants.", better: ["My grandmother **has a green thumb**."] },
+    { plain: "I feel very happy and natural when I'm hiking.", better: ["On a mountain trail, I'm **in my element**."] },
+    { plain: "Music helps me express myself.", better: ["Music is **a creative outlet** for me."] },
+    { plain: "I always do the same things on weekends.", better: ["I'm **a creature of habit**."] },
+    { plain: "I met people who like the same things.", better: ["I **met like-minded people** at the club."] }
+  ],
+
+  repeat: {
+    scenario: "Вы подрабатываете в студенческом центре досуга. Координатор объясняет новым волонтёрам, как проходит ярмарка клубов, — повторите каждое предложение точно так, как услышали.",
+    sentences: [
+      "Welcome to the student activities fair.",
+      "The fair runs until four o'clock.",
+      "Each club has its own table in the main hall.",
+      "Students can sign up for as many clubs as they like.",
+      "Please give every visitor a map of the hall and a list of clubs.",
+      "The photography and hiking clubs will hold their first meetings next Tuesday evening.",
+      "If a student can't find a club for their hobby, tell them they can start a new one with five members."
+    ]
+  },
+
+  /* ===== Реальные сеты Take an Interview по теме (из базы платформы) ===== */
+  sets: [
+    { id: "s053", badge: "official", title: "Hobbies", src: "Official TOEFL · 053 / 057 / 094",
+      scenario: "You have volunteered for a research study at your university about hobbies. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "To begin, do you have a hobby or interest that you regularly spend time doing?",
+          lx: ["play the guitar", "practice", "a creative outlet"],
+          model: "[A] Yes, my main hobby is playing the guitar. [R] I started three years ago because I love music, and now it's the best way for me to relax after studying. [E] For example, almost every evening, I **practice** for about half an hour. I learn songs from online videos, and sometimes I play with my roommate, who sings. Last month, I finally learned a difficult song by my favorite band, and I felt really proud. I also go running and hiking, but the guitar is the hobby I do most regularly. [C] So music is a big part of my free time.",
+          model5: "[A] Yes, my main hobby is playing the guitar, which I've been doing for about three years now. [R] I took it up because I've always loved music, but it's since become my most reliable way of switching off after a long day of studying — in other words, **a creative outlet**. [E] Most evenings, for instance, I **practice** for around half an hour, usually learning songs from online tutorials, and occasionally my roommate joins in on vocals, with mixed results. Last month, I finally mastered a notoriously difficult piece by my favorite band, which gave me a real sense of achievement. I also run and go hiking, but the guitar is the one thing I do almost daily. [C] So music is very much at the center of my free time." },
+        { q: "If you were to select a new hobby, what would you choose and why?",
+          lx: ["take up", "pottery", "therapeutic"],
+          model: "[A] I would choose pottery. [R] I spend most of my day on screens, so I'd like a hobby where I use my hands and make something real. It also looks very relaxing. [E] For example, my friend started a pottery class last year, and now she makes her own cups and plates. She says that when she works with clay, she forgets about everything else. I saw her first cup — it was a bit strange, but she was so proud of it! [C] So pottery would be a relaxing and creative change from my digital life.",
+          model5: "[A] I'd love to **take up** pottery. [R] Since I spend most of my waking hours staring at screens, I'm drawn to a hobby that's entirely hands-on and produces something you can actually hold. From everything I've heard, it's also remarkably **therapeutic**. [E] A friend of mine, for instance, joined a pottery class last year and now makes her own mugs and bowls. She says that once her hands are in the clay, the rest of the world simply disappears. Her first mug was admittedly rather lopsided, yet she was prouder of it than of any exam result. [C] So pottery would offer exactly what my digital life lacks: slowness, creativity and something real to show for my time." },
+        { q: "Now tell me what might prevent you from starting this new pastime.",
+          lx: ["commitment", "make time for", "beginner"],
+          model: "[A] I think the main problems would be time and money. [R] I'm a student with a part-time job, so my week is already very busy. Also, pottery classes are quite expensive, and you need to pay for clay and for using the oven. [E] For example, the pottery studio near my university charges about two hundred dollars for an eight-week course. That's a lot for my budget. And classes are on Tuesday evenings, when I usually work at the café. Maybe I could start in the summer, when I have more free time. [C] So it's possible, but not right now.",
+          model5: "[A] Realistically, time and money would be the main obstacles. [R] Between my studies and a part-time job, my week is already fairly packed, and pottery is surprisingly expensive once you factor in materials and the cost of using a kiln. [E] The studio near my campus, for instance, charges around two hundred dollars for an eight-week **beginner** course, which is a significant chunk of a student budget. To make matters worse, its classes run on Tuesday evenings, precisely when I work at the café. I could perhaps start during the summer break, when I'd have more flexibility. [C] So it's not a question of motivation, but of finding the time and money to **make** that **commitment** properly." },
+        { q: "Some people believe it is better to have one interest outside of work or school that you dedicate yourself to rather than multiple smaller ones. What do you think about that and why?",
+          lx: ["a jack of all trades", "devote time to", "dabble in"],
+          model: "[A] I think it's better to have one main interest and maybe one or two smaller ones. [R] When you **devote** a lot of **time to** one hobby, you get really good at it, and that feels great. But having a few different hobbies keeps life interesting and helps you meet different people. [E] For example, the guitar is my main hobby — I practice almost every day, and I've improved a lot. But I also go hiking with friends sometimes, which is good for my health and my social life. My cousin tries ten hobbies a year and isn't good at any of them. [C] So one main hobby plus a little variety is ideal.",
+          model5: "[A] I'd argue the ideal is one main passion supported by a couple of lighter interests. [R] **Devoting time to** a single hobby allows you to develop genuine skill, which brings a deep sense of satisfaction. Variety, however, keeps life fresh and exposes you to different people and experiences. [E] The guitar, for instance, is my central hobby; I practice almost daily, and the progress I've made is enormously rewarding. Yet I also go hiking with friends now and then, which benefits both my health and my social life. My cousin, by contrast, **dabbles in** about ten new hobbies a year and, as a result, has never got beyond beginner level in any of them — the classic **jack of all trades**. [C] So depth matters most, but a little breadth keeps it enjoyable." }
+      ]},
+    { id: "s100", badge: "official", title: "Hobbies and Leisure Activities", src: "Official TOEFL · 100",
+      scenario: "You have agreed to participate in a research study about hobbies and leisure activities. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "First, when you engage in your favorite hobby, do you prefer to do it alone or do you like to do it with your family or friends? Why?",
+          lx: ["some time to myself", "the more, the merrier", "concentrate"],
+          model: "[A] I usually prefer to do my favorite hobby, playing the guitar, alone. [R] When I'm alone, I can concentrate, make mistakes and practice the same part many times without anyone listening. It's also my quiet time after a busy day. [E] For example, in the evenings, I close the door of my room and practice for half an hour. It's the only time in the day when I have **some time to myself**. But sometimes, on weekends, I play with my roommate, and that's fun too, especially when friends come and sing along. [C] So I mostly enjoy it alone, but sharing it sometimes is nice.",
+          model5: "[A] For the guitar, my main hobby, I generally prefer to be alone. [R] Practicing on my own lets me concentrate fully, repeat difficult passages endlessly and make embarrassing mistakes without an audience; it's also one of the few moments in my day when I genuinely **have some time to myself**. [E] Most evenings, for instance, I shut my door and play for half an hour, which acts as a buffer between a hectic day and a calm evening. That said, at weekends I occasionally play with my roommate, and when friends drop by and start singing along, it turns into something quite different and very fun — **the more, the merrier**. [C] So I practice alone but perform, very informally, with others." },
+        { q: "And do you think it is better to spend free time indoors like in a movie theater, or outdoors like in a park? Why?",
+          lx: ["fresh air", "outdoors", "a cozy night in"],
+          model: "[A] I think it's usually better to spend free time **outdoors**. [R] Most of us spend all day inside — at school, at work or at home — so fresh air and nature help us relax and feel healthier. But indoor activities are good in bad weather. [E] For example, on sunny weekends, my friends and I go for picnics in the park or go hiking, and I always feel full of energy afterwards. But in winter, when it's cold and dark, a movie or a board game night at home is a great way to spend time together. [C] So outdoors is my first choice, but it depends on the weather.",
+          model5: "[A] Generally speaking, I'd say **outdoors** is better, though it depends heavily on the season. [R] Since most of us spend our working or studying hours indoors, time outside offers **fresh air**, movement and a change of scenery that recharges us in a way indoor activities rarely do. Nevertheless, indoor options have their place. [E] On sunny weekends, for instance, my friends and I head to the park for picnics or out of town for a hike, and I always come back with more energy than I left with. In midwinter, however, when it's dark by four, nothing beats **a cozy night in** with a film or a board game. [C] So I'd choose the outdoors whenever the weather allows, and the cinema when it doesn't." },
+        { q: "Many people have the same hobbies as their friends. Do you think it is necessary for good friends to share hobbies? Why or why not?",
+          lx: ["share a passion for", "have a lot in common", "friendship"],
+          model: "[A] No, I don't think good friends need to share hobbies. [R] Friendship is about trust, support and enjoying time together, not about doing the same activities. Different hobbies can even make friendship more interesting, because you learn new things from each other. [E] For example, my best friend loves painting and theater, and I like sports and music. We don't share many hobbies, but we talk for hours, and she sometimes takes me to the theater while I take her hiking. On the other hand, I **share a passion for** board games with my roommate, and it's fun too. [C] So shared hobbies help, but they're not necessary.",
+          model5: "[A] I don't think it's necessary, although shared hobbies can certainly help a friendship begin. [R] Deep friendships rest on trust, support and genuinely enjoying each other's company rather than on identical interests. In fact, different hobbies can enrich a friendship, since each person introduces the other to something new. [E] My best friend, for instance, is passionate about painting and theater, whereas I'm into sport and music. We rarely share activities, yet we can talk for hours, and we regularly drag each other into our worlds — she takes me to plays, and I take her hiking. My roommate and I, meanwhile, **share a passion for** board games, which is great fun but isn't what makes us close. [C] So shared hobbies are a bonus, not a requirement." },
+        { q: "Some people believe that having hobbies is essential for being happy. Do you agree with this idea? Or do you think you can live a happy life without having hobbies? Explain your answer.",
+          lx: ["sense of achievement", "rewarding", "switch off"],
+          model: "[A] I think hobbies are very important for happiness, but you can be happy without a typical hobby. [R] Hobbies help us relax, feel proud and meet people. But some people get the same feelings from their family, their work or simply spending time with friends. [E] For example, I feel much happier on days when I play the guitar or go running — it helps me **switch off** and feel good about myself. But my mother doesn't really have a hobby. She says her happiness comes from her family and her job as a teacher, and she's one of the happiest people I know. [C] So hobbies help, but they're not the only way to be happy.",
+          model5: "[A] I'd say hobbies contribute enormously to happiness, but they're not strictly essential. [R] They offer relaxation, a **sense of achievement** and often community, all of which are key ingredients of well-being. Some people, however, find those same things through their family, their work or simply time with loved ones. [E] I'm noticeably happier on days when I play the guitar or go for a run, for instance, because those activities help me **switch off** and feel competent. My mother, by contrast, doesn't really have a hobby in the conventional sense; she finds deep fulfillment in her family and her work as a teacher, and she's genuinely one of the happiest people I know. [C] So hobbies are a wonderful route to happiness, but not the only one." }
+      ]},
+    { id: "s118", badge: "official", title: "Leisure Activities", src: "Official TOEFL · 118",
+      scenario: "You are taking part in a study about leisure activities. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "First, do you usually spend your leisure or free time indoors or outdoors? Tell me more about that.",
+          lx: ["outdoors", "go hiking", "a homebody"],
+          model: "[A] I spend my free time both indoors and outdoors, but I try to be outdoors as much as possible. [R] I study inside all week, so on weekends I really want fresh air. But on weekday evenings, I usually stay at home because I'm tired. [E] For example, on weekdays I play the guitar, read or watch a series in my room. But on Saturdays, I go running in the park or **go hiking** with friends outside the city. In summer, we also play volleyball on the beach. [C] So I'm indoors on weekdays and outdoors on weekends.",
+          model5: "[A] It's a fairly even split, although I make a conscious effort to get outdoors whenever I can. [R] After a week spent almost entirely inside lecture halls and libraries, I crave fresh air at weekends, whereas on weekday evenings I'm usually too tired for anything more ambitious than staying in. [E] During the week, for instance, my free time revolves around the guitar, a novel or an episode of a series in my room. Saturdays, by contrast, mean a run in the park or a day **hiking** in the hills with friends, and in summer, beach volleyball becomes our weekly ritual. [C] So I'm something of **a homebody** on weekdays and an outdoor person at weekends." },
+        { q: "Can you describe one of your favorite leisure activities and explain why you enjoy it?",
+          lx: ["go hiking", "be in your element", "switch off"],
+          model: "[A] One of my favorite leisure activities is hiking in the mountains with friends. [R] I enjoy it because it combines nature, exercise and good company. When I'm walking in the mountains, I forget about exams and stress. [E] For example, once a month, my friends and I take an early train out of the city and hike for the whole day. Last month we walked twenty kilometers to a beautiful lake, had a picnic and talked for hours. I was tired, but very happy. [C] So hiking is the best way for me to relax and recharge.",
+          model5: "[A] One of my absolute favorites is hiking in the mountains with friends. [R] What I love about it is that it combines three things I value — nature, physical effort and good company — and on a trail, worries about exams simply fade away. I'm genuinely **in my element** there. [E] Roughly once a month, for instance, a group of us catches an early train out of the city and spends the entire day hiking. Last month, we covered twenty kilometers to a glacier lake, where we had a long, lazy picnic and talked for hours. I came home exhausted but happier than I'd felt in weeks. [C] So hiking isn't just exercise for me; it's how I **switch off** and recharge." },
+        { q: "Do you prefer to engage in the same leisure activities over and over, or do you regularly seek out new activities? Why?",
+          lx: ["a creature of habit", "try something new", "comfort zone"],
+          model: "[A] I mostly do the same activities, but I try something new a few times a year. [R] My favorite activities, like the guitar and hiking, make me happy, so I don't want to change them. But trying new things keeps life exciting and helps me learn about myself. [E] For example, every week I play the guitar, run and meet friends, which is my routine. But last year I tried rock climbing and salsa dancing for the first time. Salsa wasn't for me, but I loved climbing, and now I go once a month. [C] So I'm a **creature of habit**, but with a little adventure.",
+          model5: "[A] I'm largely **a creature of habit**, though I deliberately **try something new** every few months. [R] My core activities, the guitar and hiking, bring me reliable joy, so I see no reason to abandon them. At the same time, stepping outside my **comfort zone** occasionally keeps life from becoming predictable and teaches me things about myself. [E] My weekly routine, for instance, rarely changes: guitar most evenings, a few runs and time with friends at weekends. Last year, however, I tried both rock climbing and salsa dancing for the first time. Salsa, it turned out, was definitely not my thing, whereas I loved climbing so much that I now go once a month. [C] So routine gives me stability, and novelty gives me the occasional pleasant surprise." },
+        { q: "Some people believe that regularly engaging in leisure activities is important for mental health. What are your thoughts on this? How do leisure activities impact your own well-being?",
+          lx: ["unwind", "recharge your batteries", "well-being"],
+          model: "[A] I agree that leisure activities are very important for mental health. [R] When we only work and study, we get tired and stressed. Hobbies give our brain a break and help us feel happy and creative. [E] For example, I play guitar for half an hour almost every evening. Even after a very bad day, when I start playing, I forget about my problems and feel calm. And on weekends, I go hiking with friends, which is the best way for me to **recharge my batteries**. [C] So for me, free time is not a luxury but a necessity.", model5: "[A] I strongly agree; regular leisure time is essential for mental health. [R] A life consisting solely of work and study inevitably leads to exhaustion, whereas hobbies give the mind a genuine rest and restore a sense of enjoyment and creativity. [E] Most evenings, for instance, I play the guitar for half an hour. However rough the day has been, within minutes of starting, my worries fade into the background. At weekends, meanwhile, hiking with friends is my most reliable way to **recharge my batteries**. On the rare weeks when I skip both, I notice my mood dipping almost immediately. [C] So leisure isn't an indulgence; it's what keeps the rest of my life running smoothly." }
+      ]},
+    { id: "sli", badge: "platform", title: "Leisure Activities", src: "Практика платформы",
+      scenario: "We're exploring how people choose to spend their leisure time. I'll ask you a few questions.",
+      questions: [
+        { q: "What do you usually do when you have free time?",
+          lx: ["spare time", "play the guitar", "hang out with"],
+          model: "[A] In my free time, I usually play the guitar, go running or **hang out with** friends. [R] I like to have a mix of relaxing, active and social activities, so I don't get bored. [E] For example, on a normal weekday evening, I play the guitar for half an hour and then watch a series or read. On weekends, I go for a long run on Saturday morning, and in the evening, I meet friends for dinner or a board game night. Once a month, we also go hiking. [C] So my free time is a mix of music, sport and friends.",
+          model5: "[A] My **spare time** usually revolves around three things: music, exercise and friends. [R] I like to balance relaxing, active and social activities, which stops my free time from feeling repetitive. [E] On a typical weekday evening, for instance, I'll **play the guitar** for half an hour before curling up with a series or a novel. Weekends are more active: a long run on Saturday morning, followed by dinner or a board-game night with friends in the evening. And roughly once a month, we escape the city for a day of hiking. [C] So my free time is a fairly balanced mix of solitude, movement and company, which seems to work well for me." },
+        { q: "People enjoy different activities in their spare time—some prefer relaxing at home, while others like being active or social. What kind of activities help you feel recharged or relaxed? Why do you think they help?",
+          lx: ["recharge", "switch off", "clear my head"],
+          model: "[A] Two kinds of activities help me **recharge**: being active outdoors and playing music. [R] Running or hiking **clears my head** because I focus on my body, not my problems. Playing the guitar helps because I need to concentrate on the music, so I can't think about stress. [E] For example, after a long day of lectures, a forty-minute run in the park makes me feel like a new person. And on stressful evenings before exams, half an hour with my guitar calms me down better than anything else. [C] So movement and music are my two ways to relax.",
+          model5: "[A] I find two very different types of activity equally restorative: exercise outdoors and making music. [R] Running or hiking **clears my head**, I think, because the physical effort pulls my attention away from my worries, while playing the guitar demands such complete concentration that there's simply no room left for stress. [E] After a long day of lectures, for instance, a forty-minute run through the park leaves me feeling like a new person. On tense evenings before exams, meanwhile, half an hour with my guitar calms me more effectively than anything else I've tried. [C] So, in both cases, what helps me **recharge** is an activity absorbing enough to make me **switch off** completely." },
+        { q: "Some people argue that we don't have enough free time these days. Do you feel you have a good balance between work or school responsibilities and leisure time? Why or why not?",
+          lx: ["leisure time", "work-life balance", "deadline"],
+          model: "[A] Not really — I think I don't have enough free time. [R] Between classes, homework and my part-time job, my week is very full, and my free time often disappears because of deadlines. [E] For example, I wanted to join a football club this semester, but I could only go twice because I always had something to finish. Even on weekends, I usually spend one day studying. I'm trying to change this by planning my week better. [C] So I'm still looking for a better balance, like many students.", model5: "[A] Honestly, not quite — I'd say leisure time is the first thing I sacrifice. [R] Between lectures, assignments and my part-time job, my week is packed, and whenever a deadline appears, my free time is what disappears. [E] This semester, for example, I signed up for a football club, but I've only managed to attend twice, since there was always something urgent to finish. Even weekends are usually split between rest and catching up on readings. I've recently started scheduling my free time in advance, which has helped a little. [C] So, like many students, I'm still searching for that balance, but at least I'm now treating rest as a priority." },
+        { q: "There's a growing interest in using free time to learn new skills or pursue personal development. Do you think this is a good use of leisure time? Why or why not?",
+          lx: ["develop new skills", "sense of accomplishment", "leisure time"],
+          model: "[A] Yes, I think it's a good use of free time, but only if you enjoy it. [R] Learning something new in your free time makes you feel proud and can help your career. But free time is also for rest. If every hour must be \"productive\", you can get tired and stressed. [E] For example, I learn Spanish in the evenings because I love the language and want to travel to Latin America. But on Sundays I just relax, watch movies and meet friends, with no goals at all. [C] So personal development is great, as long as rest still has a place.", model5: "[A] It can be an excellent use of leisure time, provided it's driven by enjoyment rather than guilt. [R] Picking up a new skill brings a real **sense of accomplishment** and can even benefit your career. **That said**, leisure also exists for genuine rest, and turning every free hour into \"self-improvement\" can easily lead to exhaustion. [E] I study Spanish in the evenings, for instance, because I genuinely love the language and dream of traveling around Latin America. Sundays, on the other hand, are completely goal-free: films, long walks and friends. [C] So personal development is a wonderful way to spend free time, as long as it doesn't crowd out the rest we actually need." }
+      ]},
+    { id: "s069", badge: "official", title: "Gardening", src: "Official TOEFL · 069",
+      scenario: "You have volunteered for a research study at your university about gardening. You will have a short online interview with a researcher.",
+      questions: [
+        { q: "First, do you have a garden or any plants that you take care of? If so, how often do you spend time gardening? And if not, why?",
+          lx: ["water the plants", "have a green thumb", "windowsill"],
+          model: "[A] I don't have a garden, but I take care of a few plants on my windowsill. [R] I live in a small dorm room, so a garden is impossible. But plants make my room feel more alive and calm. [E] For example, I have a small cactus, a basil plant and a big green plant my mom gave me. I **water** them twice a week and use the basil for cooking. In summer, I also help my grandmother in her vegetable garden when I visit her — she really **has a green thumb**. [C] So I'm not a real gardener, but I enjoy taking care of my plants.",
+          model5: "[A] I don't have a garden as such, but I do look after a small collection of plants on my **windowsill**. [R] Living in a cramped dorm room makes a garden impossible, yet even a few plants make the space feel calmer and more alive. [E] At the moment, for instance, I have a cactus, a pot of basil that regularly ends up in my pasta, and a large leafy plant my mother gave me when I moved in. I **water** them twice a week, which has become a small, oddly soothing ritual. In summer, I also help out in my grandmother's vegetable garden, where I mostly follow instructions, since she's the one who genuinely **has a green thumb**. [C] So I'm hardly a gardener, but I do enjoy caring for my little indoor jungle." },
+        { q: "What kinds of plants or gardens have you seen or heard about that you found interesting or appealing? Describe them and talk about why you found them interesting or appealing.",
+          lx: ["botanical garden", "rooftop garden", "peaceful"],
+          model: "[A] The most interesting garden I've seen is a rooftop garden on a building in my city. [R] It's amazing to see a green space with trees and vegetables in the middle of concrete and traffic. It shows that cities can be greener. [E] For example, on top of a big shopping center, there's a garden where volunteers grow tomatoes, herbs and flowers. There are also beehives and a small café. I visited it last summer, and it was so **peaceful** that I forgot I was in the city center. The vegetables are given to a local food bank. [C] So it was beautiful and also useful for the community.",
+          model5: "[A] The garden that impressed me most is a **rooftop garden** above a shopping center in my city. [R] What makes it so appealing is the contrast: a lush, productive green space flourishing in the middle of concrete and traffic, which shows how much greener our cities could be. [E] Volunteers grow tomatoes, herbs and wildflowers there, for instance, alongside several beehives and a tiny café. When I visited last summer, it was so **peaceful** that I completely forgot I was in the city center, just a few floors above a busy road. Even better, the vegetables they harvest are donated to a local food bank. [C] So it struck me as both beautiful and genuinely useful — exactly what urban gardening should be." },
+        { q: "What challenges do you think people face when trying to grow plants or maintain a garden?",
+          lx: ["time-consuming", "space", "commitment"],
+          model: "[A] I think the biggest challenges are time, space and knowledge. [R] Plants need regular care, and busy people often forget to water them. In cities, many people live in small apartments without a garden or even a balcony. And many beginners don't know what each plant needs. [E] For example, I killed three plants in my first year at university because I watered them too much — I didn't know that cacti need very little water. My grandmother says gardening is very **time-consuming**; in summer, she works in her garden almost every day. [C] So gardening needs time, space and patience.",
+          model5: "[A] The main challenges, I'd say, are time, **space** and knowledge. [R] Plants demand consistent care, which is difficult for busy people; urban residents often lack a garden or even a balcony; and beginners frequently have no idea what different plants actually need. [E] In my first year at university, for instance, I managed to kill three plants, mainly by overwatering a cactus, which, I later learned, needs barely any water at all. My grandmother, meanwhile, warns that a proper garden is extremely **time-consuming**: in summer, she spends several hours almost every day weeding, watering and harvesting. [C] So gardening requires not just enthusiasm but a real **commitment** of time, space and patience." },
+        { q: "Some people believe that gardening can have positive effects on personal mental health and well-being. Do you agree or disagree with this viewpoint? Why?",
+          lx: ["well-being", "unwind", "self-care"],
+          model: "[A] I agree that gardening can be good for mental health. [R] It's calm and slow, you're outside, and you see the results of your work. Taking care of plants also gives you a reason to get up and a small sense of responsibility. [E] For example, my grandmother has a small garden, and she says it's her therapy. After my grandfather died, she spent hours in the garden every day, and it helped her a lot. Even I have a few plants on my windowsill, and watering them in the morning is a relaxing moment. [C] So gardening is a simple way to feel calmer.", model5: "[A] I agree; gardening seems to combine several things that are good for the mind. [R] It's slow and calming, it gets you outdoors and moving, and it offers the quiet satisfaction of watching something grow thanks to your care. It also provides gentle structure and responsibility, which can be especially valuable during difficult times. [E] My grandmother, for instance, calls her small vegetable garden her therapy. After my grandfather passed away, she spent hours there every day, and she says it gave her a reason to get up in the morning. Even my modest collection of windowsill plants gives me a peaceful few minutes each morning. [C] So gardening is a simple, low-cost way to nurture your own well-being." }
+      ]},
+    { id: "sac", badge: "platform", title: "Animal Care", src: "Практика платформы",
+      scenario: "I'm conducting a study on people's experiences with pets and how animals fit into their daily lives. I'd like to ask you a few questions to understand your perspective.",
+      questions: [
+        { q: "Do you currently have a pet, or have you had one in the past? If so, what kind of pet was it, and how long were they a part of your life?",
+          lx: ["family pet", "companionship", "take care of"],
+          model: "[A] Yes, my family has a dog called Max. [R] We got him when I was ten, so he's been part of my life for about ten years. Now I live at university, so I see him only when I visit home. [E] For example, Max is a big, friendly golden retriever. When I was a child, I walked him every day after school, and he slept next to my bed. Now he's old and slow, but when I come home, he still runs to the door and jumps on me. I miss him a lot. [C] So Max is a real member of our family.",
+          model5: "[A] Yes, my family has a golden retriever called Max, who's been part of my life for about ten years. [R] We adopted him when I was ten, and although I now live away at university, he remains very much a member of the family. [E] As a child, for instance, I walked him every day after school, and for years he slept at the foot of my bed. These days he's grey around the muzzle and noticeably slower, yet whenever I come home, he still races to the door and greets me as if I'd been away for a decade. Honestly, he's one of the things I miss most about home. [C] So Max isn't just a pet to us; he's family." },
+        { q: "Many people describe their pets as members of the family and say they bring comfort, routine, or even joy during difficult times. In your experience, what kind of role have pets played in your life—or in the lives of your friends or family members?",
+          lx: ["companionship", "routine", "comfort"],
+          model: "[A] Pets have given my family comfort, routine and a lot of joy. [R] A dog makes you go outside every day, and it's always happy to see you, even on bad days. [E] For example, when my grandfather died, my grandmother was very sad and lonely. Our dog Max stayed with her for a few weeks, and she said walking him every day helped her get out of bed and talk to neighbors. Also, when I was stressed before exams in high school, playing with Max always made me smile. [C] So for my family, pets are a source of love and support.",
+          model5: "[A] In my family, pets have provided comfort, structure and a great deal of joy. [R] A dog, in particular, imposes a daily **routine** and offers unconditional affection, which can be especially valuable in difficult times. [E] When my grandfather passed away, for instance, my grandmother was devastated and barely left her apartment. We sent Max to stay with her for a few weeks, and she later told us that his walks were what got her out of bed each morning and back into conversation with her neighbors. On a smaller scale, during stressful exam periods in high school, ten minutes playing with Max always lifted my mood. [C] So pets have quietly been a source of **companionship** and resilience for my whole family." },
+        { q: "What do you think are some of the most common reasons people choose to have pets? And why do you think animals can have such a strong impact on people's lives?",
+          lx: ["companionship", "unconditional love", "loneliness"],
+          model: "[A] I think the most common reason is **companionship** — people don't want to feel lonely. [R] Pets also give children responsibility, and some animals have practical jobs, like guide dogs. Animals have a strong impact because they love us without judging us. [E] For example, my neighbor is an old man who lives alone, and his cat is his best friend — he talks to it all day. My friend got a dog during the pandemic because she worked from home and felt isolated. And my cousin, who is blind, couldn't live independently without his guide dog. [C] So pets meet both emotional and practical needs.",
+          model5: "[A] **Companionship** is probably the most common reason, though people also choose pets to teach children responsibility or for practical roles, such as guide dogs. [R] Animals have such a powerful impact, I think, because they offer **unconditional love** without judgment, which is rare in human relationships, and they create routines that structure people's days. [E] My elderly neighbor, for instance, lives alone, and his cat is effectively his closest companion; he chats to it constantly. A friend adopted a dog during the pandemic, mainly to combat the **loneliness** of working from home. And a cousin of mine, who is visually impaired, relies on his guide dog for his independence. [C] So pets fulfill both emotional and practical needs, often at the same time." },
+        { q: "While many pet owners are loving and responsible, not everyone knows what an animal truly needs in terms of care, nutrition, or attention. Do you believe there should be more public education or resources about responsible pet ownership? Why or why not?",
+          lx: ["responsible pet ownership", "abandon", "impulse"],
+          model: "[A] Yes, I think there should be much more education about **responsible pet ownership**. [R] Many people buy pets on impulse, for example because a puppy looks cute, but they don't know how much time, money and care animals need. Then some animals are abandoned or become sick. [E] For example, I volunteer at an animal shelter on Saturdays, and every January we get many dogs that people received as Christmas presents. Many of them were never trained or taken to a vet. Free classes for new owners, or short courses in schools, could help a lot. [C] So education would protect both animals and owners.",
+          model5: "[A] I strongly believe there should. [R] Many people acquire pets on **impulse**, charmed by a cute puppy, without realizing how much time, money and knowledge proper care requires, and the consequences, from health problems to abandonment, fall on the animals. [E] I volunteer at an animal shelter on Saturdays, for instance, and every January we see a sharp rise in dogs that were given as Christmas presents and then **abandoned** once the novelty wore off; many have never been trained or even seen a vet. Free workshops for prospective owners, or a short unit on animal care in schools, could prevent a great deal of this. [C] So better education about **responsible pet ownership** would benefit animals and owners alike." }
+      ]}
+  ],
+
+  /* ===== Speaking Club: тема вдоль и поперёк ===== */
+  club: [
+    { icon: "heart", title: "Мои хобби", en: "My hobbies", questions: [
+      { t: "personal", src: "Official 053 / 057 / 094", q: "Do you have a hobby or interest that you regularly spend time doing?", same: "s053-0",
+        f: ["How long have you been doing it?", "How good are you at it?"], lx: ["play the guitar", "practice", "a creative outlet"] },
+      { t: "personal", src: "Платформа · Leisure Activities", q: "What do you usually do when you have free time?", same: "sli-0",
+        f: ["What did you do last weekend?", "How is your weekend different from a weekday?"], lx: ["spare time", "play the guitar", "hang out with"] },
+      { t: "personal", src: "Official 118", q: "Can you describe one of your favorite leisure activities and explain why you enjoy it?", same: "s118-1",
+        f: ["Who introduced you to it?", "What's the best memory connected to it?"], lx: ["go hiking", "be in your element", "switch off"] },
+      { t: "hypo", src: "Official 053 / 057 / 094", q: "If you were to select a new hobby, what would you choose and why?", same: "s053-1",
+        f: ["What's stopping you?", "Which hobby would you never try?"], lx: ["take up", "pottery", "therapeutic"] },
+      { t: "personal", src: "Official 053 / 057 / 094", q: "What might prevent you from starting this new pastime?", same: "s053-2",
+        f: ["How could you solve that problem?", "Is it a real reason or an excuse?"], lx: ["commitment", "make time for", "beginner"] },
+      { t: "experience", q: "How did you get into your main hobby? Who or what inspired you?",
+        model: "[A] I got into playing the guitar thanks to my older cousin. [R] When I was seventeen, he visited us for the summer and played every evening. I loved the sound and wanted to play like him. [E] For example, he showed me my first three chords and how to play a simple song. At first, my fingers hurt a lot, and I wanted to stop. But he told me that everyone feels that at the beginning. When he left, he gave me his old guitar, and I continued learning with online videos. [C] So my cousin was the one who started it all.",
+        model5: "[A] I **got into** the guitar thanks to my older cousin. [R] When I was seventeen, he spent a summer with us and played every evening on the balcony, and I was so captivated by how effortless he made it look that I begged him to teach me. [E] He showed me my first three chords and a simple song, for instance, and for the first couple of weeks my fingertips ached so much I almost gave up. He reassured me that every guitarist goes through that stage, and when he left, he generously gave me his old guitar. From then on, I **stuck with it**, teaching myself through online tutorials. [C] So a single summer and one generous cousin are the reason music is such a big part of my life today.",
+        f: ["Have you inspired anyone to start a hobby?", "Do hobbies run in your family?"], lx: ["get into", "stick with it", "take up"] }
+    ]},
+    { icon: "users", title: "Одному или с другими", en: "Alone or together", questions: [
+      { t: "compare", src: "Official 100", q: "When you engage in your favorite hobby, do you prefer to do it alone or with family or friends? Why?", same: "s100-0",
+        f: ["Which hobbies are better alone?", "Which are better in a group?"], lx: ["some time to myself", "the more, the merrier", "concentrate"] },
+      { t: "opinion", src: "Official 100", q: "Do you think it is necessary for good friends to share hobbies? Why or why not?", same: "s100-2",
+        f: ["What do you and your best friend have in common?", "Have you tried a friend's hobby?"], lx: ["share a passion for", "have a lot in common", "friendship"] },
+      { t: "compare", src: "Official 105 · Outdoor Activities", q: "When you participate in your favorite outdoor activity, do you prefer to do it alone or together with family or friends? Why?",
+        model: "[A] For hiking, I definitely prefer going with friends. [R] First, it's safer — if someone gets hurt or lost in the mountains, others can help. Second, it's much more fun to share beautiful views and talk on the way. [E] For example, last year on a hike, my friend twisted her ankle far from the town. Because we were a group, two of us helped her walk while another person called for help. If she had been alone, it could have been dangerous. Also, our best conversations happen on long walks. [C] So for hiking, a group is both safer and more enjoyable.", model5: "[A] When it comes to hiking, I'd always choose to go with friends. [R] For one thing, it's considerably safer: if someone gets injured or lost in the mountains, others are there to help. For another, a stunning view is somehow twice as rewarding when you **share the experience**. [E] Last year, for instance, a friend twisted her ankle badly several kilometers from the nearest village. Because we were a group, two of us supported her while a third called the mountain rescue service. Had she been alone, the situation could have turned serious. Besides, some of our best conversations have taken place on long trails. [C] So company makes hiking both safer and far more memorable.",
+        f: ["Is it safe to hike alone?", "Who is your best outdoor partner?"], lx: ["safety", "share the experience", "camaraderie"] },
+      { t: "experience", q: "Have you ever made friends through a hobby or a club? Tell me about it.",
+        model: "[A] Yes, I made two of my best friends at university through a hiking club. [R] When I moved to a new city, I didn't know anyone, so I joined a club to meet people. A hobby makes it easy to start talking, because you already have something in common. [E] For example, on my first hike with the club, I walked next to a girl from my faculty, and we talked for three hours about mountains and music. Later, she introduced me to her friend, and now we go hiking and have dinner together almost every week. [C] So hobbies are one of the best ways to make new friends.",
+        model5: "[A] Yes, two of my closest friends at university are people I met through a hiking club. [R] When I first moved to the city, I didn't know a soul, so I **joined a club** deliberately to meet people. Shared hobbies make it remarkably easy to strike up a conversation, since you already have something in common. [E] On my very first hike, for instance, I found myself walking beside a girl from my faculty, and we talked non-stop for three hours, mostly about mountains and music. She later introduced me to her best friend, and nowadays the three of us hike or have dinner together almost every week. [C] So, for me, hobbies have been the most natural way to **meet like-minded people** and turn them into real friends.",
+        f: ["Is it easier to make friends online through hobbies?", "What club would you recommend to a new student?"], lx: ["join a club", "meet like-minded people", "have a lot in common"] },
+      { t: "compare", q: "Is it better to learn a hobby by taking classes or by teaching yourself?",
+        model: "[A] I think classes are better at the beginning, and then you can continue on your own. [R] A teacher can correct your mistakes early and give you motivation. But classes are expensive, and teaching yourself is flexible and cheap. [E] For example, I taught myself the guitar with online videos, and I learned many songs. But I had bad habits with my hand position, and when I finally took a few lessons, the teacher had to correct them. My friend took pottery classes from the start and improved very fast. [C] So a few lessons first, then self-study, is the best combination.",
+        model5: "[A] I'd recommend starting with a few classes and then continuing independently. [R] A teacher can correct mistakes before they become habits and provide structure and motivation; classes, however, are expensive, whereas teaching yourself is flexible and virtually free. [E] I taught myself the guitar through online tutorials, for instance, and learned dozens of songs, yet I'd developed a poor hand position that a teacher eventually had to spend several lessons correcting. A friend of mine, by contrast, **signed up for** pottery classes from day one and progressed remarkably quickly. [C] So the ideal approach, I think, is to **take** a few **lessons** to build solid foundations and then enjoy the freedom of learning on your own.",
+        f: ["Have you ever taken lessons?", "Can you learn everything from YouTube?"], lx: ["take lessons", "sign up for", "beginner"] }
+    ]},
+    { icon: "sun", title: "Дома или на улице", en: "Indoors or outdoors", questions: [
+      { t: "personal", src: "Official 118", q: "Do you usually spend your free time indoors or outdoors? Tell me more.", same: "s118-0",
+        f: ["What's your favorite indoor activity?", "Does the season change your habits?"], lx: ["outdoors", "go hiking", "a homebody"] },
+      { t: "compare", src: "Official 100", q: "Is it better to spend free time indoors, like in a movie theater, or outdoors, like in a park? Why?", same: "s100-1",
+        f: ["What do you do on rainy weekends?", "Is staying in ever better?"], lx: ["fresh air", "outdoors", "a cozy night in"] },
+      { t: "hypo", src: "Official 121 · Nature and the Outdoors", q: "If you had the chance to spend more time outdoors, what would you want to do?",
+        model: "[A] If I had more time outdoors, I would go camping and learn to kayak. [R] I love hiking, but I always have to come home the same day. Camping would let me stay in nature longer, see the stars and wake up in the mountains. Kayaking also looks peaceful and exciting at the same time. [E] For example, I'd love to spend a week camping next to a lake, kayaking in the morning, reading in the afternoon and making a fire in the evening with friends. Without my phone, of course! [C] So more time outdoors would mean more adventures in nature for me.",
+        model5: "[A] I'd spend it camping and finally learning to kayak. [R] I love hiking, but day trips always end with a rushed train home; camping would let me stay in nature long enough to see the stars and wake up to mountain air. Kayaking, meanwhile, strikes me as the perfect mix of calm and adventure. [E] I picture, for instance, a week by a remote lake: kayaking at dawn while the water is still glassy, reading in a hammock through the afternoon and sitting around a campfire with friends in the evening, with phones firmly switched off. [C] So more time outdoors would mean slower, deeper adventures rather than squeezing nature into a single Saturday.",
+        f: ["Have you ever been camping?", "What's the most beautiful place you've been outdoors?"], lx: ["outdoors", "be in your element", "recharge"] },
+      { t: "opinion", q: "Is spending a whole weekend at home doing nothing a waste of time?",
+        model: "[A] No, I don't think it's a waste of time, if you don't do it every weekend. [R] Sometimes our body and mind need complete rest. After a busy week, a lazy weekend can help us recharge. But if we stay home every weekend, we miss experiences and people. [E] For example, after my exams last month, I spent the whole weekend in pajamas, watching movies and sleeping. On Monday, I felt full of energy again. But during one winter, I stayed home almost every weekend and started to feel bored and lonely. [C] So a lazy weekend is good sometimes, but not always.",
+        model5: "[A] Not at all, provided it's the exception rather than the rule. [R] After an intense week, both body and mind sometimes need genuine rest, and a slow weekend at home can be the most efficient way to recharge. If it becomes a habit, however, it can quietly lead to boredom and isolation. [E] After my exams last month, for instance, I spent an entire weekend in pajamas, watching films and napping, and on Monday I felt completely restored. During one long winter, on the other hand, I stayed in almost every weekend and gradually became restless and rather lonely. [C] So **a cozy** weekend **in** is a valuable form of rest, as long as it doesn't replace living altogether.",
+        f: ["What does a perfect lazy day look like for you?", "Do you feel guilty doing nothing?"], lx: ["a cozy night in", "recharge", "let your hair down"] }
+    ]},
+    { icon: "bulb", title: "Хобби и счастье", en: "Hobbies & happiness", questions: [
+      { t: "opinion", src: "Official 100", q: "Is having hobbies essential for being happy, or can you live a happy life without hobbies?", same: "s100-3",
+        f: ["Do you know someone without hobbies?", "Can work be a hobby?"], lx: ["sense of achievement", "rewarding", "switch off"] },
+      { t: "opinion", src: "Official 118", q: "Is regularly engaging in leisure activities important for mental health? How do leisure activities affect your own well-being?", same: "s118-3",
+        f: ["What happens when you have no time for hobbies?", "Which hobby helps you most?"], lx: ["unwind", "recharge your batteries", "well-being"] },
+      { t: "personal", src: "Платформа · Leisure Activities", q: "What kind of activities help you feel recharged or relaxed? Why do you think they help?", same: "sli-1",
+        f: ["Does scrolling on your phone help you relax?", "What relaxes you in five minutes?"], lx: ["recharge", "switch off", "clear my head"] },
+      { t: "opinion", src: "Official 097 · Art and Creativity", q: "Some people believe that engaging in creative activities can improve mental well-being. Do you agree or disagree? Why?",
+        model: "[A] I agree that creative activities can improve mental well-being. [R] When you draw, write or play music, you focus on one thing, and your worries disappear for a while. It's also a way to express feelings that are hard to say in words. [E] For example, my best friend started painting during a difficult time after her parents' divorce. She says painting helped her understand her emotions, and now she feels much calmer. Also, finishing a painting gives her a nice feeling of achievement. [C] So creativity can be a kind of therapy.", model5: "[A] I agree, and I think creativity can be genuinely therapeutic. [R] Creative activities demand complete focus, which pushes anxious thoughts aside, and they offer a way to express emotions that are difficult to put into words. On top of that, completing something creative brings a real **sense of accomplishment**. [E] A close friend of mine, for instance, took up painting during a painful period after her parents' divorce. She says it allowed her to process feelings she couldn't talk about, and over several months she became noticeably calmer and more confident. Many of her paintings from that time, she admits, are far from masterpieces, but that was never the point. [C] So creativity can be a powerful form of self-care, whatever the result looks like.",
+        f: ["Are you a creative person?", "Do you need talent to enjoy art?"], lx: ["self-care", "cope with", "sense of accomplishment"] },
+      { t: "opinion", q: "Can a hobby stop being fun when it becomes too serious or competitive?",
+        model: "[A] Yes, I think a hobby can stop being fun when it becomes too serious. [R] When you start thinking about results, competitions or money, the hobby becomes like work, and you feel pressure instead of joy. [E] For example, I loved swimming for fun as a teenager, but then my coach wanted me to swim in competitions every weekend. I started to feel nervous before every match, and after a year, I didn't enjoy swimming at all, so I stopped. Now I play guitar only for myself, with no pressure. [C] So hobbies should stay a place to relax, not to compete.",
+        model5: "[A] Absolutely; once a hobby becomes about results, it can easily lose the joy that drew you to it. [R] Competitions, targets or the pressure to earn money gradually turn a pastime into an obligation, so that anxiety replaces pleasure. [E] As a teenager, for instance, I loved swimming casually, until my coach began entering me into competitions every weekend. Before long, I was dreading each race, and within a year I'd lost all enthusiasm and quit entirely. That experience is precisely why I now play the guitar purely for myself, with no goals beyond enjoying it. [C] So a little ambition can be motivating, but hobbies should remain a refuge from pressure rather than another source of it.",
+        f: ["Should you compete in your hobby?", "Is it OK to be bad at your hobby?"], lx: ["competitive", "pressure", "rewarding"] }
+    ]},
+    { icon: "clock", title: "Время на хобби", en: "Time for hobbies", questions: [
+      { t: "opinion", src: "Платформа · Leisure Activities", q: "Do you feel you have a good balance between work or school responsibilities and leisure time?", same: "sli-2",
+        f: ["What takes your free time?", "What would you do with an extra free day?"], lx: ["leisure time", "work-life balance", "deadline"] },
+      { t: "opinion", src: "Платформа · Leisure Activities", q: "Is using free time to learn new skills or pursue personal development a good use of leisure time?", same: "sli-3",
+        f: ["What skill would you like to learn?", "Should free time be 'useful'?"], lx: ["develop new skills", "sense of accomplishment", "leisure time"] },
+      { t: "compare", src: "Official 053 / 057 / 094", q: "Is it better to have one interest you dedicate yourself to, or multiple smaller ones?", same: "s053-3",
+        f: ["Are you a specialist or a jack of all trades?", "Which is better for your career?"], lx: ["a jack of all trades", "devote time to", "dabble in"] },
+      { t: "compare", src: "Official 118", q: "Do you prefer the same leisure activities over and over, or do you regularly seek out new activities? Why?", same: "s118-2",
+        f: ["What's the last new thing you tried?", "Are you a creature of habit?"], lx: ["a creature of habit", "try something new", "comfort zone"] },
+      { t: "opinion", q: "Many adults say they have no time for hobbies anymore. How can busy people make time for them?",
+        model: "[A] I think busy people can find time for hobbies if they plan it and start small. [R] Many adults wait for a free weekend, but it never comes. If you put your hobby in your calendar like a meeting, it's easier to do it. Also, short sessions are better than nothing. [E] For example, my father works long hours, but he plays chess online for twenty minutes every evening instead of watching the news. My aunt goes to a painting class every Thursday, and her family knows that this time is only for her. [C] So it's about priorities, not about free time.",
+        model5: "[A] I think the key is to schedule hobbies deliberately and to start small. [R] Many adults wait for a mythical free weekend that never arrives, whereas putting a hobby in the calendar, just like a meeting, makes it far more likely to happen. Moreover, twenty minutes regularly is worth far more than a few hours once a year. [E] My father, for instance, works long hours, yet he plays chess online for twenty minutes every evening instead of watching the news. My aunt, meanwhile, attends a painting class every Thursday, and the whole family knows that evening is strictly hers. [C] So, in my view, having no time for hobbies is usually a question of priorities rather than of time itself.",
+        f: ["Do you plan your free time?", "Which hobby fits into twenty minutes?"], lx: ["make time for", "devote time to", "priority"] }
+    ]},
+    { icon: "wallet", title: "Хобби и деньги", en: "Hobbies & money", questions: [
+      { t: "opinion", q: "Should you turn your hobby into a job? Why or why not?",
+        model: "[A] I think it can be great, but it's risky. [R] If you love your hobby, working in that field can make you very happy. But when you need money from it, you feel pressure, and the hobby can stop being relaxing. [E] For example, my friend loved baking, and she started selling cakes online. At first, she was very happy, but now she bakes twelve hours a day and says she never bakes for fun anymore. On the other hand, my uncle turned his love of photography into a successful wedding business, and he still loves it. [C] So it works for some people, but not for everyone.",
+        model5: "[A] It can be wonderful, but it's a gamble that changes the nature of the hobby. [R] Earning a living from something you love sounds ideal; however, financial pressure, deadlines and clients can quietly drain the joy from it. [E] A friend of mine, for instance, adored baking and began **monetizing** it by selling cakes online. Initially, she was thrilled, but she now bakes twelve hours a day and admits she never bakes for pleasure anymore. My uncle, by contrast, turned his passion for photography into a thriving wedding business, and twenty years later he still finds it deeply fulfilling. [C] So it can work beautifully, but only for those who can keep loving their passion even when it pays the bills.",
+        f: ["Which hobby could you turn into a job?", "Would you rather keep it as a hobby?"], lx: ["monetize", "a labor of love", "pressure"] },
+      { t: "opinion", src: "Work & Career · Speaking Club", q: "Many young people now have a 'side hustle' — a small business or project alongside their main job or studies. Is this a good idea?",
+        model: "[A] I think it's a good idea, if it doesn't take too much time. [R] A **side hustle** gives you extra money and lets you try your business idea without big risk. You also learn new skills. But if you work all the time, you can **burn out**. [E] For example, my friend sells handmade jewelry online on weekends. She earns some extra money, and she learned about marketing and photography. But during exams, she stops completely to rest. [C] So a side hustle is great, as long as you keep a balance.", model5: "[A] I think it's a great idea, provided it doesn't take over your life. [R] A **side hustle** brings in extra income and, more importantly, lets you test a business idea with very little risk, while developing new skills along the way. The danger, though, is that you never stop working and eventually **burn out**. [E] A friend of mine, for instance, sells handmade jewelry online at weekends. Not only does it earn her extra money, but she's also taught herself marketing and product photography. Wisely, she pauses it completely during exam season. [C] So a side hustle can be a brilliant launchpad, as long as you protect your rest.",
+        f: ["What side hustle would you choose?", "Is it still a hobby if it makes money?"], lx: ["side hustle", "burn out", "develop new skills"] },
+      { t: "opinion", q: "Some hobbies, like skiing or photography, are very expensive. Is it worth spending a lot of money on a hobby?",
+        model: "[A] I think it can be worth it, but only if you really love the hobby and can afford it. [R] Spending money on a hobby that makes you happy and healthy is better than spending it on things you don't need. But many people buy expensive equipment and then stop after a month. [E] For example, my brother spent a lot of money on a professional camera, and he uses it every weekend, so it was worth it. But my friend bought an expensive road bike, rode it three times and now it's in her garage. [C] So try a hobby cheaply first, and invest only when you're sure.",
+        model5: "[A] It can be, but only once you're certain the hobby will last. [R] Money spent on something that brings genuine joy and keeps you healthy is arguably better spent than money on yet another gadget. All too often, however, people invest heavily at the very start and lose interest within weeks. [E] My brother, for instance, saved for months to buy a professional camera, and he uses it every single weekend, so it has more than paid for itself in happiness. A friend of mine, by contrast, bought a top-of-the-range road bike, rode it three times and has left it gathering dust in her garage ever since. [C] So my advice is to start cheaply, rent or borrow equipment, and invest only once the passion has proven itself.",
+        f: ["What's the most expensive hobby you know?", "Can you enjoy a hobby for free?"], lx: ["commitment", "take up", "budget"] },
+      { t: "personal", q: "Do you collect anything, or have you ever had a collection?",
+        model: "[A] Yes, I collect postcards from every city I visit. [R] I started when I was twelve, during a family trip to Italy. I like them because they're cheap, small and each one has a memory. [E] For example, I now have about sixty postcards from fifteen countries. I keep them in a big box, and sometimes I look through them and remember the trips — the food, the people, even the weather. My grandfather collects old coins, and he has hundreds of them; maybe I got the idea from him. [C] So my collection is like a small diary of my travels.",
+        model5: "[A] I do — I've been collecting postcards from every place I visit since I was twelve. [R] It began on a family trip to Italy, and what appeals to me is that they're inexpensive, take up almost no space and each one captures a memory. [E] I now have around sixty postcards from fifteen countries, for instance, kept in a battered shoebox, and flicking through them instantly brings back the food, the people and even the weather of each trip. I suspect I inherited the instinct from my grandfather, who has spent decades building an impressive collection of old coins. [C] So my collection is essentially a pocket-sized travel diary, and one I'll keep adding to.",
+        f: ["What's the strangest collection you've heard of?", "Are collections a waste of money?"], lx: ["collect", "a labor of love", "pastime"] }
+    ]},
+    { icon: "leaf", title: "Сад и растения", en: "Gardens & plants", questions: [
+      { t: "personal", src: "Official 069", q: "Do you have a garden or any plants that you take care of? How often do you spend time gardening?", same: "s069-0",
+        f: ["What's the easiest plant to keep alive?", "Who in your family loves gardening?"], lx: ["water the plants", "have a green thumb", "windowsill"] },
+      { t: "experience", src: "Official 069", q: "What kinds of plants or gardens have you seen or heard about that you found interesting or appealing? Why?", same: "s069-1",
+        f: ["What's the most beautiful garden you've seen?", "Would you like a garden of your own?"], lx: ["botanical garden", "rooftop garden", "peaceful"] },
+      { t: "opinion", src: "Official 069", q: "What challenges do people face when trying to grow plants or maintain a garden?", same: "s069-2",
+        f: ["Have you ever killed a plant?", "Is gardening a hobby for older people?"], lx: ["time-consuming", "space", "commitment"] },
+      { t: "opinion", src: "Official 069", q: "Can gardening have positive effects on mental health and well-being?", same: "s069-3",
+        f: ["Should hospitals have gardens?", "Is there something special about growing your own food?"], lx: ["well-being", "unwind", "self-care"] },
+      { t: "opinion", q: "Should cities create more community gardens where people can grow their own food?",
+        model: "[A] Yes, I think cities should create more community gardens. [R] Many people in cities live in apartments without gardens. Community gardens give them a place to grow food, spend time in nature and meet their neighbors. They also make the city greener. [E] For example, a community garden opened near my dorm last year. Now students, retired people and families grow vegetables there together, and every month there's a small festival where they share food. My neighbor says she knows more people now than in ten years of living there. [C] So community gardens are good for people and for the city.",
+        model5: "[A] I'm strongly in favor. [R] Most city residents live in apartments with no outdoor space, so community gardens offer a rare chance to grow food, spend time in nature and, crucially, get to know neighbors. They also make neighborhoods greener and more attractive. [E] A community garden opened near my dorm last year, for instance, and it's now shared by students, retirees and young families, who swap tips across the vegetable beds; once a month, they hold a small harvest festival to share what they've grown. My elderly neighbor says she's met more people there in a year than in a decade of living in the building. [C] So community gardens cultivate not just vegetables but communities." ,
+        f: ["Would you rent a small garden plot?", "What would you grow?"], lx: ["have a green thumb", "a labor of love", "community"] }
+    ]},
+    { icon: "paw", title: "Питомцы", en: "Pets", questions: [
+      { t: "personal", src: "Платформа · Animal Care", q: "Do you have a pet, or have you had one in the past? What kind, and how long were they part of your life?", same: "sac-0",
+        f: ["What's your pet's personality like?", "Would you like a pet now?"], lx: ["family pet", "companionship", "take care of"] },
+      { t: "experience", src: "Платформа · Animal Care", q: "What kind of role have pets played in your life — or in the lives of your friends or family members?", same: "sac-1",
+        f: ["Can a pet replace human company?", "What did your pet teach you?"], lx: ["companionship", "routine", "comfort"] },
+      { t: "opinion", src: "Платформа · Animal Care", q: "What are the most common reasons people choose to have pets, and why do animals have such a strong impact on people's lives?", same: "sac-2",
+        f: ["Why do some people prefer exotic pets?", "Are pets good for children?"], lx: ["companionship", "unconditional love", "loneliness"] },
+      { t: "opinion", src: "Платформа · Animal Care", q: "Should there be more public education or resources about responsible pet ownership? Why or why not?", same: "sac-3",
+        f: ["Should people need a license to own a dog?", "Is it OK to buy pets from shops?"], lx: ["responsible pet ownership", "abandon", "impulse"] },
+      { t: "opinion", src: "Health · Speaking Club", q: "Can pets improve people's mental health?",
+        model: "[A] Yes, I believe pets can improve mental health a lot. [R] Pets give you love without judging you, and they make you feel needed. Dogs also make you go outside and walk every day, and they help you meet people. [E] For example, my neighbor is an old man who lives alone. After his wife died, he was very sad and rarely left the house. Then his son gave him a dog. Now he walks it three times a day, talks to other dog owners in the park and looks much happier. [C] So pets can be wonderful for our well-being.", model5: "[A] I'm convinced they can, sometimes dramatically. [R] Pets offer unconditional affection, give us a sense of being needed and introduce gentle routine into our days. Dogs, in particular, get people outdoors and naturally spark conversations with strangers. [E] My elderly neighbor, for instance, became deeply withdrawn after his wife died and barely left his apartment. When his son gave him a rescue dog, everything changed: he now walks it three times a day, chats with other dog owners in the park and seems a completely different person. [C] So pets aren't a substitute for human relationships, but they can be a remarkable bridge back to them.",
+        f: ["Should dorms allow pets?", "Should therapy animals be in schools?"], lx: ["well-being", "loneliness", "routine"] },
+      { t: "compare", q: "Are you a cat person or a dog person? Why?",
+        model: "[A] I'm definitely a dog person. [R] Dogs are loyal, playful and always happy to see you, and they make you go outside every day. Cats are cute, but they're more independent, and I like a pet that wants to spend time with me. [E] For example, our dog Max always runs to the door when I come home and follows me everywhere. My roommate has a cat at home, and she says it only comes to her when it's hungry! But I understand why busy people prefer cats — they need less time and attention. [C] So for me, dogs are the best companions.",
+        model5: "[A] I'm a dog person through and through. [R] I love their loyalty, their playfulness and the way they turn every homecoming into a celebration; they also force you outdoors every day, rain or shine. Cats are undeniably charming, but their independence makes them feel a little more like roommates than companions. [E] Our dog Max, for instance, still sprints to the door whenever I come home and follows me from room to room. My roommate's cat, by contrast, apparently acknowledges her existence only when the food bowl is empty. That said, I completely understand why busy people prefer cats, since they demand far less time. [C] So for **companionship**, dogs win for me every time.",
+        f: ["What pet would suit a busy student?", "Would you ever get an unusual pet?"], lx: ["companionship", "routine", "independent"] }
+    ]},
+    { icon: "gamepad", title: "Хобби и экраны", en: "Hobbies & screens", questions: [
+      { t: "opinion", q: "Is playing video games a real hobby?",
+        model: "[A] Yes, I think video games can be a real hobby, like reading or chess. [R] Many games need strategy, creativity and teamwork, and people can meet friends through them. But if someone plays all day and forgets about everything else, it becomes a problem, not a hobby. [E] For example, my roommate plays a strategy game for about an hour every evening with friends from three countries. He's learned a lot of English and even history from it. But my cousin plays eight hours a day and has stopped seeing his friends. [C] So gaming is a hobby, but balance is very important.",
+        model5: "[A] I'd say it absolutely can be, in the same way that reading or chess are. [R] Many games demand strategy, creativity and teamwork, and online gaming communities can create genuine friendships. The line is crossed, however, when gaming starts crowding out everything else, at which point it's no longer a hobby but a problem. [E] My roommate, for instance, plays a strategy game for about an hour each evening with friends from three different countries, and it's done wonders for his English and even his knowledge of history. My cousin, by contrast, games for eight hours a day and has gradually withdrawn from his real-life friends. [C] So gaming is a legitimate hobby, provided it remains part of a balanced life.",
+        f: ["What games do you play?", "Should parents limit gaming?"], lx: ["absorbing", "like-minded people", "lose track of time"] },
+      { t: "opinion", q: "Has the internet made it easier to start new hobbies?",
+        model: "[A] Yes, I think the internet has made it much easier to start new hobbies. [R] Today, you can find free videos, online courses and groups for almost any hobby. You can learn at home, at your own speed, and find people with the same interests. [E] For example, I learned to play the guitar mostly from free online videos, and my mom learned to knit during the pandemic from a YouTube channel. But sometimes there's so much information that people only watch videos and never actually start. [C] So the internet helps a lot, but you still need to practice.",
+        model5: "[A] Overwhelmingly, yes, although it also creates a curious trap. [R] Free tutorials, online courses and enthusiast communities exist for virtually every hobby imaginable, so anyone can start learning at home, at their own pace, and connect with **like-minded people** worldwide. The downside is that it's easy to confuse watching with doing. [E] I learned the guitar largely through free online videos, for instance, and my mother taught herself to knit during the pandemic with a single YouTube channel. Yet I also know people who've watched hundreds of hours of cooking or drawing videos without ever picking up a pan or pencil. [C] So the internet has made starting a hobby easier than ever, but it can't do the practicing for you.",
+        f: ["What hobby did you learn online?", "Are online communities as good as real clubs?"], lx: ["pick up a skill", "beginner", "like-minded people"] },
+      { t: "opinion", q: "Do people today have fewer real hobbies because of phones and social media?",
+        model: "[A] I think many people do have fewer real hobbies because of their phones. [R] When we have a free hour, it's very easy to scroll instead of doing something creative or active. Phones give quick fun with no effort, while hobbies need effort at the beginning. [E] For example, when I was a child, I spent hours drawing and building things with Lego. Last year, I noticed that most of my free time was going on short videos. So I deleted some apps, and now I play the guitar much more. [C] So phones don't kill hobbies, but they make them harder to start.",
+        model5: "[A] I suspect many people do, although it's a question of habit rather than inevitability. [R] When a spare hour appears, scrolling offers instant entertainment with zero effort, whereas a real hobby requires initial effort before it becomes rewarding, so the phone often wins by default. [E] As a child, for instance, I spent entire afternoons drawing or building elaborate Lego cities. Last year, however, I realized that most of my free time was quietly disappearing into short videos. Once I deleted a couple of apps, I found myself picking up the guitar far more often, almost without trying. [C] So phones don't destroy hobbies, but they do make it much easier never to start one.",
+        f: ["What did you do for fun as a child?", "What would you do with your screen time instead?"], lx: ["kill time", "screen time", "absorbing"] }
+    ]},
+    { icon: "cap", title: "Дети, школа и кружки", en: "Kids & activities", questions: [
+      { t: "opinion", src: "Платформа · University Life", q: "University isn't just about classes — social life and extracurricular activities can build friendships and provide balance. How important is social life to your university experience, and do you participate in any extracurriculars?",
+        model: "[A] Social life is very important to my university experience, and I take part in a hiking club. [R] Studying all the time is stressful, and friends and activities help me relax and feel at home in a new city. [E] For example, I joined the hiking club in my first semester, and now I go on trips once a month. That's where I met my two best friends. I also sometimes go to the film club on Thursdays. Without these activities, I think university would feel lonely and boring. [C] So extracurriculars are as important as classes for me.",
+        model5: "[A] It's absolutely central, and I'm an active member of the university hiking club. [R] Without a social life, university would feel like an endless cycle of lectures and deadlines; friendships and activities provide balance and, especially for students who've moved away from home, a sense of belonging. [E] I **joined** the hiking **club** in my very first semester, for instance, and its monthly trips have become highlights of my year; it's also where I met my two closest friends. Occasionally, I drop in on the film club's Thursday screenings too. Looking back, I'm convinced these activities shaped my university experience as much as any course. [C] So extracurriculars aren't a distraction from education; they're part of it.",
+        f: ["What club would you start?", "Do extracurriculars help you get a job?"], lx: ["join a club", "like-minded people", "balance"] },
+      { t: "opinion", q: "Should parents choose hobbies and after-school activities for their children?",
+        model: "[A] I think parents should help children try different activities, but the child should choose in the end. [R] Small children don't know what exists, so parents can show them options. But if parents force a hobby, children usually stop loving it. [E] For example, my parents made me take piano lessons for three years, and I hated them. But they also let me try football, and I loved it so much that I became the team captain. My younger cousin tried five activities before she found drawing, and now she draws every day. [C] So parents should give options, not orders.",
+        model5: "[A] I believe parents should open doors, but let children choose which one to walk through. [R] Young children can't know what activities exist, so parents play an important role in exposing them to a variety of options. Forcing a particular hobby, however, usually kills any genuine interest. [E] My parents, for instance, insisted on three years of piano lessons, which I dreaded, yet they also let me try football, which I loved so much that I eventually captained my school team. My younger cousin, meanwhile, tried five different activities before discovering drawing, and now she fills a sketchbook every week. [C] So the best approach, in my view, is to offer plenty of options and then follow the child's enthusiasm.",
+        f: ["What activities did you do as a child?", "Do children today have too many activities?"], lx: ["take up", "give up a hobby", "pressure"] },
+      { t: "opinion", q: "Do children today have too many organized activities and not enough free play?",
+        model: "[A] Yes, I think many children today have too many organized activities. [R] Parents want their children to be successful, so they sign them up for language classes, music, sport and tutoring. But children also need free time to play, be bored and use their imagination. [E] For example, my neighbor's eight-year-old son has a different class every day after school and is often tired and stressed. When I was his age, I played outside with friends for hours, and we invented our own games. I think that was important for my creativity. [C] So children need fewer schedules and more free play.",
+        model5: "[A] In many families, I think they do. [R] Understandably keen for their children to succeed, many parents fill every afternoon with language classes, music lessons, sports and tutoring. Yet unstructured play, and even boredom, is where children develop imagination, independence and the ability to entertain themselves. [E] My neighbor's eight-year-old son, for instance, has a different organized activity every single weekday and often looks exhausted. At his age, by contrast, I spent long afternoons outside with friends, inventing elaborate games with nothing but sticks and a ball, which I'm convinced did more for my creativity than any class could have. [C] So children would benefit from fewer schedules and more freedom simply to play.",
+        f: ["What did you play as a child?", "Is boredom good for children?"], lx: ["spare time", "pressure", "creative"] }
+    ]},
+    { icon: "sparkles", title: "Представь, что…", en: "What if…?", questions: [
+      { t: "hypo", q: "If you could instantly master any hobby or skill, what would it be?",
+        model: "[A] I would choose to play the piano perfectly. [R] I gave up piano lessons as a child because I didn't enjoy them, but now I love music and I regret it a little. Playing the piano well takes many years, so it would be amazing to have this skill immediately. [E] For example, I imagine playing my favorite film soundtracks for my family at holidays, or playing together with my roommate, who sings. I could also write my own songs. [C] So I'd choose the piano, the hobby I once gave up.",
+        model5: "[A] I'd choose to play the piano beautifully, which is somewhat ironic, given that I quit lessons as a child. [R] Back then, it felt like an obligation, but now that music has become my passion, I genuinely regret not sticking with it; mastering the piano takes years of practice, so acquiring the skill instantly would be a dream. [E] I imagine, for instance, playing my favorite film soundtracks at family gatherings, accompanying my roommate's singing or even composing my own pieces late at night. [C] So I'd choose the piano, partly for the joy of playing and partly to make peace with my younger self.",
+        f: ["What skill would be most useful?", "Would it be less satisfying without the effort?"], lx: ["give up a hobby", "practice makes perfect", "commitment"] },
+      { t: "hypo", q: "Imagine you had a whole year off to spend only on your hobbies. How would you use it?",
+        model: "[A] I would spend the year traveling, hiking and playing music. [R] These are my favorite activities, but I never have enough time for them because of my studies and job. [E] For example, I'd hike famous trails in different countries — maybe in Spain, Peru and New Zealand. In the evenings, I'd play the guitar and maybe join local musicians. I'd also take a photography course to take better pictures of my trips. At the end of the year, I'd make a photo book about my adventures. [C] So it would be a year of nature, music and new skills.",
+        model5: "[A] I'd turn it into a year of hiking, music and photography across the world. [R] These are the passions I constantly squeeze into weekends, so a full year would let me finally explore them properly. [E] I'd hike some of the world's great trails, for instance — perhaps in Spain, Peru and New Zealand — and, in the evenings, play the guitar in hostels, ideally alongside local musicians. Along the way, I'd **sign up for** a proper photography course, so that by the end of the year I could produce a photo book documenting the entire adventure. [C] So it would be a year spent fully **in my element**, and probably the best education I could give myself.",
+        f: ["Would you get bored?", "Which hobby would you add?"], lx: ["be in your element", "sign up for", "devote time to"] },
+      { t: "hypo", q: "If you could start a club at your school or in your town, what would it be?",
+        model: "[A] I would start a board game and language club. [R] Many international students at my university feel lonely, and many local students want to practice languages. Board games are a fun and easy way to start talking. [E] For example, every Friday evening, we would meet in a café, play simple games in different languages and then have dinner together. Each week, one person could teach a game from their country. I think it would help people make friends and improve their languages at the same time. [C] So my club would mix fun, friendship and learning.",
+        model5: "[A] I'd launch a club combining board games with language exchange. [R] Many international students at my university struggle with loneliness, while plenty of local students are eager to practice foreign languages; board games offer a relaxed, low-pressure way to bring the two groups together. [E] Every Friday evening, for instance, members would meet in a café, play simple games in different languages and then share dinner. Each week, someone could introduce a traditional game from their own country, which would add a cultural dimension. In this way, we'd **kill two birds with one stone**: improving languages while building genuine friendships. [C] So my club would blend fun, friendship and learning in equal measure.",
+        f: ["How would you find members?", "What's missing in your town?"], lx: ["kill two birds with one stone", "like-minded people", "the more, the merrier"] },
+      { t: "hypo", q: "If you could share one of your hobbies with your grandparents, which would it be?",
+        model: "[A] I would share hiking with my grandparents. [R] It's a simple activity that doesn't need special skills, and it's good for their health. Also, walking together gives time for long conversations. [E] For example, I'd choose an easy trail near their village, with a nice view and a place for a picnic. My grandmother could teach me the names of plants, and my grandfather could tell me stories about his childhood in the mountains. We wouldn't walk far, but it would be a special day. [C] So hiking would be a way to share nature and stories.",
+        model5: "[A] I'd love to share hiking with them, adapted to their pace, of course. [R] It requires no special skills, it's genuinely good for their health and, above all, walking side by side naturally invites long conversations. [E] I'd pick a gentle trail near their village, for instance, with a beautiful viewpoint and a sunny spot for a picnic. My grandmother, who has an extraordinary **green thumb**, could teach me the names of every plant along the way, while my grandfather could tell me stories about growing up in the mountains. We'd hardly cover any distance, but that would hardly matter. [C] So hiking would become a way to exchange not only fresh air, but memories.",
+        f: ["What hobby could your grandparents teach you?", "Do hobbies connect generations?"], lx: ["have a green thumb", "share a passion for", "outdoors"] }
+    ]}
+  ],
+
+  checklist: [
+    "Ответил(а) на вопрос прямо в первом предложении",
+    "Сказал(а), что хобби тебе даёт: отдых, рост или людей",
+    "Вставил(а) одну идиому — естественно, а не «для галочки»",
+    "Привёл(а) конкретный пример: случай, человек, первый раз",
+    "Без ошибок: play THE guitar, spend time DOING, good AT",
+    "Уложился(ась) в 45 секунд без длинных пауз"
+  ],
+
+  targetLexis: ["take up", "get into", "stick with it", "play the guitar", "spend time doing", "be good at", "lose track of time", "have some time to myself", "join a club", "sign up for", "meet like-minded people", "share a passion for", "a creative outlet", "therapeutic", "rewarding", "devote time to", "a jack of all trades", "be in my element", "a creature of habit", "have a green thumb", "companionship", "monetize", "that said"]
+};
+
+/* =====================================================================
+   ИЛЛЮСТРАЦИИ (SVG)
+   ===================================================================== */
+const HERO_ART = `
+<svg viewBox="0 0 320 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Гитара, растение в горшке, кисть и настольная игра">
+  <ellipse cx="165" cy="230" rx="128" ry="10" fill="rgba(0,0,0,.22)"/>
+  <g transform="rotate(-18 110 140)">
+    <rect x="104" y="20" width="14" height="100" rx="4" fill="#78350f"/><rect x="100" y="8" width="22" height="20" rx="4" fill="#451a03"/>
+    <path d="M111 118 c-36 0 -44 30 -32 46 c-14 16 -6 50 32 50 s46 -34 32 -50 c12 -16 4 -46 -32 -46z" fill="#f97316"/>
+    <circle cx="111" cy="160" r="12" fill="#7c2d12"/><rect x="98" y="190" width="26" height="6" rx="3" fill="#7c2d12"/>
+    <path d="M108 24 v170 M114 24 v170" stroke="#fde68a" stroke-width="1"/>
+  </g>
+  <g transform="translate(206 120)">
+    <path d="M10 60 h60 l-8 50 h-44z" fill="#ec4899"/><rect x="4" y="52" width="72" height="12" rx="4" fill="#db2777"/>
+    <path d="M40 52 c0 -20 -4 -34 -20 -44 c18 2 24 18 20 44z" fill="#22d3ee"/><path d="M40 52 c0 -24 10 -40 30 -46 c-12 12 -20 26 -30 46z" fill="#38bdf8"/>
+    <path d="M40 52 v-30" stroke="#0891b2" stroke-width="3"/>
+  </g>
+  <g class="tl-coin">
+    <rect x="206" y="26" width="80" height="60" rx="10" fill="#fff"/>
+    <rect x="216" y="36" width="18" height="18" rx="3" fill="#8b5cf6"/><rect x="238" y="36" width="18" height="18" rx="3" fill="#ddd6fe"/><rect x="260" y="36" width="18" height="18" rx="3" fill="#8b5cf6"/>
+    <rect x="216" y="58" width="18" height="18" rx="3" fill="#ddd6fe"/><rect x="238" y="58" width="18" height="18" rx="3" fill="#8b5cf6"/><rect x="260" y="58" width="18" height="18" rx="3" fill="#ddd6fe"/>
+    <circle cx="247" cy="45" r="5" fill="#fde68a"/>
+  </g>
+  <g transform="translate(30 60) rotate(30)"><rect x="0" y="0" width="8" height="60" rx="3" fill="#a16207"/><path d="M-2 60 h12 l-2 18 c-1 6 -7 6 -8 0z" fill="#0ea5e9"/></g>
+  <path d="M170 40 l4 10 l10 4 l-10 4 l-4 10 l-4 -10 l-10 -4 l10 -4 z" fill="#a5f3fc"/>
+  <path d="M40 180 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3 z" fill="#fbcfe8"/>
+</svg>`;
+
+/* Мини-иллюстрации к идиомам (160×96). Классы a-* анимируются при наведении. */
+const IDIOM_ART = {
+  jack: `<circle cx="80" cy="34" r="12" fill="#fde68a"/><path d="M62 88 c0 -24 8 -38 18 -38 s18 14 18 38z" fill="#0ea5e9"/>
+         <g class="a-belt"><path d="M40 40 l14 10" stroke="#475569" stroke-width="4" stroke-linecap="round"/><rect x="30" y="30" width="14" height="10" rx="2" fill="#94a3b8"/>
+         <path d="M120 40 l-14 10" stroke="#f97316" stroke-width="4" stroke-linecap="round"/><circle cx="124" cy="36" r="7" fill="#ec4899"/>
+         <path d="M40 74 l16 -6" stroke="#8b5cf6" stroke-width="4" stroke-linecap="round"/><rect x="28" y="70" width="12" height="16" rx="3" fill="#a78bfa"/>
+         <path d="M120 74 l-16 -6" stroke="#0891b2" stroke-width="4" stroke-linecap="round"/><path d="M118 66 l12 0 l-2 14 h-8z" fill="#22d3ee"/></g>`,
+  labour: `<path d="M80 30 c14 -14 34 -2 32 14 c-2 16 -20 26 -32 36 c-12 -10 -30 -20 -32 -36 c-2 -16 18 -28 32 -14z" fill="#fbcfe8"/>
+         <g class="a-tag" style="transform-origin:80px 50px"><path d="M60 40 l40 24 M100 40 l-40 24" stroke="#a16207" stroke-width="3.5" stroke-linecap="round"/>
+         <path d="M66 50 q14 12 28 0" stroke="#ec4899" stroke-width="5" fill="none" stroke-linecap="round"/></g>
+         <circle cx="122" cy="74" r="12" fill="#ec4899"/><path d="M112 70 q10 4 20 0 M112 76 q10 4 20 0" stroke="#fbcfe8" stroke-width="2" fill="none"/>`,
+  birds: `<circle cx="40" cy="70" r="12" fill="#94a3b8"/><circle cx="36" cy="66" r="3" fill="#cbd5e1"/>
+         <g class="a-up"><path d="M90 40 q8 -10 16 0 q8 -10 16 0" stroke="#0ea5e9" stroke-width="4" fill="none" stroke-linecap="round"/>
+         <path d="M104 64 q8 -10 16 0 q8 -10 16 0" stroke="#8b5cf6" stroke-width="4" fill="none" stroke-linecap="round"/></g>
+         <path d="M54 66 q20 -20 36 -24 M54 70 q30 -6 50 -4" stroke="#cbd5e1" stroke-width="2.5" fill="none" stroke-dasharray="4 4" stroke-linecap="round"/>
+         <path d="M120 20 l4 4 l8 -8 M136 46 l4 4 l8 -8" stroke="#ec4899" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`,
+  green: `<path d="M56 88 v-30 a10 10 0 0 1 10 -10 h6 a8 8 0 0 1 8 8 v32z" fill="#fde68a" stroke="#d97706" stroke-width="2"/>
+         <path d="M64 50 a8 8 0 0 1 16 0 v-6 a8 8 0 0 0 -16 0z" fill="#22d3ee"/>
+         <g class="a-up"><path d="M72 44 v-20" stroke="#0891b2" stroke-width="3" stroke-linecap="round"/>
+         <path d="M72 30 c-12 -2 -16 -12 -14 -18 c10 2 16 8 14 18z" fill="#38bdf8"/><path d="M72 26 c10 -4 18 -2 20 4 c-8 4 -16 2 -20 -4z" fill="#7dd3fc"/></g>
+         <path d="M104 88 h34 l-4 -22 h-26z" fill="#ec4899"/><path d="M121 66 c0 -10 -6 -16 -12 -20 M121 66 c0 -12 8 -18 14 -22" stroke="#0891b2" stroke-width="3" fill="none" stroke-linecap="round"/>`,
+  merrier: `<g class="a-tag"><circle cx="34" cy="40" r="10" fill="#fde68a"/><path d="M20 84 c0 -20 6 -30 14 -30 s14 10 14 30z" fill="#ec4899"/>
+         <circle cx="64" cy="34" r="10" fill="#fecaca"/><path d="M50 84 c0 -22 6 -34 14 -34 s14 12 14 34z" fill="#0ea5e9"/>
+         <circle cx="96" cy="34" r="10" fill="#fde68a"/><path d="M82 84 c0 -22 6 -34 14 -34 s14 12 14 34z" fill="#8b5cf6"/>
+         <circle cx="126" cy="40" r="10" fill="#fed7aa"/><path d="M112 84 c0 -20 6 -30 14 -30 s14 10 14 30z" fill="#f97316"/></g>
+         <path d="M30 14 l3 6 l6 2 l-6 2 l-3 6 l-3 -6 l-6 -2 l6 -2z M130 12 l2 5 l5 2 l-5 2 l-2 5 l-2 -5 l-5 -2 l5 -2z" fill="#fbbf24"/>`,
+  habit: `<g class="a-belt"><ellipse cx="80" cy="54" rx="56" ry="26" fill="none" stroke="#cbd5e1" stroke-width="10"/>
+         <ellipse cx="80" cy="54" rx="56" ry="26" fill="none" stroke="#fff" stroke-width="2" stroke-dasharray="6 8"/></g>
+         <circle cx="134" cy="50" r="7" fill="#fde68a"/><path d="M134 57 v12 M134 62 l-6 4 M134 69 l-4 8 M134 69 l4 8" stroke="#8b5cf6" stroke-width="3" stroke-linecap="round"/>
+         <rect x="62" y="44" width="36" height="20" rx="4" fill="#f97316"/><text x="80" y="58" text-anchor="middle" font-size="9" font-weight="800" fill="#fff" font-family="system-ui">CAFÉ</text>`,
+  element: `<path d="M20 70 q20 -10 40 0 t40 0 t40 0 v20 h-120z" fill="#7dd3fc"/>
+         <g class="a-r"><path d="M58 50 c10 -12 30 -12 40 0 c-10 12 -30 12 -40 0z" fill="#f97316"/><path d="M98 50 l12 -8 v16z" fill="#f97316"/><circle cx="68" cy="48" r="2.5" fill="#0f172a"/></g>
+         <circle cx="44" cy="40" r="3" fill="#bae6fd"/><circle cx="50" cy="30" r="4" fill="#bae6fd"/><circle cx="42" cy="22" r="2.5" fill="#bae6fd"/>
+         <path d="M120 22 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3z" fill="#fbbf24"/>`,
+  hair: `<g class="a-tag" style="transform-origin:80px 60px"><circle cx="80" cy="34" r="11" fill="#fecaca"/>
+         <path d="M70 30 c-14 -4 -26 6 -34 14 M90 30 c14 -4 26 6 34 14 M76 24 c-10 -10 -22 -10 -30 -6 M84 24 c10 -10 22 -10 30 -6" stroke="#a16207" stroke-width="4" fill="none" stroke-linecap="round"/>
+         <path d="M80 45 v22 M80 52 l-16 -10 M80 52 l16 -10 M80 67 l-10 18 M80 67 l12 16" stroke="#ec4899" stroke-width="4" fill="none" stroke-linecap="round"/></g>
+         <path d="M24 70 l6 -6 M132 70 l-6 -6 M20 52 h8 M132 52 h8" stroke="#fbbf24" stroke-width="3" stroke-linecap="round"/>
+         <path d="M118 18 q4 -8 10 -2 M128 26 v-10 l8 -2 v10" stroke="#8b5cf6" stroke-width="2.5" fill="none" stroke-linecap="round"/>`,
+  practice: `<rect x="24" y="44" width="100" height="40" rx="5" fill="#1e293b"/><rect x="30" y="50" width="88" height="28" rx="2" fill="#fff"/>
+         <g fill="#1e293b"><rect x="40" y="50" width="6" height="16" rx="1"/><rect x="52" y="50" width="6" height="16" rx="1"/><rect x="70" y="50" width="6" height="16" rx="1"/><rect x="82" y="50" width="6" height="16" rx="1"/><rect x="94" y="50" width="6" height="16" rx="1"/></g>
+         <g class="a-belt"><path d="M130 24 a14 14 0 1 1 -14 -14" stroke="#8b5cf6" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M110 4 l6 6 l-8 4" stroke="#8b5cf6" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+         <text x="40" y="34" font-family="system-ui" font-size="11" font-weight="800" fill="#94a3b8">×100</text>`
+};
+</script>
+<script src="topic-engine.js"></script>
+</body>
+</html>

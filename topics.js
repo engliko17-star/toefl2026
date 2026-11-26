@@ -106,5 +106,70 @@ var TOPICS = [
         frames: 10,
         words: 27, idioms: 9, sets: 7, questions: 80,
         guest: false
+    },
+    {
+        slug: 'tech',
+        file: 'topic-tech.html',
+        title_en: 'Technology & Social Media',
+        title_ru: 'Технологии и соцсети',
+        category: 'society',
+        description: 'Телефон и экранное время, соцсети, общение онлайн и недопонимание, видеозвонки, ИИ, приватность и цифровое неравенство.',
+        cover_icon: 'smartphone',
+        order_num: 9,
+        frames: 10,
+        words: 27, idioms: 9, sets: 8, questions: 87,
+        guest: false
+    },
+    {
+        slug: 'hobbies',
+        file: 'topic-hobbies.html',
+        title_en: 'Hobbies & Free Time',
+        title_ru: 'Хобби и свободное время',
+        category: 'culture',
+        description: 'Хобби и досуг, одному или в компании, дома или на улице, хобби и счастье, сад и растения, питомцы, хобби и деньги.',
+        cover_icon: 'guitar',
+        order_num: 10,
+        frames: 10,
+        words: 27, idioms: 9, sets: 6, questions: 74,
+        guest: false
+    },
+    {
+        slug: 'arts',
+        file: 'topic-arts.html',
+        title_en: 'Art & Music',
+        title_ru: 'Искусство и музыка',
+        category: 'culture',
+        description: 'Любимая музыка, концерты и стриминг, песни и воспоминания, творчество, искусство в школе, музеи и современное искусство.',
+        cover_icon: 'palette',
+        order_num: 11,
+        frames: 10,
+        words: 27, idioms: 9, sets: 5, questions: 64,
+        guest: false
+    },
+    {
+        slug: 'holidays',
+        file: 'topic-holidays.html',
+        title_en: 'Holidays, Traditions & Volunteering',
+        title_ru: 'Праздники, традиции и волонтёрство',
+        category: 'culture',
+        description: 'Любимые праздники и семейные традиции, фестивали и разнообразие культур, волонтёрство, благотворительность и жизнь сообщества.',
+        cover_icon: 'gift',
+        order_num: 12,
+        frames: 10,
+        words: 27, idioms: 9, sets: 6, questions: 67,
+        guest: false
+    },
+    {
+        slug: 'nature',
+        file: 'topic-nature.html',
+        title_en: 'Nature & Ecology',
+        title_ru: 'Природа и экология',
+        category: 'society',
+        description: 'Природа и отдых на улице, городские парки, погода и настроение, экопривычки и переработка, изменение климата и кто должен действовать.',
+        cover_icon: 'leaf',
+        order_num: 13,
+        frames: 10,
+        words: 27, idioms: 9, sets: 6, questions: 68,
+        guest: false
     }
 ];
