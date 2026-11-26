@@ -20,6 +20,8 @@
         var gNote = () => (typeof authL === 'function' ? authL('Available with full access', 'Доступно в полной версии') : 'Available with full access');
     </script>
     <script src="content-visibility.js"></script>
+    <script src="reading-module.js"></script>
+    <script src="task-marks.js"></script>
     <script src="topic-filter.js"></script>
     <script src="practice-next.js"></script>
 
@@ -84,7 +86,7 @@
         // Необязательные колонки: is_hidden (глазик) и topic (предмет для фильтра).
         // Пока SQL для них не запущен, запрос с ними падает (42703) — тогда убираем
         // недостающую колонку и повторяем: страница работает в любом порядке выкладки.
-        const OPTIONAL_COLUMNS = ['is_hidden', 'topic'];
+        const OPTIONAL_COLUMNS = ['is_hidden', 'topic', 'module'];
         async function fetchAcademicTasks() {
             const run = cols => db.from('academic_tasks').select(cols).eq('is_mock_only', false).order('id', { ascending: true });
             const base = 'id, title, category, questions_count, is_mock_only, is_real_toefl';
@@ -107,11 +109,24 @@
                 .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
+        // Плашка модуля (колонка module: module_1 / module_2_hard / module_2_easy) — над названием
+        function moduleBadge(m) {
+            const b = window.ReadingModule ? ReadingModule.badge(m) : '';
+            return b ? `<div class="mb-2">${b}</div>` : '';
+        }
+
+        // Закладка ученика «вернуться позже» (task-marks.js). На закрытых для гостя карточках её нет.
+        function markBtn(test) {
+            return (window.TaskMarks && !test.__locked) ? TaskMarks.button('academic', test.id) : '';
+        }
+
         // Если topic-filter.js не загрузился, список показывается целиком, как раньше
         const topicFilter = window.TopicFilter ? TopicFilter.create({
             bar: document.getElementById('topicFilter'),
             list: testListContainer,
             storageKey: 'readingTopic:academic',
+            modules: window.ReadingModule,
+            marks: window.TaskMarks,         // кнопка «Marked»: задания с закладкой ученика (task-marks.js)   // второй ряд кнопок: Module 1 / Module 2 (reading-module.js)
             order: TopicFilter.READING_SUBJECTS || [],
             afterRender: () => { lucide.createIcons(); rememberOrder(); }
         }) : null;
@@ -214,6 +229,7 @@
                 let shownNumber = 0;
 
                 // Собираем все карточки, потом показываем с учётом фильтра
+                if (window.TaskMarks) await TaskMarks.init(currentUser);   // закладки ученика
                 const cards = [];
                 visibleTasks.forEach((test, index) => {
                     const isHiddenTask = test.is_hidden === true;
@@ -278,7 +294,7 @@
                     // и у названия (pr-6): длинное название первой строкой доходило почти до ленты
                     const headerRightPadding = test.is_real_toefl ? 'pr-12' : (test.__locked ? 'pr-8' : '');   // место под замочек
 
-                    cards.push({ topic, html: gCard(`
+                    cards.push({ topic, module: test.module, markKey: 'academic:' + test.id, html: gCard(`
                         <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col group hover:border-indigo-200 hover:shadow-md transition relative overflow-hidden ${CV.cardClass(isHiddenTask)}">
                             ${realToeflRibbon}
                             <div class="flex justify-between items-start mb-4 ${headerRightPadding}">
@@ -296,10 +312,12 @@
                                 
                                 <div class="flex items-center space-x-2">
                                     ${savedScore !== null ? scoreDisplay : ''}
+                                    ${markBtn(test)}
                                     <span class="text-[11px] font-medium text-gray-300 whitespace-nowrap ml-1">${testLabel}</span>
                                 </div>
                             </div>
                             
+                            ${moduleBadge(test.module)}
                             <h3 class="text-sm font-bold text-slate-900 mb-1 group-hover:text-indigo-600 transition tracking-tight ${test.is_real_toefl ? 'pr-6' : ''}">${test.title}</h3>
                             <p class="text-[11px] text-gray-500 mb-5">${test.__locked ? gNote() : `${test.questions_count} Questions • Advanced Level`}</p>
                             

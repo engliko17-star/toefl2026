@@ -20,6 +20,8 @@
         var gNote = () => (typeof authL === 'function' ? authL('Available with full access', 'Доступно в полной версии') : 'Available with full access');
     </script>
     <script src="content-visibility.js"></script>
+    <script src="reading-module.js"></script>
+    <script src="task-marks.js"></script>
     <script src="topic-filter.js"></script>
     <script src="practice-next.js"></script>
 
@@ -133,7 +135,7 @@
         // Необязательные колонки: is_real_toefl (этикетка TOEFL), is_hidden (глазик)
         // и topic (предмет для фильтра). Пока SQL для них не запущен, запрос с ними
         // падает (42703) — тогда убираем недостающую колонку и повторяем.
-        const OPTIONAL_COLUMNS = ['is_real_toefl', 'is_hidden', 'topic'];
+        const OPTIONAL_COLUMNS = ['is_real_toefl', 'is_hidden', 'topic', 'module'];
 
         // ---------- ФИЛЬТР ПО ПРЕДМЕТУ ----------
         // Предмет хранится в complete_words_tasks.topic, список общий с Academic
@@ -144,11 +146,24 @@
                 .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
+        // Плашка модуля (колонка module: module_1 / module_2_hard / module_2_easy) — над названием
+        function moduleBadge(m) {
+            const b = window.ReadingModule ? ReadingModule.badge(m) : '';
+            return b ? `<div class="mb-2">${b}</div>` : '';
+        }
+
+        // Закладка ученика «вернуться позже» (task-marks.js). На закрытых для гостя карточках её нет.
+        function markBtn(test) {
+            return (window.TaskMarks && !test.__locked) ? TaskMarks.button('words', test.id) : '';
+        }
+
         // Если topic-filter.js не загрузился, список показывается целиком, как раньше
         const topicFilter = window.TopicFilter ? TopicFilter.create({
             bar: document.getElementById('topicFilter'),
             list: testListContainer,
             storageKey: 'readingTopic:complete-words',
+            modules: window.ReadingModule,
+            marks: window.TaskMarks,         // кнопка «Marked»: задания с закладкой ученика (task-marks.js)   // второй ряд кнопок: Module 1 / Module 2 (reading-module.js)
             order: TopicFilter.READING_SUBJECTS || [],
             afterRender: () => { lucide.createIcons(); rememberOrder(); }
         }) : null;
@@ -214,6 +229,7 @@
                 }
 
                 // Собираем все карточки, потом показываем с учётом фильтра
+                if (window.TaskMarks) await TaskMarks.init(currentUser);   // закладки ученика
                 const cards = [];
                 tests.forEach(test => {
                     // На плашке — предмет (Biology…); если его ещё нет — категория, как раньше
@@ -292,17 +308,19 @@
                                 
                                 <div class="flex items-center space-x-2">
                                     ${savedScore !== null ? scoreDisplay : ''}
+                                    ${markBtn(test)}
                                     <span class="text-[10px] font-medium text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded-md border border-gray-100">Test #${test.id}</span>
                                 </div>
                             </div>
 
+                            ${moduleBadge(test.module)}
                             <h3 class="text-sm font-bold text-slate-900 mb-1 group-hover:text-purple-600 transition tracking-tight ${isRealToefl ? 'pr-6' : ''}">${test.title}</h3>
                             <p class="text-[11px] text-gray-500 mb-5 flex-1">${test.__locked ? gNote() : `${wordCount} words • ${blanksCount} missing letters`}</p>
                             
                             ${CV.withEye(actionButton, 'complete_words_tasks', [test.id], isHiddenTask)}
                         </div>
                     `;
-                    cards.push({ topic, html: gCard(html, test) });
+                    cards.push({ topic, module: test.module, markKey: 'words:' + test.id, html: gCard(html, test) });
                 });
 
                 showCards(cards);
