@@ -561,6 +561,8 @@ body.has-sheet .toast{bottom:calc(var(--safe-b) + 92px)}
    ===================================================================== */
 const VOCAB_SB_URL = 'https://gmsdixqjhlycovsgwbzq.supabase.co';
 const VOCAB_SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc2RpeHFqaGx5Y292c2d3YnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTEwODIsImV4cCI6MjA5NTAyNzA4Mn0.gPEOviqSGTuczqoSHvb_BX4mBSdxjh8Bg6BV13l58LQ';
+// Публичный VAPID-ключ для push-напоминаний (пара к VAPID_PRIVATE_KEY в секретах функции vocab-push)
+const VOCAB_PUSH_PUBLIC_KEY = 'BJnwOH6qNOWCKseF5cgb1mAJqjnONHz_FKqJEKuPW1L4NmdjasUt5CPHWxnBzLTYqpLXWmlID9tKP4F3tqISy_M';
 const PLATFORM_HOME_URL = 'index.html';   // кнопка «на платформу»
 const CLASSIC_VERSION_URL = '';           // напр. 'vocabulary-classic.html' — тогда в настройках появится ссылка на старую версию
 const SRS_MAX_BOX = 13;                   // последняя ступень лестницы = «выучено»
@@ -644,6 +646,8 @@ const ICONS = {
   link:'<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
   quote:'<path d="M9.5 7H6a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h2v1a3 3 0 0 1-3 3"/><path d="M19.5 7H16a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h2v1a3 3 0 0 1-3 3"/>',
   chat:'<path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-5 4v-4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M8 11h.01M12 11h.01M16 11h.01"/>',
+  bell:'<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+  send:'<path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>',
   arrowUp:'<path d="M4 18h7"/><path d="M14 6h6v6M20 6l-9 9"/>'
 };
 function ic(name, size, extra) {
@@ -2508,6 +2512,8 @@ function renderSettings() {
         <div class="goal-chips">${[5, 10, 15, 20].map(n => `<button class="${goal === n ? 'on' : ''}" data-act="setGoal" data-arg="${n}">${n}</button>`).join('')}</div></div></div>
       <button class="set-row" data-act="sources"><span class="row-ico" style="background:var(--primary-soft);color:var(--primary)">${ic('layers', 19)}</span><span class="row-main"><span class="set-label">Что учу</span><span class="set-hint">${srcN ? 'Выбрано источников: ' + srcN : 'Ничего не выбрано'}</span></span>${ic('chevR', 20, 'chev')}</button>
     </div>
+    <div class="sec-title">Напоминания</div>
+    <div class="set-group">${pushRows()}</div>
     <div class="sec-title">Режим повторения<small>${modes.includes('auto') ? 'авто' : 'выбрано: ' + modes.length}</small></div>
     <div class="set-group mode-list">${modeRows(modes, 'setMode')}</div>
     <p class="small faint" style="margin:8px 4px 0">«Авто» — или отметьте несколько режимов: они будут чередоваться. Поменять можно и прямо во время повторения. Новые слова всегда учатся по шагам: карточка в обе стороны → написать самому.</p>
@@ -2531,6 +2537,149 @@ function renderSettings() {
     </div>
   </div>`;
 }
+/* =====================================================================
+   НАПОМИНАНИЯ (push)
+   Устройство подписывается на push (service worker vocab-sw.js), подписка
+   сохраняется в таблицу vocab_push_subscriptions через RPC vocab_push_save.
+   Раз в час функция Supabase vocab-push проверяет, у кого сейчас час
+   напоминания, считает слова на повторение и новые слова и шлёт push.
+   SQL и установка функции — в инструкции к напоминаниям.
+   ===================================================================== */
+const PUSH = { supported: false, ios: false, standalone: false, sub: null, row: null, busy: false, serverOk: true };
+function pushEnv() {
+  PUSH.supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  PUSH.ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  PUSH.standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+}
+function pushTz() { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Moscow'; } catch (e) { return 'Europe/Moscow'; } }
+function b64uToBytes(str) {
+  const pad = '='.repeat((4 - str.length % 4) % 4);
+  const raw = atob((str + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(raw, c => c.charCodeAt(0));
+}
+const pushOn = () => !!(PUSH.sub && PUSH.row && window.Notification && Notification.permission === 'granted');
+function pushServerMissing(err) { return /vocab_push|function|schema cache|does not exist|relation/i.test((err && err.message) || ''); }
+
+async function savePushSub(patch) {
+  const j = PUSH.sub.toJSON();
+  const cur = PUSH.row || {};
+  const args = {
+    p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth, p_tz: pushTz(),
+    p_hour: patch.remind_hour != null ? patch.remind_hour : (cur.remind_hour != null ? cur.remind_hour : 19),
+    p_reviews: patch.remind_reviews != null ? patch.remind_reviews : cur.remind_reviews !== false,
+    p_new: patch.remind_new != null ? patch.remind_new : cur.remind_new !== false
+  };
+  const { data, error } = await sb.rpc('vocab_push_save', args);
+  if (error) { if (pushServerMissing(error)) PUSH.serverOk = false; throw error; }
+  PUSH.row = Array.isArray(data) ? data[0] : data;
+}
+
+// При старте: есть ли подписка у этого устройства и строка в базе. Заодно
+// обновляем часовой пояс (переезд, путешествие) и восстанавливаем строку,
+// если её удалили, а разрешение и подписка на устройстве остались.
+async function loadPush() {
+  pushEnv();
+  if (!PUSH.supported) return;
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    PUSH.sub = reg ? await reg.pushManager.getSubscription() : null;
+    if (!PUSH.sub) return;
+    const { data, error } = await sb.from('vocab_push_subscriptions').select('*').eq('endpoint', PUSH.sub.endpoint).maybeSingle();
+    if (error) { if (pushServerMissing(error)) PUSH.serverOk = false; return; }
+    PUSH.row = data;
+    if (Notification.permission === 'granted' && (!data || data.tz !== pushTz())) await savePushSub({});
+  } catch (e) { console.warn('Напоминания:', e); }
+}
+
+async function enablePush() {
+  if (PUSH.busy) return;
+  pushEnv();
+  if (!PUSH.supported) { toast('Этот браузер не умеет присылать уведомления'); return; }
+  if (PUSH.ios && !PUSH.standalone) { openInstall(); return; }
+  // Разрешение спрашиваем сразу по нажатию — иначе браузер его не покажет
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') { toast('Уведомления не разрешены. Их можно включить в настройках браузера'); rerender(); return; }
+  PUSH.busy = true; rerender();
+  try {
+    const reg = await navigator.serviceWorker.register('vocab-sw.js');
+    await navigator.serviceWorker.ready;
+    PUSH.sub = await reg.pushManager.getSubscription() ||
+      await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uToBytes(VOCAB_PUSH_PUBLIC_KEY) });
+    await savePushSub({});
+    toast('Напоминания включены');
+  } catch (e) {
+    console.error(e);
+    toast(PUSH.serverOk ? 'Не получилось включить напоминания. Попробуйте ещё раз' : 'Напоминания ещё не настроены на сервере');
+  }
+  PUSH.busy = false; rerender();
+}
+async function disablePush() {
+  if (PUSH.busy) return;
+  PUSH.busy = true; rerender();
+  try {
+    if (PUSH.sub) {
+      await sb.rpc('vocab_push_delete', { p_endpoint: PUSH.sub.endpoint });
+      await PUSH.sub.unsubscribe();
+    }
+    PUSH.sub = null; PUSH.row = null;
+    toast('Напоминания выключены');
+  } catch (e) { console.error(e); toast('Не получилось выключить напоминания'); }
+  PUSH.busy = false; rerender();
+}
+async function updatePush(patch) {
+  if (!pushOn() || PUSH.busy) return;
+  const before = PUSH.row;
+  PUSH.row = Object.assign({}, PUSH.row, patch); rerender();       // сразу показываем, сохраняем следом
+  try { await savePushSub(patch); } catch (e) { PUSH.row = before; toast('Не сохранилось. Проверьте интернет'); }
+  rerender();
+}
+async function testPush() {
+  if (!pushOn() || PUSH.busy) return;
+  PUSH.busy = true; rerender();
+  try {
+    const { data, error } = await sb.functions.invoke('vocab-push', { body: { test: true } });
+    if (error) throw error;
+    toast(data && data.ok ? 'Отправили — уведомление придёт через несколько секунд' : 'Сервер не отправил уведомление');
+  } catch (e) {
+    console.error(e);
+    toast('Сервер напоминаний не ответил. Возможно, функция vocab-push ещё не установлена');
+  }
+  PUSH.busy = false; rerender();
+}
+const hourLabel = h => String(h).padStart(2, '0') + ':00';
+
+function pushRows() {
+  pushEnv();
+  const row = (icon, title, hint, right, act, arg) => `<${act ? 'button' : 'div'} class="set-row"${act ? ` data-act="${act}"${arg != null ? ` data-arg="${arg}"` : ''}` : ''}>
+    <span class="row-ico" style="background:var(--primary-soft);color:var(--primary)">${ic(icon, 19)}</span>
+    <span class="row-main"><span class="set-label">${title}</span>${hint ? `<span class="set-hint">${hint}</span>` : ''}</span>${right || ''}</${act ? 'button' : 'div'}>`;
+  const sw = on => `<span class="switch ${on ? 'on' : ''}" role="switch" aria-checked="${on}"></span>`;
+  if (!PUSH.supported) return row('bell', 'Напоминания недоступны', 'Этот браузер не умеет присылать уведомления. Откройте приложение в Chrome или Safari');
+  if (PUSH.ios && !PUSH.standalone) return row('bell', 'Напоминания о словах', 'На iPhone и iPad уведомления приходят, только если приложение установлено на экран «Домой». Установите его и откройте с иконки', ic('chevR', 20, 'chev'), 'install');
+  if (Notification.permission === 'denied') return row('bell', 'Уведомления запрещены', 'Разрешите уведомления для этого сайта в настройках браузера или телефона, затем вернитесь сюда');
+  const on = pushOn(), r = PUSH.row || {};
+  let html = row('bell', 'Напоминать о словах',
+    PUSH.busy ? 'Минутку…' : on ? `Каждый день в ${hourLabel(r.remind_hour)}, если есть что повторить или выучить` : 'Уведомление, когда слова ждут повторения и пора учить новые',
+    sw(on), on ? 'pushOff' : 'pushOn');
+  if (!on) return html;
+  html += `<div class="set-block"><div class="set-label">Время напоминания</div><div class="set-hint">По времени этого устройства (${esc(r.tz || pushTz())})</div>
+    <div class="goal-wrap"><div class="stepper"><button data-act="pushHour" data-arg="-1" aria-label="Раньше">−</button><input readonly value="${hourLabel(r.remind_hour)}" aria-label="Время напоминания" style="width:76px"><button data-act="pushHour" data-arg="1" aria-label="Позже">+</button></div>
+    <div class="goal-chips">${[9, 13, 19, 21].map(h => `<button class="${r.remind_hour === h ? 'on' : ''}" data-act="pushHourSet" data-arg="${h}">${hourLabel(h)}</button>`).join('')}</div></div></div>`;
+  html += row('repeat', 'Слова на повторение', 'Сколько слов ждут повторения', sw(r.remind_reviews !== false), 'pushReviews');
+  html += row('sparkles', 'Новые слова на сегодня', 'Если норма новых слов ещё не выполнена', sw(r.remind_new !== false), 'pushNew');
+  html += row('send', 'Проверить', 'Прислать уведомление прямо сейчас', ic('chevR', 20, 'chev'), 'pushTest');
+  return html;
+}
+
+// Число слов на повторение — на иконке установленного приложения
+function updateAppBadge() {
+  try {
+    if (!('setAppBadge' in navigator) || !S.ready) return;
+    const n = computeStats().due.length;
+    n > 0 ? navigator.setAppBadge(n) : navigator.clearAppBadge();
+  } catch (e) { /* не везде поддерживается */ }
+}
+
 function openInstall() {
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
   openSheet({
@@ -2663,6 +2812,13 @@ const ACTIONS = {
   setMode: m => { setReviewModes(toggleModeIn(getReviewModes(), m)); rerender(); },
   setTr: t => { S.prefs.translation = t; savePrefs(); rerender(); },
   setTheme: v => { setTheme(v, true); rerender(); },
+  pushOn: () => enablePush(),
+  pushOff: () => disablePush(),
+  pushHour: d => updatePush({ remind_hour: ((((PUSH.row && PUSH.row.remind_hour) || 0) + Number(d)) % 24 + 24) % 24 }),
+  pushHourSet: h => updatePush({ remind_hour: Number(h) }),
+  pushReviews: () => updatePush({ remind_reviews: !(PUSH.row && PUSH.row.remind_reviews !== false) }),
+  pushNew: () => updatePush({ remind_new: !(PUSH.row && PUSH.row.remind_new !== false) }),
+  pushTest: () => testPush(),
   toggleAutoplay: () => { S.prefs.autoplay = !S.prefs.autoplay; savePrefs(); rerender(); },
   toggleDyslexia: () => { const on = !document.body.classList.contains('dyslexia-mode'); try { localStorage.setItem('dyslexiaMode', String(on)); } catch (e) {} applyDyslexia(); rerender(); },
   install: () => openInstall(),
@@ -2771,11 +2927,14 @@ async function boot() {
   let saved = null; try { saved = sessionStorage.getItem('vocabNav'); } catch (e) {}
   NAV = (navType === 'reload' && saved) ? saved : (location.hash || '#home');
   route();
+  updateAppBadge();
+  loadPush().then(() => { if (NAV === '#settings') rerender(); });
   if (cached) loadWords().then(rerender).catch(() => {});   // тихо обновляем копию словаря
 }
 // Вернулись на вкладку (или из повторения через «назад») — данные могли устареть
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && S.ready) Promise.all([loadProgress(), loadActivity()]).then(rerender);
+  if (document.visibilityState === 'visible' && S.ready) Promise.all([loadProgress(), loadActivity()]).then(() => { rerender(); updateAppBadge(); });
+  if (document.visibilityState === 'hidden') updateAppBadge();
 });
 window.addEventListener('pageshow', e => { if (e.persisted && S.ready) Promise.all([loadProgress(), loadActivity()]).then(rerender); });
 // Масштабирование пальцами отключено, как в обычном приложении (iOS Safari
