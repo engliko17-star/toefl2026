@@ -1232,7 +1232,7 @@ function toast(msg, actionLabel, action) {
   if (actionLabel) el.querySelector('button').onclick = () => { el.classList.remove('show'); action && action(); };
   requestAnimationFrame(() => el.classList.add('show'));
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), actionLabel ? 4500 : 2600);
+  toastTimer = setTimeout(() => el.classList.remove('show'), actionLabel ? 4500 : Math.min(9000, Math.max(2600, String(msg).length * 55)));   // длинное сообщение — дольше на экране
 }
 
 /* =====================================================================
@@ -2639,12 +2639,27 @@ async function testPush() {
   try {
     const { data, error } = await sb.functions.invoke('vocab-push', { body: { test: true } });
     if (error) throw error;
-    toast(data && data.ok ? 'Отправили — уведомление придёт через несколько секунд' : 'Сервер не отправил уведомление');
+    if (data && data.ok) toast('Отправили — уведомление придёт через несколько секунд');
+    else toast('Не отправилось: ' + ((data && data.error) || 'сервер не объяснил причину'));
   } catch (e) {
     console.error(e);
-    toast('Сервер напоминаний не ответил. Возможно, функция vocab-push ещё не установлена');
+    toast(await pushErrorText(e));
   }
   PUSH.busy = false; rerender();
+}
+// Понятная причина, почему функция vocab-push не ответила
+async function pushErrorText(e) {
+  const name = (e && e.name) || '';
+  let status = 0, text = '';
+  try { if (e && e.context && typeof e.context.status === 'number') { status = e.context.status; text = await e.context.text(); } } catch (x) { /* */ }
+  let msg = '';
+  try { const j = JSON.parse(text); msg = j.error || j.msg || j.message || ''; } catch (x) { msg = text; }
+  if (status === 404 || /not found/i.test(msg)) return 'Функция vocab-push не найдена в Supabase. Проверьте, что она создана именно с таким именем';
+  if (status === 401 || status === 403) return 'Supabase не пустил к функции (код ' + status + '). Выйдите и войдите в платформу заново';
+  if (status >= 500 || /BOOT_ERROR|WORKER/i.test(msg)) return 'Функция vocab-push не запустилась (код ' + (status || '—') + '). Проверьте код функции и секреты' + (msg ? ': ' + String(msg).slice(0, 120) : '');
+  if (status) return 'Функция ответила ошибкой ' + status + (msg ? ': ' + String(msg).slice(0, 120) : '');
+  if (/FetchError|Relay/i.test(name)) return 'Функция vocab-push не отвечает: её нет в Supabase или она падает при запуске. Проверьте имя функции и секреты';
+  return 'Сервер напоминаний не ответил. Проверьте интернет';
 }
 const hourLabel = h => String(h).padStart(2, '0') + ':00';
 
