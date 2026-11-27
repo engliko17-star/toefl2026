@@ -374,6 +374,17 @@ body.dyslexia-mode .wotd{background:#fffaf1}
 .goal-chips button{flex:1;text-align:center;height:42px;border-radius:12px;background:var(--surface-2);font-weight:800;font-size:14px;color:var(--ink-2)}
 .goal-chips button.on{background:var(--primary);color:#fff}
 .mode-list .set-row{min-height:58px}
+.time-pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.time-pill{display:inline-flex;align-items:center;height:42px;border-radius:13px;background:var(--primary-soft);color:var(--primary-ink);font-weight:800;font-size:15.5px;font-variant-numeric:tabular-nums}
+.time-pill .tp-t{height:100%;padding:0 13px;border-radius:13px}
+.time-pill .tp-t:not(:last-child){padding-right:2px}
+.time-pill .tp-x{width:32px;height:100%;display:grid;place-items:center;color:var(--primary);opacity:.7;border-radius:13px}
+.time-pill .tp-x:active,.time-add:active{opacity:1;background:rgba(79,70,229,.12)}
+.time-add{display:inline-flex;align-items:center;gap:6px;height:42px;padding:0 14px;border-radius:13px;border:1.5px dashed var(--faint);color:var(--ink-2);font-weight:700;font-size:14.5px}
+.hour-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+@media (min-width:480px){ .hour-grid{grid-template-columns:repeat(6,1fr)} }
+.hour-grid button{height:46px;border-radius:12px;background:var(--surface-2);font-weight:800;font-size:15.5px;color:var(--ink-2);font-variant-numeric:tabular-nums;text-align:center}
+.hour-grid button.on{background:var(--primary);color:#fff}
 
 /* ---------- Нижние шторки ---------- */
 .sheet-wrap{position:fixed;inset:0;z-index:60;display:flex;align-items:flex-end;justify-content:center}
@@ -2566,10 +2577,17 @@ async function savePushSub(patch) {
   const args = {
     p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth, p_tz: pushTz(),
     p_hour: patch.remind_hour != null ? patch.remind_hour : (cur.remind_hour != null ? cur.remind_hour : 19),
+    p_hours: patch.remind_hours != null ? patch.remind_hours : pushHours(cur),
     p_reviews: patch.remind_reviews != null ? patch.remind_reviews : cur.remind_reviews !== false,
     p_new: patch.remind_new != null ? patch.remind_new : cur.remind_new !== false
   };
-  const { data, error } = await sb.rpc('vocab_push_save', args);
+  let { data, error } = await sb.rpc('vocab_push_save', args);
+  if (error && /p_hours|could not find|schema cache|best candidate/i.test(error.message || '')) {
+    // На сервере ещё старая версия (одно время): сохраняем без списка часов
+    const old = Object.assign({}, args); delete old.p_hours;
+    ({ data, error } = await sb.rpc('vocab_push_save', old));
+    if (!error) PUSH.multiOk = false;
+  }
   if (error) { if (pushServerMissing(error)) PUSH.serverOk = false; throw error; }
   PUSH.row = Array.isArray(data) ? data[0] : data;
 }
@@ -2630,8 +2648,10 @@ async function updatePush(patch) {
   if (!pushOn() || PUSH.busy) return;
   const before = PUSH.row;
   PUSH.row = Object.assign({}, PUSH.row, patch); rerender();       // сразу показываем, сохраняем следом
+  if (sheets.length) refreshOpenSheet();
   try { await savePushSub(patch); } catch (e) { PUSH.row = before; toast('Не сохранилось. Проверьте интернет'); }
   rerender();
+  if (sheets.length) refreshOpenSheet();
 }
 async function testPush() {
   if (!pushOn() || PUSH.busy) return;
@@ -2662,6 +2682,43 @@ async function pushErrorText(e) {
   return 'Сервер напоминаний не ответил. Проверьте интернет';
 }
 const hourLabel = h => String(h).padStart(2, '0') + ':00';
+const PUSH_MAX_HOURS = 6;
+// Все часы напоминаний этого устройства (раньше было одно время — remind_hour)
+function pushHours(r) {
+  r = r || {};
+  const a = Array.isArray(r.remind_hours) && r.remind_hours.length ? r.remind_hours : [r.remind_hour != null ? r.remind_hour : 19];
+  return [...new Set(a.map(Number).filter(h => h >= 0 && h <= 23))].sort((x, y) => x - y);
+}
+const hoursText = hs => hs.length === 1 ? hourLabel(hs[0]) : hs.slice(0, -1).map(hourLabel).join(', ') + ' и ' + hourLabel(hs[hs.length - 1]);
+function setPushHours(hs) {
+  hs = [...new Set(hs)].sort((x, y) => x - y);
+  if (hs.length > 1 && PUSH.multiOk === false) { toast('Несколько напоминаний пока не включены на сервере: нужно запустить vocab_push_multi.sql в Supabase'); return; }
+  updatePush({ remind_hours: hs, remind_hour: hs[0] });
+}
+function togglePushHour(h) {
+  const hs = pushHours(PUSH.row);
+  if (hs.includes(h)) {
+    if (hs.length === 1) { toast('Нужно хотя бы одно время. Чтобы не получать напоминания, выключите их переключателем'); return; }
+    setPushHours(hs.filter(x => x !== h));
+  } else {
+    if (hs.length >= PUSH_MAX_HOURS) { toast('Можно поставить не больше ' + PUSH_MAX_HOURS + ' напоминаний в день'); return; }
+    setPushHours(hs.concat(h));
+  }
+}
+function renderHoursSheet(e) {
+  const hs = pushHours(PUSH.row);
+  const parts = [['Утро', 6, 11], ['День', 12, 17], ['Вечер', 18, 23], ['Ночь', 0, 5]];
+  e.body.innerHTML = `<p class="muted" style="margin:0">Отметьте, когда присылать напоминания — до ${PUSH_MAX_HOURS} в день. Если в это время повторять и учить нечего, уведомление не придёт.</p>
+    ${parts.map(([name, a, b]) => {
+      const list = []; for (let h = a; h <= b; h++) list.push(h);
+      return `<div class="sheet-label">${name}</div><div class="hour-grid">${list.map(h => `<button class="${hs.includes(h) ? 'on' : ''}" data-act="pushHourToggle" data-arg="${h}" aria-pressed="${hs.includes(h)}">${hourLabel(h)}</button>`).join('')}</div>`;
+    }).join('')}
+    <button class="btn btn-primary btn-block" style="margin-top:20px" data-act="pushHoursDone">Готово · ${hs.length} ${hs.length === 1 ? 'напоминание' : hs.length < 5 ? 'напоминания' : 'напоминаний'}</button>`;
+}
+function openHoursSheet() {
+  if (!pushOn()) return;
+  openSheet({ title: 'Время напоминаний', render: renderHoursSheet, refresh: renderHoursSheet, pushHours: true });
+}
 
 function pushRows() {
   pushEnv();
@@ -2672,14 +2729,13 @@ function pushRows() {
   if (!PUSH.supported) return row('bell', 'Напоминания недоступны', 'Этот браузер не умеет присылать уведомления. Откройте приложение в Chrome или Safari');
   if (PUSH.ios && !PUSH.standalone) return row('bell', 'Напоминания о словах', 'На iPhone и iPad уведомления приходят, только если приложение установлено на экран «Домой». Установите его и откройте с иконки', ic('chevR', 20, 'chev'), 'install');
   if (Notification.permission === 'denied') return row('bell', 'Уведомления запрещены', 'Разрешите уведомления для этого сайта в настройках браузера или телефона, затем вернитесь сюда');
-  const on = pushOn(), r = PUSH.row || {};
+  const on = pushOn(), r = PUSH.row || {}, hs = pushHours(r);
   let html = row('bell', 'Напоминать о словах',
-    PUSH.busy ? 'Минутку…' : on ? `Каждый день в ${hourLabel(r.remind_hour)}, если есть что повторить или выучить` : 'Уведомление, когда слова ждут повторения и пора учить новые',
+    PUSH.busy ? 'Минутку…' : on ? `Каждый день в ${hoursText(hs)}, если есть что повторить или выучить` : 'Уведомление, когда слова ждут повторения и пора учить новые',
     sw(on), on ? 'pushOff' : 'pushOn');
   if (!on) return html;
-  html += `<div class="set-block"><div class="set-label">Время напоминания</div><div class="set-hint">По времени этого устройства (${esc(r.tz || pushTz())})</div>
-    <div class="goal-wrap"><div class="stepper"><button data-act="pushHour" data-arg="-1" aria-label="Раньше">−</button><input readonly value="${hourLabel(r.remind_hour)}" aria-label="Время напоминания" style="width:76px"><button data-act="pushHour" data-arg="1" aria-label="Позже">+</button></div>
-    <div class="goal-chips">${[9, 13, 19, 21].map(h => `<button class="${r.remind_hour === h ? 'on' : ''}" data-act="pushHourSet" data-arg="${h}">${hourLabel(h)}</button>`).join('')}</div></div></div>`;
+  html += `<div class="set-block"><div class="set-label">Время напоминаний</div><div class="set-hint">По времени этого устройства (${esc(r.tz || pushTz())}) · до ${PUSH_MAX_HOURS} в день</div>
+    <div class="time-pills">${hs.map(h => `<span class="time-pill"><button class="tp-t" data-act="pushHours" aria-label="Изменить время ${hourLabel(h)}">${hourLabel(h)}</button>${hs.length > 1 ? `<button class="tp-x" data-act="pushHourDel" data-arg="${h}" aria-label="Убрать ${hourLabel(h)}">${ic('x', 16)}</button>` : ''}</span>`).join('')}${hs.length < PUSH_MAX_HOURS ? `<button class="time-add" data-act="pushHours">${ic('plus', 17)}Добавить</button>` : ''}</div></div>`;
   html += row('repeat', 'Слова на повторение', 'Сколько слов ждут повторения', sw(r.remind_reviews !== false), 'pushReviews');
   html += row('sparkles', 'Новые слова на сегодня', 'Если норма новых слов ещё не выполнена', sw(r.remind_new !== false), 'pushNew');
   html += row('send', 'Проверить', 'Прислать уведомление прямо сейчас', ic('chevR', 20, 'chev'), 'pushTest');
@@ -2829,8 +2885,10 @@ const ACTIONS = {
   setTheme: v => { setTheme(v, true); rerender(); },
   pushOn: () => enablePush(),
   pushOff: () => disablePush(),
-  pushHour: d => updatePush({ remind_hour: ((((PUSH.row && PUSH.row.remind_hour) || 0) + Number(d)) % 24 + 24) % 24 }),
-  pushHourSet: h => updatePush({ remind_hour: Number(h) }),
+  pushHours: () => openHoursSheet(),
+  pushHourToggle: h => togglePushHour(Number(h)),
+  pushHourDel: h => togglePushHour(Number(h)),
+  pushHoursDone: () => closeSheet(),
   pushReviews: () => updatePush({ remind_reviews: !(PUSH.row && PUSH.row.remind_reviews !== false) }),
   pushNew: () => updatePush({ remind_new: !(PUSH.row && PUSH.row.remind_new !== false) }),
   pushTest: () => testPush(),
