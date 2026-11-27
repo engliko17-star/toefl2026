@@ -134,6 +134,8 @@ const PAGE_SECTIONS = {
     'article-punctuation.html':   'writing',
     'article-collocations.html':  'writing',
     'article-idioms.html':        'writing',
+    'article-linkers.html':       'writing',
+    'article-paraphrasing.html':  'writing',
     'grammar.html':               'writing',   // страница грамматики: статьи на ней — из Writing
 
     // --- Speaking ---

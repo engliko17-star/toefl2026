@@ -103,7 +103,7 @@
         'article-sentence-simplification.html': 'reading.html', 'article-vocabulary.html': 'reading.html',
         // --- статьи Writing (задания и лексика) ---
         'article-idioms.html': 'writing.html', 'article-build-a-sentence.html': 'writing.html',
-        'article-collocations.html': 'writing.html',
+        'article-collocations.html': 'writing.html', 'article-linkers.html': 'writing.html', 'article-paraphrasing.html': 'writing.html',
         'article-write-an-academic.html': 'writing.html', 'article-write-an-email.html': 'writing.html',
         // --- грамматика: статьи только на странице Грамматики ---
         'article-articles.html': 'grammar.html', 'article-countable-uncountable.html': 'grammar.html',
